@@ -939,21 +939,31 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
             return current_accumulator
 
         if isinstance(current_accumulator, List) and (not isinstance(new, List)):
-            if new is not None and new != "":
+            # Arrow deserializes list accumulators as numpy arrays. Using `if new != ""`
+            # on a numpy array raises ValueError ("truth value of an array is ambiguous"),
+            # so we check isinstance(str) first to guard against that.
+            if new is not None and not (isinstance(new, str) and new == ""):
                 current_accumulator.append(new)
             return current_accumulator
 
         if isinstance(new, List) and (not isinstance(current_accumulator, List)):
-            if current_accumulator is not None and current_accumulator != "":
+            # Same guard as above — current_accumulator may be a numpy array from
+            # Arrow deserialization, making `!= ""` raise ValueError.
+            if current_accumulator is not None and not (
+                isinstance(current_accumulator, str) and current_accumulator == ""
+            ):
                 new.append(current_accumulator)
             return new
 
         ls = []
 
-        if current_accumulator is not None and current_accumulator != "":
+        # Same guard as above for both accumulators.
+        if current_accumulator is not None and not (
+            isinstance(current_accumulator, str) and current_accumulator == ""
+        ):
             ls.append(current_accumulator)
 
-        if new is not None and new != "":
+        if new is not None and not (isinstance(new, str) and new == ""):
             ls.append(new)
 
         return ls
@@ -968,6 +978,12 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
         return ls
 
     def finalize(self, accumulator: List[Any]) -> Optional[Any]:
+        # When the accumulator is read back from an Arrow block, list-typed columns
+        # are deserialized as numpy arrays. The list comprehensions below require a
+        # Python list, so convert before proceeding.
+        if isinstance(accumulator, np.ndarray):
+            accumulator = accumulator.tolist()
+
         if self._ignore_nulls:
             accumulator = [v for v in accumulator if not is_null(v)]
         else:
@@ -977,7 +993,7 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
                 # Return the first null encountered to preserve column type.
                 return nulls[0]
 
-        if not accumulator:
+        if len(accumulator) == 0:
             # If the list is empty (e.g., all values were null and ignored, or no values),
             # quantile is undefined.
             return None
@@ -1329,6 +1345,24 @@ def _null_safe_finalize(
     return _safe_finalize
 
 
+def _convert_numpy_to_python(val: AccumulatorType) -> AccumulatorType:
+    """Convert numpy arrays to Python lists for combine() compatibility.
+
+    Arrow deserialization returns numpy arrays for list-typed columns, but
+    aggregation combine() functions expect Python lists. Handles dicts too
+    (e.g. ValueCounter accumulators).
+    """
+    if isinstance(val, np.ndarray):
+        return val.tolist()
+    if isinstance(val, list):
+        return [v.tolist() if isinstance(v, np.ndarray) else v for v in val]
+    if isinstance(val, dict):
+        return {
+            k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in val.items()
+        }
+    return val
+
+
 def _null_safe_combine(
     combine: Callable[[AccumulatorType, AccumulatorType], AccumulatorType],
     ignore_nulls: bool,
@@ -1364,6 +1398,12 @@ def _null_safe_combine(
             elif is_null(new):
                 return cur
             else:
+                # When blocks are stored as Arrow, list-typed accumulator columns are
+                # deserialized as numpy arrays instead of Python lists. combine() functions
+                # (e.g. Quantile) use isinstance(x, List) branching and `x != ""` sentinel
+                # checks that both break silently or raise on numpy arrays. Convert first.
+                cur = _convert_numpy_to_python(cur)
+                new = _convert_numpy_to_python(new)
                 return combine(cur, new)
 
     else:
@@ -1376,6 +1416,10 @@ def _null_safe_combine(
             elif is_null(cur):
                 return cur
             else:
+                # Same as above — convert Arrow-deserialized numpy arrays back to
+                # Python lists before passing to combine().
+                cur = _convert_numpy_to_python(cur)
+                new = _convert_numpy_to_python(new)
                 return combine(cur, new)
 
     return _safe_combine
