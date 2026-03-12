@@ -1940,6 +1940,50 @@ class LoadMetricsTest(unittest.TestCase):
         summary_dict["head_ip"] = "1.1.1.1"
         # No compatibility issue.
         LoadMetricsSummary(**summary_dict)
+        
+    def testSetResourceRequestsWithLabelSelectors(self):
+        lm = LoadMetrics()
+
+        lm.set_resource_requests(
+            [
+                {
+                    "resources": {"CPU": 1},
+                    "label_selector": {"accelerator-type": "A100"},
+                },
+                {
+                    "resources": {"GPU": 2},
+                    "label_selector": {},
+                },
+            ]
+        )
+
+        assert lm.get_resource_requests() == [{"CPU": 1}, {"GPU": 2}]
+
+        summary = lm.summary()
+        assert ({"CPU": 1}, 1) in summary.request_demand
+        assert ({"GPU": 2}, 1) in summary.request_demand
+
+    def testSetResourceRequestsWithLabelSelectorsLogsWarning(self):
+        lm = LoadMetrics()
+
+        with mock.patch(
+            "ray.autoscaler._private.load_metrics.logger.warning"
+        ) as mock_warning:
+            lm.set_resource_requests(
+                [
+                    {
+                        "resources": {"CPU": 1},
+                        "label_selector": {"accelerator-type": "A100"},
+                    }
+                ]
+            )
+
+        assert lm.get_resource_requests() == [{"CPU": 1}]
+        mock_warning.assert_called_once()
+        assert (
+            "Ignoring bundle label_selector in autoscaler v1 request"
+            in mock_warning.call_args.args[0]
+        )
 
 
 class AutoscalingTest(unittest.TestCase):

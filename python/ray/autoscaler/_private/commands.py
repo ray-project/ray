@@ -208,7 +208,9 @@ def request_resources(
         bundle_label_selectors (List[Dict[str,str]]): Optional label selectors
             that new nodes must satisfy. (e.g. [{"accelerator-type": "A100"}])
             The elements in the bundle_label_selectors should be one-to-one mapping
-            to the elements in bundles.
+            to the elements in bundles. Selector constraints are honored by
+            autoscaler v2; autoscaler v1 ignores selectors and uses only the
+            requested resource bundles.
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")

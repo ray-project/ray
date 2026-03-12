@@ -315,9 +315,30 @@ class LoadMetrics:
     def set_resource_requests(self, requested_resources):
         if requested_resources is not None:
             assert isinstance(requested_resources, list), requested_resources
-        self.resource_requests = [
-            request for request in requested_resources if len(request) > 0
-        ]
+        resource_requests = []
+        for request in requested_resources:
+            if len(request) == 0:
+                continue
+
+            # request_resources() may include per-bundle metadata,
+            # e.g. {"resources": {...}, "label_selector": {...}}.
+            # v1 autoscaler consumes only resource bundles, so normalize here.
+            if isinstance(request, dict) and isinstance(request.get("resources"), dict):
+                if request.get("label_selector"):
+                    logger.warning(
+                        "Ignoring bundle label_selector in autoscaler v1 request: %s",
+                        request.get("label_selector"),
+                    )
+                request = request["resources"]
+
+            if not isinstance(request, dict):
+                logger.warning("Ignoring malformed resource request: %s", request)
+                continue
+
+            if len(request) > 0:
+                resource_requests.append(request)
+
+        self.resource_requests = resource_requests
 
     def info_string(self):
         return " - " + "\n - ".join(

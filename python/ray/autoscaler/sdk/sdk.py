@@ -238,6 +238,8 @@ def request_resources(
             corresponding item in the list is an empty dictionary. For each bundle.
             Label selectors consist of zero or more key-value pairs where the key is
             a label and the value is a operator (in, !in, etc.) and label value.
+            This is honored by autoscaler v2. In autoscaler v1, selectors are ignored
+            and only resource quantities are used.
 
     Examples:
         >>> from ray.autoscaler.sdk import request_resources
