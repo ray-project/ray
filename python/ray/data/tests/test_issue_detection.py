@@ -193,7 +193,7 @@ class TestHangingExecutionIssueDetector:
         issues = detector.detect()
         assert len(issues) > 0, "Expected hanging issue to be detected"
         assert issues[0].issue_type.value == "hanging"
-        assert "has been running for" in issues[0].message
+        assert "has been running or stuck in scheduling for" in issues[0].message
         assert "longer than the average task duration" in issues[0].message
 
 
