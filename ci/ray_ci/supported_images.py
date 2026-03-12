@@ -41,5 +41,9 @@ def get_architectures(image_type: str) -> List[str]:
     return get_image_config(image_type)["architectures"]
 
 
+def get_exceptions(image_type: str) -> List[dict]:
+    return get_image_config(image_type).get("exceptions", [])
+
+
 def get_default(image_type: str, key: str) -> str:
     return get_image_config(image_type)["defaults"][key]
