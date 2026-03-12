@@ -390,7 +390,9 @@ class ResourceManager:
         # Also account the downstream ineligible operators' memory usage.
         return (
             op_outputs_usage
-            + self._get_downstream_ineligible_ops_usage(op).object_store_memory
+            + self._get_downstream_ineligible_ops_usage(
+                op, producer_op_id=op.id
+            ).object_store_memory
         )
 
     def get_op_usage_str(self, op: PhysicalOperator, *, verbose: bool) -> str:
