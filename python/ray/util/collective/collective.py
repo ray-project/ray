@@ -26,24 +26,18 @@ logger = logging.getLogger(__name__)
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    _NCCL_AVAILABLE = True
-    _LOG_NCCL_WARNING = False
+    register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
-    _NCCL_AVAILABLE = False
-    _LOG_NCCL_WARNING = True
-
+    pass
 
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
     )
 
-    _TORCH_DISTRIBUTED_AVAILABLE = True
+    register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
-    _TORCH_DISTRIBUTED_AVAILABLE = False
-
-register_collective_backend("NCCL", NCCLGroup)
-register_collective_backend("GLOO", TorchGLOOGroup)
+    pass
 
 
 def nccl_available():
