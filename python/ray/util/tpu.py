@@ -275,7 +275,7 @@ def get_num_ready_tpu_slices(
         accelerator_type: The accelerator type string (e.g. "TPU-V6E").
 
     Returns:
-        The integer count of fully ready and intact TPU slices.
+        The integer count of fully ready and available TPU slices.
     """
     if not ray.is_initialized():
         return 0
@@ -293,10 +293,14 @@ def get_num_ready_tpu_slices(
         logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
         return 0
 
+    # Fetch live resource usage via the State API to ensure slices are idle.
+    from ray._private.state import available_resources_per_node
+
+    node_avail_resources = available_resources_per_node()
+
     slice_to_nodes = {}
     for node in ray.nodes():
-        # Build a mapping of currently alive Ray nodes and
-        # the TPU slice they belong to in GKE.
+        # Build a mapping of currently alive Ray nodes and the TPU slice they belong to.
         if node.get("Alive"):
             labels = node.get("Labels", {})
             if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
@@ -304,21 +308,43 @@ def get_num_ready_tpu_slices(
                 if slice_name:
                     slice_to_nodes.setdefault(slice_name, []).append(node)
 
-    ready_slices = 0
+    ready_and_available_slices = 0
     for slice_name, nodes in slice_to_nodes.items():
-        # Sum the physical TPU chips across all alive VMs in this slice.
         slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
-        # Check if the total chips match the topology requirement.
-        if slice_tpu_chips == total_chips_expected:
-            # A ready TPU slice must have an available TPU head (worker rank 0) node.
-            has_head = any(
-                n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
-                for n in nodes
-            )
-            if has_head:
-                ready_slices += 1
 
-    return ready_slices
+        # Validate the slice has all its physical chips.
+        if slice_tpu_chips != total_chips_expected:
+            continue
+
+        # TPU slices must have a head worker (rank 0).
+        has_head = any(
+            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if not has_head:
+            continue
+
+        # Validate all nodes in this slice are completely idle to avoid
+        # scheduling on multi-tenant slices currently in use.
+        slice_is_idle = True
+        for n in nodes:
+            node_id = n.get("NodeID")
+            total_tpus = n.get("Resources", {}).get("TPU", 0)
+
+            # If the node is in ray.nodes() but hasn't heartbeated its State to GCS
+            # yet, we default to assuming it's available since this means it was
+            # just provisioned.
+            avail_tpus = node_avail_resources.get(node_id, {}).get("TPU", total_tpus)
+
+            # If available TPUs < total TPUs on this specific node, it is in use
+            if avail_tpus < total_tpus:
+                slice_is_idle = False
+                break
+
+        if slice_is_idle:
+            ready_and_available_slices += 1
+
+    return ready_and_available_slices
 
 
 @PublicAPI(stability="alpha")
