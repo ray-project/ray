@@ -347,7 +347,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -357,7 +357,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]

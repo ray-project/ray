@@ -1255,11 +1255,12 @@ def _infer_schema(
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> "pyarrow.Schema":
     import pyarrow as pa
+    import pyarrow.dataset as pds
 
-    factory = pa.dataset.FileSystemDatasetFactory(
+    factory = pds.FileSystemDatasetFactory(
         filesystem,
         paths,
-        format=pa.dataset.ParquetFileFormat(),
+        format=pds.ParquetFileFormat(),
     )
 
     # NOTE: By default we're inspecting all the fragments.
