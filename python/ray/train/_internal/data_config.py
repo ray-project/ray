@@ -158,7 +158,18 @@ class DataConfig:
     @staticmethod
     def _is_v2_autoscaler() -> bool:
         """Check if the V2 cluster autoscaler is active."""
-        return os.environ.get("RAY_DATA_CLUSTER_AUTOSCALER", "V2") == "V2"
+        from ray.data._internal.cluster_autoscaler import (
+            CLUSTER_AUTOSCALER_ENV_KEY,
+            DEFAULT_CLUSTER_AUTOSCALER_VERSION,
+            ClusterAutoscalerVersion,
+        )
+
+        return (
+            os.environ.get(
+                CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
+            )
+            == ClusterAutoscalerVersion.V2
+        )
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":
