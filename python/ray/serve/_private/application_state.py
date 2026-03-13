@@ -1467,11 +1467,16 @@ class ApplicationStateManager:
         for name, app in self._application_states.items():
             cached = self._app_status_gauge_cache.get(name)
             value = app.status.to_numeric()
-            if (
-                cached is not None
-                and (now - cached[1]) < RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
-            ):
+
+            value_changed = cached is None or cached[0] != value
+            interval_elapsed = (
+                cached is None
+                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
+            )
+
+            if not value_changed and not interval_elapsed:
                 continue
+
             self._application_status_gauge.set(value, tags={"application": name})
             self._app_status_gauge_cache[name] = (value, now)
 
