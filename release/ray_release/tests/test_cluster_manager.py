@@ -323,9 +323,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
         # Tags should be injected into advanced_instance_config, not
         # advanced_configurations_json
-        self.assertIn(
-            "advanced_instance_config", self.cluster_manager.cluster_compute
-        )
+        self.assertIn("advanced_instance_config", self.cluster_manager.cluster_compute)
         self.assertNotIn(
             "advanced_configurations_json", self.cluster_manager.cluster_compute
         )

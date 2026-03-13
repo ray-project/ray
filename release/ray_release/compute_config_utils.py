@@ -16,8 +16,7 @@ def is_new_schema(cluster_compute: dict) -> bool:
     """
     has_new = "head_node" in cluster_compute or "worker_nodes" in cluster_compute
     has_legacy = (
-        "head_node_type" in cluster_compute
-        or "worker_node_types" in cluster_compute
+        "head_node_type" in cluster_compute or "worker_node_types" in cluster_compute
     )
     if has_new and has_legacy:
         raise MixedSchemaError(

@@ -381,23 +381,21 @@ def test_compute_config_invalid_ebs_legacy_schema():
     }
     assert validate_cluster_compute(compute_config)
 
-    compute_config["head_node_type"]["aws_advanced_configurations"] = (
-        _bad_ebs_delete_false()
-    )
+    compute_config["head_node_type"][
+        "aws_advanced_configurations"
+    ] = _bad_ebs_delete_false()
     assert validate_cluster_compute(compute_config)
 
     compute_config["head_node_type"]["aws_advanced_configurations"] = _good_ebs()
     assert not validate_cluster_compute(compute_config)
 
     # Legacy-schema: worker_node_types aws_advanced_configurations
-    compute_config["worker_node_types"] = [
-        {"aws_advanced_configurations": _bad_ebs()}
-    ]
+    compute_config["worker_node_types"] = [{"aws_advanced_configurations": _bad_ebs()}]
     assert validate_cluster_compute(compute_config)
 
-    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = (
-        _bad_ebs_delete_false()
-    )
+    compute_config["worker_node_types"][0][
+        "aws_advanced_configurations"
+    ] = _bad_ebs_delete_false()
     assert validate_cluster_compute(compute_config)
 
     compute_config["worker_node_types"][0]["aws_advanced_configurations"] = _good_ebs()
@@ -436,9 +434,9 @@ def test_compute_config_invalid_ebs_new_schema():
     }
     assert validate_cluster_compute(compute_config_head)
 
-    compute_config_head["head_node"]["advanced_instance_config"] = (
-        _bad_ebs_delete_false()
-    )
+    compute_config_head["head_node"][
+        "advanced_instance_config"
+    ] = _bad_ebs_delete_false()
     assert validate_cluster_compute(compute_config_head)
 
     compute_config_head["head_node"]["advanced_instance_config"] = _good_ebs()
@@ -453,9 +451,9 @@ def test_compute_config_invalid_ebs_new_schema():
     }
     assert validate_cluster_compute(compute_config_worker)
 
-    compute_config_worker["worker_nodes"][0]["advanced_instance_config"] = (
-        _bad_ebs_delete_false()
-    )
+    compute_config_worker["worker_nodes"][0][
+        "advanced_instance_config"
+    ] = _bad_ebs_delete_false()
     assert validate_cluster_compute(compute_config_worker)
 
     compute_config_worker["worker_nodes"][0]["advanced_instance_config"] = _good_ebs()
@@ -482,9 +480,7 @@ def test_compute_config_new_schema_rejects_stale_keys():
 
 def test_compute_config_mixed_schema():
     # Mixed schema keys should return an error
-    result = validate_cluster_compute(
-        {"head_node": {}, "worker_node_types": []}
-    )
+    result = validate_cluster_compute({"head_node": {}, "worker_node_types": []})
     assert result
     assert "both legacy-schema and new-schema" in result
 

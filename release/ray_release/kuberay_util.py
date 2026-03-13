@@ -20,7 +20,8 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     kuberay_worker_nodes = []
     for i, w in enumerate(get_worker_node_configs(compute_config)):
         worker_node_config = {
-            "group_name": w.get("name") or f"worker-group-{i}-{w.get('instance_type', 'unknown')}",
+            "group_name": w.get("name")
+            or f"worker-group-{i}-{w.get('instance_type', 'unknown')}",
             "min_nodes": get_worker_min_count(w, new_schema),
             "max_nodes": get_worker_max_count(w, new_schema),
         }

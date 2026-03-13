@@ -322,9 +322,7 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
                     "'aws_advanced_configurations' is invalid in new-schema "
                     "worker_nodes, use 'advanced_instance_config' instead"
                 )
-            configs_to_check.append(
-                worker_node.get("advanced_instance_config", {})
-            )
+            configs_to_check.append(worker_node.get("advanced_instance_config", {}))
     else:
         aws = cluster_compute.get("aws", {})
         head_node_aws = cluster_compute.get("head_node_type", {}).get(

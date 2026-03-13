@@ -150,9 +150,7 @@ def get_test_resources_from_cluster_compute(cluster_compute: Dict) -> Tuple[int,
 
     for i, w in enumerate(get_worker_node_configs(cluster_compute)):
         if "instance_type" not in w:
-            raise ValueError(
-                f"Worker node config at index {i} missing 'instance_type'"
-            )
+            raise ValueError(f"Worker node config at index {i} missing 'instance_type'")
         if new_schema:
             count = w["max_nodes"]
         else:
