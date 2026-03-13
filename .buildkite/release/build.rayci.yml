@@ -26,6 +26,10 @@ steps:
           - "3.13"
         cuda:
           - "12.3.2-cudnn9"
+      adjustments:
+        - with:
+            python: "3.10"
+            cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -105,6 +109,10 @@ steps:
           - "3.13"
         cuda:
           - "12.3.2-cudnn9"
+      adjustments:
+        - with:
+            python: "3.10"
+            cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -140,6 +148,10 @@ steps:
         platform:
           - cu12.3.2-cudnn9
           - cpu
+      adjustments:
+        - with:
+            python: "3.10"
+            platform: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
