@@ -215,6 +215,11 @@ class _StatsActor:
             description="GPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
+        self.memory_usage_bytes = Gauge(
+            "data_memory_usage_bytes",
+            description="Logical memory allocated to dataset operators",
+            tag_keys=op_tags_keys,
+        )
         self.output_bytes = Gauge(
             "data_output_bytes",
             description="Bytes outputted by dataset operators",
@@ -497,6 +502,7 @@ class _StatsActor:
             self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+            self.memory_usage_bytes.set(stats.get("memory_usage", 0), tags)
             for field_name, prom_metric in self.execution_metrics_inputs.items():
                 _record(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():

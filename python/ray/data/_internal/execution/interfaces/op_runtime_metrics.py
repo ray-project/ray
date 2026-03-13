@@ -582,6 +582,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             [
                 ("cpu_usage", resource_usage.cpu or 0),
                 ("gpu_usage", resource_usage.gpu or 0),
+                ("memory_usage", resource_usage.memory or 0),
             ]
         )
         result.extend(self._extra_metrics.items())
