@@ -918,9 +918,7 @@ class DeploymentBroadcastResponse:
                     timeout=timeout_s,
                 )
             except asyncio.TimeoutError:
-                raise TimeoutError(
-                    "Timed out waiting for broadcast results."
-                ) from None
+                raise TimeoutError("Timed out waiting for broadcast results.") from None
         else:
             replica_results = await self._fetch_replica_results_async()
 
@@ -936,14 +934,10 @@ class DeploymentBroadcastResponse:
         if remaining_timeout_s is not None:
             try:
                 return list(
-                    await asyncio.wait_for(
-                        gather_coro, timeout=remaining_timeout_s
-                    )
+                    await asyncio.wait_for(gather_coro, timeout=remaining_timeout_s)
                 )
             except asyncio.TimeoutError:
-                raise TimeoutError(
-                    "Timed out waiting for broadcast results."
-                ) from None
+                raise TimeoutError("Timed out waiting for broadcast results.") from None
 
         return list(await gather_coro)
 
