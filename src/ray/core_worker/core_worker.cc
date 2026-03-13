@@ -2031,7 +2031,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
           const std::unordered_map<std::string, std::string> &labels,
           const LabelSelector &label_selector,
           const std::vector<FallbackOption> &fallback_strategy,
-          const rpc::SchedulingStrategy &scheduling_strategy) -> TaskSpecification {
+          const rpc::SchedulingStrategy &sched_strategy) -> TaskSpecification {
     TaskSpecBuilder builder;
     worker.BuildCommonTaskSpec(builder,
                                job_id,
@@ -2061,7 +2061,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     builder.SetNormalTaskSpec(max_retries,
                               retry_exceptions,
                               serialized_retry_exception_allowlist_copy,
-                              scheduling_strategy,
+                              sched_strategy,
                               root_detached_actor_id);
     return std::move(builder).ConsumeAndBuild();
   };
