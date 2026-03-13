@@ -6,10 +6,11 @@ This module provides an object-oriented interface for different GPU providers
 
 import abc
 import enum
+import hashlib
 import logging
 import subprocess
 import time
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 try:
     from typing import NotRequired
@@ -32,6 +33,7 @@ class GpuProviderType(enum.Enum):
 
     NVIDIA = "nvidia"
     AMD = "amd"
+    HUAWEI = "huawei"
 
 
 class ProcessGPUInfo(TypedDict):
@@ -97,7 +99,7 @@ class GpuProvider(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+    def get_gpu_utilization(self, ip: Optional[str] = None) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all available GPUs."""
         pass
 
@@ -159,7 +161,7 @@ class NvidiaGpuProvider(GpuProvider):
             finally:
                 self._initialized = False
 
-    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+    def get_gpu_utilization(self, ip: Optional[str] = None) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all NVIDIA GPUs and MIG devices."""
 
         return self._get_pynvml_gpu_usage()
@@ -449,7 +451,7 @@ class AmdGpuProvider(GpuProvider):
             finally:
                 self._initialized = False
 
-    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+    def get_gpu_utilization(self, ip: Optional[str] = None) -> List[GpuUtilizationInfo]:
         """Get GPU utilization information for all AMD GPUs."""
         if not self._initialized:
             if not self._initialize():
@@ -509,13 +511,100 @@ class AmdGpuProvider(GpuProvider):
         return gpu_utilizations
 
 
+class HuaweiNpuProvider(GpuProvider):
+    """Huawei NPU provider using pynpudcmi"""
+
+    def __init__(self):
+        super().__init__()
+        self._pynpudcmi = None
+
+    def get_provider_name(self) -> GpuProviderType:
+        return GpuProviderType.HUAWEI
+
+    def is_available(self) -> bool:
+        """Check if NPUs are available"""
+        return self._initialize()
+
+    def _initialize(self) -> bool:
+        """Initialize the NPU provider.
+        The NPU DCMI driver is only intialized once. It doesn't need to allocate any extra resources.
+        This works generallly like an is_available check.
+        """
+
+        if self._initialized:
+            return True
+
+        try:
+            import ray._private.thirdparty.pynpudcmi as pynpudcmi
+
+            self._pynpudcmi = pynpudcmi
+            self._pynpudcmi.dcmi_init()
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to initialize NPU provider: {e}")
+            self._pynpudcmi = None
+            return False
+
+    def _shutdown(self):
+        # No extra memory to release for npu dcmi
+        pass
+
+    @staticmethod
+    def _decode_c_byte_array(b: Any) -> str:
+        return bytes(b).split(b"\0", 1)[0].decode("utf-8")
+
+    def get_gpu_utilization(self, ip: Optional[str] = None) -> List[GpuUtilizationInfo]:
+        """Get NPU utilization information for all NPUs."""
+        assert ip is not None
+        if not self._initialized and not self._initialize():
+            return []
+
+        gpu_utilizations = []
+
+        try:
+            cards = self._pynpudcmi.dcmi_get_card_list()
+            for c in cards:
+                memory_info = self._pynpudcmi.dcmi_get_device_hbm_info(c, 0)
+                utiliza_info = self._pynpudcmi.dcmi_get_device_utilization_rate(
+                    c, 0, self._pynpudcmi.DCMI_UTIL_QUERY_AI_CORE
+                )
+                device_info = self._pynpudcmi.dcmi_get_device_chip_info_v2(c, 0)
+
+                processes_pids = {}
+                processes = self._pynpudcmi.dcmi_get_device_resource_info(c, 0)
+                for p in processes:
+                    processes_pids[int(p.proc_id)] = ProcessGPUInfo(
+                        pid=int(p.proc_id),
+                        gpu_memory_usage=int(p.proc_mem_usage) // MB,
+                        gpu_utilization=None,  # Not available in NPU
+                    )
+
+                info = GpuUtilizationInfo(
+                    index=c,
+                    name=self._decode_c_byte_array(device_info.npu_name),
+                    uuid=hashlib.sha256(
+                        f"{c}{ip}".encode()
+                    ).hexdigest(),  # Hash the card id and the ip address to get a unique uuid
+                    utilization_gpu=int(utiliza_info),
+                    memory_used=int(memory_info.memory_usage),
+                    memory_total=int(memory_info.memory_size),  # The unit is MB
+                    processes_pids=processes_pids,
+                )
+                gpu_utilizations.append(info)
+        except Exception as e:
+            logger.error(f"Error getting NPU utilization: {e}")
+
+        return gpu_utilizations
+
+
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""
 
     def __init__(self):
         self._provider: Optional[GpuProvider] = None
         self._enable_metric_report = True
-        self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
+        self._providers = [NvidiaGpuProvider(), AmdGpuProvider(), HuaweiNpuProvider()]
         self._initialized = False
 
     def initialize(self) -> bool:
@@ -572,7 +661,7 @@ class GpuMetricProvider:
         except Exception:
             return False
 
-    def get_gpu_usage(self) -> List[GpuUtilizationInfo]:
+    def get_gpu_usage(self, ip: Optional[str] = None) -> List[GpuUtilizationInfo]:
         """Get GPU usage information from the available provider."""
         if not self._enable_metric_report:
             return []
@@ -584,7 +673,7 @@ class GpuMetricProvider:
             return []
 
         try:
-            gpu_info_list = self._provider.get_gpu_utilization()
+            gpu_info_list = self._provider.get_gpu_utilization(ip)
             return gpu_info_list  # Return TypedDict instances directly
         except Exception as e:
             logger.debug(
