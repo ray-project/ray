@@ -165,6 +165,27 @@ class InfiniteLookbackBuffer:
             self.data = batch(self.data)
             self.finalized = True
 
+    def _ensure_data_is_writeable(self):
+        """Ensure finalized numpy data is writeable (copy-on-write).
+
+        After deserialization from Ray's object store, numpy arrays are backed by
+        read-only shared memory. This method replaces any read-only leaf arrays
+        with writeable copies on the first mutation attempt.
+        """
+
+        # Fast path for numpy arrays.
+        if isinstance(self.data, np.ndarray):
+            if not self.data.flags.writeable:
+                self.data = self.data.copy()
+            return
+
+        def _ensure_writeable(d):
+            if isinstance(d, np.ndarray) and not d.flags.writeable:
+                return d.copy()
+            return d
+
+        self.data = tree.map_structure(_ensure_writeable, self.data)
+
     def get(
         self,
         indices: Optional[Union[int, slice, List[int]]] = None,
@@ -333,6 +354,10 @@ class InfiniteLookbackBuffer:
                 at_indices=slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]` being replaced by `[98, 99,  100]`.
         """
+        if self.finalized:
+            # Finalized episodes have numpy arrays as data, so we need to make sure these are writeable.
+            self._ensure_data_is_writeable()
+
         # `at_indices` is None -> Override all our data (excluding the lookback buffer).
         if at_indices is None:
             self._set_all_data(new_data)

@@ -199,7 +199,7 @@ class OfflinePreLearner:
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
                 batch,
-                to_numpy=False,
+                to_numpy=True,
             )["episodes"]
 
         # TODO (simon): Sync learner connector state

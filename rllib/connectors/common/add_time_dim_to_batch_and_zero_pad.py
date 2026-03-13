@@ -266,6 +266,11 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
+                # Skip SA episodes with no actual timesteps in this batch. For empty single agent
+                # episodes, we don't want to add seq_lens and loss_mask for these.
+                if len(sa_episode) == 0:
+                    continue
+
                 max_seq_len = sa_module.model_config["max_seq_len"]
 
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
