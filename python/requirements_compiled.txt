@@ -684,7 +684,7 @@ googleapis-common-protos==1.61.0
     #   tensorflow-metadata
 gpytorch==1.10
     # via botorch
-gradio==3.50.2 ; platform_system != "Windows"
+gradio==6.7.0 ; platform_system != "Windows"
     # via -r python/requirements/test-requirements.txt
 gradio-client==0.6.1
     # via gradio
