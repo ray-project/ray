@@ -9,6 +9,7 @@ import ray
 
 if TYPE_CHECKING:
     from ray.data.context import DataContext
+from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -25,6 +26,7 @@ from ray.data._internal.logical.operators import (
     MapBatches,
     MapRows,
     Project,
+    Read,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.planner import create_planner
@@ -114,6 +116,60 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     up_physical_op = physical_op.input_dependencies[0]
     assert isinstance(up_physical_op, MapOperator)
     assert up_physical_op.name == "ReadParquet->SplitBlocks(10)"
+
+
+def test_read_split_blocks_folded_when_size_based(ray_start_regular_shared_2_cpus):
+    class StubDatasource(Datasource):
+        def __init__(self, total_size_bytes: int, num_tasks: int):
+            self._total_size_bytes = total_size_bytes
+            self._num_tasks = num_tasks
+
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return self._total_size_bytes
+
+        def get_read_tasks(
+            self,
+            parallelism: int,
+            per_task_row_limit: Optional[int] = None,
+            data_context: Optional["DataContext"] = None,
+        ) -> List[ReadTask]:
+            per_task_size = self._total_size_bytes // self._num_tasks
+
+            def read_fn():
+                yield pd.DataFrame({"column": [0]})
+
+            return [
+                ReadTask(
+                    read_fn,
+                    BlockMetadata(1, per_task_size, None, None),
+                    per_task_row_limit=per_task_row_limit,
+                )
+                for _ in range(self._num_tasks)
+            ]
+
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = 100
+
+    datasource = StubDatasource(total_size_bytes=1000, num_tasks=2)
+    op = Read(
+        datasource=datasource,
+        datasource_or_legacy_reader=datasource,
+        parallelism=20,
+    )
+
+    planner = create_planner()
+    logical_plan = LogicalPlan(op, ctx)
+    physical_plan = planner.plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    assert isinstance(physical_op, MapOperator)
+    assert physical_op._additional_split_factor == 2
+
+    physical_op.start(ExecutionOptions())
+    transform_fns = physical_op.get_map_transformer().get_transform_fns()
+    assert len(transform_fns) == 1
+    assert transform_fns[0].target_max_block_size == 50
 
 
 def test_from_operators(ray_start_regular_shared_2_cpus):
