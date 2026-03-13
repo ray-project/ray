@@ -37,6 +37,7 @@ def test_actor_pool_scaling():
         config=AutoscalingConfig(
             actor_pool_util_upscaling_threshold=1.0,
             actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
         ),
     )
 
