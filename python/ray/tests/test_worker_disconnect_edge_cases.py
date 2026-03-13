@@ -2,8 +2,6 @@ import threading
 from types import SimpleNamespace
 from typing import List, Tuple
 
-import pytest
-
 import ray
 import ray._private.worker as core_worker
 
