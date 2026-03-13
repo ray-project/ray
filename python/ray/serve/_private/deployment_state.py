@@ -3455,11 +3455,14 @@ class DeploymentState:
                     # from the replica actor. The invariant is that the rank is assigned
                     # during startup and before the replica is added to the replicas
                     # data structure with RUNNING state.
-                    # Recover rank from the replica actor during controller restart
+                    # Skip if the rank is already assigned (e.g., health-check failure
+                    # put the replica into RECOVERING without a controller crash, so the
+                    # rank was never released).
                     replica_id = replica.replica_id.unique_id
-                    self._rank_manager.recover_rank(
-                        replica_id, replica.actor_node_id, replica.rank
-                    )
+                    if not self._rank_manager.has_replica_rank(replica_id):
+                        self._rank_manager.recover_rank(
+                            replica_id, replica.actor_node_id, replica.rank
+                        )
                 # Register recovered gang replicas in the incremental
                 # bookkeeping (newly created gang replicas are already
                 # registered in _add_upscale_gang_replicas).
@@ -4299,6 +4302,7 @@ class DeploymentStateManager:
                     gang_pg_name_to_id[name] = pg_id_hex
 
             occupied_pg_ids = get_active_placement_group_ids()
+
             for gang_pg_name in gang_pg_names_in_cluster:
                 pg_id = gang_pg_name_to_id.get(gang_pg_name)
                 if pg_id is not None and pg_id not in occupied_pg_ids:
