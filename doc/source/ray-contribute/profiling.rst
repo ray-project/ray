@@ -42,8 +42,14 @@ To launch Ray in profiling mode and profile Raylet, define the following variabl
 
 .. code-block:: bash
 
+  # Preferred env vars.
   export PERFTOOLS_PATH=/usr/lib/x86_64-linux-gnu/libprofiler.so
   export PERFTOOLS_LOGFILE=/tmp/pprof.out
+
+  # Legacy-compatible aliases that some environments still expect.
+  export RAYLET_PERFTOOLS_PATH=$PERFTOOLS_PATH
+  export RAYLET_PERFTOOLS_LOGFILE=$PERFTOOLS_LOGFILE
+
   export RAY_RAYLET_PERFTOOLS_PROFILER=1
 
 
