@@ -1,3 +1,4 @@
+import logging
 import os
 import pathlib
 import shutil
@@ -819,24 +820,24 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
 
 
 @pytest.mark.parametrize(
-    "filename_template,should_raise_error",
+    "filename_template,should_raise_error,should_warn",
     [
         # Case 1: No UUID, no extension - should raise error in append mode
-        ("myfile", True),
+        ("myfile", True, False),
         # Case 2: No UUID, has extension - should raise error in append mode
-        ("myfile.parquet", True),
+        ("myfile.parquet", True, False),
         # Case 3: No UUID, different extension - should raise error in append mode
-        ("myfile.txt", True),
+        ("myfile.txt", True, False),
         # Case 4: Already has UUID - should not raise error
-        ("myfile_{write_uuid}", False),
+        ("myfile_{write_uuid}", False, False),
         # Case 5: Already has UUID with extension - should not raise error
-        ("myfile_{write_uuid}.parquet", False),
+        ("myfile_{write_uuid}.parquet", False, True),
         # Case 6: Templated filename without UUID - should raise error in append mode
-        ("myfile-{i}", True),
+        ("myfile-{i}", True, False),
         # Case 7: Templated filename with extension but no UUID - should raise error in append mode
-        ("myfile-{i}.parquet", True),
+        ("myfile-{i}.parquet", True, False),
         # Case 8: Templated filename with UUID already present - should not raise error
-        ("myfile_{write_uuid}-{i}.parquet", False),
+        ("myfile_{write_uuid}-{i}.parquet", False, False),
     ],
     ids=[
         "no_uuid_no_ext",
@@ -854,6 +855,8 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
     tmp_path,
     filename_template,
     should_raise_error,
+    should_warn,
+    caplog,
     target_max_block_size_infinite_or_default,
 ):
     """Test that write_parquet correctly handles UUID validation in filenames when using custom filename providers in append mode."""
@@ -890,7 +893,13 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
             ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
     else:
         # Should succeed when UUID is present
-        ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+        with caplog.at_level(logging.WARNING):
+            ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
+        warning_msg = "Custom FilenameProvider returned non-templatized filename"
+        if should_warn:
+            assert warning_msg in caplog.text
+        else:
+            assert warning_msg not in caplog.text
 
         # Check that files were created
         written_files = os.listdir(tmp_path)
