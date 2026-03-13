@@ -259,9 +259,33 @@ class TrainContext:
         # Persist the checkpoint to the remote storage path.
         try:
             if checkpoint_upload_fn:
-                persisted_checkpoint = checkpoint_upload_fn(
-                    checkpoint, checkpoint_dir_name
+                # Wraps the checkpoint_upload_fn such that a warning can be
+                #   logged every {interval} seconds.
+
+                def slow_upload_warning(
+                    stop_event: threading.Event, interval: int = 60
+                ) -> None:
+                    elapsed = 0
+                    while not stop_event.wait(interval):
+                        elapsed += interval
+                        logger.warning(
+                            f"checkpoint_upload_fn for {checkpoint_dir_name} has been running for {elapsed}s. "
+                            f"If this is unexpected, check your upload function for issues."
+                        )
+
+                slow_upload_event = threading.Event()
+                slow_upload_thread = threading.Thread(
+                    target=slow_upload_warning, args=(slow_upload_event,), daemon=True
                 )
+                slow_upload_thread.start()
+
+                try:
+                    persisted_checkpoint = checkpoint_upload_fn(
+                        checkpoint, checkpoint_dir_name
+                    )
+                finally:
+                    slow_upload_event.set()
+
                 if persisted_checkpoint is None or not isinstance(
                     persisted_checkpoint, ray.train.Checkpoint
                 ):
