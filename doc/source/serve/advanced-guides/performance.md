@@ -201,7 +201,7 @@ You may want to enable throughput-optimized serving while customizing the option
 (serve-haproxy)=
 ### Use HAProxy load balancing
 
-By default, Ray Serve uses a Python-based HTTP proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
 
 When HAProxy mode is enabled:
 - An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
