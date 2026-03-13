@@ -43,6 +43,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &placement_group = request.placement_group;
   const auto &failure_callback = request.failure_callback;
   const auto &success_callback = request.success_callback;
+  const auto &prepared_callback = request.prepared_callback;
   // We need to ensure that the PrepareBundleResources won't be sent before the reply of
   // ReleaseUnusedBundles is returned.
   if (!nodes_of_releasing_unused_bundles_.empty()) {
@@ -138,15 +139,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                       node_id,
                       lease_status_tracker,
                       failure_callback,
-                      success_callback](const Status &status) {
+                      success_callback,
+                      prepared_callback](const Status &status) {
                        for (const auto &bundle : bundles_per_node) {
                          lease_status_tracker->MarkPrepareRequestReturned(
                              node_id, bundle, status);
                        }
 
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
-                         OnAllBundlePrepareRequestReturned(
-                             lease_status_tracker, failure_callback, success_callback);
+                         OnAllBundlePrepareRequestReturned(lease_status_tracker,
+                                                           failure_callback,
+                                                           success_callback,
+                                                           prepared_callback);
                        }
                      });
   }
@@ -366,7 +370,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
 void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const PGSchedulingFailureCallback &schedule_failure_handler,
-    const PGSchedulingSuccessfulCallback &schedule_success_handler) {
+    const PGSchedulingSuccessfulCallback &schedule_success_handler,
+    const PGSchedulingPreparedCallback &schedule_prepared_handler) {
   RAY_CHECK(lease_status_tracker->AllPrepareRequestsReturned())
       << "This method can be called only after all bundle scheduling requests are "
          "returned.";
@@ -401,9 +406,15 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
-      {[this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
-           const ray::Status &status) {
+      {[this,
+        lease_status_tracker,
+        schedule_failure_handler,
+        schedule_success_handler,
+        schedule_prepared_handler](const ray::Status &status) {
          RAY_CHECK_OK(status);
+         if (schedule_prepared_handler) {
+           schedule_prepared_handler(lease_status_tracker->GetPlacementGroup());
+         }
          CommitAllBundles(
              lease_status_tracker, schedule_failure_handler, schedule_success_handler);
        },
@@ -586,6 +597,9 @@ void GcsPlacementGroupScheduler::Initialize(
     RAY_CHECK(placement_group_leasing_in_progress_.emplace(pg_id, tracker).second);
 
     RAY_LOG(DEBUG).WithField(pg_id) << "Recommitting prepared pg";
+    if (req.prepared_callback) {
+      req.prepared_callback(pg);
+    }
     CommitAllBundles(tracker, req.failure_callback, req.success_callback);
   }
 }

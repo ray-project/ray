@@ -70,3 +70,15 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "ray_placement_group_event_test",
+    size = "small",
+    srcs = ["ray_placement_group_event_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/observability:ray_placement_group_definition_event",
+        "//src/ray/observability:ray_placement_group_lifecycle_event",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
