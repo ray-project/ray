@@ -33,6 +33,7 @@ class FixedScalingPolicy(ScalingPolicy):
         self._latest_autoscaling_request_time = float("-inf")
 
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
+        self._maybe_send_resource_request()
         return ResizeDecision(
             num_workers=self.scaling_config.num_workers,
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
