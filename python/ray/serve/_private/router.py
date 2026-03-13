@@ -1033,6 +1033,9 @@ class AsyncioRouter:
         else:
             request_meta.tracing_context = None
 
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
         await self._request_router_initialized.wait()
 
         if not self._deployment_available:

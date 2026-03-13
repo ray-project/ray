@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Iterator, Union
 from typing_extensions import assert_type
 
 from ray.serve.handle import (
+    DeploymentBroadcastResponse,
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
@@ -104,6 +105,10 @@ def test_deployment_handle_types() -> None:
         response,
         Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]],
     )
+
+    broadcast_response = handle.broadcast("get_string")
+    assert_type(broadcast_response, DeploymentBroadcastResponse)
+    assert_type(broadcast_response.results(), list[Any])
 
 
 def test_chained_handle_access() -> None:

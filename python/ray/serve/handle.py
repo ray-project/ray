@@ -819,7 +819,12 @@ class DeploymentBroadcastResponse:
                 self._replica_results = await async_future
         return self._replica_results
 
-    def results(self, *, timeout_s: Optional[float] = None) -> List[Any]:
+    def results(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        return_exceptions: bool = False,
+    ) -> List[Any]:
         """Fetch results from all replicas synchronously.
 
         Returns a list of results, one per replica. The order corresponds
@@ -827,6 +832,9 @@ class DeploymentBroadcastResponse:
 
         Args:
             timeout_s: Timeout in seconds. If ``None``, blocks indefinitely.
+            return_exceptions: If ``False`` (default), raise immediately on the
+                first replica exception. If ``True``, collect exceptions in the
+                returned list instead of raising.
 
         Returns:
             A list of results, one per replica.
@@ -853,16 +861,32 @@ class DeploymentBroadcastResponse:
                 start_time_s=start_time_s,
                 curr_time_s=time.time(),
             )
-            collected.append(rr.get(remaining))
+            if return_exceptions:
+                try:
+                    collected.append(rr.get(remaining))
+                except Exception as e:
+                    collected.append(e)
+            else:
+                collected.append(rr.get(remaining))
         return collected
 
-    async def results_async(self) -> List[Any]:
+    async def results_async(self, *, return_exceptions: bool = False) -> List[Any]:
         """Fetch results from all replicas asynchronously.
+
+        Args:
+            return_exceptions: If ``False`` (default), raise on replica
+                exception. If ``True``, collect exceptions in the returned list
+                instead of raising.
 
         Returns a list of results, one per replica.
         """
         replica_results = await self._fetch_replica_results_async()
-        return list(await asyncio.gather(*[rr.get_async() for rr in replica_results]))
+        return list(
+            await asyncio.gather(
+                *[rr.get_async() for rr in replica_results],
+                return_exceptions=return_exceptions,
+            )
+        )
 
     def __repr__(self) -> str:
         return "DeploymentBroadcastResponse()"
@@ -1053,7 +1077,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         metadata = serve._private.default_impl.get_request_metadata(
             self.init_options,
-            self.handle_options.copy_and_update(method_name=method_name),
+            self.handle_options.copy_and_update(
+                method_name=method_name,
+                stream=False,
+            ),
         )
 
         if self._router is None:

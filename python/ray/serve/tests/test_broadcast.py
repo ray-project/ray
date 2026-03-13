@@ -106,5 +106,64 @@ def test_broadcast_single_replica(serve_instance):
     assert results == ["pong"]
 
 
+def test_broadcast_ignores_streaming_handle_option(serve_instance):
+    """Test broadcast on a handle configured with stream=True."""
+
+    @serve.deployment(num_replicas=2)
+    class D:
+        def ping(self):
+            return "pong"
+
+    serve.run(D.bind())
+    handle = serve.get_deployment_handle("D", "default").options(stream=True)
+
+    results = handle.broadcast("ping").results(timeout_s=10)
+
+    assert len(results) == 2
+    assert all(r == "pong" for r in results)
+
+
+def test_broadcast_return_exceptions_sync(serve_instance):
+    """Test best-effort sync result collection with exceptions."""
+
+    @serve.deployment(num_replicas=2)
+    class D:
+        def fail(self):
+            raise RuntimeError("boom")
+
+    serve.run(D.bind())
+    handle = serve.get_deployment_handle("D", "default")
+
+    with pytest.raises(Exception):
+        handle.broadcast("fail").results(timeout_s=10)
+
+    results = handle.broadcast("fail").results(
+        timeout_s=10,
+        return_exceptions=True,
+    )
+    assert len(results) == 2
+    assert all(isinstance(r, Exception) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_return_exceptions_async(serve_instance):
+    """Test best-effort async result collection with exceptions."""
+
+    @serve.deployment(num_replicas=2)
+    class D:
+        def fail(self):
+            raise RuntimeError("boom")
+
+    serve.run(D.bind())
+    handle = serve.get_deployment_handle("D", "default")
+
+    with pytest.raises(Exception):
+        await handle.broadcast("fail").results_async()
+
+    results = await handle.broadcast("fail").results_async(return_exceptions=True)
+    assert len(results) == 2
+    assert all(isinstance(r, Exception) for r in results)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
