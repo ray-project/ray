@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional
 
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -79,6 +81,21 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
     """
 
     @override(ConnectorV2)
+    def __init__(
+        self,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
+        vtrace: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            **kwargs,
+        )
+        self.vtrace = vtrace
+
+    @override(ConnectorV2)
     def __call__(
         self,
         *,
@@ -146,11 +163,14 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 len_ + 1,
                 sa_episode,
             )
-
             terminateds = (
                 [False for _ in range(len_ - 1)]
-                + [bool(sa_episode.is_terminated)]
-                + [True]  # extra timestep
+                + [
+                    bool(sa_episode.is_terminated) and self.vtrace
+                ]  # false unless VTrace
+                + [
+                    bool(sa_episode.is_terminated) or self.vtrace
+                ]  # always true if using VTrace
             )
             self.add_n_batch_items(
                 batch,
