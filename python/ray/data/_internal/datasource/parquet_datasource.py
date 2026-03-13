@@ -962,7 +962,7 @@ def read_fragments(
     data_columns: Optional[List[str]],
     data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
-    schema: Optional["pyarrow.lib.Schema"],
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
     partitioning: Partitioning,
