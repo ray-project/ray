@@ -1712,11 +1712,13 @@ def test_dataset_throughput_calculation(ray_start_regular_shared):
     """Test throughput calculations using mock block stats."""
 
     def create_block_stats(start_time, end_time, num_rows):
-        exec_stats = BlockExecStats()
-        exec_stats.start_time_s = start_time
-        exec_stats.end_time_s = end_time
-        exec_stats.wall_time_s = end_time - start_time
-        exec_stats.cpu_time_s = exec_stats.wall_time_s
+        wall_time_s = end_time - start_time
+        exec_stats = BlockExecStats(
+            start_time_s=start_time,
+            end_time_s=end_time,
+            wall_time_s=wall_time_s,
+            cpu_time_s=wall_time_s,
+        )
         return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
 
     blocks_stats = [
@@ -1739,13 +1741,14 @@ def test_operator_throughput_calculation(ray_start_regular_shared):
     """Test operator throughput calculations using mock BlockStats."""
 
     def create_block_stats(start_time, end_time, num_rows, task_idx):
-        exec_stats = BlockExecStats()
-        exec_stats.start_time_s = start_time
-        exec_stats.end_time_s = end_time
-        exec_stats.wall_time_s = end_time - start_time
-        exec_stats.cpu_time_s = exec_stats.wall_time_s
-        exec_stats.task_idx = task_idx
-
+        wall_time_s = end_time - start_time
+        exec_stats = BlockExecStats(
+            start_time_s=start_time,
+            end_time_s=end_time,
+            wall_time_s=wall_time_s,
+            cpu_time_s=wall_time_s,
+            task_idx=task_idx,
+        )
         return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
 
     blocks_stats = [
