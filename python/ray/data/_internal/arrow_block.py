@@ -183,7 +183,13 @@ class ArrowBlockBuilder(TableBlockBuilder):
         return False
 
     @staticmethod
-    def _empty_table() -> "pyarrow.Table":
+    def _empty_table(schema: Optional["pyarrow.lib.Schema"] = None) -> "pyarrow.Table":
+        if schema is not None:
+            # Create empty table with preserved schema.
+            # This is critical for join operations where empty blocks need to
+            # maintain column information for downstream operations like chained joins.
+            # See: https://github.com/ray-project/ray/issues/60013
+            return transform_pyarrow._create_empty_table(schema)
         return pyarrow_table_from_pydict({})
 
     def block_type(self) -> BlockType:

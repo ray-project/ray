@@ -850,6 +850,77 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     )
 
 
+def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cpus):
+    """Test that chained left-outer joins work when intermediate results have empty blocks.
+
+    This is a regression test for https://github.com/ray-project/ray/issues/60013
+
+    The bug: When a left-outer join produces empty blocks (partitions with no matching
+    rows), those blocks lose their schema (column information). This causes downstream
+    joins to fail with "column not found" errors because the empty blocks have no columns.
+
+    Setup:
+    - ds_a: Dataset with many unique keys
+    - ds_b: Dataset with only some of the keys from ds_a
+    - ds_c: Small mapping dataset
+    - First join (ds_a LEFT OUTER ds_b) produces some empty blocks for unmatched keys
+    - Second join fails because empty blocks lost their schema
+    """
+    from ray.data._internal.util import MiB
+
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    # Create ds_a with keys 0-19
+    ds_a = ray.data.from_items(
+        [{"id": i, "a_val": f"a_{i}"} for i in range(20)]
+    )
+
+    # Create ds_b with only keys 5-14 (so keys 0-4 and 15-19 will have no matches)
+    ds_b = ray.data.from_items(
+        [{"id": i, "b_val": f"b_{i}"} for i in range(5, 15)]
+    )
+
+    # First join: left-outer will produce some empty partitions for unmatched keys
+    joined_1 = ds_a.join(
+        ds_b,
+        join_type="left_outer",
+        on=("id",),
+        num_partitions=8,  # Multiple partitions to ensure some are empty
+    )
+
+    # Create ds_c for second join
+    ds_c = ray.data.from_items(
+        [{"id": i, "c_val": f"c_{i}"} for i in range(20)]
+    )
+
+    # Second join: this should NOT fail even if first join produced empty blocks
+    joined_2 = joined_1.join(
+        ds_c,
+        join_type="left_outer",
+        on=("id",),
+        num_partitions=4,
+    )
+
+    # Verify results
+    result = joined_2.to_pandas()
+
+    # Should have 20 rows (all keys from ds_a)
+    assert len(result) == 20, f"Expected 20 rows, got {len(result)}"
+
+    # Check that columns from all three datasets are present
+    expected_columns = {"id", "a_val", "b_val", "c_val"}
+    assert expected_columns.issubset(
+        set(result.columns)
+    ), f"Missing columns. Got: {result.columns.tolist()}"
+
+    # Verify join correctness: keys 5-14 should have b_val, others should be null
+    for _, row in result.iterrows():
+        if 5 <= row["id"] < 15:
+            assert row["b_val"] == f"b_{row['id']}", f"Wrong b_val for id {row['id']}"
+        else:
+            assert pd.isna(row["b_val"]), f"b_val should be null for id {row['id']}"
+
+
 if __name__ == "__main__":
     import sys
 
