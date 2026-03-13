@@ -121,7 +121,7 @@ def ray_deps_setup():
         url = "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v28.2.tar.gz",
         patches = [
             # Adds namespace package support to protobuf's Python __init__.py.
-            # Based on grpc's third_party/protobuf.patch but updated for v28.2.
+            # Based on grpc's third_party/protobuf.patch, updated for v28.2.
             "//thirdparty/patches:protobuf-namespace-package.patch",
         ],
         patch_args = ["-p1"],
@@ -390,6 +390,11 @@ def ray_deps_setup():
         name = "boringssl",
         sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
         url = "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
+        patches = [
+            # MSVC (VS 2019) does not ship stdalign.h; alignas/alignof are
+            # built-in keywords in /std:c11 mode so the header is not needed.
+            "@io_ray//thirdparty/patches:boringssl-stdalign-msvc.patch",
+        ],
     )
 
     # The protobuf version we use to auto generate python and java code.

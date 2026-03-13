@@ -19,6 +19,7 @@ ray_cc_library(
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/rpc:rpc_callback_types",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",

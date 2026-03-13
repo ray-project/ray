@@ -1,0 +1,25 @@
+diff --git src/crypto/internal.h src/crypto/internal.h
+--- src/crypto/internal.h
++++ src/crypto/internal.h
+@@ -133,8 +133,20 @@
+ // Such flags can be removed. If building with MSVC, build with /std:c11.
+ #error "BoringSSL must be built in C11 mode or higher."
+ #endif
+-#include <stdalign.h>
++#if !defined(_MSC_VER)
++#include <stdalign.h>
++#else
++// VS 2019 and earlier do not ship stdalign.h (added in VS 2022).  MSVC
++// supports _Alignas/_Alignof as keywords in /std:c11 mode, so provide the
++// C11 convenience macros manually instead of including the missing header.
++#ifndef alignas
++#define alignas _Alignas
++#endif
++#ifndef alignof
++#define alignof _Alignof
++#endif
++#endif
+ #endif
+ 
+ #if defined(OPENSSL_THREADS) && \
+     (!defined(OPENSSL_WINDOWS) || defined(__MINGW32__))

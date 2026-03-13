@@ -13,7 +13,6 @@ from ci.ray_ci.utils import chunk_into_n, logger, shard_tests
 
 from ray_release.configs.global_config import get_global_config
 from ray_release.test import Test, TestResult
-from ray_release.test_automation.ci_state_machine import CITestStateMachine
 
 # We will run each flaky test this number of times per CI job independent of pass/fail.
 RUN_PER_FLAKY_TEST = 1
@@ -174,6 +173,8 @@ class TesterContainer(Container):
         ):
             logger.info("Skip updating test state. We only update on master branch.")
             return
+        from ray_release.test_automation.ci_state_machine import CITestStateMachine
+
         for test, _ in cls.get_test_and_results(team, bazel_log_dir):
             logger.info(f"Updating test state for {test.get_name()}")
             test.update_from_s3()
