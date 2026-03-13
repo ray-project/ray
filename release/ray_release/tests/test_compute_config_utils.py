@@ -101,14 +101,15 @@ class TestGetWorkerMinCount:
     def test_legacy_schema(self):
         assert get_worker_min_count({"min_workers": 3}, new_schema=False) == 3
 
-    def test_new_schema_default(self):
-        assert get_worker_min_count({}, new_schema=True) == 0
+    def test_new_schema_missing_returns_none(self):
+        assert get_worker_min_count({}, new_schema=True) is None
 
-    def test_legacy_schema_default(self):
-        assert get_worker_min_count({}, new_schema=False) == 0
+    def test_legacy_schema_missing_returns_none(self):
+        assert get_worker_min_count({}, new_schema=False) is None
 
-    def test_custom_default(self):
-        assert get_worker_min_count({}, new_schema=True, default=5) == 5
+    def test_explicit_zero_preserved(self):
+        assert get_worker_min_count({"min_nodes": 0}, new_schema=True) == 0
+        assert get_worker_min_count({"min_workers": 0}, new_schema=False) == 0
 
 
 class TestGetWorkerMaxCount:
@@ -118,14 +119,15 @@ class TestGetWorkerMaxCount:
     def test_legacy_schema(self):
         assert get_worker_max_count({"max_workers": 10}, new_schema=False) == 10
 
-    def test_new_schema_default(self):
-        assert get_worker_max_count({}, new_schema=True) == 0
+    def test_new_schema_missing_returns_none(self):
+        assert get_worker_max_count({}, new_schema=True) is None
 
-    def test_legacy_schema_default(self):
-        assert get_worker_max_count({}, new_schema=False) == 0
+    def test_legacy_schema_missing_returns_none(self):
+        assert get_worker_max_count({}, new_schema=False) is None
 
-    def test_custom_default(self):
-        assert get_worker_max_count({}, new_schema=True, default=5) == 5
+    def test_explicit_zero_preserved(self):
+        assert get_worker_max_count({"max_nodes": 0}, new_schema=True) == 0
+        assert get_worker_max_count({"max_workers": 0}, new_schema=False) == 0
 
 
 if __name__ == "__main__":

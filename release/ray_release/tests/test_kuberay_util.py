@@ -140,5 +140,27 @@ def test_convert_kuberay_new_schema_no_name_fallback():
     assert result["worker_nodes"][1]["group_name"] == "worker-group-1-g4dn.xlarge"
 
 
+def test_convert_kuberay_legacy_missing_min_max_workers_produces_none():
+    """Legacy config without min_workers/max_workers must yield null in JSON.
+
+    KubeRay API treats null as \"use API defaults\" and 0 as \"explicitly zero\".
+    So missing keys must become None (JSON null), not 0.
+    """
+    compute_config = {
+        "head_node_type": {},
+        "worker_node_types": [
+            {
+                "name": "worker",
+                "instance_type": "m5.xlarge",
+                "resources": {"limits": {"cpu": "4"}},
+                # no min_workers / max_workers
+            }
+        ],
+    }
+    result = convert_cluster_compute_to_kuberay_compute_config(compute_config)
+    assert result["worker_nodes"][0]["min_nodes"] is None
+    assert result["worker_nodes"][0]["max_nodes"] is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

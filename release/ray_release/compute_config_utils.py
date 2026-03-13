@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray_release.exception import MixedSchemaError
 
@@ -40,15 +40,23 @@ def get_worker_node_configs(cluster_compute: Dict) -> List[Dict]:
     return cluster_compute.get("worker_node_types") or []
 
 
-def get_worker_min_count(worker: dict, new_schema: bool, default: int = 0) -> int:
-    """Return the minimum node/worker count for a worker group dict."""
+def get_worker_min_count(worker: dict, new_schema: bool) -> Optional[int]:
+    """Return the minimum node/worker count for a worker group dict.
+
+    Returns None when the key is missing so that downstream (e.g. KubeRay API)
+    can apply its own defaults; 0 is only returned when explicitly set.
+    """
     if new_schema:
-        return worker.get("min_nodes", default)
-    return worker.get("min_workers", default)
+        return worker.get("min_nodes")
+    return worker.get("min_workers")
 
 
-def get_worker_max_count(worker: dict, new_schema: bool, default: int = 0) -> int:
-    """Return the maximum node/worker count for a worker group dict."""
+def get_worker_max_count(worker: dict, new_schema: bool) -> Optional[int]:
+    """Return the maximum node/worker count for a worker group dict.
+
+    Returns None when the key is missing so that downstream (e.g. KubeRay API)
+    can apply its own defaults; 0 is only returned when explicitly set.
+    """
     if new_schema:
-        return worker.get("max_nodes", default)
-    return worker.get("max_workers", default)
+        return worker.get("max_nodes")
+    return worker.get("max_workers")
