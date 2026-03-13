@@ -21,7 +21,7 @@ class BaseModelExtended(BaseModel):
     @classmethod
     def parse_yaml(cls: Type[ModelT], file, **kwargs) -> ModelT:
         kwargs.setdefault("Loader", yaml.SafeLoader)
-        dict_args = yaml.load(file, **kwargs)
+        dict_args = yaml.safe_load(file, **kwargs)
         return cls.model_validate(dict_args)
 
     @classmethod

@@ -39,6 +39,7 @@ def perform_auth():
         "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
         auth=auth,
         params={"job_id": os.environ["BUILDKITE_JOB_ID"]},
+        timeout=10.0,
     )
     return resp
 
@@ -90,7 +91,7 @@ def upload_paths(paths, resp, destination):
             "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}",
         }[destination]
         of["file"] = open(path, "rb")
-        r = requests.post(c["url"], files=of)
+        r = requests.post(c["url"], files=of, timeout=10.0)
         print(f"Uploaded {path} to {of['key']}", r.status_code)
 
 
