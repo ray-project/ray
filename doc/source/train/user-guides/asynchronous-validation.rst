@@ -19,20 +19,21 @@ separate Ray task, which does the following:
 When to use async validation
 ----------------------------
 
-Most training code alternates between training and validation every N steps within
-the same training loop. Async validation is most beneficial in the following scenarios:
+Asynchronous validation is preferable to alternating between training and validation within the
+same training loop in the following scenarios:
 
-* **Training throughput no longer scales with more workers.** If adding more training workers
-  no longer proportionally increases training throughput (for example, doubling workers doesn't
-  double training speed), you have idle cluster capacity that async validation can use without
-  slowing down training.
+* **Validation takes a large percentage of total training time.** If validation is a significant
+  fraction of your end-to-end training time, running it asynchronously can substantially reduce
+  wall clock time by overlapping validation with training.
 * **Cheaper GPUs are available for validation.** Validation doesn't require optimizer states or
   gradients, so it can use 2-4x less GPU memory than training. If you have a pool of cheaper GPUs
   or an autoscaling setup that can provision them, async validation lets you run validation on
   those cheaper machines instead of occupying your expensive training GPUs.
-* **Validation takes a large percentage of total training time.** If validation is a significant
-  fraction of your end-to-end training time, running it asynchronously can substantially reduce
-  wall clock time by overlapping validation with training.
+* **Training throughput stops scaling linearly with more workers.** As worker count increases,
+  allreduce overhead grows and limits training speed, so doubling workers no longer doubles
+  throughput. Validation, however, scales more linearly since it requires no gradient synchronization.
+  Asynchronous validation can therefore utilize otherwise idle cluster capacity without impacting
+  training.
 
 The best way to know if async validation helps your workload is to try it. Converting is
 straightforward (see the tutorial below), so you can run both approaches and compare.
