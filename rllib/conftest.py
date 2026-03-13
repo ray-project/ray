@@ -1,2 +1,2 @@
-# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure noop
 from ray.tests.conftest import pytest_runtest_makereport  # noqa: F401
