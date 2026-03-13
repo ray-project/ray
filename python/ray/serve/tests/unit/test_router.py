@@ -123,10 +123,12 @@ class FakeReplica(RunningReplica):
     def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
-        if with_rejection:
-            if self._error:
-                raise self._error
+        # Raise immediately if we're simulating send-time failure (e.g. ActorDiedError).
+        # Real replicas can raise here when with_rejection=False (e.g. broadcast path).
+        if self._error:
+            raise self._error
 
+        if with_rejection:
             assert (
                 not self.is_cross_language
             ), "Rejection not supported for cross language."
