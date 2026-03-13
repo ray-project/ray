@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use tonic::Status;
 
 use crate::actor_scheduler::GcsActorScheduler;
+use crate::node_manager::GcsNodeManager;
 use crate::pubsub_handler::{ChannelType, InternalPubSubHandler};
 use crate::table_storage::GcsTableStorage;
 
@@ -43,6 +44,29 @@ impl From<i32> for ActorState {
             4 => ActorState::Dead,
             _ => ActorState::Dead,
         }
+    }
+}
+
+/// Build an `ActorDeathCause` with an `ActorDiedErrorContext` from actor data.
+fn make_actor_died_death_cause(
+    actor: &ray_proto::ray::rpc::ActorTableData,
+    reason: ray_proto::ray::rpc::actor_died_error_context::Reason,
+    error_message: &str,
+) -> ray_proto::ray::rpc::ActorDeathCause {
+    ray_proto::ray::rpc::ActorDeathCause {
+        context: Some(
+            ray_proto::ray::rpc::actor_death_cause::Context::ActorDiedErrorContext(
+                ray_proto::ray::rpc::ActorDiedErrorContext {
+                    reason: reason as i32,
+                    error_message: error_message.to_string(),
+                    name: actor.name.clone(),
+                    ray_namespace: actor.ray_namespace.clone(),
+                    actor_id: actor.actor_id.clone(),
+                    pid: actor.pid,
+                    ..Default::default()
+                },
+            ),
+        ),
     }
 }
 
@@ -77,6 +101,10 @@ pub struct GcsActorManager {
     >,
     /// Task specs stored for actors being created (needed for scheduling).
     actor_task_specs: RwLock<HashMap<ActorID, ray_proto::ray::rpc::TaskSpec>>,
+    /// Node manager for looking up raylet addresses.
+    node_manager: Option<Arc<GcsNodeManager>>,
+    /// Raylet client for sending KillLocalActor RPCs.
+    raylet_client: Option<Arc<dyn crate::actor_scheduler::RayletClient>>,
 }
 
 impl GcsActorManager {
@@ -93,12 +121,24 @@ impl GcsActorManager {
             pubsub_handler: RwLock::new(None),
             create_callbacks: RwLock::new(HashMap::new()),
             actor_task_specs: RwLock::new(HashMap::new()),
+            node_manager: None,
+            raylet_client: None,
         }
     }
 
     /// Set the actor scheduler (called during server initialization).
     pub fn set_actor_scheduler(&self, scheduler: Arc<GcsActorScheduler>) {
         *self.actor_scheduler.write() = Some(scheduler);
+    }
+
+    /// Set the node manager and raylet client (for sending KillLocalActor RPCs).
+    pub fn set_node_manager_and_raylet_client(
+        &mut self,
+        node_manager: Arc<GcsNodeManager>,
+        raylet_client: Arc<dyn crate::actor_scheduler::RayletClient>,
+    ) {
+        self.node_manager = Some(node_manager);
+        self.raylet_client = Some(raylet_client);
     }
 
     /// Set the pubsub handler (called during server initialization).
@@ -156,12 +196,37 @@ impl GcsActorManager {
         // ray_namespace is on ActorTableData, not TaskSpec; extract from creation spec
         let namespace = creation_spec.ray_namespace.clone();
 
-        // Build the actor table data
+        // Extract class_name from function descriptor (matching C++ GcsActor constructor)
+        let class_name = task_spec
+            .function_descriptor
+            .as_ref()
+            .and_then(|fd| fd.function_descriptor.as_ref())
+            .map(|fd| match fd {
+                ray_proto::ray::rpc::function_descriptor::FunctionDescriptor::JavaFunctionDescriptor(j) => {
+                    j.class_name.clone()
+                }
+                ray_proto::ray::rpc::function_descriptor::FunctionDescriptor::PythonFunctionDescriptor(p) => {
+                    p.class_name.clone()
+                }
+                ray_proto::ray::rpc::function_descriptor::FunctionDescriptor::CppFunctionDescriptor(c) => {
+                    c.class_name.clone()
+                }
+            })
+            .unwrap_or_default();
+
+        // Build the actor table data — copy critical fields from task_spec
+        // so that GetNamedActorInfo returns enough data for make_actor_handle.
         let actor_data = ray_proto::ray::rpc::ActorTableData {
             actor_id: actor_id_bytes.clone(),
             state: ActorState::DependenciesUnready as i32,
             name: name.clone(),
             ray_namespace: namespace.clone(),
+            job_id: task_spec.job_id.clone(),
+            function_descriptor: task_spec.function_descriptor.clone(),
+            owner_address: task_spec.caller_address.clone(),
+            is_detached: creation_spec.is_detached,
+            class_name,
+            max_restarts: creation_spec.max_actor_restarts as i64,
             ..Default::default()
         };
 
@@ -350,8 +415,8 @@ impl GcsActorManager {
             }
         }
 
-        // Clean up task spec
-        self.actor_task_specs.write().remove(actor_id);
+        // Keep task spec alive — it's needed for GetNamedActorInfo responses.
+        // Only cleaned up when the actor transitions to DEAD.
 
         // Resolve all pending create callbacks
         let callbacks = self.create_callbacks.write().remove(actor_id);
@@ -383,6 +448,13 @@ impl GcsActorManager {
                 }
                 actor.state = ActorState::Dead as i32;
                 *counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                // Set death cause so C++ core worker can deserialize the error
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::Unspecified,
+                    &reason,
+                ));
 
                 // Remove from named actors
                 if !actor.name.is_empty() {
@@ -431,6 +503,71 @@ impl GcsActorManager {
         }
     }
 
+    /// Send KillLocalActor RPC to the raylet hosting the actor.
+    /// This tells the raylet to kill the worker process and release its resources.
+    async fn notify_raylet_to_kill_actor(&self, actor: &ray_proto::ray::rpc::ActorTableData) {
+        let (node_manager, raylet_client) =
+            match (self.node_manager.as_ref(), self.raylet_client.as_ref()) {
+                (Some(nm), Some(rc)) => (nm, rc),
+                _ => {
+                    tracing::warn!("KillLocalActor: node_manager or raylet_client not set");
+                    return;
+                }
+            };
+
+        // Get the actor's node ID to look up the raylet address
+        let node_id_bytes = match actor.node_id {
+            Some(ref nid) => nid.clone(),
+            None => {
+                tracing::warn!("KillLocalActor: actor has no node_id");
+                return;
+            }
+        };
+        let node_id = NodeID::from_binary(
+            node_id_bytes.as_slice().try_into().unwrap_or(&[0u8; 28]),
+        );
+
+        let alive_nodes = node_manager.get_all_alive_nodes();
+        let node_info = match alive_nodes.get(&node_id) {
+            Some(info) => info,
+            None => {
+                tracing::info!(
+                    ?node_id,
+                    "Not sending KillLocalActor: actor's node is not alive"
+                );
+                return;
+            }
+        };
+
+        let raylet_addr = format!(
+            "{}:{}",
+            node_info.node_manager_address, node_info.node_manager_port
+        );
+
+        // Extract worker_id from actor's address
+        let worker_id = actor
+            .address
+            .as_ref()
+            .map(|a| a.worker_id.clone())
+            .unwrap_or_default();
+
+        let request = ray_proto::ray::rpc::KillLocalActorRequest {
+            intended_actor_id: actor.actor_id.clone(),
+            worker_id,
+            force_kill: true,
+            death_cause: actor.death_cause.clone(),
+        };
+
+        match raylet_client.kill_local_actor(&raylet_addr, request).await {
+            Ok(_) => {
+                tracing::info!("Sent KillLocalActor to raylet");
+            }
+            Err(e) => {
+                tracing::info!(%e, "KillLocalActor failed (node may already be dead)");
+            }
+        }
+    }
+
     /// Handle GetActorInfo RPC.
     pub fn handle_get_actor_info(
         &self,
@@ -446,15 +583,21 @@ impl GcsActorManager {
     }
 
     /// Handle GetNamedActorInfo RPC.
+    /// Returns both the actor table data and the task spec (needed for make_actor_handle).
     pub fn handle_get_named_actor_info(
         &self,
         name: &str,
         namespace: &str,
-    ) -> Option<ray_proto::ray::rpc::ActorTableData> {
+    ) -> Option<(
+        ray_proto::ray::rpc::ActorTableData,
+        Option<ray_proto::ray::rpc::TaskSpec>,
+    )> {
         let named = self.named_actors.read();
         let actor_id = named.get(&(namespace.to_string(), name.to_string()))?;
         let registered = self.registered_actors.read();
-        registered.get(actor_id).cloned()
+        let actor_data = registered.get(actor_id).cloned()?;
+        let task_spec = self.actor_task_specs.read().get(actor_id).cloned();
+        Some((actor_data, task_spec))
     }
 
     /// Handle ListNamedActors RPC.
@@ -512,6 +655,14 @@ impl GcsActorManager {
                 }
                 actor.state = ActorState::Dead as i32;
                 *counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                // Set death cause so C++ core worker can deserialize the error
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::RayKill,
+                    "The actor was killed by `ray.kill`.",
+                ));
+
                 Some(actor)
             } else {
                 None
@@ -519,6 +670,9 @@ impl GcsActorManager {
         };
 
         if let Some(actor) = actor {
+            // Notify raylet to kill the actor's worker and release resources
+            self.notify_raylet_to_kill_actor(&actor).await;
+
             // Remove from named actors
             if !actor.name.is_empty() {
                 self.named_actors
@@ -585,6 +739,13 @@ impl GcsActorManager {
                     actor.state = ActorState::Dead as i32;
                     *counts.entry(ActorState::Dead).or_insert(0) += 1;
 
+                    // Set death cause
+                    actor.death_cause = Some(make_actor_died_death_cause(
+                        &actor,
+                        ray_proto::ray::rpc::actor_died_error_context::Reason::NodeDied,
+                        "The actor is dead because its node has died.",
+                    ));
+
                     // Remove from named actors
                     if !actor.name.is_empty() {
                         self.named_actors
@@ -644,6 +805,13 @@ impl GcsActorManager {
                 actor.state = ActorState::Dead as i32;
                 *counts.entry(ActorState::Dead).or_insert(0) += 1;
 
+                // Set death cause
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::OutOfScope,
+                    "The actor is dead because its owner job has completed.",
+                ));
+
                 if !actor.name.is_empty() {
                     self.named_actors
                         .write()
@@ -680,6 +848,13 @@ impl GcsActorManager {
                 }
                 actor.state = ActorState::Dead as i32;
                 *counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                // Set death cause so C++ core worker can deserialize the error
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::WorkerDied,
+                    "The actor is dead because its worker process has died.",
+                ));
 
                 if !actor.name.is_empty() {
                     self.named_actors
@@ -738,7 +913,7 @@ mod tests {
         assert_eq!(mgr.num_registered_actors(), 1);
 
         // Get by name and verify fields match what was registered
-        let actor = mgr
+        let (actor, _task_spec) = mgr
             .handle_get_named_actor_info("my_actor", "default")
             .expect("actor should be found by name");
         assert_eq!(actor.name, "my_actor");
@@ -1208,7 +1383,7 @@ mod tests {
         rx.await.unwrap().unwrap();
 
         // Should be discoverable by name
-        let actor = mgr
+        let (actor, _task_spec) = mgr
             .handle_get_named_actor_info("named_one", "default")
             .expect("named actor should be found");
         assert_eq!(ActorState::from(actor.state), ActorState::Alive);

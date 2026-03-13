@@ -172,7 +172,14 @@ impl GcsServer {
         let node_manager = Arc::new(GcsNodeManager::new(table_storage.clone()));
         let resource_manager = Arc::new(GcsResourceManager::new());
         let job_manager = Arc::new(GcsJobManager::new(table_storage.clone()));
-        let actor_manager = Arc::new(GcsActorManager::new(table_storage.clone()));
+        let raylet_client: Arc<dyn crate::actor_scheduler::RayletClient> =
+            Arc::new(GrpcRayletClient);
+        let mut actor_manager_inner = GcsActorManager::new(table_storage.clone());
+        actor_manager_inner.set_node_manager_and_raylet_client(
+            Arc::clone(&node_manager),
+            Arc::clone(&raylet_client),
+        );
+        let actor_manager = Arc::new(actor_manager_inner);
         let worker_manager = Arc::new(GcsWorkerManager::new(table_storage.clone()));
         let placement_group_manager =
             Arc::new(GcsPlacementGroupManager::new(table_storage.clone()));
@@ -180,7 +187,6 @@ impl GcsServer {
         let pubsub_handler = Arc::new(InternalPubSubHandler::new());
 
         // 4b. Create actor scheduler and wire into actor manager
-        let raylet_client = Arc::new(GrpcRayletClient);
         let worker_client = Arc::new(GrpcCoreWorkerClient);
         let actor_scheduler = Arc::new(GcsActorScheduler::new(
             Arc::clone(&node_manager),

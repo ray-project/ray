@@ -288,13 +288,17 @@ impl ActorInfoGcsServiceImpl {
         &self,
         request: rpc::GetNamedActorInfoRequest,
     ) -> Result<rpc::GetNamedActorInfoReply, Status> {
-        let actor = self
+        let result = self
             .actor_manager
             .handle_get_named_actor_info(&request.name, &request.ray_namespace);
-        Ok(rpc::GetNamedActorInfoReply {
-            actor_table_data: actor,
-            ..Default::default()
-        })
+        match result {
+            Some((actor_data, task_spec)) => Ok(rpc::GetNamedActorInfoReply {
+                actor_table_data: Some(actor_data),
+                task_spec,
+                ..Default::default()
+            }),
+            None => Ok(rpc::GetNamedActorInfoReply::default()),
+        }
     }
 
     pub fn get_all_actor_info(

@@ -29,6 +29,12 @@ pub trait RayletClient: Send + Sync {
         addr: &str,
         request: rpc::RequestWorkerLeaseRequest,
     ) -> Result<rpc::RequestWorkerLeaseReply, Status>;
+
+    async fn kill_local_actor(
+        &self,
+        addr: &str,
+        request: rpc::KillLocalActorRequest,
+    ) -> Result<rpc::KillLocalActorReply, Status>;
 }
 
 /// Trait for sending RPCs to core workers (mockable for tests).
@@ -58,6 +64,21 @@ impl RayletClient for GrpcRayletClient {
         })?;
         let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
         let resp = client.request_worker_lease(request).await?;
+        Ok(resp.into_inner())
+    }
+
+    async fn kill_local_actor(
+        &self,
+        addr: &str,
+        request: rpc::KillLocalActorRequest,
+    ) -> Result<rpc::KillLocalActorReply, Status> {
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{}", addr))
+            .map_err(|e| Status::internal(format!("invalid raylet address '{}': {}", addr, e)))?;
+        let channel = endpoint.connect().await.map_err(|e| {
+            Status::unavailable(format!("failed to connect to raylet '{}': {}", addr, e))
+        })?;
+        let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
+        let resp = client.kill_local_actor(request).await?;
         Ok(resp.into_inner())
     }
 }
@@ -332,6 +353,14 @@ pub(crate) mod tests {
                 .lock()
                 .pop_front()
                 .unwrap_or(Err(Status::internal("no mock reply configured")))
+        }
+
+        async fn kill_local_actor(
+            &self,
+            _addr: &str,
+            _request: rpc::KillLocalActorRequest,
+        ) -> Result<rpc::KillLocalActorReply, Status> {
+            Ok(rpc::KillLocalActorReply::default())
         }
     }
 
