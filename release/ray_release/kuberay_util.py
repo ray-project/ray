@@ -1,7 +1,7 @@
 from ray_release.compute_config_utils import (
     get_head_node_config,
-    get_worker_min_count,
     get_worker_max_count,
+    get_worker_min_count,
     get_worker_node_configs,
     is_new_schema,
 )
