@@ -4302,7 +4302,6 @@ class DeploymentStateManager:
                     gang_pg_name_to_id[name] = pg_id_hex
 
             occupied_pg_ids = get_active_placement_group_ids()
-
             for gang_pg_name in gang_pg_names_in_cluster:
                 pg_id = gang_pg_name_to_id.get(gang_pg_name)
                 if pg_id is not None and pg_id not in occupied_pg_ids:
