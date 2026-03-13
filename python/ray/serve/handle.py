@@ -856,7 +856,6 @@ class DeploymentBroadcastResponse:
         except concurrent.futures.TimeoutError:
             raise TimeoutError("Timed out waiting for broadcast results.") from None
 
-        # Collect replica results concurrently under a shared timeout budget.
         def _fetch_one(rr: ReplicaResult):
             remaining = calculate_remaining_timeout(
                 timeout_s=timeout_s,
@@ -865,20 +864,31 @@ class DeploymentBroadcastResponse:
             )
             return rr.get(remaining)
 
-        with concurrent.futures.ThreadPoolExecutor(
+        executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=max(1, len(replica_results))
-        ) as executor:
-            futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
-            collected = []
-            for fut in futures:
+        )
+        futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
+
+        collected = []
+        first_error = None
+        for fut in futures:
+            try:
+                collected.append(fut.result())
+            except Exception as e:
                 if return_exceptions:
-                    try:
-                        collected.append(fut.result())
-                    except Exception as e:
-                        collected.append(e)
+                    collected.append(e)
                 else:
-                    collected.append(fut.result())
-            return collected
+                    first_error = e
+                    break
+
+        # Shut down without waiting so we don't block on slow replicas
+        # after an error has already been observed.
+        executor.shutdown(wait=first_error is None)
+
+        if first_error is not None:
+            raise first_error
+
+        return collected
 
     async def results_async(
         self,
@@ -899,15 +909,18 @@ class DeploymentBroadcastResponse:
         """
         if timeout_s is not None and timeout_s < 0:
             raise ValueError("timeout_s must be None or non-negative.")
+
         start_time_s = time.time()
-        if timeout_s is not None and timeout_s >= 0:
+        if timeout_s is not None:
             try:
                 replica_results = await asyncio.wait_for(
                     self._fetch_replica_results_async(),
                     timeout=timeout_s,
                 )
             except asyncio.TimeoutError:
-                raise TimeoutError("Timed out waiting for broadcast results.") from None
+                raise TimeoutError(
+                    "Timed out waiting for broadcast results."
+                ) from None
         else:
             replica_results = await self._fetch_replica_results_async()
 
@@ -920,15 +933,19 @@ class DeploymentBroadcastResponse:
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        if remaining_timeout_s is not None and remaining_timeout_s >= 0:
+        if remaining_timeout_s is not None:
             try:
-                return list(await asyncio.wait_for(gather_coro, timeout=remaining_timeout_s))
+                return list(
+                    await asyncio.wait_for(
+                        gather_coro, timeout=remaining_timeout_s
+                    )
+                )
             except asyncio.TimeoutError:
-                raise TimeoutError("Timed out waiting for broadcast results.") from None
-        else:
-            return list(
-                await gather_coro
-            )
+                raise TimeoutError(
+                    "Timed out waiting for broadcast results."
+                ) from None
+
+        return list(await gather_coro)
 
     def __repr__(self) -> str:
         return "DeploymentBroadcastResponse()"
