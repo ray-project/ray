@@ -50,7 +50,6 @@ class _DummyWorker:
     """
 
     def __init__(self):
-        self.connected = True
         self.threads_stopped = threading.Event()
         self.gcs_error_subscriber = _DummySubscriber()
         self.gcs_log_subscriber = _DummySubscriber()
@@ -61,6 +60,11 @@ class _DummyWorker:
         self.serialization_context_map = {}
         self.node = object()
         self._is_connected = True
+
+    @property
+    def connected(self) -> bool:
+        """Mirror the real Worker's ``connected`` property backed by _is_connected."""
+        return self._is_connected
 
     def set_is_connected(self, value: bool):
         self._is_connected = value

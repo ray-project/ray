@@ -2787,22 +2787,20 @@ def disconnect(exiting_interpreter=False):
         # will deadlock. Avoid joining the current thread in these cases.
         current_thread = threading.current_thread()
 
-        if hasattr(worker, "listener_thread"):
-            listener_thread = worker.listener_thread
-            if (
-                listener_thread is not None
-                and listener_thread is not current_thread
-            ):
-                listener_thread.join()
-            # Clear the reference so a subsequent disconnect() call does not
-            # attempt to join an already-finished or invalid thread object.
-            worker.listener_thread = None
+        def _safe_join_and_clear_thread(thread_attr_name):
+            if hasattr(worker, thread_attr_name):
+                thread_obj = getattr(worker, thread_attr_name)
+                if (
+                    thread_obj is not None
+                    and thread_obj is not current_thread
+                ):
+                    thread_obj.join()
+                # Clear the reference so a subsequent disconnect() call does not
+                # attempt to join an already-finished or invalid thread object.
+                setattr(worker, thread_attr_name, None)
 
-        if hasattr(worker, "logger_thread"):
-            logger_thread = worker.logger_thread
-            if logger_thread is not None and logger_thread is not current_thread:
-                logger_thread.join()
-            worker.logger_thread = None
+        _safe_join_and_clear_thread("listener_thread")
+        _safe_join_and_clear_thread("logger_thread")
 
         if hasattr(worker, "threads_stopped"):
             worker.threads_stopped.clear()
