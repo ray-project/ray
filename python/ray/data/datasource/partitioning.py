@@ -529,6 +529,9 @@ class PathPartitionFilter:
 
 
 def _cast_value(value: str, data_type: PartitionDataType) -> Any:
+    # Handle Hive default partition value for NULL partitions
+    if value == "__HIVE_DEFAULT_PARTITION__":
+        return None
     if data_type is int:
         return int(value)
     elif data_type is float:
