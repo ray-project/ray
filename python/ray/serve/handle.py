@@ -905,7 +905,11 @@ class DeploymentBroadcastResponse:
                 exception. If ``True``, collect exceptions in the returned list
                 instead of raising.
 
-        Returns a list of results, one per replica.
+        Returns:
+            A list of results, one per replica.
+
+        Raises:
+            TimeoutError: If the timeout is exceeded.
         """
         if timeout_s is not None and timeout_s < 0:
             raise ValueError("timeout_s must be None or non-negative.")
