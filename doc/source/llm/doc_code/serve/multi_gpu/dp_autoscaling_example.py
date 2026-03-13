@@ -1,9 +1,9 @@
 """
-This file serves as a documentation example and CI test for basic data parallel attention deployment.
+This file serves as a documentation example and CI test for autoscaling data parallel attention deployment.
 
 Structure:
 1. Monkeypatch setup: Ensures serve.run is non-blocking and removes accelerator requirements for CI testing.
-2. Docs example (between __dp_basic_example_start/end__): Embedded in Sphinx docs via literalinclude.
+2. Docs example (between __dp_autoscaling_example_start/end__): Embedded in Sphinx docs via literalinclude.
 3. Test validation (deployment status polling + cleanup)
 """
 
