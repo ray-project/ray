@@ -9,10 +9,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Union
 
-import boto3
-from botocore import UNSIGNED
-from botocore.client import BaseClient
-from botocore.config import Config
+try:
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.client import BaseClient
+    from botocore.config import Config
+    HAS_BOTO3 = True
+except ImportError:
+    HAS_BOTO3 = False
+    # Define stub types to avoid NameError when boto3 is not available
+    BaseClient = None
+    UNSIGNED = None
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_filesystem.base import BaseCloudFileSystem
@@ -26,6 +33,20 @@ class S3FileSystem(BaseCloudFileSystem):
     This implementation uses boto3 (AWS SDK for Python) for reliable and efficient
     operations with S3 storage.
     """
+
+    @staticmethod
+    def _ensure_boto3_available():
+        """Ensure boto3 is available and raise helpful error if not.
+        
+        Raises:
+            ImportError: If boto3 is not installed with helpful message
+        """
+        if not HAS_BOTO3:
+            raise ImportError(
+                "boto3 is required for S3 filesystem operations. "
+                "Please install Ray with LLM dependencies: 'pip install ray[llm]' "
+                "or install boto3 directly: 'pip install boto3'"
+            )
 
     @staticmethod
     def _parse_s3_uri(uri: str) -> tuple[str, str, bool]:
@@ -69,6 +90,8 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             boto3 S3 client with connection pooling configured
         """
+        S3FileSystem._ensure_boto3_available()
+        
         # Configure connection pooling for better concurrent performance
         config = Config(
             max_pool_connections=max_pool_connections,
@@ -97,6 +120,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
+        S3FileSystem._ensure_boto3_available()
         try:
             bucket, key, is_anonymous = S3FileSystem._parse_s3_uri(object_uri)
             s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
@@ -121,6 +145,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             List of subfolder names (without trailing slashes)
         """
+        S3FileSystem._ensure_boto3_available()
         try:
             bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(folder_uri)
 
@@ -228,6 +253,7 @@ class S3FileSystem(BaseCloudFileSystem):
             max_workers: Maximum number of concurrent downloads. If None, automatically
                 calculated based on file count and sizes (min: 10, max: 100)
         """
+        S3FileSystem._ensure_boto3_available()
         try:
             bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(bucket_uri)
 
@@ -342,6 +368,7 @@ class S3FileSystem(BaseCloudFileSystem):
             local_path: The local path of the files to upload.
             bucket_uri: The bucket uri to upload the files to, must start with `s3://`.
         """
+        S3FileSystem._ensure_boto3_available()
         try:
             bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(bucket_uri)
 
