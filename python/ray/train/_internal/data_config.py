@@ -1,4 +1,5 @@
 import copy
+import os
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
@@ -124,15 +125,19 @@ class DataConfig:
             execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overridden by the user,
-                # add training-reserved resources to Data's exclude_resources.
-                execution_options.exclude_resources = (
-                    execution_options.exclude_resources.add(
-                        ExecutionResources(
-                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                if not self._is_v2_autoscaler():
+                    # V1 only: add training-reserved resources to Data's
+                    # exclude_resources. Under the V2 cluster autoscaler,
+                    # the scaling policy registers training resources with
+                    # the AutoscalingCoordinator directly, so
+                    # exclude_resources is not needed.
+                    execution_options.exclude_resources = (
+                        execution_options.exclude_resources.add(
+                            ExecutionResources(
+                                cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                            )
                         )
                     )
-                )
 
             ds = ds.copy(ds)
             ds.context.execution_options = execution_options
@@ -149,6 +154,11 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
+
+    @staticmethod
+    def _is_v2_autoscaler() -> bool:
+        """Check if the V2 cluster autoscaler is active."""
+        return os.environ.get("RAY_DATA_CLUSTER_AUTOSCALER", "V2") == "V2"
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":
