@@ -88,5 +88,48 @@ GetSchedulerPlacementTimePercentileMsMetric() {
       /*num_buckets=*/128);
 }
 
+inline std::unique_ptr<ray::stats::PercentileMetric>
+GetTaskTotalSubmitterPreprocessingTimeMsPercentileMetric() {
+  /// Tracks the total submitter-side time from task submission to task being pushed.
+  /// This includes dependency resolution, worker lease acquisition, and task push setup.
+  /// Does not include network transmission time or worker-side processing.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"task_total_submitter_preprocessing_time_ms",
+      /*description=*/
+      "Total submitter-side time from task submission to task being pushed to the "
+      "worker, including dependency resolution and scheduling.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
+}
+
+inline std::unique_ptr<ray::stats::PercentileMetric>
+GetTaskDependencyResolutionTimeMsPercentileMetric() {
+  /// Tracks the time from task submission to dependency resolution completion.
+  /// This includes resolving all ObjectRef dependencies and inlining small objects.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"task_dependency_resolution_time_ms",
+      /*description=*/
+      "Time from task submission to dependency resolution completion.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
+}
+
+inline std::unique_ptr<ray::stats::PercentileMetric> GetTaskPushTimeMsPercentileMetric() {
+  /// Tracks the time from worker lease granted to task being pushed to the worker.
+  /// This includes task push setup and queueing in the client.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"task_push_time_ms",
+      /*description=*/
+      "Time from worker lease granted to task being pushed to the worker.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
+}
+
 }  // namespace core
 }  // namespace ray

@@ -4,6 +4,7 @@ from ray.includes.metric cimport (
     CHistogram,
     CSum,
     CMetric,
+    CPercentileMetric,
 )
 from libcpp.utility cimport move
 from libcpp.memory cimport unique_ptr
@@ -203,3 +204,34 @@ cdef class Histogram(Metric):
                 self.c_tag_keys
             )
         )
+
+
+cdef class PercentileMetric:
+    """Cython wrapper class of C++ `ray::stats::PercentileMetric`.
+
+    Tracks p50, p95, p99, max, and mean as separate gauge metrics.
+    Unlike Histogram, this does not use OpenCensus and cannot be aggregated
+    across nodes.
+    """
+    cdef unique_ptr[CPercentileMetric] metric
+
+    def __init__(self, name, description, unit, max_expected_value,
+                 num_buckets=128):
+        self.metric.reset(
+            new CPercentileMetric(
+                name.encode("ascii"),
+                description.encode("ascii"),
+                unit.encode("ascii"),
+                max_expected_value,
+                num_buckets,
+            )
+        )
+
+    def record(self, value, tags=None):
+        cdef double c_value = value
+        with nogil:
+            self.metric.get().Record(c_value)
+
+    def start(self, int64_t interval_ms=10000):
+        with nogil:
+            self.metric.get().StartAutoFlush(interval_ms)
