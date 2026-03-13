@@ -57,6 +57,7 @@ class FakeRunningReplica(RunningReplica):
         self._availability_zone = availability_zone
         self._queue_len = 0
         self._max_ongoing_requests = max_ongoing_requests
+        self._reserved_slots: Set[str] = set()
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
         self._model_ids = model_ids or set()

@@ -169,6 +169,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
 
