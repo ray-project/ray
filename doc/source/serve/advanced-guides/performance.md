@@ -210,7 +210,7 @@ When HAProxy mode is enabled:
 
 #### Prerequisites
 
-HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The official Ray Docker images (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
 
 #### Enabling HAProxy
 
@@ -220,10 +220,10 @@ Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes **b
 export RAY_SERVE_ENABLE_HA_PROXY=1
 ```
 
-This single variable is all that is required. It implicitly enables direct ingress (replicas listen on individual ports that HAProxy routes to).
+This environment variable must be set on all nodes in the ray cluster.
 
 :::{note}
-On multi-node clusters, you must also set `RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0` so that replica direct ingress servers bind to all interfaces. Without this, replicas bind to `127.0.0.1` (the default) and HAProxy on other nodes cannot connect to them.
+If benchmarking locally (e.g. from the head node in a Ray Cluster), you must also set `RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0` so that ingress replicas on worker nodes bind to all interfaces. Without this, ingress replicas bind to `127.0.0.1` (the default) and the head node's HAProxy will not be able to reach them.
 :::
 
 ::::{tab-set}
@@ -282,7 +282,15 @@ The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication
 
-By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. Individual handles can override with `handle.options(_by_reference=True)`. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+
+Individual handles can override back to actor RPC with `handle.options(_by_reference=True)`. This is useful for large payloads (over ~1 MB) where passing objects by reference through Ray's object store is more efficient than serializing over gRPC:
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __start_grpc_override__
+:end-before: __end_grpc_override__
+:language: python
+```
 
 ## Debugging performance issues in controller
 
