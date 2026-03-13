@@ -23,30 +23,6 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 /**
- * @brief A single candidate label domain with its associated nodes.
- *
- * @param label_domain The value of the label key for this domain
- *   (e.g. "rack-1").
- * @param candidate_nodes The set of nodes that belong to this domain.
- */
-struct LabelDomainCandidate {
-  std::string label_domain;
-  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-};
-
-/**
- * @brief Result of filtering candidate nodes by label domain.
- *
- * @param status The scheduling result status (SUCCESS, INFEASIBLE, etc.).
- * @param candidates The list of feasible label-domain candidates. Empty when
- *   the status is not SUCCESS.
- */
-struct LabelDomainFilterResult {
-  SchedulingResultStatus status;
-  std::vector<LabelDomainCandidate> candidates;
-};
-
-/**
  * @brief Abstract base class for label-domain-level scheduling policies.
  *
  * @details Label-domain scheduling partitions the cluster's candidate nodes
