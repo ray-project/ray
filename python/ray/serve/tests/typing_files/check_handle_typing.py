@@ -43,6 +43,17 @@ async def test_deployment_response_await() -> None:
     assert_type(awaited_result, str)
 
 
+async def test_broadcast_response_types() -> None:
+    """Test DeploymentBroadcastResponse typing behavior."""
+    response: DeploymentBroadcastResponse = None  # type: ignore[assignment]
+
+    sync_results = response.results()
+    assert_type(sync_results, list[Any])
+
+    async_results = await response.results_async()
+    assert_type(async_results, list[Any])
+
+
 def test_deployment_response_generator_sync() -> None:
     """Test that DeploymentResponseGenerator[R] iteration returns R."""
     gen: DeploymentResponseGenerator[int] = None  # type: ignore[assignment]
