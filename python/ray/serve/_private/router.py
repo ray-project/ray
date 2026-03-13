@@ -517,7 +517,10 @@ class Router(ABC):
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> concurrent.futures.Future[List[ReplicaResult]]:
+    ) -> Union[
+        concurrent.futures.Future[List[ReplicaResult]],
+        asyncio.Future[List[ReplicaResult]],
+    ]:
         pass
 
     @abstractmethod

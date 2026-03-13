@@ -847,6 +847,8 @@ class DeploymentBroadcastResponse:
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response.results_async()` instead."
             )
+        if timeout_s is not None and timeout_s < 0:
+            raise ValueError("timeout_s must be None or non-negative.")
 
         start_time_s = time.time()
         try:
@@ -895,6 +897,8 @@ class DeploymentBroadcastResponse:
 
         Returns a list of results, one per replica.
         """
+        if timeout_s is not None and timeout_s < 0:
+            raise ValueError("timeout_s must be None or non-negative.")
         start_time_s = time.time()
         if timeout_s is not None and timeout_s >= 0:
             try:
