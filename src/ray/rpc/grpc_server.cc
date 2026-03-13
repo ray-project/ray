@@ -100,8 +100,11 @@ void GrpcServer::Run() {
     std::string servercert = ReadCert(RayConfig::instance().TLS_SERVER_CERT());
     std::string serverkey = ReadCert(RayConfig::instance().TLS_SERVER_KEY());
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {serverkey, servercert};
-    grpc::SslServerCredentialsOptions ssl_opts(
-        GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY);
+    grpc_ssl_client_certificate_request_type ssl_client_auth_request_type =
+        RayConfig::instance().TLS_REQUIRE_CLIENT_AUTH()
+            ? GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY
+            : GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE;
+    grpc::SslServerCredentialsOptions ssl_opts(ssl_client_auth_request_type);
     ssl_opts.pem_root_certs = rootcert;
     ssl_opts.pem_key_cert_pairs.push_back(pkcp);
 

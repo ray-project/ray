@@ -71,30 +71,63 @@ def add_port_to_grpc_server(server, address):
     import grpc
 
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        server_cert_chain, private_key, ca_cert = load_certs_from_env(is_server=True)
+        if server_cert_chain is None or private_key is None:
+            raise RuntimeError(
+                "When RAY_USE_TLS is enabled for a server, RAY_TLS_SERVER_CERT and "
+                "RAY_TLS_SERVER_KEY must be provided."
+            )
+
+        require_client_auth = os.environ.get(
+            "RAY_TLS_REQUIRE_CLIENT_AUTH", "1"
+        ).lower() in ("1", "true")
         credentials = grpc.ssl_server_credentials(
             [(private_key, server_cert_chain)],
             root_certificates=ca_cert,
-            require_client_auth=ca_cert is not None,
+            require_client_auth=require_client_auth and ca_cert is not None,
         )
         return server.add_secure_port(address, credentials)
     else:
         return server.add_insecure_port(address)
 
 
-def load_certs_from_env():
-    tls_env_vars = ["RAY_TLS_SERVER_CERT", "RAY_TLS_SERVER_KEY", "RAY_TLS_CA_CERT"]
-    if any(v not in os.environ for v in tls_env_vars):
+def load_certs_from_env(is_server: bool = False):
+    # RAY_TLS_CA_CERT is always required for TLS
+    if "RAY_TLS_CA_CERT" not in os.environ:
         raise RuntimeError(
             "If the environment variable RAY_USE_TLS is set to true "
-            "then RAY_TLS_SERVER_CERT, RAY_TLS_SERVER_KEY and "
-            "RAY_TLS_CA_CERT must also be set."
+            "then RAY_TLS_CA_CERT must also be set."
         )
 
-    with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
-        server_cert_chain = f.read()
-    with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
-        private_key = f.read()
+    require_client_auth = os.environ.get(
+        "RAY_TLS_REQUIRE_CLIENT_AUTH", "1"
+    ).lower() in ("1", "true")
+
+    # RAY_TLS_SERVER_CERT and RAY_TLS_SERVER_KEY are required if we are a server,
+    # or if we are a client in mTLS mode.
+    # For simplicity, we check them if they are provided, or if require_client_auth
+    # is true or is_server is true.
+
+    server_cert_chain = None
+    if "RAY_TLS_SERVER_CERT" in os.environ:
+        with open(os.environ["RAY_TLS_SERVER_CERT"], "rb") as f:
+            server_cert_chain = f.read()
+    elif require_client_auth or is_server:
+        raise RuntimeError(
+            "RAY_TLS_SERVER_CERT must be set if "
+            "RAY_TLS_REQUIRE_CLIENT_AUTH is true or if it's a server."
+        )
+
+    private_key = None
+    if "RAY_TLS_SERVER_KEY" in os.environ:
+        with open(os.environ["RAY_TLS_SERVER_KEY"], "rb") as f:
+            private_key = f.read()
+    elif require_client_auth or is_server:
+        raise RuntimeError(
+            "RAY_TLS_SERVER_KEY must be set if "
+            "RAY_TLS_REQUIRE_CLIENT_AUTH is true or if it's a server."
+        )
+
     with open(os.environ["RAY_TLS_CA_CERT"], "rb") as f:
         ca_cert = f.read()
 

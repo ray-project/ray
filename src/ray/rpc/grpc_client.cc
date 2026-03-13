@@ -52,8 +52,10 @@ std::shared_ptr<grpc::Channel> BuildChannel(
 
     grpc::SslCredentialsOptions ssl_opts;
     ssl_opts.pem_root_certs = cacert;
-    ssl_opts.pem_private_key = private_key;
-    ssl_opts.pem_cert_chain = server_cert_chain;
+    if (::RayConfig::instance().TLS_REQUIRE_CLIENT_AUTH()) {
+      ssl_opts.pem_private_key = private_key;
+      ssl_opts.pem_cert_chain = server_cert_chain;
+    }
     channel_creds = grpc::SslCredentials(ssl_opts);
   } else {
     channel_creds = grpc::InsecureChannelCredentials();

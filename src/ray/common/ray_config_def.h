@@ -860,6 +860,7 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+RAY_CONFIG(bool, TLS_REQUIRE_CLIENT_AUTH, true)
 
 /// Location of Redis TLS credentials
 /// https://github.com/redis/hiredis/blob/c78d0926bf169670d15cfc1214e4f5d21673396b/README.md#hiredis-openssl-wrappers
