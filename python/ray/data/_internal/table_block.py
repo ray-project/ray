@@ -181,6 +181,20 @@ class TableBlockAccessor(BlockAccessor):
 
         return default
 
+    def to_cudf(self) -> Any:
+        """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
+        from ray.data.util.data_batch_conversion import _lazy_import_cudf
+
+        cudf = _lazy_import_cudf()
+        if cudf is None:
+            raise ValueError(
+                "Attempted to convert data to cuDF DataFrame but cuDF "
+                "is not installed. Please do `pip install cudf-cu12` to "
+                "install cuDF (GPU required)."
+            )
+
+        return cudf.DataFrame.from_arrow(self.to_arrow())
+
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
@@ -311,25 +325,7 @@ class TableBlockAccessor(BlockAccessor):
                 yield tuple(), self.to_block()
                 return
 
-            start = end = 0
-            iter = self.iter_rows(public_row_format=False)
-            next_row = None
-            while True:
-                try:
-                    if next_row is None:
-                        next_row = next(iter)
-                    next_keys = next_row[keys]
-                    while keys_equal(next_row[keys], next_keys):
-                        end += 1
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-                    yield next_keys, self.slice(start, end)
-                    start = end
-                except StopIteration:
-                    break
+            yield from self._iter_groups_sorted(sort_key)
 
         builder = self.builder()
         for group_keys, group_view in iter_groups():
@@ -487,7 +483,9 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def _find_partitions_sorted(
         self,

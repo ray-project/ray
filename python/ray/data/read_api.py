@@ -21,7 +21,7 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.data._internal.compute import TaskPoolStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
@@ -52,7 +52,10 @@ from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -77,6 +80,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
     ndarray_to_block,
@@ -108,7 +112,7 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -244,7 +248,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         meta_with_schema.append(
-            BlockMetadataWithSchema.from_block(block, stats=stats.build())
+            BlockMetadataWithSchema.from_block(block, block_exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
@@ -391,8 +395,9 @@ def read_datasource(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
     override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
@@ -411,6 +416,11 @@ def read_datasource(
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``. If both
+            ``compute`` and ``concurrency`` are specified, ``concurrency`` takes precedence.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -420,6 +430,27 @@ def read_datasource(
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
+
+    Examples:
+        Read using default task-based execution:
+
+        >>> import ray
+        >>> from ray.data._internal.datasource.range_datasource import RangeDatasource
+        >>> datasource = RangeDatasource(n=1000, block_format="arrow")
+        >>> ds = ray.data.read_datasource(datasource) # doctest: +SKIP
+
+        Read using actors for stateful operations:
+
+        >>> from ray.data import ActorPoolStrategy
+        >>> ds = ray.data.read_datasource( # doctest: +SKIP
+        ...     datasource,
+        ...     compute=ActorPoolStrategy(size=4)  # Use 4 actors
+        ... )
+
+    .. note::
+        The use of `ActorPoolStrategy` is currently experimental and comes with caveats, such
+        as additional overhead due to limited operator fusion opportunities.
+
     """  # noqa: E501
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
@@ -473,13 +504,16 @@ def read_datasource(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
     )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
-        compute=TaskPoolStrategy(concurrency),
+        compute=compute_strategy,
     )
     execution_plan = ExecutionPlan(
         stats,
@@ -907,7 +941,7 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -2785,6 +2819,7 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
@@ -2792,7 +2827,7 @@ def read_databricks_tables(
     )
 
     resolved_provider = resolve_credential_provider(
-        credential_provider=credential_provider
+        DatabricksTableCredentialConfig(credential_provider=credential_provider)
     )
 
     if not catalog:
@@ -4221,20 +4256,15 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
+        UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    resolved_provider = resolve_credential_provider(
+        UnityCatalogCredentialConfig(
+            credential_provider=credential_provider, url=url, token=token
         )
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,
@@ -4370,12 +4400,13 @@ def read_kafka(
     start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: Optional[int] = None,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4428,7 +4459,11 @@ def read_kafka(
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
 
-        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+        consumer_config: Confluent/librdkafka consumer configuration dict to
+            pass through directly to the underlying client. These options override
+            defaults and any mapped values from `kafka_auth_config`. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
+            See https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#pythonclient-configuration for more details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
@@ -4437,9 +4472,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+            If None (default), no task-level timeout is applied and each read task
+            will poll until it reaches end_offset. If set, the read task will stop
+            polling after the timeout and return the messages it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4454,7 +4490,7 @@ def read_kafka(
 
     Raises:
         ValueError: If invalid parameters are provided.
-        ImportError: If kafka-python is not installed.
+        ImportError: If confluent-kafka is not installed.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
@@ -4466,6 +4502,7 @@ def read_kafka(
             start_offset=start_offset,
             end_offset=end_offset,
             kafka_auth_config=kafka_auth_config,
+            consumer_config=consumer_config,
             timeout_ms=timeout_ms,
         ),
         parallelism=-1,
@@ -4500,7 +4537,7 @@ def _get_datasource_or_legacy_reader(
             "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
             "`Reader`, implement `Datasource.get_read_tasks` and "
             "`Datasource.estimate_inmemory_data_size`.",
-            DeprecationWarning,
+            RayDeprecationWarning,
         )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
@@ -4510,7 +4547,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:
@@ -4520,15 +4557,22 @@ def _resolve_parquet_args(
             from ray.data.extensions import ArrowTensorArray
 
             for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                if block.num_rows == 0:
+                    # Empty tables (e.g., dummy tables for schema inference)
+                    # have no buffers to decode. Construct a properly shaped
+                    # empty ndarray so from_numpy infers the correct tensor
+                    # type (shape + dtype).
+                    np_col = np.empty((0,) + shape, dtype=dtype)
+                else:
+                    # NOTE(Clark): We use NumPy to consolidate these
+                    # potentially non-contiguous buffers, and to do buffer
+                    # bookkeeping in general.
+                    np_col = _create_possibly_ragged_ndarray(
+                        [
+                            np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                            for buf in block.column(tensor_col_name)
+                        ]
+                    )
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

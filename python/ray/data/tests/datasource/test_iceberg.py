@@ -287,7 +287,7 @@ def test_write_basic():
     table_p = (
         ds.to_pandas().sort_values(["col_a", "col_b", "col_c"]).reset_index(drop=True)
     )
-    assert orig_table_p.equals(table_p)
+    assert rows_same(table_p, orig_table_p)
 
 
 @pytest.mark.skipif(

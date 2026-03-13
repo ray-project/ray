@@ -8,7 +8,7 @@ import unittest
 import pytest
 
 from ray._common.network_utils import build_address
-from ray._common.utils import get_ray_temp_dir
+from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.local import config as local_config
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider,
@@ -75,7 +75,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # second time.)
         self._monkeypatch.setenv("RAY_TMPDIR", self._tmpdir)
         # ensure that a new cluster can start up if RAY_TMPDIR doesn't exist yet
-        assert not os.path.exists(get_ray_temp_dir())
+        assert not os.path.exists(get_default_ray_temp_dir())
         head_ip = ".".join(str(random.randint(0, 255)) for _ in range(4))
         cluster_config = {
             "cluster_name": "random_name",
@@ -92,7 +92,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         node_provider = _get_node_provider(
             provider_config, cluster_config["cluster_name"], use_cache=False
         )
-        assert os.path.exists(get_ray_temp_dir())
+        assert os.path.exists(get_default_ray_temp_dir())
         assert node_provider.external_ip(head_ip) == "0.0.0.0.3"
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}

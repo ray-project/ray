@@ -25,7 +25,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
@@ -209,6 +208,35 @@ def test_parquet_read_basic(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+)
+def test_parquet_read_with_success_file(ray_start_regular_shared, fs, data_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.parquet")
+    pq.write_table(table, path, filesystem=fs)
+
+    # Add _SUCCESS file to ensure it's ignored
+    success_path = os.path.join(setup_data_path, "_SUCCESS")
+    if fs is None:
+        open(success_path, "wb").close()
+    else:
+        with fs.open_output_stream(success_path):
+            pass
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
+    assert ds.count() == 3
+    values = [s["one"] for s in ds.take_all()]
+    assert sorted(values) == [1, 2, 3]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
@@ -230,31 +258,23 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    input_list = list(range(10))
-    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
-    table = pa.Table.from_pandas(df1)
+    num_files = 10
+    input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
+    for i in range(num_files):
+        table = pa.Table.from_pydict({"id": [i]})
+        path = os.path.join(setup_data_path, f"test_{i}.parquet")
+        pq.write_table(table, path, filesystem=fs)
 
-    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+    shuffle = FileShuffleConfig(seed=0)
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle=shuffle)
 
-    # Execute 10 times to get a set of output results.
-    output_results_list = []
-    for _ in range(10):
-        result = [row["one"] for row in ds.take_all()]
-        output_results_list.append(result)
-    all_rows_matched = [
-        input_list == output_list for output_list in output_results_list
-    ]
+    first = [row["id"] for row in ds.take_all()]
+    second = [row["id"] for row in ds.take_all()]
 
-    # Check when shuffle is enabled, output order has at least one different
-    # case.
-    assert not all(all_rows_matched)
+    assert sorted(first) == input_list
+    assert sorted(second) == input_list
+    assert first != second
 
 
 @pytest.mark.parametrize(
@@ -327,7 +347,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -337,7 +357,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -1162,12 +1182,13 @@ def test_partitioning_in_dataset_kwargs_raises_error(
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
-    restore_data_context,
+    tensor_format_context,
     target_max_block_size_infinite_or_default,
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
+    new_tensor_format = tensor_format_context
 
     num_rows = 10_000
     num_groups = 10
@@ -1226,12 +1247,12 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    # Test #2: Verify writing tensors as either
+    #   - ArrowTensorTypeV2 or
+    #   - (Arrow-native) FixedShapeTensorType
     #
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
-
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
+    tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1242,11 +1263,14 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
-    )
-
     _assert_equal(ds.take_all(), expected_tuples)
+
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        new_tensor_format.to_type(),
+    )
 
 
 def test_multiple_files_with_ragged_arrays(
@@ -2232,7 +2256,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     def call_helper(paths, fs, kwargs):
         from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
 
-        return get_parquet_dataset(paths, fs, kwargs)
+        return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
     ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
     assert ds is not None

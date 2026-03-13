@@ -1,5 +1,7 @@
+import multiprocessing
 import os
 import shutil
+import signal
 import time
 from unittest.mock import create_autospec
 
@@ -232,7 +234,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     )
     with pytest.raises(WorkerGroupError, match="error") as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_without_validation_fn():
@@ -249,7 +251,7 @@ def test_report_validation_without_validation_fn():
         match="`validation_config` was not set on the trainer, but a validation was requested.",
     ) as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_without_checkpoint():
@@ -264,7 +266,7 @@ def test_report_validation_without_checkpoint():
         WorkerGroupError, match="Validation requires a checkpoint to be provided."
     ) as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
@@ -428,6 +430,41 @@ def test_report_validation_fn_success_after_retry():
     assert result.best_checkpoints[0][1] == {"score": 100}
 
 
+def _run_first_trainer_for_resumption(storage_path, validation_task_config):
+    """Subprocess target: run a trainer with a stalling validation, then get SIGINT'd."""
+    # Lives outside the test because multiprocessing cannot pickle nested functions.
+    ray.init(address="auto")
+
+    def validation_fn_stall(checkpoint, score):
+        signal_actor = ray.get_actor(
+            "validation_resumption_signal", namespace="test_validation_resumption"
+        )
+        ray.get(signal_actor.send.remote())
+        while True:
+            time.sleep(1)
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=validation_task_config,
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        validation_config=ValidationConfig(
+            fn=validation_fn_stall,
+            task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+        ),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="validation_fn_resumption", storage_path=storage_path
+        ),
+    )
+    trainer.fit()
+
+
 @pytest.mark.parametrize(
     "validation_task_config, expected_score",
     [
@@ -439,52 +476,46 @@ def test_report_validation_fn_resumption(
     tmp_path, validation_task_config, expected_score
 ):
     """Start train run with interrupted validations. Confirm second run finishes validations."""
-    signal_actor = create_remote_signal_actor(ray).remote()
+    signal_actor = (
+        create_remote_signal_actor(ray)
+        .options(
+            name="validation_resumption_signal",
+            namespace="test_validation_resumption",
+        )
+        .remote()
+    )
 
-    def validation_fn_stall(checkpoint, score):
-        signal_actor.send.remote()
-        while True:
-            time.sleep(1)
+    multiprocessing.set_start_method("spawn", force=True)
+    process = multiprocessing.Process(
+        target=_run_first_trainer_for_resumption,
+        args=(str(tmp_path), validation_task_config),
+    )
+    process.start()
+
+    # Wait for validation to start, then SIGINT the trainer process.
+    ray.get(signal_actor.wait.remote())
+    os.kill(process.pid, signal.SIGINT)
+    process.join()
 
     def validation_fn_finish(checkpoint, score):
         return {"score": score}
 
-    def train_fn_first():
-        with create_dict_checkpoint({}) as cp:
-            ray.train.report(
-                metrics={},
-                checkpoint=cp,
-                validation=validation_task_config,
-            )
-
     def train_fn_second():
         pass
 
-    @ray.remote
-    def run_trainer(validation_fn, train_fn):
-        trainer = DataParallelTrainer(
-            train_fn,
-            validation_config=ValidationConfig(
-                fn=validation_fn,
-                task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
-            ),
-            scaling_config=ScalingConfig(num_workers=1),
-            run_config=RunConfig(
-                name="validation_fn_resumption", storage_path=str(tmp_path)
-            ),
-        )
-        return trainer.fit()
-
-    # Run trainer. Wait until validation kicked off. Cancel training.
-    training_task = run_trainer.remote(validation_fn_stall, train_fn_first)
-    ray.get(signal_actor.wait.remote())
-    ray.cancel(training_task)
-    with pytest.raises(ray.exceptions.TaskCancelledError):
-        ray.get(training_task)
-
     # Run second trainer that should finish interrupted validations.
-    training_task = run_trainer.remote(validation_fn_finish, train_fn_second)
-    result = ray.get(training_task)
+    trainer = DataParallelTrainer(
+        train_fn_second,
+        validation_config=ValidationConfig(
+            fn=validation_fn_finish,
+            task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+        ),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="validation_fn_resumption", storage_path=str(tmp_path)
+        ),
+    )
+    result = trainer.fit()
     assert result.metrics == {"score": expected_score}
 
 

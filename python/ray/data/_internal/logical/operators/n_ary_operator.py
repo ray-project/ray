@@ -30,6 +30,10 @@ class NAry(LogicalOperator):
             num_outputs=num_outputs,
         )
 
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
+
 
 class Zip(NAry):
     """Logical operator for zip."""

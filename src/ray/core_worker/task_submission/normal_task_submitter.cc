@@ -281,6 +281,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   if (scheduling_key_entry.pending_lease_requests.size() >=
       kMaxPendingLeaseRequestsPerSchedulingCategory) {
+    size_t backlog_size = scheduling_key_entry.BacklogSize();
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Task submission is being throttled: pending lease requests ("
+        << scheduling_key_entry.pending_lease_requests.size() << ") reached limit ("
+        << kMaxPendingLeaseRequestsPerSchedulingCategory << "), with " << backlog_size
+        << " tasks waiting for lease requests. "
+        << "This especially affects workloads submitting many tasks of the same type "
+           "to a cluster with few nodes but many cores per node. "
+        << "Consider increasing RAY_max_pending_lease_requests_per_scheduling_category.";
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
                    << kMaxPendingLeaseRequestsPerSchedulingCategory;
     return;
