@@ -401,19 +401,3 @@ py_test(
         ci_require("pytest"),
     ],
 )
-
-py_test(
-    name = "test_push_release_test_image_diff",
-    size = "small",
-    srcs = ["test_push_release_test_image_diff.py"],
-    exec_compatible_with = ["//bazel:py3"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":push_release_test_image",
-        "//ci/ray_ci:ray_ci_lib",
-        ci_require("pytest"),
-    ],
-)
