@@ -13,6 +13,7 @@ describe("DataOverview", () => {
         state: "RUNNING",
         progress: 50,
         total: 100,
+        queued_blocks: 5,
         start_time: 0,
         end_time: undefined,
         ray_data_output_rows: {
@@ -40,6 +41,7 @@ describe("DataOverview", () => {
             state: "RUNNING",
             progress: 99,
             total: 101,
+            queued_blocks: 3,
             ray_data_output_rows: {
               max: 11,
             },
@@ -67,6 +69,7 @@ describe("DataOverview", () => {
         state: "FINISHED",
         progress: 200,
         total: 200,
+        queued_blocks: 0,
         start_time: 1,
         end_time: 2,
         ray_data_output_rows: {

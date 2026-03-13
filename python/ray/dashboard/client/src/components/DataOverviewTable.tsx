@@ -34,6 +34,15 @@ const columns = [
   { label: "State", align: "center" },
   { label: "Rows Outputted" },
   {
+    label: "Queued Blocks",
+    helpInfo: (
+      <Typography>
+        Number of blocks currently queued in the operator's input queue,
+        waiting to be processed.
+      </Typography>
+    ),
+  },
+  {
     label: "Memory Usage (current / max)",
     helpInfo: (
       <Typography>
@@ -212,6 +221,7 @@ const DataRow = ({
         <StatusChip type="task" status={data.state} />
       </TableCell>
       <TableCell align="right">{data.ray_data_output_rows.max}</TableCell>
+      <TableCell align="right">{data.queued_blocks}</TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_current_bytes.value))}/
         {memoryConverter(Number(data.ray_data_current_bytes.max))}
