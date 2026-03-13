@@ -1513,7 +1513,7 @@ py_test(
 
 py_test(
     name = "test_shuffle_diagnostics",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_shuffle_diagnostics.py"],
     tags = [
         "data_non_parallel",

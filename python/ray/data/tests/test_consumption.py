@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data.block import BlockAccessor
+from ray.data.context import ShuffleStrategy
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
@@ -490,31 +491,62 @@ def test_dataset_explain(ray_start_regular_shared, capsys):
     ds = ds.random_shuffle().map(lambda x: x)
     ds.explain()
     captured = capsys.readouterr()
-    assert captured.out.strip() == (
-        "-------- Logical Plan --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- RandomShuffle[RandomShuffle]\n"
-        "   +- Filter[Filter(<lambda>)]\n"
-        "      +- MapRows[Map(<lambda>)]\n"
-        "         +- Read[ReadRange]\n"
-        "\n-------- Logical Plan (Optimized) --------\n"
-        "MapRows[Map(<lambda>)]\n"
-        "+- RandomShuffle[RandomShuffle]\n"
-        "   +- Filter[Filter(<lambda>)]\n"
-        "      +- MapRows[Map(<lambda>)]\n"
-        "         +- Read[ReadRange]\n"
-        "\n-------- Physical Plan --------\n"
-        "TaskPoolMapOperator[Map(<lambda>)]\n"
-        "+- AllToAllOperator[RandomShuffle]\n"
-        "   +- TaskPoolMapOperator[Filter(<lambda>)]\n"
-        "      +- TaskPoolMapOperator[Map(<lambda>)]\n"
-        "         +- TaskPoolMapOperator[ReadRange]\n"
-        "            +- InputDataBuffer[Input]\n"
-        "\n-------- Physical Plan (Optimized) --------\n"
-        "TaskPoolMapOperator[Map(<lambda>)]\n"
-        "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
-        "   +- InputDataBuffer[Input]"
+    use_hash_shuffle = (
+        ray.data.DataContext.get_current().shuffle_strategy
+        == ShuffleStrategy.HASH_SHUFFLE
     )
+    if use_hash_shuffle:
+        assert captured.out.strip() == (
+            "-------- Logical Plan --------\n"
+            "MapRows[Map(<lambda>)]\n"
+            "+- RandomShuffle[RandomShuffle]\n"
+            "   +- Filter[Filter(<lambda>)]\n"
+            "      +- MapRows[Map(<lambda>)]\n"
+            "         +- Read[ReadRange]\n"
+            "\n-------- Logical Plan (Optimized) --------\n"
+            "MapRows[Map(<lambda>)]\n"
+            "+- RandomShuffle[RandomShuffle]\n"
+            "   +- Filter[Filter(<lambda>)]\n"
+            "      +- MapRows[Map(<lambda>)]\n"
+            "         +- Read[ReadRange]\n"
+            "\n-------- Physical Plan --------\n"
+            "TaskPoolMapOperator[Map(<lambda>)]\n"
+            "+- RandomShuffleOperator[RandomShuffle(num_partitions=10)]\n"
+            "   +- TaskPoolMapOperator[Filter(<lambda>)]\n"
+            "      +- TaskPoolMapOperator[Map(<lambda>)]\n"
+            "         +- TaskPoolMapOperator[ReadRange]\n"
+            "            +- InputDataBuffer[Input]\n"
+            "\n-------- Physical Plan (Optimized) --------\n"
+            "TaskPoolMapOperator[Map(<lambda>)]\n"
+            "+- RandomShuffleOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle(num_partitions=10)]\n"
+            "   +- InputDataBuffer[Input]"
+        )
+    else:
+        assert captured.out.strip() == (
+            "-------- Logical Plan --------\n"
+            "MapRows[Map(<lambda>)]\n"
+            "+- RandomShuffle[RandomShuffle]\n"
+            "   +- Filter[Filter(<lambda>)]\n"
+            "      +- MapRows[Map(<lambda>)]\n"
+            "         +- Read[ReadRange]\n"
+            "\n-------- Logical Plan (Optimized) --------\n"
+            "MapRows[Map(<lambda>)]\n"
+            "+- RandomShuffle[RandomShuffle]\n"
+            "   +- Filter[Filter(<lambda>)]\n"
+            "      +- MapRows[Map(<lambda>)]\n"
+            "         +- Read[ReadRange]\n"
+            "\n-------- Physical Plan --------\n"
+            "TaskPoolMapOperator[Map(<lambda>)]\n"
+            "+- AllToAllOperator[RandomShuffle]\n"
+            "   +- TaskPoolMapOperator[Filter(<lambda>)]\n"
+            "      +- TaskPoolMapOperator[Map(<lambda>)]\n"
+            "         +- TaskPoolMapOperator[ReadRange]\n"
+            "            +- InputDataBuffer[Input]\n"
+            "\n-------- Physical Plan (Optimized) --------\n"
+            "TaskPoolMapOperator[Map(<lambda>)]\n"
+            "+- AllToAllOperator[ReadRange->Map(<lambda>)->Filter(<lambda>)->RandomShuffle]\n"
+            "   +- InputDataBuffer[Input]"
+        )
 
 
 def test_convert_types(ray_start_regular_shared):

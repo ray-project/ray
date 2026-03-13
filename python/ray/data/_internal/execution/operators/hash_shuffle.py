@@ -39,6 +39,8 @@ from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     _create_empty_table,
     hash_partition,
+    random_partition,
+    shuffle as arrow_shuffle,
 )
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -53,6 +55,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
@@ -85,12 +88,21 @@ logger = logging.getLogger(__name__)
 BlockTransformer = Callable[[Block], Block]
 
 
+def _is_sortable_arrow_type(arrow_type: pa.DataType) -> bool:
+    """Return True if the given Arrow type supports sorting."""
+    return not isinstance(arrow_type, pa.ExtensionType)
+
+
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY", 8
 )
 
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
+)
+
+MAX_CONCURRENT_SHUFFLE_TASKS_PER_AGGREGATOR = env_integer(
+    "RAY_DATA_MAX_SHUFFLE_TASKS_PER_AGGREGATOR", 2
 )
 
 
@@ -215,6 +227,41 @@ class ConcatAggregation(ShuffleAggregation):
         yield result
 
 
+class RandomShuffleAggregation(ShuffleAggregation):
+    """Aggregation for random shuffle: concatenates shards and applies
+    a local random permutation."""
+
+    def __init__(self, seed=None):
+        self._seed = seed
+
+    def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
+        assert (
+            len(partition_shards_map) == 1
+        ), f"Single input-sequence is expected (got {len(partition_shards_map)})"
+
+        blocks = partition_shards_map[0]
+        if not blocks:
+            return
+
+        result = _combine(blocks)
+        if result.num_rows > 0:
+            # Sort by sortable columns to get a canonical order before
+            # shuffling. This is necessary because shards arrive from
+            # concurrent map tasks in non-deterministic order, so we need a
+            # stable starting point for the seeded shuffle to produce
+            # deterministic output. Skip columns with non-sortable types
+            # (e.g. extension types like tensors).
+            sort_keys = [
+                (col, "ascending")
+                for col in result.column_names
+                if _is_sortable_arrow_type(result.schema.field(col).type)
+            ]
+            if sort_keys:
+                result = result.sort_by(sort_keys)
+            result = arrow_shuffle(result, seed=self._seed)
+        yield result
+
+
 def _combine(partition_shards: List[Block]) -> Block:
     builder = ArrowBlockBuilder()
     for block in partition_shards:
@@ -231,6 +278,8 @@ def _shuffle_block(
     block_transformer: Optional[BlockTransformer] = None,
     send_empty_blocks: bool = False,
     override_partition_id: Optional[int] = None,
+    random_partition_seed: Optional[int] = None,
+    task_idx: int = 0,
 ) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"]]:
     """Shuffles provided block following the algorithm:
 
@@ -246,13 +295,17 @@ def _shuffle_block(
         key_columns: Columns to be used by hash-partitioning algorithm
         pool: Hash-shuffling operator's pool of aggregators that are due to receive
               corresponding partitions (of the block)
+        block_transformer: Block transformer that will be applied to every block prior
+            to shuffling
         send_empty_blocks: If set to true, empty blocks will NOT be filtered and
             still be fanned out to individual aggregators to distribute schemas
             (only known once we receive incoming block)
         override_partition_id: Target (overridden) partition id that input block will be
             assigned to
-        block_transformer: Block transformer that will be applied to every block prior
-            to shuffling
+        random_partition_seed: Seed for random partitioning. When provided, rows are
+            randomly assigned to partitions instead of hash-partitioned.
+        task_idx: Index of this shuffle task, used to set up TaskContext for fused
+            transforms that require it (e.g. monotonically_increasing_id)
 
     Returns:
         A tuple of
@@ -261,13 +314,24 @@ def _shuffle_block(
             shuffled block
     """
     stats = BlockExecStats.builder()
-    assert (len(key_columns) > 0) ^ (override_partition_id is not None), (
-        f"Either list of key columns to hash-partition by (got {key_columns} or "
-        f"target partition id override (got {override_partition_id}) must be provided!"
+    num_modes = sum(
+        [
+            len(key_columns) > 0,
+            override_partition_id is not None,
+            random_partition_seed is not None,
+        ]
+    )
+    assert num_modes == 1, (
+        f"Exactly one of key_columns ({key_columns}), "
+        f"override_partition_id ({override_partition_id}), or "
+        f"random_partition_seed ({random_partition_seed}) must be provided!"
     )
 
-    # Apply block transformer prior to shuffling (if any)
+    # Apply block transformer prior to shuffling (if any).
+    # Set up TaskContext so fused transforms that need it (e.g.
+    # monotonically_increasing_id) can access the task index.
     if block_transformer is not None:
+        TaskContext.set_current(TaskContext(task_idx=task_idx, op_name="fused_shuffle"))
         block = block_transformer(block)
 
     # Make sure we're handling Arrow blocks
@@ -290,6 +354,10 @@ def _shuffle_block(
     if key_columns:
         block_partitions = hash_partition(
             block, hash_cols=key_columns, num_partitions=num_partitions
+        )
+    elif random_partition_seed is not None:
+        block_partitions = random_partition(
+            block, num_partitions=num_partitions, seed=random_partition_seed
         )
     else:
         assert (
@@ -503,6 +571,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_progress_bar_name: Optional[str] = None,
         finalize_progress_bar_name: Optional[str] = None,
         disallow_block_splitting: bool = False,
@@ -595,12 +664,25 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             ),
         )
 
+        # Compute shuffle task CPU, accounting for aggregator actor overhead to
+        # avoid resource deadlock on small clusters where the shuffle task (1.0
+        # CPU) + aggregator actors together exceed available CPUs.
+        total_aggregator_cpus = num_aggregators * ray_remote_args["num_cpus"]
+        self._shuffle_block_num_cpus = min(
+            self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
+            max(
+                self._DEFAULT_AGGREGATORS_MIN_CPUS,
+                total_available_cluster_resources.cpu - total_aggregator_cpus,
+            ),
+        )
+
         # We track the running usage total because iterating
         # and summing over all shuffling tasks can be expensive
         # if the # of shuffling tasks is large
         self._shuffling_resource_usage = ExecutionResources.zero()
 
         self._input_block_transformer = input_block_transformer
+        self._shuffle_ray_remote_args_override = shuffle_ray_remote_args_override or {}
 
         self._next_shuffle_tasks_idx: int = 0
         # Shuffling tasks are mapped like following
@@ -683,7 +765,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
-                "num_cpus": self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
+                "num_cpus": self._shuffle_block_num_cpus,
                 "memory": self._estimate_shuffling_memory_req(
                     block_metadata,
                     target_max_block_size=(
@@ -691,19 +773,15 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                         or DEFAULT_TARGET_MAX_BLOCK_SIZE
                     ),
                 ),
+                **self._shuffle_ray_remote_args_override,
             }
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
             self._next_shuffle_tasks_idx += 1
 
-            # NOTE: In cases when NO key-columns are provided for hash-partitioning
-            #       to be performed on (legitimate scenario for global aggregations),
-            #       shuffling is essentially reduced to round-robin'ing of the blocks
-            #       among the aggregators
-            override_partition_id = (
-                cur_shuffle_task_idx % self._num_partitions
-                if not input_key_column_names
-                else None
+            # Determine partitioning mode via hook (subclasses can override)
+            override_partition_id, random_partition_seed = self._get_partition_mode(
+                cur_shuffle_task_idx, input_key_column_names
             )
 
             # Fan out provided input blocks to "shuffle" it
@@ -726,6 +804,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 block_transformer=self._input_block_transformer,
                 send_empty_blocks=should_broadcast_schemas,
                 override_partition_id=override_partition_id,
+                random_partition_seed=random_partition_seed,
+                task_idx=cur_shuffle_task_idx,
             )
 
             if should_broadcast_schemas:
@@ -808,6 +888,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             )
             self._shuffle_bar.update(total=num_rows)
 
+    def _on_finalized_bundle_ready(self, partition_id: int, bundle: RefBundle) -> None:
+        """Called when a finalized output bundle is ready. Default: append to
+        output queue immediately. Subclasses can override for custom ordering."""
+        self._output_queue.append(bundle)
+
     def has_next(self) -> bool:
         self._try_finalize()
         return len(self._output_queue) > 0
@@ -862,8 +947,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             return
 
         def _on_bundle_ready(partition_id: int, bundle: RefBundle):
-            # Add finalized block to the output queue
-            self._output_queue.append(bundle)
+            # Delegate to hook for output ordering (subclasses may override)
+            self._on_finalized_bundle_ready(partition_id, bundle)
 
             # Update Finalize Metrics on task output generated
             self._reduce_metrics.on_output_queued(bundle)
@@ -1067,8 +1152,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
-            cpu=self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
-            # cpu=self._shuffle_block_ray_remote_args.get("num_cpus", 0),
+            cpu=self._shuffle_block_num_cpus,
             # TODO estimate (twice avg block size)
             object_store_memory=0,
             gpu=0,
@@ -1187,6 +1271,21 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     @abc.abstractmethod
     def _get_operator_num_cpus_override(self) -> int:
         pass
+
+    def _get_partition_mode(
+        self,
+        cur_shuffle_task_idx: int,
+        input_key_column_names: Tuple[str],
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Returns (override_partition_id, random_partition_seed) for
+        determining how a block should be partitioned during shuffling.
+
+        Default behavior: round-robin when no key columns, else hash partition.
+        Subclasses can override for custom partitioning (e.g., random).
+        """
+        if len(input_key_column_names) == 0:
+            return (cur_shuffle_task_idx % self._num_partitions, None)
+        return (None, None)
 
     def _get_aggregator_num_cpus(
         self,
@@ -1370,6 +1469,94 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         )
 
         return total_with_skew
+
+
+class RandomShuffleOperator(HashShufflingOperatorBase, SubProgressBarMixin):
+    """Hash-shuffle-based random shuffle operator.
+
+    Randomly assigns rows to partitions during the map phase (using per-task
+    seeds for determinism), then concatenates + locally permutes in the reduce
+    phase. This avoids holding O(N*M) object refs on the driver that the
+    pull/push-based shuffle approaches require.
+    """
+
+    # Add 30% buffer to account for data skew
+    SHUFFLE_AGGREGATOR_MEMORY_ESTIMATE_SKEW_FACTOR = 1.3
+
+    def __init__(
+        self,
+        input_op: PhysicalOperator,
+        data_context: DataContext,
+        *,
+        seed: int,
+        num_partitions: Optional[int] = None,
+        aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        input_block_transformer: Optional[BlockTransformer] = None,
+    ):
+        self._seed = seed
+
+        def _create_random_shuffle_aggregation() -> RandomShuffleAggregation:
+            return RandomShuffleAggregation(seed=seed)
+
+        super().__init__(
+            name_factory=(
+                lambda num_partitions: f"RandomShuffle(num_partitions={num_partitions})"
+            ),
+            input_ops=[input_op],
+            data_context=data_context,
+            key_columns=[()],
+            num_input_seqs=1,
+            num_partitions=num_partitions,
+            aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_ray_remote_args_override=shuffle_ray_remote_args_override,
+            partition_aggregation_factory=_create_random_shuffle_aggregation,
+            shuffle_progress_bar_name="Shuffle",
+            input_block_transformer=input_block_transformer,
+        )
+
+    def can_add_input(self) -> bool:
+        # Limit concurrent shuffle tasks to avoid convoy effect where hundreds
+        # of tasks hold CPUs while waiting on aggregator submissions.
+        num_active = sum(len(tasks) for tasks in self._shuffling_tasks.values())
+        max_concurrent = (
+            self._aggregator_pool.num_aggregators
+            * MAX_CONCURRENT_SHUFFLE_TASKS_PER_AGGREGATOR
+        )
+        return num_active < max_concurrent
+
+    def supports_fusion(self):
+        return True
+
+    def _get_partition_mode(
+        self,
+        cur_shuffle_task_idx: int,
+        input_key_column_names: Tuple[str],
+    ) -> Tuple[Optional[int], Optional[int]]:
+        # Per-task seed for determinism: base_seed + task_index
+        return (None, self._seed + cur_shuffle_task_idx)
+
+    def _get_operator_num_cpus_override(self) -> float:
+        if self.data_context.hash_shuffle_operator_actor_num_cpus_override is not None:
+            return self.data_context.hash_shuffle_operator_actor_num_cpus_override
+        # Random shuffle aggregators are lightweight (concat + permute) until
+        # finalization. Use minimal CPU to avoid starving shuffle tasks.
+        return self._DEFAULT_AGGREGATORS_MIN_CPUS
+
+    # Concat + permutation has the same memory profile as HashShuffleOperator.
+    @classmethod
+    def _estimate_aggregator_memory_allocation(
+        cls,
+        *,
+        num_aggregators: int,
+        num_partitions: int,
+        estimated_dataset_bytes: int,
+    ) -> int:
+        return HashShuffleOperator._estimate_aggregator_memory_allocation(
+            num_aggregators=num_aggregators,
+            num_partitions=num_partitions,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
 
 
 @dataclass

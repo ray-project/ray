@@ -11,7 +11,7 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version, GiB
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource import Datasource, ReadTask
 
 
@@ -139,6 +139,7 @@ if __name__ == "__main__":
         )
 
         if args.shuffle:
+            DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
