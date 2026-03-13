@@ -14,7 +14,6 @@ import ray
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.util.annotations import PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import psutil
 
@@ -97,11 +96,9 @@ def _check_ray_cluster(
 
     per_node_tasks = {
         node_id: (
-            check.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=node_id, soft=False
-                )
-            ).remote(node_id, service_url)
+            check.options(label_selector={"ray.io/node-id": node_id}).remote(
+                node_id, service_url
+            )
         )
         for node_id in ray_node_ids
     }

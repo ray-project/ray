@@ -17,16 +17,13 @@ from ray._private.test_utils import get_actor_node_id
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 
 def create_driver_actor():
     return CompiledDAG.DAGDriverProxyActor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(), soft=False
-        )
+        label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()}
     ).remote()
 
 
@@ -1140,9 +1137,7 @@ def test_payload_large(ray_start_cluster):
             assert channel.read() == val
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote()
+        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
@@ -1190,9 +1185,7 @@ def test_payload_resize_large(ray_start_cluster):
             assert channel.read() == val
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote()
+        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
@@ -1241,9 +1234,7 @@ def test_readers_on_different_nodes(ray_start_cluster):
             return val
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote()
+        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
 
     a = create_actor(nodes[0])
     b = create_actor(nodes[1])
@@ -1296,9 +1287,7 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
             return val
 
     def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote()
+        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
 
     a = create_actor(nodes[0])
     b = create_actor(nodes[0])

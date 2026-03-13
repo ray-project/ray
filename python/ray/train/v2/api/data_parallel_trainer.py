@@ -58,7 +58,6 @@ from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util.annotations import Deprecated, DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -267,9 +266,7 @@ class DataParallelTrainer:
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(), soft=False
-            ),
+            label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
             # TODO: Extract env variables that affect controller behavior
             # and pass them as explicit args
             runtime_env={"env_vars": env_vars},

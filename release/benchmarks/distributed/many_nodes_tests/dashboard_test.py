@@ -12,7 +12,6 @@ import os
 from collections import defaultdict
 from ray.util.state import list_nodes
 from ray._private.test_utils import get_system_metric_for_component
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
 from ray.dashboard.utils import get_address_for_submission_client
 from ray.dashboard.modules.metrics.metrics_head import (
@@ -109,9 +108,7 @@ class DashboardTestAtScale:
         node = nodes[0]
         # Schedule on a head node.
         self.tester = DashboardTester.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node["node_id"], soft=False
-            )
+            label_selector={"ray.io/node-id": node["node_id"]}
         ).remote()
 
         self.tester.run.remote()
