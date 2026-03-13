@@ -1,7 +1,7 @@
-"""Actorless Hash Shuffle Operator (No-Compactor Mode).
+"""Actorless Hash Shuffle Operator.
 
 This module implements a hash shuffle using only stateless Ray tasks (no actors).
-The shuffle has three stages:
+The shuffle has up to four stages:
 
 1. **Map & Scatter**: Each mapper task hash-partitions an input block into M
    partitions, puts each partition shard into the object store via ``ray.put()``,
@@ -10,9 +10,13 @@ The shuffle has three stages:
 2. **Driver Buffering**: The driver collects ObjectRefs into per-partition buffer
    lists. This is pure bookkeeping with no data movement.
 
-3. **Reduce**: After all map tasks complete, the driver launches M reducer tasks.
-   Each reducer ``ray.get()``s all shard refs for its partition, concatenates them,
-   and yields output blocks via a streaming generator.
+3. **Compact** (optional): When a partition's uncompacted buffer reaches a
+   threshold, a stateless compactor task merges the small shards into one larger
+   block, reducing object-store pressure. Runs concurrently with map tasks.
+
+4. **Reduce**: After all map and compact tasks complete, the driver launches M
+   reducer tasks. Each reducer ``ray.get()``s all shard refs for its partition,
+   concatenates them, and yields output blocks via a streaming generator.
 """
 
 import functools
@@ -40,7 +44,6 @@ from ray._raylet import StreamingGeneratorStats
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -135,6 +138,25 @@ def _shuffle_map(
 
 
 @ray.remote
+def _shuffle_compact(
+    shard_refs: List[ObjectRef],
+) -> Block:
+    """Compact multiple small shards into a single larger block.
+
+    Args:
+        shard_refs: Object references to small partition shards.
+
+    Returns:
+        The concatenated block.
+    """
+    blocks = ray.get(shard_refs)
+    builder = ArrowBlockBuilder()
+    for blk in blocks:
+        builder.add_block(blk)
+    return builder.build()
+
+
+@ray.remote
 def _shuffle_reduce(
     shard_refs: List[ObjectRef],
     target_max_block_size: Optional[int] = None,
@@ -223,7 +245,7 @@ def _shuffle_reduce(
 
 
 class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
-    """Physical operator for actorless hash shuffle (no-compactor mode).
+    """Physical operator for actorless hash shuffle.
 
     Lifecycle
     ---------
@@ -231,13 +253,15 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
        submitted per block.  Each map task hash-partitions the block and
        ``ray.put()``s each shard, returning shard refs to the driver.
     2. The driver accumulates shard ``ObjectRef``s per partition (pure
-       bookkeeping).
-    3. Once all map tasks are complete, reduce tasks are launched.  Each reduce
-       task fetches all shards for one partition, concatenates them, and yields
-       output blocks.
+       bookkeeping).  When a partition's buffer reaches the compaction threshold,
+       a compactor task merges the small shards into one larger block.
+    3. Once all map and compact tasks are complete, reduce tasks are launched.
+       Each reduce task fetches all shards for one partition, concatenates them,
+       and yields output blocks.
     """
 
     _DEFAULT_MAP_TASK_NUM_CPUS = 1.0
+    _DEFAULT_COMPACTION_THRESHOLD = 10
 
     def __init__(
         self,
@@ -283,6 +307,15 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             list
         )
 
+        # -- Compaction tracking -----------------------------------------------
+        self._compaction_threshold: int = data_context.get_config(
+            "actorless_shuffle_compaction_threshold",
+            self._DEFAULT_COMPACTION_THRESHOLD,
+        )
+        self._next_compact_task_idx: int = 0
+        self._compact_tasks: Dict[int, MetadataOpTask] = {}
+        self._compact_resource_usage = ExecutionResources.zero()
+
         # -- Reduce task tracking ---------------------------------------------
         self._reduce_tasks: Dict[int, DataOpTask] = {}
         self._pending_reduce_partition_ids: Set[int] = set(range(target_num_partitions))
@@ -299,11 +332,6 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._shuffle_metrics = OpRuntimeMetrics(self)
         self._reduce_bar: Optional["BaseProgressBar"] = None
         self._reduce_metrics = OpRuntimeMetrics(self)
-
-    # -- Lifecycle ------------------------------------------------------------
-
-    def start(self, options: ExecutionOptions) -> None:
-        super().start(options)
 
     # -- Input handling (Map phase) -------------------------------------------
 
@@ -344,14 +372,20 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 # Accumulate shard refs per partition.
                 for partition_id, (shard_ref, _, _) in partition_refs.items():
                     self._partition_buffers[partition_id].append(shard_ref)
+                    self._maybe_compact_partition(partition_id)
 
                 self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
                 # Update shuffle metrics.
-                blocks = [(task.get_waitable(), input_block_metadata)]
-                out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
                 self._shuffle_metrics.on_output_taken(input_bundle)
-                self._shuffle_metrics.on_task_output_generated(cur_task_idx, out_bundle)
+                self._shuffle_metrics.on_task_output_generated(
+                    cur_task_idx,
+                    RefBundle(
+                        [(task.get_waitable(), input_block_metadata)],
+                        schema=None,
+                        owns_blocks=False,
+                    ),
+                )
                 self._shuffle_metrics.on_task_finished(
                     cur_task_idx,
                     None,
@@ -395,6 +429,51 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 )
                 self._shuffle_bar.update(total=num_rows)
 
+    # -- Compaction -----------------------------------------------------------
+
+    def _maybe_compact_partition(self, partition_id: int) -> None:
+        """Launch a compaction task if the partition buffer exceeds the threshold."""
+        if self._compaction_threshold <= 0:
+            return
+        if len(self._partition_buffers[partition_id]) < self._compaction_threshold:
+            return
+        # Drain uncompacted refs and launch a compact task.
+        shard_refs = self._partition_buffers[partition_id]
+        self._partition_buffers[partition_id] = []
+
+        compact_task_idx = self._next_compact_task_idx
+        self._next_compact_task_idx += 1
+
+        compact_resources = {"num_cpus": 1}
+
+        compact_ref = _shuffle_compact.options(
+            **compact_resources,
+            num_returns=1,
+        ).remote(shard_refs)
+
+        # The ObjectRef from .remote() IS the ref to the compacted block.
+        # Put it into the buffer immediately — reduce will ray.get() it later.
+        self._compacted_partition_buffers[partition_id].append(compact_ref)
+
+        def _on_compact_done(task_idx: int):
+            done_task = self._compact_tasks.pop(task_idx)
+            self._compact_resource_usage = self._compact_resource_usage.subtract(
+                done_task.get_requested_resource_bundle()
+            )
+
+        task = MetadataOpTask(
+            task_index=compact_task_idx,
+            object_ref=compact_ref,
+            task_done_callback=functools.partial(_on_compact_done, compact_task_idx),
+            task_resource_bundle=ExecutionResources.from_resource_dict(
+                compact_resources
+            ),
+        )
+        self._compact_tasks[compact_task_idx] = task
+        self._compact_resource_usage = self._compact_resource_usage.add(
+            task.get_requested_resource_bundle()
+        )
+
     # -- Output handling (Reduce phase) ---------------------------------------
 
     def has_next(self) -> bool:
@@ -414,29 +493,36 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def get_active_tasks(self) -> List[OpTask]:
         map_tasks: List[OpTask] = list(self._map_tasks.values())
+        compact_tasks: List[OpTask] = list(self._compact_tasks.values())
         reduce_tasks: List[OpTask] = list(self._reduce_tasks.values())
-        return map_tasks + reduce_tasks
+        return map_tasks + compact_tasks + reduce_tasks
 
     # -- Reduce scheduling ----------------------------------------------------
 
     def _is_map_done(self) -> bool:
         return self._inputs_complete and len(self._map_tasks) == 0
 
+    def _is_ready_for_reduce(self) -> bool:
+        return self._is_map_done() and len(self._compact_tasks) == 0
+
     def _is_all_reduce_submitted(self) -> bool:
         return len(self._pending_reduce_partition_ids) == 0
 
     def _try_reduce(self):
-        """Launch reduce tasks once all map tasks have completed."""
+        """Launch reduce tasks once all map and compact tasks have completed."""
         if self._is_all_reduce_submitted():
             return
 
-        if not self._is_map_done():
+        if not self._is_ready_for_reduce():
             return
 
         target_max_block_size = self._data_context.target_max_block_size
 
         for partition_id in list(self._pending_reduce_partition_ids):
-            shard_refs = self._partition_buffers.get(partition_id, [])
+            # Compacted (larger) refs first, then any remaining uncompacted tail.
+            shard_refs = self._compacted_partition_buffers.get(
+                partition_id, []
+            ) + self._partition_buffers.get(partition_id, [])
 
             # Skip empty partitions – no data to reduce.
             if not shard_refs:
@@ -527,8 +613,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
         self._map_tasks.clear()
+        self._compact_tasks.clear()
         self._reduce_tasks.clear()
         self._partition_buffers.clear()
+        self._compacted_partition_buffers.clear()
 
     # -- Stats / metrics ------------------------------------------------------
 
@@ -547,7 +635,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # -- Resource accounting --------------------------------------------------
 
     def current_logical_usage(self) -> ExecutionResources:
-        return self._map_resource_usage
+        return self._map_resource_usage.add(self._compact_resource_usage)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(cpu=self._DEFAULT_MAP_TASK_NUM_CPUS)
@@ -559,14 +647,16 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def progress_str(self) -> str:
         maps_done = self._next_map_task_idx - len(self._map_tasks)
+        compacts_done = self._next_compact_task_idx - len(self._compact_tasks)
         reduces_submitted = self._num_partitions - len(
             self._pending_reduce_partition_ids
         )
         reduces_done = reduces_submitted - len(self._reduce_tasks)
-        return (
-            f"map: {maps_done}/{self._next_map_task_idx}, "
-            f"reduce: {reduces_done}/{self._num_partitions}"
-        )
+        parts = [f"map: {maps_done}/{self._next_map_task_idx}"]
+        if self._next_compact_task_idx > 0:
+            parts.append(f"compact: {compacts_done}/{self._next_compact_task_idx}")
+        parts.append(f"reduce: {reduces_done}/{self._num_partitions}")
+        return ", ".join(parts)
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
         return ["Shuffle", "Reduce"]

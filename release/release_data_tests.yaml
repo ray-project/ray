@@ -507,7 +507,7 @@
   run:
     timeout: 5400
     script: >
-      python repartition_benchmark.py --sf 100 --num-partitions 100
+      python repartition_benchmark.py --sf 1000 --num-partitions 1000
       --shuffle-strategy {{shuffle_strategy}}
 
 ########################
