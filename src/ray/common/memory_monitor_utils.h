@@ -75,6 +75,17 @@ class MemoryMonitorUtils {
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes);
 
+  /**
+   * @brief Gets the used memory for a process from the process memory snapshot.
+   *
+   * @param snapshot The process memory snapshot.
+   * @param pid The process ID.
+   * @return The used memory in bytes for the process. Returns 0 if the process is not
+   *         found in the snapshot.
+   */
+  static int64_t GetProcessUsedMemoryBytes(const ProcessesMemorySnapshot &snapshot,
+                                           pid_t pid);
+
  private:
   /**
    * @brief Gets memory information from the given cgroup.

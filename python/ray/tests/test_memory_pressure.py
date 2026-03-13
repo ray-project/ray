@@ -24,7 +24,7 @@ memory_usage_threshold = 0.5
 task_oom_retries = 1
 memory_monitor_refresh_ms = 100
 expected_worker_eviction_message = (
-    "Task was killed due to the node running low on memory"
+    "worker(s) were killed due to the node running low on memory"
 )
 
 
@@ -363,7 +363,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
         verify_failed_task,
         name="allocate_memory",
         error_type="OUT_OF_MEMORY",
-        error_message="Task was killed due to the node running low on memory",
+        error_message="worker(s) were killed due to the node running low on memory",
     )
 
     # TODO(clarng): verify log info once state api can dump log info

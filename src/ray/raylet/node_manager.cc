@@ -3055,6 +3055,10 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               workers_to_kill_and_should_retry =
                   worker_killing_policy_->SelectWorkersToKill(
                       workers, process_memory_snapshot, system_memory);
+          if (workers_to_kill_and_should_retry.empty()) {
+            memory_monitor_->Enable();
+            return;
+          }
 
           // Compute the memory usage threshold
           int64_t total_memory_bytes = system_memory.total_bytes;

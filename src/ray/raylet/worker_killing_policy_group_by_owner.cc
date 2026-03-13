@@ -33,8 +33,7 @@ std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    const SystemMemorySnapshot &system_memory_snapshot) {
-  RAY_UNUSED(system_memory_snapshot);
+    const SystemMemorySnapshot &_) {
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
   for (const std::pair<std::shared_ptr<WorkerInterface>, bool>
            &worker_to_kill_or_should_retry : workers_being_killed_) {
@@ -53,9 +52,10 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     if (workers_being_killed_.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
-             "kill even though memory usage is high. Object store "
-             "may be causing high memory pressure. Consider checking "
-             "if too many objects are unintentionally being stored.";
+             "kill even though memory usage is high. Other Ray processes (e.g. driver, "
+             "raylet, dashboard agent, runtime environment agent, GCS server, "
+             "API server, etc.) or other non-ray processes may be occupying most of "
+             "the memory."
     }
     return workers_being_killed_;
   }
