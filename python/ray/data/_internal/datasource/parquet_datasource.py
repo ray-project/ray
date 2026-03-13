@@ -394,6 +394,8 @@ class ParquetDatasource(Datasource):
             dataset_kwargs=dataset_kwargs,
         )
 
+        fragments = list(pq_ds.fragments)
+
         # Users can pass both data columns and partition columns in the 'columns'
         # argument. To prevent PyArrow from complaining about missing columns, we
         # separate the partition columns from the data columns. When we read the
@@ -401,9 +403,9 @@ class ParquetDatasource(Datasource):
         # columns manually.
         data_columns, partition_columns = None, None
         if columns is not None:
-            if pq_ds.fragments:
+            if fragments:
                 data_columns, partition_columns = _infer_data_and_partition_columns(
-                    columns, pq_ds.fragments[0], partitioning
+                    columns, fragments[0], partitioning
                 )
             else:
                 # Empty dataset - can't infer columns without fragments
@@ -428,9 +430,9 @@ class ParquetDatasource(Datasource):
         # Eagerly compute the actual partition columns for _partition_columns.
         # This ensures _partition_columns is always a list (never None).
         actual_partition_columns = partition_columns
-        if partition_columns is None and partitioning is not None and pq_ds.fragments:
+        if partition_columns is None and partitioning is not None and fragments:
             parse = PathPartitionParser(partitioning)
-            parsed_partitions = parse(pq_ds.fragments[0].path)
+            parsed_partitions = parse(fragments[0].path)
             if parsed_partitions:
                 actual_partition_columns = list(parsed_partitions.keys())
 
@@ -445,14 +447,14 @@ class ParquetDatasource(Datasource):
         )
 
         self._init_state(
-            fragments=list(pq_ds.fragments),
+            fragments=fragments,
             file_sizes=list(file_sizes),
             file_schema=pq_ds.schema,
             read_schema=schema,
             partition_columns=actual_partition_columns,
             partition_columns_selected=partition_columns_selected,
             partition_schema=_get_partition_columns_schema(
-                partitioning, [p.path for p in pq_ds.fragments]
+                partitioning, [p.path for p in fragments]
             ),
             partitioning=partitioning,
             projection_map=projection_map,
@@ -555,13 +557,29 @@ class ParquetDatasource(Datasource):
         Datasource.__init__(instance)
         _check_pyarrow_version()
 
-        instance._supports_distributed_reads = True
-        instance._local_scheduling = None
-
         fragments = list(pa_dataset.get_fragments())
         filesystem = pa_dataset.filesystem
 
         pq_paths = [f.path for f in fragments]
+
+        instance._supports_distributed_reads = not _is_local_scheme(pq_paths)
+        if (
+            not instance._supports_distributed_reads
+            and ray.util.client.ray.is_connected()
+        ):
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
+        instance._local_scheduling = None
+        if not instance._supports_distributed_reads:
+            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+            instance._local_scheduling = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
         infos = filesystem.get_file_info(pq_paths)
         file_sizes = [info.size if info.size is not None else 0 for info in infos]
 
