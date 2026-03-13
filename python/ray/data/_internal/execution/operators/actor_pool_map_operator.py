@@ -66,6 +66,10 @@ from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
+_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -852,22 +856,22 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
             else {}
         )
 
+        running = self._actor_pool.running_actors()
+        locs_get = locs_priorities.get
+
         # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
         #       and rank[-1] is the lowest)
-        ranks = [
+        return [
             (
                 # Priority/rank of the location (based on the object size).
                 # Defaults to int32 max value (ie no rank)
-                locs_priorities.get(
-                    self._actor_pool.running_actors()[actor].actor_location, INT32_MAX
-                ),
+                locs_get(state.actor_location, INT32_MAX),
                 # Number of tasks currently in flight at the given actor
-                self._actor_pool.running_actors()[actor].num_tasks_in_flight,
+                state.num_tasks_in_flight,
             )
             for actor in actors
+            for state in (running[actor],)
         ]
-
-        return ranks
 
 
 class _ActorPool(AutoscalingActorPool):
@@ -1084,10 +1088,12 @@ class _ActorPool(AutoscalingActorPool):
         return self._running_actors
 
     def schedulable_actors(self) -> List[ray.actor.ActorHandle]:
+        # Access backing field directly to avoid method call overhead in hot path.
+        max_tasks = self._max_tasks_in_flight
         return [
             actor
             for actor, state in self._running_actors.items()
-            if state.num_tasks_in_flight < self.max_tasks_in_flight_per_actor()
+            if state.num_tasks_in_flight < max_tasks
             and not state.is_restarting
         ]
 
@@ -1101,16 +1107,14 @@ class _ActorPool(AutoscalingActorPool):
     def refresh_actor_state(self):
         for actor in self.get_running_actor_refs():
             actor_state = actor._get_local_state()
-            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+            if actor_state in (None, _ACTOR_STATE_DEAD):
                 # actor._get_local_state can return None if the state is Unknown
                 # If actor_state is None or dead, there is nothing to do.
                 continue
-            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+            elif actor_state != _ACTOR_STATE_ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
                 # be restarted indefinitely until execution finishes.
-                assert (
-                    actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-                ), actor_state
+                assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
                 self._update_running_actor_state(actor, True)
             else:
                 self._update_running_actor_state(actor, False)
@@ -1124,11 +1128,12 @@ class _ActorPool(AutoscalingActorPool):
             actor: The running actor that needs state update.
             is_restarting: Whether running actor is restarting or alive.
         """
-        assert actor in self._running_actors
-        if self._running_actors[actor].is_restarting == is_restarting:
+        state = self._running_actors.get(actor)
+        assert state is not None, f"{actor} not in running actors"
+        if state.is_restarting == is_restarting:
             return
 
-        self._running_actors[actor].is_restarting = is_restarting
+        state.is_restarting = is_restarting
         if is_restarting:
             self._num_restarting_actors += 1
         else:
