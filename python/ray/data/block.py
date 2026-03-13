@@ -530,7 +530,8 @@ class BlockAccessor:
         block_type: Optional[BlockType] = None,
     ) -> Block:
         """Create a block from user-facing data formats."""
-
+        import pandas
+        
         if isinstance(batch, np.ndarray):
             raise ValueError(
                 f"Error validating {_truncated_repr(batch)}: "
