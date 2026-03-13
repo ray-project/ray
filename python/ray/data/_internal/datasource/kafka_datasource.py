@@ -299,63 +299,57 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _validate_per_partition_offsets(
-    offsets: PerPartitionOffsets,
-    param_name: str,
-    disallowed_value: str,
+def _validate_offsets(
+    start_offset: Union[int, datetime, Literal["earliest"], PerPartitionOffsets],
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets],
 ) -> None:
-    """Validate a per-partition offset dict at init time.
-
-    Args:
-        offsets: The per-partition offset dict to validate.
-        param_name: Name of the parameter (for error messages).
-        disallowed_value: The string offset value that is not allowed
-            (e.g. "latest" for start_offset, "earliest" for end_offset).
-    """
-    for topic, partition_map in offsets.items():
-        if not isinstance(partition_map, dict):
-            raise ValueError(
-                f"{param_name}[{topic!r}] must be a dict mapping "
-                f"partition_id (int) to offset (int or str)."
-            )
-        for partition_id, offset in partition_map.items():
-            if not isinstance(partition_id, int):
+    if isinstance(start_offset, dict):
+        for topic, partition_map in start_offset.items():
+            if not isinstance(partition_map, dict):
                 raise ValueError(
-                    f"{param_name}[{topic!r}] keys must be integers "
-                    f"(partition IDs), got {type(partition_id).__name__!r}."
+                    f"start_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
                 )
-            if isinstance(offset, str) and offset == disallowed_value:
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"start_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "latest":
+                    raise ValueError(
+                        f"start_offset[{topic!r}][{partition_id}] cannot be 'latest'."
+                    )
+    else:
+        if isinstance(start_offset, int) and isinstance(end_offset, int):
+            if start_offset > end_offset:
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
+            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, str) and start_offset == "latest":
+            raise ValueError("start_offset cannot be 'latest'")
+
+    if isinstance(end_offset, dict):
+        for topic, partition_map in end_offset.items():
+            if not isinstance(partition_map, dict):
                 raise ValueError(
-                    f"{param_name}[{topic!r}][{partition_id}] "
-                    f"cannot be {disallowed_value!r}."
+                    f"end_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
                 )
-
-
-def _get_offset_for_partition(
-    offset: Union[int, str, datetime, PerPartitionOffsets],
-    topic: str,
-    partition_id: int,
-    default: Union[int, str, datetime],
-) -> Union[int, str, datetime]:
-    """Get the effective offset for a specific topic/partition.
-
-    If offset is a per-partition dict, looks up the value for
-    (topic, partition_id), falling back to default if not found.
-    If offset is a scalar, returns it as-is.
-
-    Args:
-        offset: Global scalar offset or per-partition dict.
-        topic: Kafka topic name.
-        partition_id: Kafka partition ID.
-        default: Fallback offset when offset is a dict and the
-            partition is not listed.
-
-    Returns:
-        Resolved offset for the given topic/partition.
-    """
-    if isinstance(offset, dict):
-        return offset.get(topic, {}).get(partition_id, default)
-    return offset
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"end_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "earliest":
+                    raise ValueError(
+                        f"end_offset[{topic!r}][{partition_id}] cannot be 'earliest'."
+                    )
+    else:
+        if isinstance(end_offset, str) and end_offset == "earliest":
+            raise ValueError("end_offset cannot be 'earliest'")
 
 
 def _resolve_datetime_to_offset(
@@ -524,25 +518,7 @@ class KafkaDatasource(Datasource):
         if timeout_ms is not None and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
 
-        if isinstance(start_offset, dict):
-            _validate_per_partition_offsets(start_offset, "start_offset", "latest")
-        else:
-            if isinstance(start_offset, int) and isinstance(end_offset, int):
-                if start_offset > end_offset:
-                    raise ValueError("start_offset must be less than end_offset")
-
-            if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-                if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
-                    raise ValueError("start_offset must be less than end_offset")
-
-            if isinstance(start_offset, str) and start_offset == "latest":
-                raise ValueError("start_offset cannot be 'latest'")
-
-        if isinstance(end_offset, dict):
-            _validate_per_partition_offsets(end_offset, "end_offset", "earliest")
-        else:
-            if isinstance(end_offset, str) and end_offset == "earliest":
-                raise ValueError("end_offset cannot be 'earliest'")
+        _validate_offsets(start_offset, end_offset)
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -818,11 +794,15 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            effective_start = _get_offset_for_partition(
-                start_offset, topic_name, partition_id, default="earliest"
+            effective_start = (
+                start_offset.get(topic_name, {}).get(partition_id, "earliest")
+                if isinstance(start_offset, dict)
+                else start_offset
             )
-            effective_end = _get_offset_for_partition(
-                end_offset, topic_name, partition_id, default="latest"
+            effective_end = (
+                end_offset.get(topic_name, {}).get(partition_id, "latest")
+                if isinstance(end_offset, dict)
+                else end_offset
             )
             kafka_read_fn = create_kafka_read_fn(
                 topic_name,
