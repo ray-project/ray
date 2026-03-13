@@ -49,6 +49,19 @@ steps:
       - windowsbuild
       - block-windows-tests
 
+  - label: ":windows: smoke test: ray stop {{matrix}}"
+    tags:
+      - python
+      - windows
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - python ci/ray_ci/windows/run_smoke_test_stop.py "{{matrix}}"
+    matrix:
+      - "3.10"
+    depends_on: windows_wheels
+
   - label: ":ray: core: :windows: cpp tests"
     tags:
       - core_cpp
