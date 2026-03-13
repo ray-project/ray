@@ -1200,14 +1200,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param function The function to execute.
   /// \param args The task arguments.
   /// \param task_options Task options (num_returns, resources, etc).
-  /// \param key Optional key for per-key ordering.
   /// \return Object references for the task's return values.
   std::vector<rpc::ObjectReference> SubmitTaskToActorPool(
       const ActorPoolID &pool_id,
       const RayFunction &function,
       std::vector<std::unique_ptr<TaskArg>> args,
-      const TaskOptions &task_options,
-      const std::string &key = "");
+      const TaskOptions &task_options);
 
   /// Get all actor IDs in a pool.
   ///

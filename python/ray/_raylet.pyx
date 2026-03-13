@@ -162,7 +162,6 @@ from ray.includes.libcoreworker cimport (
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
     CCoreWorkerProcess,
-    CPoolOrderingMode,
     CPoolStats,
     CTaskOptions,
     ResourceMappingType,
@@ -4825,7 +4824,6 @@ cdef class CoreWorker:
             float retry_backoff_multiplier=2.0,
             int32_t max_retry_backoff_ms=60000,
             c_bool retry_on_system_errors=True,
-            int ordering_mode=0,  # 0=UNORDERED, 1=PER_KEY_FIFO, 2=GLOBAL_FIFO
             int32_t max_tasks_in_flight_per_actor=1,
             int32_t min_size=1,
             int32_t max_size=-1,
@@ -4838,7 +4836,6 @@ cdef class CoreWorker:
             retry_backoff_multiplier: Multiplier for exponential backoff.
             max_retry_backoff_ms: Maximum backoff in milliseconds.
             retry_on_system_errors: Whether to retry on system errors.
-            ordering_mode: Task ordering mode (0=UNORDERED, 1=PER_KEY_FIFO, 2=GLOBAL_FIFO).
             min_size: Minimum pool size for autoscaling.
             max_size: Maximum pool size (-1 for unbounded).
             initial_size: Initial pool size.
@@ -4856,7 +4853,6 @@ cdef class CoreWorker:
         config.retry_backoff_multiplier = retry_backoff_multiplier
         config.max_retry_backoff_ms = max_retry_backoff_ms
         config.retry_on_system_errors = retry_on_system_errors
-        config.ordering_mode = <CPoolOrderingMode>ordering_mode
         config.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         config.min_size = min_size
         config.max_size = max_size
@@ -5040,8 +5036,7 @@ cdef class CoreWorker:
             double num_method_cpus,
             c_string concurrency_group_name,
             int64_t generator_backpressure_num_objects,
-            c_bool enable_task_events,
-            c_string key=b""):
+            c_bool enable_task_events):
         """Submit a task to an actor pool.
 
         The C++ ActorPoolManager selects an actor based on load and locality.
@@ -5088,8 +5083,7 @@ cdef class CoreWorker:
                             c_labels,
                             c_label_selector,
                             c_tensor_transport,
-                            c_fallback_strategy),
-                        key))
+                            c_fallback_strategy)))
         finally:
             for put_arg_id in incremented_put_arg_ids:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(

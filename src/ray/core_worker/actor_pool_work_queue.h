@@ -43,9 +43,6 @@ struct PoolWorkItem {
   /// Task options (num_returns, resources, etc).
   TaskOptions options;
 
-  /// Key for per-key ordering (empty for unordered).
-  std::string key;
-
   /// Number of times this work item has been attempted.
   int32_t attempt_number = 0;
 
@@ -60,7 +57,6 @@ struct PoolWorkItem {
         function(std::move(other.function)),
         args(std::move(other.args)),
         options(std::move(other.options)),
-        key(std::move(other.key)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms) {}
 
@@ -71,7 +67,6 @@ struct PoolWorkItem {
       function = std::move(other.function);
       args = std::move(other.args);
       options = std::move(other.options);
-      key = std::move(other.key);
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
     }
@@ -84,8 +79,7 @@ struct PoolWorkItem {
 };
 
 /// Abstract interface for actor pool work queues.
-/// Different implementations can provide different ordering semantics
-/// (unordered, per-key ordered, global FIFO, etc).
+/// Different implementations can provide different ordering semantics.
 class PoolWorkQueue {
  public:
   virtual ~PoolWorkQueue() = default;

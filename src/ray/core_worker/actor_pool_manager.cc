@@ -66,21 +66,8 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
   ActorPoolInfo pool_info;
   pool_info.config = config;
 
-  // Create work queue based on ordering mode
-  std::unique_ptr<PoolWorkQueue> work_queue;
-  switch (config.ordering_mode) {
-  case PoolOrderingMode::UNORDERED:
-    work_queue = std::make_unique<UnorderedPoolWorkQueue>();
-    break;
-  case PoolOrderingMode::PER_KEY_FIFO:
-    // Phase 2: Implement PerKeyOrderedPoolWorkQueue
-    RAY_LOG(FATAL) << "PER_KEY_FIFO ordering not yet implemented";
-    break;
-  case PoolOrderingMode::GLOBAL_FIFO:
-    // Phase 2: Could use UnorderedPoolWorkQueue with single key
-    RAY_LOG(FATAL) << "GLOBAL_FIFO ordering not yet implemented";
-    break;
-  }
+  // Create work queue (unordered FIFO).
+  auto work_queue = std::make_unique<UnorderedPoolWorkQueue>();
 
   // Add initial actors
   for (const auto &actor_id : initial_actors) {
@@ -183,8 +170,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     const ActorPoolID &pool_id,
     const RayFunction &function,
     std::vector<std::unique_ptr<TaskArg>> args,
-    const TaskOptions &task_options,
-    const std::string &key) {
+    const TaskOptions &task_options) {
   absl::MutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
@@ -214,7 +200,6 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   work_item.function = function;
   work_item.args = std::move(args);
   work_item.options = task_options;
-  work_item.key = key;
   work_item.attempt_number = 0;
   work_item.enqueued_at_ms = current_time_ms();
 

@@ -107,18 +107,12 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
         CRayStatus WaitAllObjectsReported()
 
 cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" nogil:
-    cdef enum CPoolOrderingMode "ray::core::PoolOrderingMode":
-        UNORDERED "ray::core::PoolOrderingMode::UNORDERED"
-        PER_KEY_FIFO "ray::core::PoolOrderingMode::PER_KEY_FIFO"
-        GLOBAL_FIFO "ray::core::PoolOrderingMode::GLOBAL_FIFO"
-
     cdef cppclass CActorPoolConfig "ray::core::ActorPoolConfig":
         int32_t max_retry_attempts
         int32_t retry_backoff_ms
         float retry_backoff_multiplier
         int32_t max_retry_backoff_ms
         c_bool retry_on_system_errors
-        CPoolOrderingMode ordering_mode
         int32_t max_tasks_in_flight_per_actor
         int32_t min_size
         int32_t max_size
@@ -148,8 +142,7 @@ cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" no
             const CActorPoolID &pool_id,
             const CRayFunction &function,
             c_vector[unique_ptr[CTaskArg]] args,
-            const CTaskOptions &task_options,
-            const c_string &key)
+            const CTaskOptions &task_options)
         c_vector[CActorID] GetPoolActors(const CActorPoolID &pool_id) const
         CPoolStats GetPoolStats(const CActorPoolID &pool_id) const
         c_bool HasPool(const CActorPoolID &pool_id) const
@@ -217,8 +210,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorPoolID &pool_id,
             const CRayFunction &function,
             c_vector[unique_ptr[CTaskArg]] args,
-            const CTaskOptions &task_options,
-            const c_string &key)
+            const CTaskOptions &task_options)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)

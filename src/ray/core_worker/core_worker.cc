@@ -2753,11 +2753,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTaskToActorPool(
     const ActorPoolID &pool_id,
     const RayFunction &function,
     std::vector<std::unique_ptr<TaskArg>> args,
-    const TaskOptions &task_options,
-    const std::string &key) {
+    const TaskOptions &task_options) {
   RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
   return actor_pool_manager_->SubmitTaskToPool(
-      pool_id, function, std::move(args), task_options, key);
+      pool_id, function, std::move(args), task_options);
 }
 
 std::vector<ActorID> CoreWorker::GetActorPoolActors(const ActorPoolID &pool_id) const {

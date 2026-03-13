@@ -21,7 +21,7 @@ not the existing ray.util.ActorPool (tested in test_actor_pool.py).
 import pytest
 
 import ray
-from ray.experimental.actor_pool import ActorPool, OrderingMode, RetryPolicy
+from ray.experimental.actor_pool import ActorPool, RetryPolicy
 
 
 @ray.remote
@@ -89,17 +89,6 @@ class TestActorPoolV2Creation:
             max_backoff_ms=10000,
         )
         pool = ActorPool(SimpleWorker, size=1, retry=retry)
-
-        assert len(pool.actors) == 1
-        pool.shutdown()
-
-    def test_create_pool_with_ordering_mode(self, ray_start):
-        """Create a pool with ordering mode."""
-        pool = ActorPool(
-            SimpleWorker,
-            size=1,
-            ordering=OrderingMode.UNORDERED,
-        )
 
         assert len(pool.actors) == 1
         pool.shutdown()

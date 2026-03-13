@@ -26,11 +26,10 @@ namespace core {
 namespace {
 
 /// Helper to create a simple PoolWorkItem for testing.
-PoolWorkItem CreateTestWorkItem(const std::string &key = "", int32_t attempt_number = 0) {
+PoolWorkItem CreateTestWorkItem(int32_t attempt_number = 0) {
   PoolWorkItem item;
   item.work_item_id = TaskID::FromRandom(JobID());
   item.function = RayFunction();
-  item.key = key;
   item.attempt_number = attempt_number;
   item.enqueued_at_ms = 12345;
   return item;
@@ -93,7 +92,7 @@ TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
   UnorderedPoolWorkQueue queue;
 
   // Push item with attempt_number = 0
-  auto item = CreateTestWorkItem("", 0);
+  auto item = CreateTestWorkItem(0);
   auto item_id = item.work_item_id;
   queue.Push(std::move(item));
 
@@ -195,30 +194,6 @@ TEST(UnorderedPoolWorkQueueTest, InterleavedPushPop) {
   EXPECT_EQ(popped3->work_item_id, id3);
 
   EXPECT_EQ(queue.Size(), 0);
-}
-
-TEST(UnorderedPoolWorkQueueTest, WorkItemPreservesKey) {
-  UnorderedPoolWorkQueue queue;
-
-  // Push items with keys
-  queue.Push(CreateTestWorkItem("user_123"));
-  queue.Push(CreateTestWorkItem("user_456"));
-  queue.Push(CreateTestWorkItem(""));  // No key
-
-  EXPECT_EQ(queue.Size(), 3);
-
-  // Pop and verify keys preserved
-  auto item1 = queue.Pop();
-  ASSERT_TRUE(item1.has_value());
-  EXPECT_EQ(item1->key, "user_123");
-
-  auto item2 = queue.Pop();
-  ASSERT_TRUE(item2.has_value());
-  EXPECT_EQ(item2->key, "user_456");
-
-  auto item3 = queue.Pop();
-  ASSERT_TRUE(item3.has_value());
-  EXPECT_EQ(item3->key, "");
 }
 
 }  // namespace core

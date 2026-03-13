@@ -3,49 +3,38 @@
 This module provides an actor pool that enables cross-actor retries, load balancing,
 and efficient task scheduling across a pool of equivalent actors.
 
-Example usage:
-    >>> import ray
-    >>> from ray.experimental.actor_pool import ActorPool, RetryPolicy, OrderingMode
-    >>>
-    >>> @ray.remote
-    ... class Worker:
-    ...     def process(self, data):
-    ...         return data * 2
-    >>>
-    >>> pool = ActorPool(
-    ...     actor_cls=Worker,
-    ...     size=4,
-    ...     retry=RetryPolicy(max_attempts=3),
-    ... )
-    >>>
-    >>> # Submit tasks to the pool
-    >>> refs = [pool.submit("process", i) for i in range(10)]
-    >>> results = ray.get(refs)
-    >>> pool.shutdown()
+Example usage::
+
+    import ray
+    from ray.experimental.actor_pool import ActorPool, RetryPolicy
+
+    @ray.remote
+    class Worker:
+        def process(self, data):
+            return data * 2
+
+    pool = ActorPool(
+        actor_cls=Worker,
+        size=4,
+        retry=RetryPolicy(max_attempts=3),
+    )
+
+    # Submit tasks to the pool
+    refs = [pool.submit("process", i) for i in range(10)]
+    results = ray.get(refs)
+    pool.shutdown()
 """
 
 import logging
 import uuid
 from dataclasses import dataclass
-from enum import IntEnum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import ray
 from ray._raylet import ActorPoolID
 from ray.actor import ActorClass
 
 logger = logging.getLogger(__name__)
-
-
-class OrderingMode(IntEnum):
-    """Task ordering mode for actor pools."""
-
-    # Tasks execute in any order (highest throughput)
-    UNORDERED = 0
-    # Tasks with same key execute in FIFO order (per-key serialization)
-    PER_KEY_FIFO = 1
-    # All tasks execute in strict FIFO order (lowest throughput)
-    GLOBAL_FIFO = 2
 
 
 @dataclass
@@ -87,22 +76,22 @@ class ActorPool:
         actor_kwargs: Keyword arguments for actor constructor.
         actor_options: Options to pass to ray.remote() for actor creation.
         retry: Retry policy for failed tasks.
-        ordering: Task ordering mode.
         max_tasks_in_flight_per_actor: Max concurrent tasks per actor in C++ pool.
         logical_id_label_key: Label key for logical actor IDs.
         logical_id_kwarg_name: Kwarg name to inject logical_id into actor constructor.
         static_labels: Static labels to apply to all actors in the pool.
 
-    Example:
-        >>> pool = ActorPool(
-        ...     actor_cls=MyWorker,
-        ...     size=4,
-        ...     actor_options={"num_gpus": 1},
-        ...     retry=RetryPolicy(max_attempts=5),
-        ... )
-        >>> ref = pool.submit("process", data)
-        >>> result = ray.get(ref)
-        >>> pool.shutdown()
+    Example::
+
+        pool = ActorPool(
+            actor_cls=MyWorker,
+            size=4,
+            actor_options={"num_gpus": 1},
+            retry=RetryPolicy(max_attempts=5),
+        )
+        ref = pool.submit("process", data)
+        result = ray.get(ref)
+        pool.shutdown()
     """
 
     def __init__(
@@ -116,7 +105,6 @@ class ActorPool:
         actor_kwargs: Optional[Dict[str, Any]] = None,
         actor_options: Optional[Dict[str, Any]] = None,
         retry: Optional[RetryPolicy] = None,
-        ordering: OrderingMode = OrderingMode.UNORDERED,
         max_tasks_in_flight_per_actor: int = 1,
         # Label support for Ray Data integration
         logical_id_label_key: Optional[str] = None,
@@ -150,7 +138,6 @@ class ActorPool:
         self._actor_kwargs = actor_kwargs
         self._actor_options = actor_options
         self._retry = retry
-        self._ordering = ordering
         self._min_size = min_size
         self._max_size = max_size
         self._initial_size = initial_size
@@ -183,7 +170,6 @@ class ActorPool:
             retry_backoff_multiplier=retry.backoff_multiplier,
             max_retry_backoff_ms=retry.max_backoff_ms,
             retry_on_system_errors=retry.retry_on_system_errors,
-            ordering_mode=int(ordering),
             max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
             min_size=min_size,
             max_size=max_size,
@@ -295,7 +281,6 @@ class ActorPool:
         self,
         method_name: str,
         *args,
-        key: Optional[str] = None,
         num_returns: int = 1,
         **kwargs,
     ) -> ray.ObjectRef:
@@ -308,7 +293,6 @@ class ActorPool:
         Args:
             method_name: Name of the actor method to call.
             *args: Positional arguments for the method.
-            key: Optional key for per-key ordering (only used with PER_KEY_FIFO).
             num_returns: Number of return values (-2 for streaming generator).
             **kwargs: Keyword arguments for the method.
 
@@ -340,7 +324,6 @@ class ActorPool:
             concurrency_group_name=b"",
             generator_backpressure_num_objects=-1,
             enable_task_events=True,
-            key=key.encode() if key else b"",
         )
 
         if not object_refs:
@@ -356,23 +339,19 @@ class ActorPool:
         self,
         method_name: str,
         items: List[Any],
-        key_fn: Optional[Callable[[Any], str]] = None,
     ) -> List[ray.ObjectRef]:
         """Map a method over a list of items.
 
         Args:
             method_name: Name of the actor method to call.
             items: List of items to process.
-            key_fn: Optional function to extract a key from each item
-                   (for per-key ordering).
 
         Returns:
             List of ObjectRefs for the results.
         """
         refs = []
         for item in items:
-            key = key_fn(item) if key_fn else None
-            ref = self.submit(method_name, item, key=key)
+            ref = self.submit(method_name, item)
             refs.append(ref)
         return refs
 
@@ -466,11 +445,7 @@ class ActorPool:
             pass
 
     def __repr__(self) -> str:
-        return (
-            f"ActorPool(id={self._pool_id.hex()[:8]}..., "
-            f"size={self.size}, "
-            f"ordering={self._ordering.name})"
-        )
+        return f"ActorPool(id={self._pool_id.hex()[:8]}..., " f"size={self.size})"
 
 
-__all__ = ["ActorPool", "ActorPoolID", "OrderingMode", "RetryPolicy"]
+__all__ = ["ActorPool", "ActorPoolID", "RetryPolicy"]

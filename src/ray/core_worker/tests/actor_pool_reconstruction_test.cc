@@ -106,7 +106,7 @@ class PoolReconstructionTest : public ::testing::Test {
     config.max_retry_attempts = 3;
     config.retry_backoff_ms = 100;
     config.retry_on_system_errors = true;
-    config.ordering_mode = PoolOrderingMode::UNORDERED;
+
     auto pool_id = pool_manager_->RegisterPool(config, actors);
     for (const auto &a : actors) {
       pool_manager_->AddActorToPool(pool_id, a, NodeID::FromRandom());

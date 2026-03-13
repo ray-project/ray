@@ -125,7 +125,7 @@ class ActorPoolManagerTest : public ::testing::Test {
     config.max_retry_attempts = max_retry_attempts;
     config.retry_backoff_ms = 100;
     config.retry_on_system_errors = true;
-    config.ordering_mode = PoolOrderingMode::UNORDERED;
+
     return pool_manager_->RegisterPool(config);
   }
 
@@ -359,7 +359,6 @@ TEST_F(ActorPoolManagerTest, PoolConfigIsStored) {
   config.max_retry_attempts = 5;
   config.retry_backoff_ms = 500;
   config.retry_on_system_errors = false;
-  config.ordering_mode = PoolOrderingMode::UNORDERED;
   config.min_size = 2;
   config.max_size = 10;
   config.initial_size = 4;
@@ -559,7 +558,7 @@ class ActorPoolManagerLocalityTest : public ::testing::Test {
     config.max_retry_attempts = 3;
     config.retry_backoff_ms = 100;
     config.retry_on_system_errors = true;
-    config.ordering_mode = PoolOrderingMode::UNORDERED;
+
     config.max_tasks_in_flight_per_actor = max_tasks_in_flight;
     return pool_manager_->RegisterPool(config);
   }

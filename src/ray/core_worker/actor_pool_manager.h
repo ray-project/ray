@@ -70,16 +70,6 @@ using SubmitActorTaskCallback = std::function<std::vector<rpc::ObjectReference>(
     const ActorPoolID &pool_id,
     const TaskID &work_item_id)>;
 
-/// Ordering mode for actor pool work queue.
-enum class PoolOrderingMode {
-  /// Tasks execute in any order (highest throughput).
-  UNORDERED = 0,
-  /// Tasks with same key execute in FIFO order (per-key serialization).
-  PER_KEY_FIFO = 1,
-  /// All tasks execute in strict FIFO order (lowest throughput).
-  GLOBAL_FIFO = 2,
-};
-
 /// Configuration for an actor pool.
 struct ActorPoolConfig {
   /// Retry configuration
@@ -88,9 +78,6 @@ struct ActorPoolConfig {
   float retry_backoff_multiplier = 2.0f;
   int32_t max_retry_backoff_ms = 60000;
   bool retry_on_system_errors = true;
-
-  /// Ordering mode
-  PoolOrderingMode ordering_mode = PoolOrderingMode::UNORDERED;
 
   /// Max concurrent tasks per actor (controls admission in SelectActorFromPool).
   int32_t max_tasks_in_flight_per_actor = 1;
@@ -237,14 +224,12 @@ class ActorPoolManager {
   /// \param function The function to execute.
   /// \param args The task arguments.
   /// \param task_options Task options (num_returns, resources, etc).
-  /// \param key Optional key for per-key ordering.
   /// \return Object references for the task's return values.
   std::vector<rpc::ObjectReference> SubmitTaskToPool(
       const ActorPoolID &pool_id,
       const RayFunction &function,
       std::vector<std::unique_ptr<TaskArg>> args,
-      const TaskOptions &task_options,
-      const std::string &key = "");
+      const TaskOptions &task_options);
 
   /// Get all actor IDs in a pool.
   ///
