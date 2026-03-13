@@ -26,6 +26,9 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
+    KiB,
+    MiB,
+    OnlineLogNormalEstimator,
     find_partition_index,
     get_max_task_capacity,
     iterate_with_retry,
@@ -441,6 +444,112 @@ def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal:
 )
 def test_get_max_task_capacity(allocated, min_scheduling, expected):
     assert get_max_task_capacity(allocated, min_scheduling) == expected
+
+
+class TestOnlineLogNormalEstimator:
+    """Tests for the generic OnlineLogNormalEstimator."""
+
+    def test_empty_estimator(self):
+        """No observations → has_observations is False."""
+        e = OnlineLogNormalEstimator()
+        assert not e.has_observations
+
+    def test_skips_invalid_values(self):
+        """Zero, negative, and None values are silently ignored."""
+        e = OnlineLogNormalEstimator()
+        e.update(0)
+        e.update(-5)
+        e.update_batch([None, 0, -1])
+        assert not e.has_observations
+
+    @pytest.mark.parametrize(
+        "values, expected_median_range",
+        [
+            # Uniform small values → median ≈ value
+            ([1 * KiB] * 30, (900, 1200)),
+            # Uniform large values → median ≈ value
+            ([50 * MiB] * 30, (45 * MiB, 55 * MiB)),
+            # Mixed: median should sit between the two clusters
+            ([1 * KiB] * 15 + [10 * MiB] * 15, (1 * KiB, 10 * MiB)),
+        ],
+        ids=["uniform-small", "uniform-large", "bimodal"],
+    )
+    def test_median_tracks_data(self, values, expected_median_range):
+        """Median of the fitted distribution stays in a sensible range."""
+        e = OnlineLogNormalEstimator()
+        e.update_batch(values)
+        median = float(e.distribution.median())
+        lo, hi = expected_median_range
+        assert lo <= median <= hi, f"median {median} not in [{lo}, {hi}]"
+
+    @pytest.mark.parametrize(
+        "values, expected_p90_above",
+        [
+            # Uniform → p90 ≈ median (tight)
+            ([1 * MiB] * 50, 900 * KiB),
+            # High variance → p90 well above median
+            ([1 * KiB] * 25 + [100 * MiB] * 25, 1 * MiB),
+        ],
+        ids=["uniform-tight", "high-variance-wide"],
+    )
+    def test_quantile_reflects_spread(self, values, expected_p90_above):
+        """p90 is higher when the data is more spread out."""
+        e = OnlineLogNormalEstimator()
+        e.update_batch(values)
+        p90 = float(e.distribution.ppf(0.90))
+        assert p90 >= expected_p90_above, f"p90 {p90} < {expected_p90_above}"
+
+    def test_adaptation_to_distribution_shift(self):
+        """After a shift to larger values, the distribution adapts."""
+        e = OnlineLogNormalEstimator(decay=0.95)
+
+        # Phase 1: small files
+        e.update_batch([1 * KiB] * 30)
+        median_before = float(e.distribution.median())
+
+        # Phase 2: large files
+        e.update_batch([50 * MiB] * 30)
+        median_after = float(e.distribution.median())
+
+        assert median_after > 100 * median_before, (
+            f"Expected median to grow significantly after shift, "
+            f"got {median_before} -> {median_after}"
+        )
+
+    def test_decay_controls_memory(self):
+        """Faster decay forgets old data more quickly."""
+        slow = OnlineLogNormalEstimator(decay=0.99)
+        fast = OnlineLogNormalEstimator(decay=0.80)
+
+        # Phase 1: small values
+        for e in (slow, fast):
+            e.update_batch([1 * KiB] * 20)
+
+        # Phase 2: large values
+        for e in (slow, fast):
+            e.update_batch([50 * MiB] * 20)
+
+        # Fast decay should have a higher median (closer to 50MB)
+        # because it forgot the 1KB observations more quickly.
+        slow_median = float(slow.distribution.median())
+        fast_median = float(fast.distribution.median())
+        assert fast_median > slow_median, (
+            f"Fast-decay median ({fast_median}) should exceed "
+            f"slow-decay median ({slow_median})"
+        )
+
+    @pytest.mark.parametrize(
+        "quantile",
+        [0.50, 0.75, 0.90, 0.95, 0.99],
+    )
+    def test_quantiles_are_monotonic(self, quantile):
+        """Quantiles increase with the probability level."""
+        e = OnlineLogNormalEstimator()
+        e.update_batch([1 * KiB, 10 * KiB, 100 * KiB, 1 * MiB, 10 * MiB])
+        dist = e.distribution
+        lower = float(dist.ppf(0.50))
+        upper = float(dist.ppf(quantile))
+        assert upper >= lower, f"ppf({quantile})={upper} < ppf(0.50)={lower}"
 
 
 if __name__ == "__main__":
