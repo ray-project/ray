@@ -509,6 +509,11 @@ cc_grpc_library(
 # All core python protos are compiled in this single rule.
 # They will be copied into ray/core/generated directory
 # on ray wheel building.
+proto_library(
+    name = "k8s_events_proto",
+    srcs = ["k8s_events.proto"],
+)
+
 python_grpc_compile(
     name = "core_py_proto",
     deps = [
@@ -521,6 +526,7 @@ python_grpc_compile(
         ":gcs_proto",
         ":gcs_service_proto",
         ":instance_manager_proto",
+        ":k8s_events_proto",
         ":node_manager_proto",
         ":ray_client_proto",
         ":reporter_proto",
