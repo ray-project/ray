@@ -47,58 +47,25 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-  if (options.label_domain_scheduling_strategy_ == LabelDomainSchedulingStrategy::NONE) {
-    return ScheduleNodeLevel(resource_request_list, options, std::move(candidate_nodes));
-  }
-
-  // Tier 1: Get candidate label domains.
-  LabelDomainFilterResult filter_result = ScheduleLabelDomainLevel(
-      resource_request_list, options, std::move(candidate_nodes));
-  if (!filter_result.status.IsSuccess()) {
-    SchedulingResult fail;
-    fail.status = filter_result.status;
-    return fail;
-  }
-
-  // Tier 2: Try the node-level policy on each candidate domain.
-  bool all_infeasible = true;
-  for (LabelDomainCandidate &candidate : filter_result.candidates) {
-    SchedulingResult result = ScheduleNodeLevel(
-        resource_request_list, options, std::move(candidate.candidate_nodes));
-    if (result.status.IsSuccess()) {
-      result.selected_label_domain = std::make_pair(options.target_label_domain_.first,
-                                                    std::move(candidate.label_domain));
-      return result;
+  if (options.label_domain_scheduling_strategy_ != LabelDomainSchedulingStrategy::NONE) {
+    NodeScheduleFn node_schedule_fn =
+        [this](const std::vector<const ResourceRequest *> &reqs,
+               SchedulingOptions opts,
+               absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
+          opts.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::NONE;
+          return this->Schedule(reqs, std::move(opts), std::move(nodes));
+        };
+    switch (options.label_domain_scheduling_strategy_) {
+    case LabelDomainSchedulingStrategy::STRICT_PACK:
+      return label_domain_strict_pack_policy_.Schedule(
+          resource_request_list, options, std::move(candidate_nodes), node_schedule_fn);
+    default:
+      RAY_LOG(FATAL) << "Unsupported label domain scheduling strategy: "
+                     << static_cast<int>(options.label_domain_scheduling_strategy_);
     }
-    if (!result.status.IsInfeasible()) {
-      all_infeasible = false;
-    }
+    UNREACHABLE;
   }
 
-  RAY_LOG(DEBUG) << "All candidate label domains exhausted; scheduling "
-                 << (all_infeasible ? "infeasible." : "failed (retryable).");
-  return all_infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
-}
-
-LabelDomainFilterResult CompositeBundleSchedulingPolicy::ScheduleLabelDomainLevel(
-    const std::vector<const ResourceRequest *> &resource_request_list,
-    const SchedulingOptions &options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-  switch (options.label_domain_scheduling_strategy_) {
-  case LabelDomainSchedulingStrategy::STRICT_PACK:
-    return label_domain_strict_pack_policy_.FilterCandidateNodes(
-        resource_request_list, options, std::move(candidate_nodes));
-  default:
-    RAY_LOG(FATAL) << "Unsupported label domain scheduling strategy: "
-                   << static_cast<int>(options.label_domain_scheduling_strategy_);
-  }
-  UNREACHABLE;
-}
-
-SchedulingResult CompositeBundleSchedulingPolicy::ScheduleNodeLevel(
-    const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
   switch (options.scheduling_type_) {
   case SchedulingType::BUNDLE_PACK:
     return bundle_pack_policy_.Schedule(

@@ -81,36 +81,6 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
       absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
 
  private:
-  /**
-   * @brief Routes to the appropriate label-domain-level policy (tier 1) and
-   * returns candidate groups.
-   *
-   * @param resource_request_list The resource requirements for each bundle.
-   * @param options Scheduling options including the label domain key and optional
-   *   target label domain value.
-   * @param candidate_nodes All available candidate nodes.
-   * @return A LabelDomainFilterResult with feasible groups or an error status.
-   */
-  LabelDomainFilterResult ScheduleLabelDomainLevel(
-      const std::vector<const ResourceRequest *> &resource_request_list,
-      const SchedulingOptions &options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes);
-
-  /**
-   * @brief Routes to the appropriate node-level bundle policy (tier 2) based
-   * on scheduling_type_ and places bundles onto individual nodes.
-   *
-   * @param resource_request_list The resource requirements for each bundle.
-   * @param options Scheduling options including the scheduling type.
-   * @param candidate_nodes The candidate nodes (possibly pre-filtered by a
-   *   label-domain tier).
-   * @return A SchedulingResult with selected nodes or an error status.
-   */
-  SchedulingResult ScheduleNodeLevel(
-      const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes);
-
   BundlePackSchedulingPolicy bundle_pack_policy_;
   BundleSpreadSchedulingPolicy bundle_spread_policy_;
   BundleStrictSpreadSchedulingPolicy bundle_strict_spread_policy_;

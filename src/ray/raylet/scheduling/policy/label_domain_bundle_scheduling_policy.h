@@ -51,15 +51,18 @@ struct LabelDomainFilterResult {
  *
  * @details Label-domain scheduling partitions the cluster's candidate nodes
  * into groups by an arbitrary node label key (e.g. "ray.io/gpu-domain") and
- * selects which groups can feasibly host a placement group's bundles.
+ * selects which groups can feasibly host a placement group's bundles. It then
+ * delegates to a node-level scheduling policy to schedule the bundles within
+ * the selected groups.
  */
 class LabelDomainSchedulingPolicyInterface {
  public:
   virtual ~LabelDomainSchedulingPolicyInterface() = default;
 
   /**
-   * @brief Filters candidate nodes into label-domain groups and returns
-   * the feasible groups.
+   * @brief Partitions candidate nodes by label domain, then for each feasible
+   * domain invokes the node-level scheduling callback. Returns the first
+   * successful result.
    *
    * @param resource_request_list The resource/label requirements for each
    * bundle in the placement group.
@@ -67,13 +70,16 @@ class LabelDomainSchedulingPolicyInterface {
    *   If the label domain value is specified, scheduling is constrained to that specific
    * domain (bundle rescheduling).
    * @param candidate_nodes All available candidate nodes to consider.
+   * @param node_schedule_fn Callback that performs node-level bundle scheduling
+   *   on a set of candidate nodes.
    * @return A LabelDomainFilterResult with the feasible candidate groups, or
    *   an INFEASIBLE / FAILED status if no group qualifies.
    */
-  virtual LabelDomainFilterResult FilterCandidateNodes(
+  virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const SchedulingOptions &options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) = 0;
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes,
+      NodeScheduleFn node_schedule_fn) = 0;
 
  protected:
   /**
@@ -101,10 +107,11 @@ class LabelDomainSchedulingPolicyInterface {
 class LabelDomainStrictPackSchedulingPolicy
     : public LabelDomainSchedulingPolicyInterface {
  public:
-  LabelDomainFilterResult FilterCandidateNodes(
+  SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const SchedulingOptions &options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes,
+      NodeScheduleFn node_schedule_fn) override;
 };
 
 }  // namespace raylet_scheduling_policy

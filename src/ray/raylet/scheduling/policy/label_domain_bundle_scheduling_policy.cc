@@ -49,17 +49,19 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
   return true;
 }
 
-LabelDomainFilterResult LabelDomainStrictPackSchedulingPolicy::FilterCandidateNodes(
+SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const SchedulingOptions &options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
+    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes,
+    NodeScheduleFn node_schedule_fn) {
   RAY_CHECK(!resource_request_list.empty());
 
   const auto &label_key = options.target_label_domain_.first;
   RAY_CHECK(!label_key.empty());
 
   // If a target label domain value is specified (partial failure rescheduling),
-  // prune to only nodes in that domain and return as the sole candidate.
+  // prune to only nodes in that domain and use the node-level scheduling callback to
+  // schedule the bundles.
   if (!options.target_label_domain_.second.empty()) {
     const auto &target = options.target_label_domain_.second;
     for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
@@ -71,15 +73,15 @@ LabelDomainFilterResult LabelDomainStrictPackSchedulingPolicy::FilterCandidateNo
         ++it;
       }
     }
-    LabelDomainFilterResult result;
     if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
       RAY_LOG(DEBUG) << "Target label domain '" << target
                      << "' has insufficient resources; infeasible.";
-      result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::INFEASIBLE;
-    } else {
-      result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::SUCCESS;
-      result.candidates.push_back(
-          LabelDomainCandidate{target, std::move(candidate_nodes)});
+      return SchedulingResult::Infeasible();
+    }
+    SchedulingResult result =
+        node_schedule_fn(resource_request_list, options, std::move(candidate_nodes));
+    if (result.status.IsSuccess()) {
+      result.selected_label_domain = std::make_pair(label_key, std::string(target));
     }
     return result;
   }
@@ -98,27 +100,33 @@ LabelDomainFilterResult LabelDomainStrictPackSchedulingPolicy::FilterCandidateNo
   if (domain_groups.empty()) {
     RAY_LOG(DEBUG) << "No candidate nodes have a " << label_key
                    << " label; label domain scheduling infeasible.";
-    LabelDomainFilterResult result;
-    result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::INFEASIBLE;
-    return result;
+    return SchedulingResult::Infeasible();
   }
 
-  // Collect all domains that pass both feasibility checks.
-  LabelDomainFilterResult result;
+  // Try each feasible domain: call node-level scheduling and return on first success.
+  bool all_infeasible = true;
   for (auto &[domain_id, domain_nodes] : domain_groups) {
-    if (IsRequestFeasible(resource_request_list, domain_nodes)) {
-      result.candidates.push_back(
-          LabelDomainCandidate{domain_id, std::move(domain_nodes)});
+    if (!IsRequestFeasible(resource_request_list, domain_nodes)) {
+      continue;
+    }
+    SchedulingResult result =
+        node_schedule_fn(resource_request_list, options, std::move(domain_nodes));
+    if (result.status.IsSuccess()) {
+      result.selected_label_domain = std::make_pair(label_key, std::move(domain_id));
+      return result;
+    }
+    if (!result.status.IsInfeasible()) {
+      all_infeasible = false;
     }
   }
 
-  if (result.candidates.empty()) {
-    RAY_LOG(DEBUG) << "No label domain has sufficient total resources; infeasible.";
-    result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::INFEASIBLE;
+  if (all_infeasible) {
+    RAY_LOG(DEBUG) << "No label domain has sufficiental total resources; infeasible.";
+    return SchedulingResult::Infeasible();
   } else {
-    result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::SUCCESS;
+    RAY_LOG(DEBUG) << "No label domain has sufficient available resources; failed";
+    return SchedulingResult::Failed();
   }
-  return result;
 }
 
 }  // namespace raylet_scheduling_policy

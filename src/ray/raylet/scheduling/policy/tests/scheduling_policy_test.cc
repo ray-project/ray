@@ -731,26 +731,22 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  // FilterCandidateNodes should return SUCCESS with one candidate and the nodes in
-  // rack-1
   auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
   auto options = SchedulingOptions::BundlePack();
   options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
   options.target_label_domain_.first = kDomainLabelKey;
 
-  auto filter_result_1 = label_domain_policy.FilterCandidateNodes(
-      req_list, options, GetCandidateNodes(*cluster_resource_manager));
+  BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
+  NodeScheduleFn node_schedule_fn =
+      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
+                            SchedulingOptions opts,
+                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
+        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+      };
 
-  ASSERT_TRUE(filter_result_1.status.IsSuccess());
-  ASSERT_EQ(filter_result_1.candidates.size(), 1);
-  ASSERT_EQ(filter_result_1.candidates[0].label_domain, "rack-1");
-  ASSERT_EQ(filter_result_1.candidates[0].candidate_nodes.size(), 18);
-
-  // Schedule should return SUCCESS with one candidate that contains 15 of the 18 nodes in
-  // rack-1
-  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager);
-  auto result_1 =
-      composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
+  // Schedule should return SUCCESS with 15 nodes all from rack-1
+  auto result_1 = label_domain_policy.Schedule(
+      req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result_1.status.IsSuccess());
   ASSERT_TRUE(result_1.selected_label_domain.has_value());
@@ -774,16 +770,11 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // Schedule the remaining 3 bundles on the remaining nodes in rack-1
   std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
 
-  auto filter_result_2 = label_domain_policy.FilterCandidateNodes(
-      req_list_2, options, GetCandidateNodes(*cluster_resource_manager));
-
-  ASSERT_TRUE(filter_result_2.status.IsSuccess());
-  ASSERT_EQ(filter_result_2.candidates.size(), 1);
-  ASSERT_EQ(filter_result_2.candidates[0].label_domain, "rack-1");
-  ASSERT_EQ(filter_result_2.candidates[0].candidate_nodes.size(), 18);
-
-  auto result_2 = composite.Schedule(
-      req_list_2, options, GetCandidateNodes(*cluster_resource_manager));
+  auto result_2 =
+      label_domain_policy.Schedule(req_list_2,
+                                   options,
+                                   GetCandidateNodes(*cluster_resource_manager),
+                                   node_schedule_fn);
 
   ASSERT_TRUE(result_2.status.IsSuccess());
   ASSERT_TRUE(result_2.selected_label_domain.has_value());
@@ -836,15 +827,16 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
   options.target_label_domain_.first = kDomainLabelKey;
 
-  auto filter_result = label_domain_policy.FilterCandidateNodes(
-      req_list, options, GetCandidateNodes(*cluster_resource_manager));
+  BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
+  NodeScheduleFn node_schedule_fn =
+      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
+                            SchedulingOptions opts,
+                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
+        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+      };
 
-  ASSERT_TRUE(filter_result.status.IsInfeasible());
-  ASSERT_EQ(filter_result.candidates.size(), 0);
-
-  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager);
-  auto result =
-      composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
+  auto result = label_domain_policy.Schedule(
+      req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result.status.IsInfeasible());
   ASSERT_FALSE(result.selected_label_domain.has_value());

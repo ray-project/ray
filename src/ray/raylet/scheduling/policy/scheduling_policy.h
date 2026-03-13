@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -83,6 +84,11 @@ struct SchedulingResult {
   // The label domain selected during placement group scheduling.
   std::optional<std::pair<std::string, std::string>> selected_label_domain;
 };
+
+using NodeScheduleFn = std::function<SchedulingResult(
+    const std::vector<const ResourceRequest *> &,
+    SchedulingOptions,
+    absl::flat_hash_map<scheduling::NodeID, const Node *>)>;
 
 /// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
 /// resource requirement list as well as the scheduling options.
