@@ -559,29 +559,37 @@ class ParquetDatasource(Datasource):
 
         fragments = list(pa_dataset.get_fragments())
         filesystem = pa_dataset.filesystem
-
         pq_paths = [f.path for f in fragments]
 
-        instance._supports_distributed_reads = not _is_local_scheme(pq_paths)
-        if (
-            not instance._supports_distributed_reads
-            and ray.util.client.ray.is_connected()
-        ):
-            raise ValueError(
-                "Because you're using Ray Client, read tasks scheduled on the Ray "
-                "cluster can't access your local files. To fix this issue, store "
-                "files in cloud storage or a distributed filesystem like NFS."
-            )
+        if pq_paths:
+            instance._supports_distributed_reads = not _is_local_scheme(pq_paths)
+            if (
+                not instance._supports_distributed_reads
+                and ray.util.client.ray.is_connected()
+            ):
+                raise ValueError(
+                    "Because you're using Ray Client, read tasks scheduled on "
+                    "the Ray cluster can't access your local files. To fix "
+                    "this issue, store files in cloud storage or a distributed "
+                    "filesystem like NFS."
+                )
 
-        instance._local_scheduling = None
-        if not instance._supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+            instance._local_scheduling = None
+            if not instance._supports_distributed_reads:
+                from ray.util.scheduling_strategies import (
+                    NodeAffinitySchedulingStrategy,
+                )
 
-            instance._local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
-        infos = filesystem.get_file_info(pq_paths)
-        file_sizes = [info.size if info.size is not None else 0 for info in infos]
+                instance._local_scheduling = NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(), soft=False
+                )
+
+            infos = filesystem.get_file_info(pq_paths)
+            file_sizes = [info.size if info.size is not None else 0 for info in infos]
+        else:
+            instance._supports_distributed_reads = True
+            instance._local_scheduling = None
+            file_sizes = []
 
         instance._source_paths_ref = ray.put(pq_paths)
         instance._filesystem = filesystem
