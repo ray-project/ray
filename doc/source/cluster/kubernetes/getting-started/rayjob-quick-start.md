@@ -63,6 +63,7 @@ To understand the following content better, you should understand the difference
   * `submitterConfig` (Optional): Additional configurations for the submitter Kubernetes Job.
     * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter Job as failed. The default value is 2.
 * Automatic resource cleanup
+  * `preRunningDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Running` within `preRunningDeadlineSeconds` seconds, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
   * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
