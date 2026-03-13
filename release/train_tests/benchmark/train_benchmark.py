@@ -78,6 +78,12 @@ def main():
 
     dataset_creation_time = time.perf_counter() - start_time
 
+    resources_per_worker = {}
+    if benchmark_config.mock_gpu:
+        resources_per_worker["MOCK_GPU"] = 1
+    if benchmark_config.worker_cpus > 0:
+        resources_per_worker["CPU"] = benchmark_config.worker_cpus
+
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn_per_worker,
         train_loop_config={
@@ -87,7 +93,7 @@ def main():
         scaling_config=ray.train.ScalingConfig(
             num_workers=benchmark_config.num_workers,
             use_gpu=not benchmark_config.mock_gpu,
-            resources_per_worker={"MOCK_GPU": 1} if benchmark_config.mock_gpu else None,
+            resources_per_worker=resources_per_worker or None,
         ),
         run_config=ray.train.RunConfig(
             storage_path=f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/train_benchmark/",

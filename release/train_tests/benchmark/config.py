@@ -50,6 +50,7 @@ class RayDataConfig(DataLoaderConfig):
     enable_shard_locality: bool = True
     preserve_order: bool = False
     ray_data_pin_memory: bool = False
+    exclude_object_store_memory_gb: float = -1
 
 
 class TorchConfig(DataLoaderConfig):
@@ -68,6 +69,7 @@ class BenchmarkConfig(BaseModel):
     max_workers: int = 0
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
+    worker_cpus: float = -1
 
     # FailureConfig
     max_failures: int = 0

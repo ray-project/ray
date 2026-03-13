@@ -138,8 +138,18 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         return None
 
     def get_ray_data_config(self) -> ray.train.DataConfig:
+        dataloader_config = self.get_dataloader_config()
+        execution_options = None
+        if dataloader_config.exclude_object_store_memory_gb > 0:
+            execution_options = ray.data.ExecutionOptions(
+                exclude_resources=ray.data.ExecutionResources(
+                    object_store_memory=dataloader_config.exclude_object_store_memory_gb
+                    * 1024**3
+                ),
+            )
         return ray.train.DataConfig(
-            enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
+            enable_shard_locality=dataloader_config.enable_shard_locality,
+            execution_options=execution_options,
         )
 
     def get_train_dataloader(self):
