@@ -38,5 +38,4 @@ export type DataMetrics = {
   };
   progress: number;
   total: number;
-  queued_blocks: number;
 };

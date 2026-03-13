@@ -37,8 +37,7 @@ const columns = [
     label: "Queued Blocks",
     helpInfo: (
       <Typography>
-        Number of blocks currently queued in the operator's input queue,
-        waiting to be processed.
+        Number of blocks waiting in an input queue to be processed.
       </Typography>
     ),
   },
@@ -221,7 +220,9 @@ const DataRow = ({
         <StatusChip type="task" status={data.state} />
       </TableCell>
       <TableCell align="right">{data.ray_data_output_rows.max}</TableCell>
-      <TableCell align="right">{data.queued_blocks}</TableCell>
+      <TableCell align="right">
+        {isOperatorRow ? operatorMetrics.queued_blocks : ""}
+      </TableCell>
       <TableCell align="right">
         {memoryConverter(Number(data.ray_data_current_bytes.value))}/
         {memoryConverter(Number(data.ray_data_current_bytes.max))}
