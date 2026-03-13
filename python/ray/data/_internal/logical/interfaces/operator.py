@@ -15,6 +15,7 @@ class Operator:
     ):
         self._name = name
         self._input_dependencies = input_dependencies
+        self._output_dependencies: List["Operator"] = []
 
     @property
     def name(self) -> str:
@@ -38,6 +39,11 @@ class Operator:
             self, "_input_dependencies"
         ), "Operator.__init__() was not called."
         return self._input_dependencies
+
+    @property
+    def output_dependencies(self) -> List["Operator"]:
+        """List of operators that depend on the output of this operator."""
+        return self._output_dependencies
 
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
@@ -85,6 +91,11 @@ class Operator:
             target = self
 
         return transform(target)
+
+    def _wire_output_deps(self, input_dependencies: List["Operator"]) -> None:
+        """Wire this operator as an output dependency of each input operator."""
+        for input_op in input_dependencies:
+            input_op._output_dependencies.append(self)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}[{self._name}]"
