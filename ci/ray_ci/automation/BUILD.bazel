@@ -314,8 +314,8 @@ py_binary(
     srcs = ["get_contributors.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
+        "//release:github_client",
         ci_require("click"),
-        ci_require("pygithub"),
         ci_require("tqdm"),
     ],
 )

@@ -4,8 +4,9 @@ from collections import defaultdict
 from subprocess import check_output
 
 import click
-from github import Github
 from tqdm import tqdm
+
+from ray_release.github_client import GitHubClient
 
 
 def _find_pr_number(line: str) -> str:
@@ -94,9 +95,8 @@ def run(access_token, prev_release_commit, curr_release_commit):
     # Sort the PR numbers
     print("PR numbers", pr_numbers)
 
-    # Use Github API to fetch the
-    g = Github(access_token)
-    ray_repo = g.get_repo("ray-project/ray")
+    # Use Github API to fetch PR authors
+    ray_repo = GitHubClient(access_token).get_repo("ray-project/ray")
     logins = set()
     for num in tqdm(pr_numbers):
         try:
