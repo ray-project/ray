@@ -7,6 +7,7 @@ import ray
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter
 from ray._private.log import PlainRayHandler
+from ray.train.v2._internal.constants import LOG_LEVEL_ENV_VAR
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.util import get_module_name
 
@@ -175,6 +176,30 @@ class LoggingManager:
         }
 
     @staticmethod
+    def _resolve_log_level(
+        context: Union[TrainRunContext, TrainContext],
+    ) -> str:
+        """Resolve the log level from env var, RunConfig, or default.
+
+        Priority: env var > RunConfig > default "INFO"
+        """
+        env_level = os.environ.get(LOG_LEVEL_ENV_VAR)
+        if env_level:
+            return env_level.upper()
+
+        if isinstance(context, TrainContext):
+            run_config = context.train_run_context.get_run_config()
+        else:
+            run_config = context.get_run_config()
+
+        if run_config.log_level is not None:
+            if isinstance(run_config.log_level, int):
+                return logging.getLevelName(run_config.log_level)
+            return run_config.log_level.upper()
+
+        return "INFO"
+
+    @staticmethod
     def _get_controller_logger_config_dict(context: TrainRunContext) -> dict:
         """Return the controller logger configuration dictionary.
 
@@ -186,8 +211,9 @@ class LoggingManager:
         """
 
         config_dict = LoggingManager._get_base_logger_config_dict(context)
+        log_level = LoggingManager._resolve_log_level(context)
         config_dict["loggers"]["ray.train"] = {
-            "level": "INFO",
+            "level": log_level,
             "handlers": [
                 "file_train_sys_controller",
                 "file_train_app_controller",
@@ -217,13 +243,14 @@ class LoggingManager:
         """
 
         config_dict = LoggingManager._get_base_logger_config_dict(context)
+        log_level = LoggingManager._resolve_log_level(context)
         config_dict["loggers"]["ray.train"] = {
-            "level": "INFO",
+            "level": log_level,
             "handlers": ["file_train_sys_worker", "file_train_app_worker", "console"],
             "propagate": False,
         }
         config_dict["root"] = {
-            "level": "INFO",
+            "level": log_level,
             "handlers": ["file_train_app_worker", "console"],
         }
         return config_dict
