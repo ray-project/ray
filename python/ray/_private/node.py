@@ -33,6 +33,7 @@ from ray._private.services import get_address, serialize_config
 from ray._private.utils import (
     get_all_node_info_until_retrieved,
     is_in_test,
+    is_nfs_mount,
     open_log,
     try_to_symlink,
     validate_socket_filepath,
@@ -989,11 +990,18 @@ class Node:
             socket_path: the socket file to prepare.
         """
         result = socket_path
-        if sys.platform == "win32":
-            if socket_path is None:
-                result = (
-                    f"tcp://{build_address(self._localhost, self._get_unused_port())}"
-                )
+        # Use TCP sockets on Windows or when the sockets directory is on NFS.
+        # Unix domain sockets cannot be created on NFS mounts.
+        use_tcp = sys.platform == "win32" or (
+            socket_path is None and is_nfs_mount(self._sockets_dir)
+        )
+
+        if use_tcp:
+            result = f"tcp://{build_address(self._localhost, self._get_unused_port())}"
+            logger.info(
+                f"Using TCP socket {result} because Unix domain sockets "
+                "are not supported on this filesystem (NFS or Windows)."
+            )
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
