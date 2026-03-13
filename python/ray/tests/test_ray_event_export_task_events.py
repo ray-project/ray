@@ -11,7 +11,6 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
-from ray._private import ray_constants
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray._raylet import GcsClient
 
@@ -55,24 +54,41 @@ _cluster_with_aggregator_target = pytest.mark.parametrize(
 def wait_until_grpc_channel_ready(
     gcs_address: str, node_ids: list[str], timeout: int = 5
 ):
-    # get the grpc port
+    from ray import NodeID
+    from ray.core.generated import gcs_pb2
+
+    # get the grpc port from GcsNodeInfo
     gcs_client = GcsClient(address=gcs_address)
 
-    def get_dashboard_agent_address(node_id: str):
-        return gcs_client.internal_kv_get(
-            f"{ray.dashboard.consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+    def get_ports():
+        """Fetch all node info once and return ports for all requested nodes."""
+        node_info_dict = gcs_client.get_all_node_info(
             timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+            state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
         )
+        ports = []
+        for node_id_hex in node_ids:
+            node_id = NodeID.from_hex(node_id_hex)
+            if (
+                node_id not in node_info_dict
+                or node_info_dict[node_id].metrics_agent_port <= 0
+            ):
+                return None
+            ports.append(node_info_dict[node_id].metrics_agent_port)
+        return ports
 
-    wait_for_condition(
-        lambda: all(
-            get_dashboard_agent_address(node_id) is not None for node_id in node_ids
-        )
-    )
-    grpc_ports = [
-        json.loads(get_dashboard_agent_address(node_id))[2] for node_id in node_ids
-    ]
+    # Use nonlocal to avoid race condition between condition check and assignment
+    grpc_ports = None
+
+    def are_ports_ready():
+        nonlocal grpc_ports
+        ports = get_ports()
+        if ports is None:
+            return False
+        grpc_ports = ports
+        return True
+
+    wait_for_condition(are_ports_ready)
     targets = [f"127.0.0.1:{grpc_port}" for grpc_port in grpc_ports]
 
     # wait for the dashboard agent grpc port to be ready
