@@ -408,6 +408,16 @@ py_library(
 )
 
 py_library(
+    name = "github_client",
+    srcs = ["ray_release/github_client.py"],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__pkg__"],
+    deps = [
+        bk_require("requests"),
+    ],
+)
+
+py_library(
     name = "test",
     srcs = ["ray_release/test.py"],
     imports = ["."],
@@ -865,6 +875,22 @@ py_test(
     deps = [
         ":kuberay_util",
         bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_github_client",
+    size = "small",
+    srcs = ["ray_release/tests/test_github_client.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":github_client",
+        bk_require("pytest"),
+        bk_require("responses"),
     ],
 )
 
