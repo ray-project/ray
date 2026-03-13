@@ -24,6 +24,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
+#include "ray/common/memory_monitor_utils.h"
 
 namespace ray {
 
@@ -55,7 +56,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
              "kill even though memory usage is high. Other Ray processes (e.g. driver, "
              "raylet, dashboard agent, runtime environment agent, GCS server, "
              "API server, etc.) or other non-ray processes may be occupying most of "
-             "the memory."
+             "the memory.";
     }
     return workers_being_killed_;
   }
@@ -78,8 +79,8 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   int64_t max_idle_worker_used_memory = 0;
   for (const std::shared_ptr<WorkerInterface> &worker : workers) {
     if (worker->GetGrantedLeaseId().IsNil()) {
-      int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
-                                                      worker->GetProcess().GetId());
+      int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+          process_memory_snapshot, worker->GetProcess().GetId());
       if (used_memory > idle_worker_killing_memory_threshold_bytes_ &&
           used_memory > max_idle_worker_used_memory) {
         max_idle_worker_used_memory = used_memory;
@@ -193,8 +194,8 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
       if (worker_index > 0) {
         result << ", ";
       }
-      int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
-                                                      worker->GetProcess().GetId());
+      int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+          process_memory_snapshot, worker->GetProcess().GetId());
       const LeaseSpecification &lease_spec =
           worker->GetGrantedLease().GetLeaseSpecification();
       result << absl::StrFormat(

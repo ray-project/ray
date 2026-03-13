@@ -3165,7 +3165,8 @@ std::string NodeManager::CreateOomKillMessageDetails(
   std::vector<std::string> worker_details;
   for (const auto &[worker, should_retry] : workers_to_kill) {
     pid_t pid = worker->GetProcess().GetId();
-    int64_t used_bytes = GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
+    int64_t used_bytes =
+        MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
     std::string process_used_bytes_gb =
         absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
