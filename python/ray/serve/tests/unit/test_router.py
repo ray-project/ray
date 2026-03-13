@@ -324,6 +324,22 @@ class TestBroadcast:
                 timeout=0.1,
             )
 
+    async def test_skips_dead_replica_and_continues(self, setup_router):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+        fake_request_router.set_replica_to_return_on_retry(FakeReplica(r2_id))
+
+        results = await router.broadcast(dummy_request_metadata())
+        assert len(results) == 1
+        assert results[0]._replica_id == r2_id
+        assert r1_id in fake_request_router.dropped_replicas
+
 
 @pytest.mark.asyncio
 class TestAssignRequest:

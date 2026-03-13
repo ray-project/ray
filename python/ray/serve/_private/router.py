@@ -1066,7 +1066,23 @@ class AsyncioRouter:
                 ),
             )
             replica_pr.resolved = True
-            result = replica.try_send_request(replica_pr, with_rejection=False)
+            try:
+                result = replica.try_send_request(replica_pr, with_rejection=False)
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Skip this replica and continue broadcasting to healthy replicas.
+                self.request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                continue
+            except ActorUnavailableError:
+                # Replica is temporarily unavailable. Invalidate the cache entry
+                # and continue broadcasting to other replicas.
+                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
 
             # Proactively update the queue length cache.
             self.request_router.on_send_request(replica.replica_id)
@@ -1085,6 +1101,9 @@ class AsyncioRouter:
             result.add_done_callback(callback)
 
             results.append(result)
+
+        if not results:
+            raise DeploymentUnavailableError(self.deployment_id)
 
         return results
 
