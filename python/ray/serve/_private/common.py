@@ -616,6 +616,12 @@ class DeploymentStatusInfo:
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
 
         # If it's any other transition, ignore it.
         return self

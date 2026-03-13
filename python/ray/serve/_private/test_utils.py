@@ -282,7 +282,6 @@ class MockDeploymentActorWrapper:
         config,
         code_version: str,
         recovered_handle=None,
-        **kwargs,
     ):
         self._deployment_id = deployment_id
         self._config = config

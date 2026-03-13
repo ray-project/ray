@@ -2838,6 +2838,54 @@ class TestDeploymentActors:
             == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
         )
 
+    def test_deployment_actor_failed_handled_when_already_deploy_failed(
+        self, mock_deployment_state_manager
+    ):
+        """Repeated ticks with DEPLOYMENT_ACTOR_FAILED when already DEPLOY_FAILED.
+
+        When deployment is already in DEPLOY_FAILED (due to deployment actor
+        failure), check_curr_status hits deployment_actor_terminally_failed()
+        again on each tick. handle_transition must handle DEPLOYMENT_ACTOR_FAILED
+        in the DEPLOY_FAILED block to avoid returning None and crashing.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Reach DEPLOY_FAILED via deployment actor terminal failure
+        for _ in range(2):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(
+                "persistent error"
+            )
+            dsm.update()
+
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+
+        # Repeated ticks: deployment_actor_terminally_failed() stays True, so
+        # check_curr_status calls handle_transition(DEPLOYMENT_ACTOR_FAILED)
+        # while status is already DEPLOY_FAILED. Must not crash.
+        for _ in range(5):
+            dsm.update()
+            assert ds.curr_status_info is not None
+            assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+            )
+
     def test_no_deployment_actors_not_terminally_failed(
         self, mock_deployment_state_manager
     ):
