@@ -273,6 +273,57 @@ def test_apply_transform_no_change():
     assert b_transformed is b
     assert b_transformed.input_dependencies[0] is a
 
+def test_apply_transform_copy_isolates_output_dependencies():
+    """Test that _apply_transform isolates the copy's _output_dependencies list.
+
+    When copy.copy(self) creates a shallow copy, the new operator shares the
+    same _output_dependencies list object as the original. Without resetting it,
+    downstream references from the original operator leak into the copy,
+    causing stale cross-references between the old and new DAGs.
+
+    This is the specific scenario that PR #57887 does not handle: after a
+    shallow copy, the copy's _output_dependencies must be a fresh list so
+    that subsequent wiring only affects the new DAG.
+    """
+    from ray.data._internal.logical.interfaces.operator import Operator
+
+    # Build a chain: a -> b -> c
+    a = Operator("A", [])
+    b = Operator("B", [a])
+    c = Operator("C", [b])
+
+    # Manually wire output dependencies to simulate a fully-connected DAG
+    # (as would exist with PhysicalOperator or after previous transforms)
+    a._output_dependencies = [b]
+    b._output_dependencies = [c]
+
+    def transform_a(op: Operator) -> Operator:
+        """Replace A with A2, forcing b to be shallow-copied."""
+        if op.name == "A":
+            return Operator("A2", [])
+        return op
+
+    b_transformed = b._apply_transform(transform_a)
+
+    # b_transformed is a shallow copy of b. Without the fix
+    # (target._output_dependencies = []), b_transformed would share b's
+    # _output_dependencies list, meaning b_transformed._output_dependencies
+    # would still contain [c] -- a stale reference from the old DAG.
+    assert b_transformed is not b
+    assert b_transformed.name == "B"
+
+    # The copy's output_dependencies should be empty (no downstream has been
+    # wired to the copy yet), not carrying over [c] from the original.
+    assert c not in b_transformed._output_dependencies, (
+        "Shallow copy leaked original operator's output_dependencies into the "
+        "new DAG. The copy should start with a fresh _output_dependencies list."
+    )
+
+    # The transformed input (A2) should be properly wired to b_transformed
+    assert b_transformed.input_dependencies[0].name == "A2"
+    a2 = b_transformed.input_dependencies[0]
+    assert b_transformed in a2._output_dependencies
+
 
 if __name__ == "__main__":
     import sys
