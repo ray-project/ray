@@ -890,7 +890,7 @@ joblib==1.2.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
-joserfc==1.5.0
+joserfc==1.6.3
     # via moto
 jschema-to-python==1.2.3
     # via cfn-lint
