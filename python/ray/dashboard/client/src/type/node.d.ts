@@ -10,6 +10,7 @@ export type NodeDetail = {
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  gpuProfilingEnabled?: boolean; // Whether GPU/Kineto profiling daemon is running on this node
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {

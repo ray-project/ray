@@ -332,5 +332,141 @@ async def test_gpu_profile_success(
     assert output == str(dumped_trace_filepath.relative_to(tmp_path))
 
 
+def test_dynolog_available(tmp_path, mock_node_has_gpus, mock_dynolog_binaries):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    assert gpu_profiler.dynolog_available
+
+
+def test_dynolog_not_available(tmp_path, mock_node_has_gpus):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    assert not gpu_profiler.dynolog_available
+
+
+@pytest.mark.asyncio
+async def test_gpu_profile_no_params(
+    tmp_path, mock_node_has_gpus, mock_dynolog_binaries
+):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    success, output = await gpu_profiler.gpu_profile(pid=123)
+    assert not success
+    assert "Exactly one of num_iterations or duration_ms must be provided" in output
+
+
+@pytest.mark.asyncio
+async def test_gpu_profile_both_params(
+    tmp_path, mock_node_has_gpus, mock_dynolog_binaries
+):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    success, output = await gpu_profiler.gpu_profile(
+        pid=123, num_iterations=4, duration_ms=5000
+    )
+    assert not success
+    assert "Exactly one of num_iterations or duration_ms must be provided" in output
+
+
+@pytest.mark.asyncio
+async def test_gpu_profile_invalid_num_iterations(
+    tmp_path,
+    mock_node_has_gpus,
+    mock_dynolog_binaries,
+    mock_subprocess_popen,
+):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    gpu_profiler.start_monitoring_daemon()
+
+    _, mocked_proc = mock_subprocess_popen
+    mocked_proc.pid = 123
+    mocked_proc.poll.return_value = None
+
+    success, output = await gpu_profiler.gpu_profile(pid=456, num_iterations=0)
+    assert not success
+    assert "Invalid num_iterations=0" in output
+
+    success, output = await gpu_profiler.gpu_profile(pid=456, num_iterations=101)
+    assert not success
+    assert "Invalid num_iterations=101" in output
+
+
+@pytest.mark.asyncio
+async def test_gpu_profile_invalid_duration_ms(
+    tmp_path,
+    mock_node_has_gpus,
+    mock_dynolog_binaries,
+    mock_subprocess_popen,
+):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    gpu_profiler.start_monitoring_daemon()
+
+    _, mocked_proc = mock_subprocess_popen
+    mocked_proc.pid = 123
+    mocked_proc.poll.return_value = None
+
+    success, output = await gpu_profiler.gpu_profile(pid=456, duration_ms=0)
+    assert not success
+    assert "Invalid duration_ms=0" in output
+
+    success, output = await gpu_profiler.gpu_profile(pid=456, duration_ms=300_001)
+    assert not success
+    assert "Invalid duration_ms=300001" in output
+
+
+@pytest.mark.asyncio
+async def test_gpu_profile_success_with_duration_ms(
+    tmp_path,
+    monkeypatch,
+    mock_node_has_gpus,
+    mock_dynolog_binaries,
+    mock_subprocess_popen,
+    mock_asyncio_create_subprocess_exec,
+):
+    gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
+    gpu_profiler.start_monitoring_daemon()
+
+    # Mock the daemon process
+    _, mocked_daemon_proc = mock_subprocess_popen
+    mocked_daemon_proc.pid = 123
+    mocked_daemon_proc.poll.return_value = None
+
+    monkeypatch.setattr(GpuProfilingManager, "is_pid_alive", lambda cls, pid: True)
+    monkeypatch.setattr(
+        GpuProfilingManager, "_get_trace_filename", lambda cls: "dummy_trace.json"
+    )
+    dumped_trace_filepath = gpu_profiler._profile_dir_path / "dummy_trace.json"
+    dumped_trace_filepath.touch()
+
+    # Mock the asyncio.create_subprocess_exec
+    (
+        mocked_create_subprocess_exec,
+        mocked_async_proc,
+    ) = mock_asyncio_create_subprocess_exec
+    process_pid = 456
+    duration_ms = 10000
+    success, output = await gpu_profiler.gpu_profile(
+        pid=process_pid, duration_ms=duration_ms
+    )
+
+    # Verify the command was launched correctly
+    assert mocked_create_subprocess_exec.call_count == 1
+    profile_launch_args = list(mocked_create_subprocess_exec.call_args[0])
+    assert profile_launch_args[:6] == [
+        "/usr/bin/fake_dyno",
+        "--port",
+        str(gpu_profiler._DYNOLOG_PORT),
+        "gputrace",
+        "--pids",
+        str(process_pid),
+    ]
+
+    # Should use --duration-ms instead of --iterations
+    assert "--duration-ms" in profile_launch_args
+    assert profile_launch_args[profile_launch_args.index("--duration-ms") + 1] == str(
+        duration_ms
+    )
+    assert "--iterations" not in profile_launch_args
+
+    assert success
+    assert output == str(dumped_trace_filepath.relative_to(tmp_path))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

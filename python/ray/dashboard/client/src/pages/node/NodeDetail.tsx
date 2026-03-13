@@ -216,6 +216,7 @@ const NodeDetailPage = () => {
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
                 actorMap={nodeDetail?.actors}
+                gpuProfilingEnabled={nodeDetail?.gpuProfilingEnabled}
               />
             </TableContainer>
           </React.Fragment>
