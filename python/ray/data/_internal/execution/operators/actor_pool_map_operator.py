@@ -1320,12 +1320,12 @@ class _ActorPool(AutoscalingActorPool):
             # on the worker process before the actor exits. Fire-and-forget: the
             # test (or user code) can wait_for_condition on side effects.
             #
-            # max_retries=0: __ray_terminate__ always exits the actor intentionally
+            # max_task_retries=0: __ray_terminate__ always exits the actor intentionally
             # (IntentionalSystemExit), which Ray Core treats as a task failure.
             # Without this, the actor's max_task_retries=-1 would cause Ray Core
             # to log a noisy "Task failed, infinite retries remaining" warning for
             # every gracefully-terminated actor.
-            actor.__ray_terminate__.options(max_retries=0).remote()
+            actor.__ray_terminate__.options(max_task_retries=0).remote()
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
