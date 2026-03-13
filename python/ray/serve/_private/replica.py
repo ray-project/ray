@@ -393,8 +393,14 @@ class ReplicaMetricsManager:
             self._event_loop.create_task(self._report_cached_metrics_forever())
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
-            "serve_replica_processing_queries",
+            "serve_replica_num_ongoing_requests",
             description="The current number of queries being processed.",
+        )
+
+        # Deprecated: Will be removed in Ray 3.0.
+        self._num_ongoing_requests_gauge_deprecated = metrics.Gauge(
+            "serve_replica_processing_queries",
+            description="(Deprecated, use serve_replica_num_ongoing_requests)",
         )
 
         self.record_autoscaling_stats_failed_counter = metrics.Counter(
@@ -564,6 +570,7 @@ class ReplicaMetricsManager:
         self._cached_latencies.clear()
 
         self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+        self._num_ongoing_requests_gauge_deprecated.set(self._num_ongoing_requests)
 
         if not self._is_direct_ingress:
             return
@@ -726,6 +733,7 @@ class ReplicaMetricsManager:
 
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+            self._num_ongoing_requests_gauge_deprecated.set(self._num_ongoing_requests)
 
             if self._is_direct_ingress and request_metadata.is_direct_ingress:
                 if request_metadata.is_http_request:
@@ -741,6 +749,7 @@ class ReplicaMetricsManager:
 
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+            self._num_ongoing_requests_gauge_deprecated.set(self._num_ongoing_requests)
 
             if self._is_direct_ingress and request_metadata.is_direct_ingress:
                 if request_metadata.is_http_request:
