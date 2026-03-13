@@ -13,7 +13,6 @@ describe("DataOverview", () => {
         state: "RUNNING",
         progress: 50,
         total: 100,
-        queued_blocks: 5,
         start_time: 0,
         end_time: undefined,
         ray_data_output_rows: {
@@ -69,7 +68,6 @@ describe("DataOverview", () => {
         state: "FINISHED",
         progress: 200,
         total: 200,
-        queued_blocks: 0,
         start_time: 1,
         end_time: 2,
         ray_data_output_rows: {
@@ -111,6 +109,8 @@ describe("DataOverview", () => {
     expect(screen.queryByText("test_ds1_op")).toBeNull();
     await user.click(screen.getByTitle("Expand Dataset test_ds1"));
     expect(screen.getByText("test_ds1_op")).toBeVisible();
+    // Verify queued_blocks is rendered for operator row
+    expect(screen.getByText("3")).toBeVisible();
     await user.click(screen.getByTitle("Collapse Dataset test_ds1"));
     expect(screen.queryByText("test_ds1_op")).toBeNull();
 
