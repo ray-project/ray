@@ -727,9 +727,6 @@ def test_join_with_predicate_pushdown(
     else:
         filtered_ds = joined.filter(expr=col("right_val") < 1000)
 
-    # Verify correctness by computing expected result with pandas
-    from ray.data._internal.util import rows_same
-
     left_pd = left_ds.to_pandas()
     right_pd = right_ds.to_pandas()
 
@@ -866,7 +863,7 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     returns a (0 rows, 0 columns) table.  The downstream join then fails with
     ColumnNotFoundError because the join key column is absent.
 
-    We bypass the first join entirely and use ray.data.from_arrow() to build a
+    We bypass the first join entirely and use ray.data.from_blocks() to build a
     dataset whose very first block is an explicit zero-row Arrow table that
     carries the full column schema.  With num_partitions=20 and only 10 data
     rows the second join has at least 10 aggregator partitions that receive no
@@ -881,7 +878,7 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     #   - block 0: explicitly empty (0 rows) but carries the full schema
     #   - blocks 1-10: one row each, with b_val populated for id >= 5
     #
-    # Using from_arrow with a list preserves block order, so the empty block
+    # from_blocks() preserves block order and count exactly, so the empty block
     # is guaranteed to be the first block the second join's shuffle sees.
     schema = pa.schema(
         [
@@ -904,7 +901,8 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     ]
 
     # The first block must be the empty one so the bug fires.
-    joined_1 = ray.data.from_arrow([empty_block] + data_blocks)
+    # from_blocks guarantees block order and count are preserved as-is.
+    joined_1 = ray.data.from_blocks([empty_block] + data_blocks)
 
     # Second dataset for the chained join
     ds_c = ray.data.from_arrow(
@@ -925,7 +923,7 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
         num_partitions=20,
     )
 
-    result = joined_2.to_pandas().sort_values("id").reset_index(drop=True)
+    result = joined_2.to_pandas()
 
     expected = pd.DataFrame(
         {
@@ -936,11 +934,7 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
         }
     )
 
-    pd.testing.assert_frame_equal(
-        result[sorted(result.columns)],
-        expected[sorted(expected.columns)],
-        check_dtype=False,
-    )
+    assert rows_same(result, expected)
 
 
 if __name__ == "__main__":
