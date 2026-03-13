@@ -4371,7 +4371,7 @@ class Algorithm(Checkpointable, Trainable):
             return
 
         # Add parameters, if necessary.
-        if "EpisodeReplayBuffer" in config["replay_buffer_config"]["type"]:
+        if "EpisodeReplayBuffer" in str(config["replay_buffer_config"]["type"]):
             # TODO (simon): Subclassing needs a proper class and therefore
             # we need at this moment the string checking. Because we add
             # this keyword argument the old stack ReplayBuffer constructors
