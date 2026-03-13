@@ -3825,7 +3825,34 @@ def from_tf(
     Returns:
         A :class:`MaterializedDataset` that contains the samples stored in the `TensorFlow Dataset`_.
     """  # noqa: E501
-    # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
+    try:
+        import tensorflow as tf
+    except ImportError:
+        tf = None
+
+    if tf is not None:
+
+        def _contains_ragged_or_sparse(spec) -> bool:
+            return any(
+                isinstance(s, (tf.RaggedTensorSpec, tf.SparseTensorSpec))
+                for s in tf.nest.flatten(spec)
+            )
+
+        def _to_numpy_or_list(value):
+            if isinstance(value, tf.RaggedTensor):
+                return value.to_list()
+            if isinstance(value, tf.SparseTensor):
+                return tf.sparse.to_dense(value).numpy()
+            if tf.is_tensor(value):
+                return value.numpy()
+            return value
+
+        if _contains_ragged_or_sparse(dataset.element_spec):
+            items = [
+                tf.nest.map_structure(_to_numpy_or_list, element) for element in dataset
+            ]
+            return from_items(items)
+
     return from_items(list(dataset.as_numpy_iterator()))
 
 

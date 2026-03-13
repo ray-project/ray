@@ -34,5 +34,18 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     _check_usage_record(["FromItems"])
 
 
+def test_from_tf_ragged(ray_start_regular_shared_2_cpus):
+    import tensorflow as tf
+
+    tf_dataset = tf.data.Dataset.from_tensor_slices(tf.ragged.constant([[1, 2], [3]]))
+
+    ray_dataset = ray.data.from_tf(tf_dataset)
+
+    assert ray_dataset.take_all() == [
+        {"item": [1, 2]},
+        {"item": [3]},
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
