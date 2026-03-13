@@ -205,7 +205,7 @@ By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to r
 
 When HAProxy mode is enabled:
 - An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
-- Each replica opens a direct ingress port, and HAProxy routes traffic directly to replicas — replacing the Python proxy entirely.
+- Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely.
 - Live traffic flows through the HAProxy subprocess, not through any Python actor.
 
 #### Prerequisites
@@ -214,7 +214,7 @@ HAProxy must be installed and available on `$PATH` as `haproxy` on every node th
 
 #### Enabling HAProxy
 
-Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes **before** starting Ray:
+Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes before starting Ray:
 
 ```bash
 export RAY_SERVE_ENABLE_HA_PROXY=1
@@ -250,10 +250,11 @@ ray start --head  # or ray start --address=<head-ip>:6379 on workers
 
 ::::
 
-#### Installing HAProxy manually
+#### Installing HAProxy manually (example)
 
-If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. The following steps are for Ubuntu/Debian — adapt them to your OS:
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
 
+The following steps are for Ubuntu/Debian:
 ```bash
 # Install build dependencies
 apt-get update -y && apt-get install -y --no-install-recommends \
