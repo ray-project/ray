@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import Dict, List
 
 import ray
-from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup, placement_group_table
 
 
@@ -38,7 +37,6 @@ def _sort_bundle_indices_by_node(
     return result
 
 
-@PublicAPI
 def get_bundle_indices_sorted_by_node(
     pg: PlacementGroup,
 ) -> List[int]:
