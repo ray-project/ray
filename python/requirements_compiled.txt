@@ -1478,7 +1478,7 @@ pexpect==4.8.0
     #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==10.4.0 ; platform_system != "Windows"
+pillow==12.1.1 ; platform_system != "Windows"
     # via
     #   -r python/requirements/test-requirements.txt
     #   aim
