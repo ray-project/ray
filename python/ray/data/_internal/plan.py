@@ -481,7 +481,6 @@ class ExecutionPlan:
                 )
         if self._cache.get_bundle(self._logical_plan.dag) is None:
             from ray.data._internal.execution.legacy_compat import (
-                _get_initial_stats_from_plan,
                 execute_to_ref_bundle,
             )
 
@@ -492,7 +491,7 @@ class ExecutionPlan:
                 # If the data is already materialized (e.g., `from_pandas`), we can
                 # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
-                stats = _get_initial_stats_from_plan(self)
+                stats = self.initial_stats()
 
                 # TODO(@bveeramani): Make `ExecutionPlan.execute()` return
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
@@ -585,6 +584,20 @@ class ExecutionPlan:
         if not self._cache.get_stats():
             return DatasetStats(metadata={}, parent=None)
         return self._cache.get_stats()
+
+    def initial_stats(self) -> DatasetStats:
+        if self.has_computed_output():
+            return self._cache.get_stats()
+        # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
+        # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+        # the initial stats. Because the `FromXxx` logical operators will be translated to
+        # "InputDataBuffer" physical operators, which will be ignored when generating
+        # stats, see `StreamingExecutor._generate_stats`.
+        # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+        if self.has_lazy_input():
+            return DatasetStats(metadata={}, parent=None)
+        else:
+            return self._in_stats
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
