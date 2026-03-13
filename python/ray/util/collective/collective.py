@@ -17,9 +17,6 @@ from ray.util.collective.backend_registry import (
     get_backend_registry as _get_backend_registry,
     register_collective_backend,
 )
-from ray.util.collective.collective_group.torch_gloo_collective_group import (
-    get_master_address_metadata_key as _get_master_addr_key,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +30,7 @@ except ImportError:
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
+        get_master_address_metadata_key as _get_master_addr_key,
     )
 
     register_collective_backend("GLOO", TorchGLOOGroup)
