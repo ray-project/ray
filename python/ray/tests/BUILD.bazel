@@ -581,6 +581,22 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "medium",
+    files = [
+        "test_util_collective_gloo.py",
+        "test_util_collective_nccl.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "small",
     files = [
         "test_channel_serialization.py",

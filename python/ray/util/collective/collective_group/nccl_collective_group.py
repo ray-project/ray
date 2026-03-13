@@ -1,6 +1,7 @@
 import datetime
 import logging
 import time
+from typing import Any, List, Union
 
 import cupy
 import torch
@@ -41,7 +42,7 @@ class Rendezvous:
             for more details.
     """
 
-    def __init__(self, store_key):
+    def __init__(self, store_key: str) -> None:
         if not store_key:
             raise ValueError(
                 "Invalid store_key. The store_key is a concatenation of "
@@ -52,13 +53,13 @@ class Rendezvous:
         self._store_name = None
         self._store = None
 
-    def meet(self, timeout_s=180):
+    def meet(self, timeout_s: int = 180) -> None:
         """Meet at the named actor store.
 
         Args:
             timeout_s: timeout in seconds.
 
-        Return:
+        Returns:
             None
         """
         if timeout_s <= 0:
@@ -81,7 +82,7 @@ class Rendezvous:
                     "Failed to meet at the store '{}'."
                     "Trying again...".format(self._store_name)
                 )
-                time.sleep(1)
+                time.sleep(0.1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
             logger.debug("Successful rendezvous!")
@@ -95,16 +96,16 @@ class Rendezvous:
             )
 
     @property
-    def store(self):
+    def store(self) -> ray.actor.ActorHandle:
         return self._store
 
-    def get_nccl_id(self, timeout_s=180):
+    def get_nccl_id(self, timeout_s: int = 180) -> str:
         """Get the NCCLUniqueID from the store through Ray.
 
         Args:
             timeout_s: timeout in seconds.
 
-        Return:
+        Returns:
             uid: the NCCLUniqueID if successful.
         """
         if not self._store:
@@ -118,10 +119,11 @@ class Rendezvous:
         return uid
 
 
-class NCCLGroup(BaseGroup):
+# TODO(tianyi): remove it when multigpu is deprecated
+class MultiGPUNCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
-        super(NCCLGroup, self).__init__(world_size, rank, group_name)
+        super(MultiGPUNCCLGroup, self).__init__(world_size, rank, group_name)
 
         # communicator and stream cache.
         # TODO (Hao): we need a lock here...
@@ -159,13 +161,17 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = None
         self._dev_comm_map = None
         self._dev_streams_map = None
-        super(NCCLGroup, self).destroy_group()
+        super(MultiGPUNCCLGroup, self).destroy_group()
 
     @classmethod
     def backend(cls):
         return Backend.NCCL
 
-    def allreduce(self, tensors, allreduce_options=AllReduceOptions()):
+    def allreduce(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        allreduce_options: AllReduceOptions = AllReduceOptions(),
+    ) -> None:
         """AllReduce tensors across the collective group following options.
 
         Args:
@@ -189,7 +195,7 @@ class NCCLGroup(BaseGroup):
 
         self._collective(tensors, tensors, collective_fn)
 
-    def barrier(self, barrier_options=BarrierOptions()):
+    def barrier(self, barrier_options: BarrierOptions = BarrierOptions()) -> None:
         """Blocks until all processes reach this barrier.
 
         Args:
@@ -209,7 +215,11 @@ class NCCLGroup(BaseGroup):
                 barrier_tensors[i] = cupy.array([1])
         self.allreduce(barrier_tensors)
 
-    def reduce(self, tensors, reduce_options=ReduceOptions()):
+    def reduce(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        reduce_options: ReduceOptions = ReduceOptions(),
+    ) -> None:
         """Reduce tensors to a destination gpu following options.
 
         Args:
@@ -235,7 +245,11 @@ class NCCLGroup(BaseGroup):
 
         self._collective(tensors, tensors, collective_fn)
 
-    def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
+    def broadcast(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        broadcast_options: BroadcastOptions = BroadcastOptions(),
+    ) -> None:
         """Broadcast tensors to all other gpus following options.
 
         Args:
@@ -261,11 +275,16 @@ class NCCLGroup(BaseGroup):
 
         self._collective(tensors, tensors, collective_fn)
 
-    def allgather(self, tensor_lists, tensors, allgather_options=AllGatherOptions()):
+    def allgather(
+        self,
+        tensor_lists: List[List[Union[cupy.ndarray, torch.Tensor]]],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        allgather_options: AllGatherOptions = AllGatherOptions(),
+    ) -> None:
         """Allgather tensors across gpus into a list of tensors.
 
         Args:
-            tensor_lists (List[List[Tensor]]): allgathered tensors.
+            tensor_lists: allgathered tensors.
             tensors: the list of tensors to allgather across the group.
                      Each tensor must lolcate on a GPU of the process.
             allgather_options: allgather options.
@@ -300,15 +319,17 @@ class NCCLGroup(BaseGroup):
         )
 
     def reducescatter(
-        self, tensors, tensor_lists, reducescatter_options=ReduceScatterOptions()
-    ):
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        tensor_lists: List[List[Union[cupy.ndarray, torch.Tensor]]],
+        reducescatter_options: ReduceScatterOptions = ReduceScatterOptions(),
+    ) -> None:
         """Reduce then scatter a list of tensors across the group.
 
         Args:
-            tensors: the output tensors (could be unspecified), each
-                            located on a GPU of the current process.
-            tensor_lists (List[List]): the list of tensors to be reduced then
-                                       scattered.
+            tensors: the output tensors (could be unspecified), each located on a GPU of
+                     the current process.
+            tensor_lists: the list of tensors to be reduced then scattered.
             reducescatter_options: reduce-scatter options.
 
         Returns:
@@ -340,7 +361,11 @@ class NCCLGroup(BaseGroup):
             input_flattened, tensors, collective_fn, preprocess_fn=preprocess_fn
         )
 
-    def send(self, tensors, send_options=SendOptions()):
+    def send(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        send_options: SendOptions = SendOptions(),
+    ) -> None:
         """Send a tensor to a destination gpu in the group.
 
         Args:
@@ -366,7 +391,11 @@ class NCCLGroup(BaseGroup):
             tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
         )
 
-    def recv(self, tensors, recv_options=RecvOptions()):
+    def recv(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        recv_options: RecvOptions = RecvOptions(),
+    ) -> None:
         """Receive a tensor from a source gpu in the group.
 
         Args:
@@ -392,7 +421,9 @@ class NCCLGroup(BaseGroup):
             tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
         )
 
-    def _get_nccl_collective_communicator(self, comm_key, device_list):
+    def _get_nccl_collective_communicator(
+        self, comm_key: str, device_list: List[int]
+    ) -> List[nccl_util.NcclCommunicator]:
         """Create or retrieve an NCCL communicator from cache.
 
         If the communicator is found in cache, return the communicator. If not,
@@ -458,7 +489,13 @@ class NCCLGroup(BaseGroup):
                     events[i].record(cupy.cuda.get_current_stream())
                     streams[i].wait_event(events[i])
 
-    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank, peer_gpu_idx):
+    def _get_nccl_p2p_communicator(
+        self,
+        comm_key: str,
+        my_gpu_idx: int,
+        peer_rank: int,
+        peer_gpu_idx: int,
+    ) -> List[Any]:
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Note(Hao): this function is not thread-safe now.
@@ -531,7 +568,7 @@ class NCCLGroup(BaseGroup):
         return comm_key + "@" + self.group_name
 
     @staticmethod
-    def _destroy_store(group_key):
+    def _destroy_store(group_key: str) -> None:
         """Destroy the KV store (Ray named actor).
 
         Args:
@@ -545,7 +582,7 @@ class NCCLGroup(BaseGroup):
         # ray.get([store.__ray_terminate__.remote()])
         ray.kill(store)
 
-    def _generate_nccl_uid(self, key):
+    def _generate_nccl_uid(self, key: str) -> str:
         """Generate an NCCL unique ID for initializing communicators.
 
         The method will also create a KV store using Ray named actor and store
@@ -556,7 +593,7 @@ class NCCLGroup(BaseGroup):
             key: the key of the .
 
         Returns:
-            NCCLUniqueID (str): NCCL unique ID.
+            NCCLUniqueID: NCCL unique ID.
         """
         group_uid = nccl_util.get_nccl_unique_id()
         store_name = get_store_name(key)
@@ -571,12 +608,12 @@ class NCCLGroup(BaseGroup):
 
     def _collective(
         self,
-        input_tensors,
-        output_tensors,
-        collective_fn,
-        preprocess_fn=None,
-        postprocess_fn=None,
-    ):
+        input_tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        output_tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        collective_fn: Any,
+        preprocess_fn: Any = None,
+        postprocess_fn: Any = None,
+    ) -> None:
         """A method to encapsulate all collective calls.
 
         Args:
@@ -619,7 +656,13 @@ class NCCLGroup(BaseGroup):
         if postprocess_fn:
             postprocess_fn(streams)
 
-    def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_gpu_idx: int):
+    def _point2point(
+        self,
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        p2p_fn: Any,
+        peer_rank: int,
+        peer_gpu_idx: int,
+    ) -> None:
         """A method to encapsulate all peer-to-peer calls (i.e., send/recv).
 
         Args:
@@ -663,7 +706,9 @@ class NCCLGroup(BaseGroup):
             tensor.record_stream(torch_stream)
 
 
-def _flatten_for_scatter_gather(tensor_list, copy=False):
+def _flatten_for_scatter_gather(
+    tensor_list: List[Union[cupy.ndarray, torch.Tensor]], copy: bool = False
+) -> Union[cupy.ndarray, torch.Tensor]:
     """Flatten the tensor for gather/scatter operations.
 
     Args:
@@ -751,6 +796,7 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
                 )
 
 
+# TODO(tianyi): remove it when multigpu is deprecated
 def _check_gpu_tensors(tensors):
     """Check all tensors are distributed on different GPUs."""
     if not tensors or not isinstance(tensors, list):
@@ -789,7 +835,8 @@ def _check_gpu_tensors(tensors):
             raise RuntimeError("Tensor must be on distinct GPUs.")
 
 
-def _get_comm_key_from_devices(devices):
+# TODO(tianyi): remove it when multigpu is deprecated
+def _get_comm_key_from_devices(devices: List[int]) -> str:
     """Return a key from a list of devices for collective calls.
 
     For example, if the tensors are on gpus 0, 1, 2, 3,
@@ -805,7 +852,10 @@ def _get_comm_key_from_devices(devices):
     return ",".join([str(d) for d in devices])
 
 
-def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
+# TODO(tianyi): remove it when multigpu is deprecated
+def _get_comm_key_send_recv(
+    my_rank: int, my_gpu_idx: int, peer_rank: int, peer_gpu_idx: int
+) -> str:
     """Return a key given source and destination ranks for p2p tasks.
 
     The p2p key is in the following form:
@@ -834,3 +884,339 @@ def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
         )
     comm_key = lower_key + ":" + higher_key
     return comm_key
+
+
+class NCCLGroup(BaseGroup):
+    def __init__(self, world_size: int, rank: int, group_name: str) -> None:
+        """
+        Init an NCCL collective group. It creates one NCCL communicator and bind to one device.
+        The communication will be performed on a dedicated stream. If the tensors are on
+        different devices, the API will raise an error.
+
+        NCCLGroup ensures the synchronization safety between current stream and the dedicated
+        communication stream. If the tensors being involved in a collective are also being
+        modified on a stream other than current stream, undefined behaviors may happen.
+        """
+        super(NCCLGroup, self).__init__(world_size, rank, group_name)
+
+        if nccl_util.get_nccl_build_version() < 2000:
+            raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
+
+        # record the current device id. raise if failed to get device id
+        try:
+            self._device = cupy.cuda.get_device_id()
+        except cupy.cuda.runtime.CUDARuntimeError as e:
+            logger.error("Failed to create nccl group without device: {}".format(e))
+            raise
+
+        # initialize communicator via rendezvous (rank 0 generates and stores NCCLUniqueID).
+        if self.rank == 0:
+            nccl_uid = self._generate_nccl_uid(self.group_name)
+        else:
+            rendezvous = Rendezvous(self.group_name)
+            rendezvous.meet()
+            nccl_uid = rendezvous.get_nccl_id()
+        with nccl_util.Device(self._device):
+            # create a new non-blocking stream for collective and p2p
+            self._stream = cupy.cuda.Stream(null=False, non_blocking=True)
+            self._comm = nccl_util.create_nccl_communicator(
+                self.world_size, nccl_uid, self.rank
+            )
+
+        self._barrier_tensor = None
+
+    def destroy_group(self) -> None:
+        """Destroy the group and release NCCL communicator."""
+        if self._comm is not None:
+            self._comm.destroy()
+            self._comm = None
+
+        # Destroy rendezvous store from rank 0
+        if self.rank == 0:
+            self._destroy_store(self.group_name)
+
+        self._barrier_tensor = None
+        super(NCCLGroup, self).destroy_group()
+
+    @classmethod
+    def backend(cls) -> Backend:
+        return Backend.NCCL
+
+    def allreduce(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        allreduce_options: AllReduceOptions = AllReduceOptions(),
+    ) -> None:
+        """AllReduce a single tensor across the collective group following options."""
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allReduce(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp),
+                stream.ptr,
+            )
+
+        self._collective(tensor, tensor, collective_fn)
+
+    def barrier(self, barrier_options: BarrierOptions = BarrierOptions()) -> None:
+        """Blocks until all processes reach this barrier."""
+        # Create a small tensor on the default or current device and allreduce it.
+        self._barrier_tensor = cupy.array([1])
+        self.allreduce(self._barrier_tensor)
+
+    def reduce(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        reduce_options: ReduceOptions = ReduceOptions(),
+    ) -> None:
+        """Reduce a single tensor to a destination rank following options."""
+        root_rank = reduce_options.root_rank
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduce(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                nccl_util.get_nccl_reduce_op(reduce_options.reduceOp),
+                root_rank,
+                stream.ptr,
+            )
+
+        self._collective(tensor, tensor, collective_fn)
+
+    def broadcast(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        broadcast_options: BroadcastOptions = BroadcastOptions(),
+    ) -> None:
+        """Broadcast a single tensor to all ranks following options."""
+        root_rank = broadcast_options.root_rank
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.broadcast(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                root_rank,
+                stream.ptr,
+            )
+
+        self._collective(tensor, tensor, collective_fn)
+
+    def allgather(
+        self,
+        output_tensor_list: List[Union[cupy.ndarray, torch.Tensor]],
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        allgather_options: AllGatherOptions = AllGatherOptions(),
+    ) -> None:
+        """Allgather a single tensor across ranks into output list (single device per rank)."""
+        # Flatten the output list into a buffer using the same backend as tensor.
+        output_buffer = _flatten_for_scatter_gather(output_tensor_list, copy=False)
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allGather(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                stream.ptr,
+            )
+
+        def postprocess_fn():
+            # Copy back to each slot in output list.
+            for i, t in enumerate(output_tensor_list):
+                nccl_util.copy_tensor(t, output_buffer[i])
+
+        _check_inputs_compatibility_for_scatter_gather([tensor], [output_tensor_list])
+        self._collective(
+            tensor, output_buffer, collective_fn, postprocess_fn=postprocess_fn
+        )
+
+    def reducescatter(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        input_tensor_list: List[Union[cupy.ndarray, torch.Tensor]],
+        reducescatter_options: ReduceScatterOptions = ReduceScatterOptions(),
+    ) -> None:
+        """Reduce then scatter a list into a single output tensor for this rank."""
+        input_buffer = _flatten_for_scatter_gather(input_tensor_list, copy=False)
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduceScatter(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(output_tensor),
+                nccl_util.get_nccl_tensor_dtype(output_tensor),
+                nccl_util.get_nccl_reduce_op(reducescatter_options.reduceOp),
+                stream.ptr,
+            )
+
+        def preprocess_fn():
+            # Copy list tensors into contiguous input buffer.
+            for i, t in enumerate(input_tensor_list):
+                nccl_util.copy_tensor(input_buffer[i], t)
+
+        _check_inputs_compatibility_for_scatter_gather([tensor], [input_tensor_list])
+        self._collective(
+            input_buffer, tensor, collective_fn, preprocess_fn=preprocess_fn
+        )
+
+    def send(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        send_options: SendOptions = SendOptions(),
+    ) -> None:
+        """Send a single tensor to a destination rank in the group."""
+
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError(
+                "P2p send/recv requires NCCL >= 2.7.4. "
+                f"Got '{nccl_util.get_nccl_runtime_version()}'."
+            )
+
+        def p2p_fn(t, comm, stream, peer):
+            comm.send(
+                nccl_util.get_tensor_ptr(t),
+                send_options.n_elements
+                if send_options.n_elements > 0
+                else nccl_util.get_tensor_n_elements(t),
+                nccl_util.get_nccl_tensor_dtype(t),
+                peer,
+                stream.ptr,
+            )
+
+        self._point2point(tensor, p2p_fn, send_options.dst_rank)
+
+    def recv(
+        self,
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        recv_options: RecvOptions = RecvOptions(),
+    ) -> None:
+        """Receive a single tensor from a source rank in the group."""
+
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError(
+                "P2p send/recv requires NCCL >= 2.7.4. "
+                f"Got '{nccl_util.get_nccl_runtime_version()}'."
+            )
+
+        def p2p_fn(t, comm, stream, peer):
+            comm.recv(
+                nccl_util.get_tensor_ptr(t),
+                recv_options.n_elements
+                if recv_options.n_elements > 0
+                else nccl_util.get_tensor_n_elements(t),
+                nccl_util.get_nccl_tensor_dtype(t),
+                peer,
+                stream.ptr,
+            )
+
+        self._point2point(tensor, p2p_fn, recv_options.src_rank)
+
+    def _sync_stream_before_communication(self) -> None:
+        """Let communication stream wait for current stream for the device."""
+        with nccl_util.Device(self._device):
+            evt = cupy.cuda.Event()
+            evt.record(cupy.cuda.get_current_stream())
+            self._stream.wait_event(evt)
+
+    def _sync_stream_after_communication(self) -> None:
+        """Let current stream wait for communication stream for the device."""
+        with nccl_util.Device(self._device):
+            evt = cupy.cuda.Event()
+            evt.record(self._stream)
+            cupy.cuda.get_current_stream().wait_event(evt)
+
+    @staticmethod
+    def _destroy_store(group_key: str) -> None:
+        """Destroy the KV store (Ray named actor).
+
+        Args:
+            group_key: the unique key to retrieve the KV store.
+
+        Returns:
+            None
+        """
+        store_name = get_store_name(group_key)
+        store = ray.get_actor(store_name)
+        ray.kill(store)
+
+    def _generate_nccl_uid(self, key: str) -> str:
+        """Generate an NCCL unique ID for initializing communicators.
+
+        The method will also create a KV store using Ray named actor and store
+        the NCCLUniqueID in the store. The store needs to be garbage collected
+        when destroying the collective group.
+
+        Args:
+            key: the key of the group.
+
+        Returns:
+            NCCLUniqueID: NCCL unique ID.
+        """
+        group_uid = nccl_util.get_nccl_unique_id()
+        store_name = get_store_name(key)
+        # Avoid a potential circular dependency in ray/actor.py
+        from ray.util.collective.util import NCCLUniqueIDStore
+
+        store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(
+            store_name
+        )
+        ray.get([store.set_id.remote(group_uid)])
+        return group_uid
+
+    def _check_gpu_tensor_on_current_device(
+        self, tensor: Union[cupy.ndarray, torch.Tensor]
+    ) -> None:
+        """Check the tensor is on GPU and on the current device."""
+        tensor_device = nccl_util.get_tensor_device(tensor)
+        if tensor_device != self._device:
+            raise RuntimeError(
+                "Tensor is on GPU {}, but the current device is GPU {}. "
+                "Please make sure the tensor is on the current device.".format(
+                    tensor_device, self._device
+                )
+            )
+
+    def _collective(
+        self,
+        input_tensor: Union[cupy.ndarray, torch.Tensor],
+        output_tensor: Union[cupy.ndarray, torch.Tensor],
+        collective_fn: Any,
+        preprocess_fn: Any = None,
+        postprocess_fn: Any = None,
+    ) -> None:
+        """Encapsulate a single-tensor collective call."""
+        # Check input/output tensors are on GPU and on the current device.
+        self._check_gpu_tensor_on_current_device(input_tensor)
+        self._check_gpu_tensor_on_current_device(output_tensor)
+
+        if preprocess_fn:
+            preprocess_fn()
+
+        self._sync_stream_before_communication()
+        collective_fn(input_tensor, output_tensor, self._comm, self._stream)
+        # record the stream to avoid tensor being freed in another stream before
+        # the collective is completed.
+        self._sync_stream_after_communication()
+
+        if postprocess_fn:
+            postprocess_fn()
+
+    def _point2point(
+        self, tensor: Union[cupy.ndarray, torch.Tensor], p2p_fn: Any, peer_rank: int
+    ) -> None:
+        """Encapsulate a single-tensor peer-to-peer call (send/recv)."""
+        self._check_gpu_tensor_on_current_device(tensor)
+        self._sync_stream_before_communication()
+        p2p_fn(tensor, self._comm, self._stream, peer_rank)
+        # record the stream to avoid tensor being freed in another stream before
+        # the send/recv is completed.
+        self._sync_stream_after_communication()
