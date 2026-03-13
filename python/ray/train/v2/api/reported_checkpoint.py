@@ -8,8 +8,9 @@ if TYPE_CHECKING:
     from ray.train import Checkpoint
 
 
+@PublicAPI(stability="alpha")
 class ReportedCheckpointStatus(Enum):
-    """Reported Checkpoint status.
+    """ReportedCheckpoint status enum.
 
     * COMMITTED: The checkpoint is saved, and no validation was requested.
     * PENDING_VALIDATION: The checkpoint is saved, and validation is in progress.
