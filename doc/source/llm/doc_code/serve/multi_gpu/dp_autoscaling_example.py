@@ -35,22 +35,29 @@ def _testing_build_dp_openai_app(builder_config, **kwargs):
 serve.run = _non_blocking_serve_run
 llm.build_dp_openai_app = _testing_build_dp_openai_app
 
-# __dp_basic_example_start__
+
 from ray import serve
 from ray.serve.llm import LLMConfig, build_dp_openai_app
 
-# Configure the model with data parallel settings
+# __dp_autoscaling_example_start__
 config = LLMConfig(
     model_loading_config={
         "model_id": "microsoft/Phi-tiny-MoE-instruct"
     },
     deployment_config={
-        "num_replicas": 2
+        "num_replicas": "auto",
+        "autoscaling_config": {
+            "min_replicas": 1,  # Min number of DP groups
+            "max_replicas": 2,  # Max number of DP groups
+            "initial_replicas": 1,  # Initial number of DP groups
+            # Other Ray Serve autoscaling knobs still apply
+            "upscale_delay_s": 0.1,
+            "downscale_delay_s": 2,
+        },
     },
     engine_kwargs={
         "data_parallel_size": 2,  # Number of DP replicas
         "tensor_parallel_size": 1,  # TP size per replica
-        # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
@@ -59,9 +66,9 @@ config = LLMConfig(
 app = build_dp_openai_app({
     "llm_config": config
 })
+# __dp_autoscaling_example_end__
 
 serve.run(app, blocking=True)
-# __dp_basic_example_end__
 
 status = ApplicationStatus.NOT_STARTED
 timeout_seconds = 300
