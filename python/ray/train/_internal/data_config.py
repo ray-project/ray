@@ -157,7 +157,7 @@ class DataConfig:
 
     @staticmethod
     def _is_v2_autoscaler() -> bool:
-        """Check if the V2 cluster autoscaler is active."""
+        """Check if Ray Data is set to use the V2 cluster autoscaler."""
         from ray.data._internal.cluster_autoscaler import (
             CLUSTER_AUTOSCALER_ENV_KEY,
             DEFAULT_CLUSTER_AUTOSCALER_VERSION,

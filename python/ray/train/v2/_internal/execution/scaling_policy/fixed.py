@@ -30,7 +30,7 @@ class FixedScalingPolicy(ScalingPolicy):
     def __init__(self, scaling_config):
         super().__init__(scaling_config)
         self._requester_id = "train-" + uuid.uuid4().hex
-        self._latest_autoscaling_request_time = 0.0
+        self._latest_autoscaling_request_time = float("-inf")
 
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         return ResizeDecision(
