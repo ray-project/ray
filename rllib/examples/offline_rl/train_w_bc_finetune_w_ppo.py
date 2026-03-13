@@ -90,6 +90,7 @@ from ray.rllib.examples.utils import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -193,11 +194,7 @@ if __name__ == "__main__":
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
     # Define the data paths for our CartPole large dataset.
-    base_path = Path(__file__).parents[2]
-    assert base_path.is_dir(), base_path
-    data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
-    assert data_path.is_dir(), data_path
-    print(f"data_path={data_path}")
+    data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
     # Define the BC config.
     base_config = (
@@ -208,7 +205,7 @@ if __name__ == "__main__":
         # configured. The read method needs at least as many blocks
         # as remote learners.
         .offline_data(
-            input_=[data_path.as_posix()],
+            input_=[data_path],
             # Define the number of reading blocks, these should be larger than 1
             # and aligned with the data size.
             input_read_method_kwargs={

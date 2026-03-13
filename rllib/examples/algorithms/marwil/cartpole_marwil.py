@@ -1,11 +1,11 @@
 import warnings
-from pathlib import Path
 
 from ray.rllib.algorithms.marwil import MARWILConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -22,12 +22,8 @@ assert (
     args.env == "CartPole-v1" or args.env is None
 ), "This tuned example works only with `CartPole-v1`."
 
-# Define the data paths.
-data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-base_path = Path(__file__).parents[3]
-print(f"base_path={base_path}")
-data_path = "local://" / base_path / data_path
-print(f"data_path={data_path}")
+# Define the data path.
+data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
 # Define the MARWIL config.
 config = (
@@ -47,7 +43,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[data_path],
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.

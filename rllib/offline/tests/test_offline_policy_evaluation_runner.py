@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 import gymnasium as gym
 
@@ -9,6 +8,7 @@ from ray.rllib.core import ALL_MODULES, DEFAULT_MODULE_ID
 from ray.rllib.offline.offline_policy_evaluation_runner import (
     OfflinePolicyEvaluationRunner,
 )
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     DATASET_NUM_ITERS_EVALUATED,
     DATASET_NUM_ITERS_EVALUATED_LIFETIME,
@@ -29,9 +29,8 @@ from ray.rllib.utils.typing import ResultDict
 
 class TestOfflineEvaluationRunner(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        self.base_path = Path(__file__).parents[2]
-        self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        self.data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
+
         # Assign the observation and action spaces.
         env = gym.make("CartPole-v1")
         self.observation_space = env.observation_space

@@ -1,11 +1,10 @@
-from pathlib import Path
-
 from ray.rllib.algorithms.iql.iql import IQLConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -22,12 +21,8 @@ assert (
     args.env == "Pendulum-v1" or args.env is None
 ), "This tuned example works only with `Pendulum-v1`."
 
-# Define the data paths.
-data_path = "offline/tests/data/pendulum/pendulum-v1_enormous"
-base_path = Path(__file__).parents[3]
-print(f"base_path={base_path}")
-data_path = "local://" / base_path / data_path
-print(f"data_path={data_path}")
+# Define the data path.
+data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "pendulum/"
 
 # Define the IQL config.
 config = (
@@ -45,7 +40,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[data_path],
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.

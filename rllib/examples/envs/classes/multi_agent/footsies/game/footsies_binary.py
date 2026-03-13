@@ -16,6 +16,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+from ray.rllib.utils.env_vars import RLLIB_FOOTSIES_BINARIES_URL
 from ray.util import log_once
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BinaryUrls:
     # Uploaded 07.28.2025
-    S3_ROOT = "https://ray-example-data.s3.us-west-2.amazonaws.com/rllib/env-footsies/binaries/"
+    S3_ROOT = RLLIB_FOOTSIES_BINARIES_URL
 
     # Zip file names
     ZIP_LINUX_SERVER = "footsies_linux_server_021725.zip"
