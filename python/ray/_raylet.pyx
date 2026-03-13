@@ -27,10 +27,12 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    GenericAlias,
     Optional,
     Tuple,
     Union,
     NamedTuple,
+    TypedDict
 )
 
 import contextvars
@@ -291,6 +293,17 @@ async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
 async_task_function_name = contextvars.ContextVar('async_task_function_name',                                                  default=None)
 
+class LocationPtrDict(TypedDict):
+    node_ids: list[str]
+    object_size: int
+    did_spill: bool
+
+class RefCountDict(TypedDict):
+    local: int
+    submitted: int
+
+class FallbackStrategyDict(TypedDict,total=False):
+    label_selector: Dict[str,str]
 
 # Update the type names of the extension type so they are
 # ray.{ObjectRef, ObjectRefGenerator} instead of ray._raylet.*

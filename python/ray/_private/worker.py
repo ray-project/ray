@@ -84,6 +84,7 @@ from ray._private.runtime_env.setup_hook import (
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.utils import get_ray_doc_version
 from ray._raylet import (
+    CoreWorker,
     ObjectRefGenerator,
     TaskID,
     WorkerID,
@@ -451,6 +452,8 @@ class Worker:
         node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE or WORKER_MODE.
     """
+
+    core_worker: CoreWorker
 
     def __init__(self):
         """Initialize a Worker object."""
