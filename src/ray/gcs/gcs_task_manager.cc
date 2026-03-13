@@ -522,6 +522,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
+  Status status = Status::OK();
   const auto &filters = request.filters();
 
   absl::flat_hash_set<TaskID> equal_task_ids;
@@ -543,7 +544,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     if (actor_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
       const auto &actor_id_binary = actor_filter_obj.actor_id();
       if (!actor_id_binary.empty() && actor_id_binary.size() != ActorID::Size()) {
-        throw std::invalid_argument("Invalid actor id size");
+        status = Status::InvalidArgument("Invalid actor id size");
+        reply->Clear();
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        return;
       }
       equal_actor_ids.insert(ActorID::FromBinary(actor_id_binary));
     }
@@ -808,7 +812,6 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   };
 
   int64_t num_filtered = 0;
-  Status status = Status::OK();
   try {
     for (auto &task_event : task_events | boost::adaptors::reversed) {
       if (!filter_fn(task_event)) {
