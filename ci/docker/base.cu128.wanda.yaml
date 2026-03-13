@@ -13,5 +13,6 @@ build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
   - BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
+  - CUDA_VERSION=12.8.1
 tags:
   - cr.ray.io/rayproject/oss-ci-base_cu128-py$PYTHON
