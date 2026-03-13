@@ -56,6 +56,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger("ray.rllib")
@@ -283,8 +284,25 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         eps = 0
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
+        reset_required = (
+            force_reset or num_episodes is not None or self._needs_initial_reset
+        )
+
+        if (
+            self._cached_to_module is None
+            and self.module is not None
+            and not reset_required
+        ):
+            # Cached module connector outputs can be none if a connector fails.
+            # self._cached_to_module is always None if the module is None.
+            if log_once("sample_error_reset_envs"):
+                logger.warning(
+                    "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
+                )
+            reset_required = True
+
         # Have to reset the env (on all vector sub_envs).
-        if force_reset or num_episodes is not None or self._needs_initial_reset:
+        if reset_required:
             ts = 0
             self._reset_envs_and_episodes(explore)
 

@@ -59,6 +59,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 torch, _ = try_import_torch()
@@ -286,8 +287,25 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         agent_ts = 0
         eps = 0
 
+        reset_required = (
+            force_reset or num_episodes is not None or self._needs_initial_reset
+        )
+
+        if (
+            self._cached_to_module is None
+            and self.module is not None
+            and not reset_required
+        ):
+            # Cached module connector outputs can be none if a connector fails.
+            # self._cached_to_module is always None if the module is None.
+            if log_once("sample_error_reset_envs"):
+                logger.warning(
+                    "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
+                )
+            reset_required = True
+
         # Have to reset the env (on all vector sub_envs).
-        if force_reset or num_episodes is not None or self._needs_initial_reset:
+        if reset_required:
             env_ts = 0
             agent_ts = 0
             self._reset_envs_and_episodes(explore)
