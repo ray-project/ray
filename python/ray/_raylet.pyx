@@ -2215,8 +2215,25 @@ cdef execute_task_with_cancellation_handler(
                 ray._private.utils.reset_visible_accelerator_env_vars(original_visible_accelerator_env_vars)
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
-                os.environ.pop("OMP_NUM_THREADS", None)
-
+                try:
+                    os.environ.pop("OMP_NUM_THREADS", None)
+                except KeyError:
+                    # os.environ is not thread-safe. A race condition can occur if multiple
+                    # threads attempt to modify it simultaneously. Specifically, if two
+                    # threads call pop() on the same key at the same time, one may
+                    # succeed in deleting the key, while the other encounters a
+                    # KeyError. To handle this, we catch the KeyError and verify that
+                    # the environment variable has been removed.
+                    # See: https://github.com/python/cpython/issues/120513
+                    logger.warning(
+                        "KeyError occurred when popping OMP_NUM_THREADS from "
+                        "os.environ, a possible race condition might have happened. "
+                        "Checking if the env var is already cleaned up and moving on."
+                    )
+                    if os.environ.get("OMP_NUM_THREADS", None) is not None:
+                        logger.error(
+                            "Something wrong happened, OMP_NUM_THREADS still remains in os.environ"
+                        )
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
