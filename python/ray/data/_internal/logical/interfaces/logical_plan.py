@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from .logical_operator import LogicalOperator
 from .plan import Plan
@@ -29,3 +29,25 @@ class LogicalPlan(Plan):
         for op in self._dag.input_dependencies:
             sources.extend(LogicalPlan(op, self._context).sources())
         return sources
+
+    def has_lazy_input(self) -> bool:
+        """Return whether this plan has lazy input blocks."""
+        from ray.data._internal.logical.operators import Read
+
+        return all(isinstance(op, Read) for op in self.sources())
+
+    def require_preserve_order(self) -> bool:
+        """Whether this plan requires to preserve order."""
+        from ray.data._internal.logical.operators import Zip
+
+        return any(isinstance(op, Zip) for op in self.dag.post_order_iter())
+
+    def input_files(self) -> Optional[List[str]]:
+        """Get the input files of the dataset, if available."""
+        return self.dag.infer_metadata().input_files
+
+    def initial_num_blocks(self) -> Optional[int]:
+        """Get the estimated number of blocks from the logical plan
+        after applying execution plan optimizations, but prior to
+        fully executing the dataset."""
+        return self.dag.estimated_num_outputs()
