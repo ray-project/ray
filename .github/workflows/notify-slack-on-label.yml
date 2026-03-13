@@ -2,9 +2,9 @@ name: Notify Slack on Labeled Issue or PR
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
   pull_request:
-    types: [opened, labeled]
+    types: [labeled]
 
 jobs:
   notify:
