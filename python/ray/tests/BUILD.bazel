@@ -746,6 +746,22 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_autoscaler.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "large",
+    files = [
         "test_symmetric_run.py",
     ],
     tags = [
