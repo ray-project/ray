@@ -559,9 +559,17 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
                 torch.tensor([4, 5]).to("cuda"),
             ]
             set_target_for_ref(refs[0], wrong_tensor_buffer)
-            with pytest.raises(ValueError) as excinfo:
+            # Shape mismatch may raise ValueError (from validate_tensor_buffers)
+            # or RayDirectTransportError wrapping nixlInvalidParamError (NIXL ≥1.0
+            # rejects mismatched buffer lengths before Python validation runs).
+            with pytest.raises(Exception) as excinfo:
                 ray.get(refs[0])
-            assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
+            err_str = str(excinfo.value)
+            assert (
+                "Shape of tensor_buffer at index 0" in err_str
+                or "INVALID_PARAM" in err_str
+                or "length mismatch" in err_str
+            ), f"Unexpected error: {err_str}"
             return True
 
     actors = [GPUTestActor.remote() for _ in range(2)]
