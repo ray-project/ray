@@ -83,8 +83,19 @@ class LoggingSubProgressBar(BaseProgressBar):
 
 
 class LoggingExecutionProgressManager(BaseExecutionProgressManager):
-    """Execution progress display for non-tty situations, preventing
-    spamming of progress reporting."""
+    """
+    Execution progress display for non-tty situations, preventing
+    spamming of progress reporting.
+
+    Args:
+        dataset_id: id of Dataset
+        topology: operation topology built via `build_streaming_topology`
+        show_op_progress: whether to show individual operator progress
+            (only for non-AllToAll by default).
+        verbose_progress: whether to show individual operator progress for
+            non-AllToAll operators as well.
+        _get_time: callable returning the current time as a float (used for testing purposes only).
+    """
 
     # Refer to following issues for more context about this feature:
     # https://github.com/ray-project/ray/issues/60083
