@@ -64,10 +64,6 @@ ray start --head --labels-files='./test-labels-file'
 # "test-label-2": "test-value-2"
 ```
 
-```{note} 
-You can't set labels using `ray.init()`. Local Ray clusters don't support labels.
-```
-
 (label-selectors)=
 ## Specify label selectors
 
