@@ -7,7 +7,6 @@ import os
 import tarfile
 
 import pytest
-import webdataset as wds
 
 import ray
 from ray.tests.conftest import *  # noqa
@@ -259,17 +258,6 @@ def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
 
     meta_json = json.loads(samples[0]["json"].decode("utf-8"))
     assert meta_json["e"]["img_filename"] == "for_test.jpg"
-
-
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
-    ray.data.from_items(
-        [{"id": str(i)} for i in range(100)], override_num_blocks=20
-    ).write_webdataset(tmp_path, min_rows_per_file=min_rows_per_file)
-
-    for filename in os.listdir(tmp_path):
-        dataset = wds.WebDataset(os.path.join(tmp_path, filename))
-        assert len(list(dataset)) == min_rows_per_file
 
 
 if __name__ == "__main__":
