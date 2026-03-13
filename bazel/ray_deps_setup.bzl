@@ -114,14 +114,15 @@ def ray_deps_setup():
     # https://github.com/ray-project/ray/issues/14117
     # This is copied from grpc's bazel/grpc_deps.bzl
     #
-    # Pinned grpc version: v23.4
+    # Pinned protobuf version: v28.2
     auto_http_archive(
         name = "com_google_protobuf",
-        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
+        sha256 = "b2340aa47faf7ef10a0328190319d3f3bee1b24f426d4ce8f4253b6f27ce16db",
+        url = "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v28.2.tar.gz",
         patches = [
-            "@com_github_grpc_grpc//third_party:protobuf.patch",
-            "//thirdparty/patches:protobuf-bazel7.patch",
+            # Adds namespace package support to protobuf's Python __init__.py.
+            # Based on grpc's third_party/protobuf.patch but updated for v28.2.
+            "//thirdparty/patches:protobuf-namespace-package.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -295,12 +296,10 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
-    #
-    # TODO(owner): Upgrade abseil to latest version after protobuf updated, which requires to upgrade `rules_cc` first.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
+        sha256 = "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
@@ -321,22 +320,33 @@ def ray_deps_setup():
         ],
     )
 
+    # Pre-declare zlib before grpc so that grpc_deps()'s
+    # native.existing_rules() check skips it and we can apply the fdopen
+    # patch (macOS zutil.h defines fdopen to NULL). This replaces the old
+    # grpc-zlib-fdopen.patch that patched grpc_deps.bzl directly.
+    auto_http_archive(
+        name = "zlib",
+        build_file = "@com_github_grpc_grpc//third_party:zlib.BUILD",
+        sha256 = "18337cdb32562003c39d9f7322b9a166ad4abfb2b909566428e11f96d2385586",
+        strip_prefix = "zlib-09155eaa2f9270dc4ed1fa13e2b4b2613e6e4851",
+        url = "https://github.com/madler/zlib/archive/09155eaa2f9270dc4ed1fa13e2b4b2613e6e4851.tar.gz",
+        patches = [
+            "//thirdparty/patches:zlib-fdopen.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.58.0.tar.gz",
-        sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.68.2.tar.gz",
+        sha256 = "afbc5d78d6ba6d509cc6e264de0d49dcd7304db435cbf2d630385bacf49e066c",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
-            # Work around bazelbuild/bazel#21592: with layering_check and
-            # non-sandbox/local spawn, clang can record transitive *.cppmap files
-            # in .d files, which Bazel then reports as undeclared direct deps.
-            # Fixed in Bazel 7.3.0. LLVM used the same workaround by disabling
-            # layering_check in Bazel overlays (llvm/llvm-project@5bba176).
-            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
-            "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
+            # cf_event_engine on macOS includes absl/status/status.h without declaring the dep.
+            "@io_ray//thirdparty/patches:grpc-cf-event-engine-missing-dep.patch",
         ],
     )
 
@@ -378,8 +388,8 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",
-        url = "https://github.com/google/boringssl/archive/2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b.tar.gz",
+        sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
+        url = "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
     )
 
     # The protobuf version we use to auto generate python and java code.

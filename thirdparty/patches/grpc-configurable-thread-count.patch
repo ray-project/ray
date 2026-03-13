@@ -1,16 +1,16 @@
-diff --git src/core/lib/gpr/linux/cpu.cc b/src/core/lib/gpr/linux/cpu.cc
+diff --git src/core/util/linux/cpu.cc b/core/util/linux/cpu.cc
 index 670ca6551c..043021dc4a 100644
---- src/core/lib/gpr/linux/cpu.cc
-+++ src/core/lib/gpr/linux/cpu.cc
+--- src/core/util/linux/cpu.cc
++++ src/core/util/linux/cpu.cc
 @@ -24,6 +24,7 @@
- 
+
  #ifdef GPR_CPU_LINUX
- 
+
 +#include <charconv>
  #include <errno.h>
- #include <sched.h>
- #include <string.h>
-@@ -49,7 +50,17 @@ static void init_num_cpus() {
+ #include <grpc/support/cpu.h>
+ #include <grpc/support/sync.h>
+@@ -47,7 +48,17 @@ static void init_num_cpus() {
  #endif
    // This must be signed. sysconf returns -1 when the number cannot be
    // determined
@@ -27,5 +27,5 @@ index 670ca6551c..043021dc4a 100644
 +      ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
 +  }
    if (ncpus < 1) {
-     gpr_log(GPR_ERROR, "Cannot determine number of CPUs: assuming 1");
+     LOG(ERROR) << "Cannot determine number of CPUs: assuming 1";
      ncpus = 1;
