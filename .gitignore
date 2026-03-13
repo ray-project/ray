@@ -247,3 +247,6 @@ tag-mapping.json
 
 # Claude files
 /.claude/
+
+# Cursor files
+/.cursor/
