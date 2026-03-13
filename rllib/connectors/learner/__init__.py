@@ -23,6 +23,9 @@ from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
     AddOneTsToEpisodesAndTruncate,
 )
 from ray.rllib.connectors.learner.compute_returns_to_go import ComputeReturnsToGo
+from ray.rllib.connectors.learner.episode_id_deduplication import (
+    EpisodeIdDeduplication,
+)
 from ray.rllib.connectors.learner.general_advantage_estimation import (
     GeneralAdvantageEstimation,
 )
@@ -32,6 +35,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
 
 __all__ = [
     "AddColumnsFromEpisodesToTrainBatch",
+    "EpisodeIdDeduplication",
     "AddInfosFromEpisodesToTrainBatch",
     "AddNextObservationsFromEpisodesToTrainBatch",
     "AddObservationsFromEpisodesToBatch",

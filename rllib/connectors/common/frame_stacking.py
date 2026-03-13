@@ -39,6 +39,7 @@ class FrameStacking(ConnectorV2):
         num_frames: int = 1,
         multi_agent: bool = False,
         as_learner_connector: bool = False,
+        used_together_with_gae: bool = True,
         **kwargs,
     ):
         """Initializes a FrameStackingConnector instance.
@@ -50,6 +51,9 @@ class FrameStacking(ConnectorV2):
                 observation space mapping AgentIDs to individual agents' observations.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to an env-to-module pipeline.
+            used_together_with_gae: Whether this connector is used together with the GAE connector.
+                This is important, because the GAE connector expects the bootstrap observation to be stacked,
+                so we need to stack it here. You can disable this
         """
         super().__init__(
             input_observation_space=input_observation_space,
@@ -60,6 +64,7 @@ class FrameStacking(ConnectorV2):
         self._multi_agent = multi_agent
         self.num_frames = num_frames
         self._as_learner_connector = as_learner_connector
+        self._used_together_with_gae = used_together_with_gae
 
     @override(ConnectorV2)
     def __call__(
@@ -72,6 +77,14 @@ class FrameStacking(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
+        if self._used_together_with_gae:
+            assert (
+                shared_data is not None
+            ), "Shared data is required when used together with GAE"
+            assert (
+                "stacked_bootstrap_obs" not in shared_data
+            ), "Stacked bootstrap observation already exists in shared data, can not be added."
+            shared_data["stacked_bootstrap_obs"] = {}
         # Learner connector pipeline. Episodes have been numpy'ized.
         if self._as_learner_connector:
             for sa_episode in self.single_agent_episode_iterator(
@@ -79,20 +92,14 @@ class FrameStacking(ConnectorV2):
             ):
 
                 def _map_fn(s, _sa_episode=sa_episode):
-                    # Squeeze out last dim.
+                    # (N, H, W, 1) → (N, H, W) → (T, H, W, num_frames)
                     s = np.squeeze(s, axis=-1)
-                    # Calculate new shape and strides
-                    new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
-                    new_strides = (s.strides[0],) + s.strides
-                    # Create a strided view of the array.
-                    # But return a copy to avoid non-contiguous memory in the object
-                    # store (which is very expensive to deserialize).
-                    return np.transpose(
-                        np.lib.stride_tricks.as_strided(
-                            s, shape=new_shape, strides=new_strides
-                        ),
-                        axes=[0, 2, 3, 1],
-                    ).copy()
+                    stacked = np.lib.stride_tricks.sliding_window_view(
+                        s, self.num_frames, axis=0
+                    )
+                    # Copy to ensure contiguous memory (expensive to
+                    # deserialize otherwise).
+                    return stacked.copy()
 
                 # Get all observations from the episode in one np array (except for
                 # the very last one, which is the final observation not needed for
@@ -111,6 +118,36 @@ class FrameStacking(ConnectorV2):
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
+
+                # For non-terminated episodes, also compute and cache the
+                # frame-stacked bootstrap observation (s_T, one step beyond the
+                # training window). GAE uses this to bootstrap the value estimate
+                # for truncated / in-progress episodes.
+                if (
+                    self._used_together_with_gae
+                    and not sa_episode.is_terminated
+                    and shared_data is not None
+                ):
+
+                    def _bootstrap_map_fn(s, _sa_episode=sa_episode):
+                        # (N, H, W, 1) → (N, H, W) → (T+1, H, W, num_frames)
+                        # Take only the last row: the bootstrap observation.
+                        s = np.squeeze(s, axis=-1)
+                        return np.lib.stride_tricks.sliding_window_view(
+                            s, self.num_frames, axis=0
+                        )[-1]
+
+                    stacked_bootstrap = tree.map_structure(
+                        _bootstrap_map_fn,
+                        sa_episode.get_observations(
+                            indices=slice(-self.num_frames + 1, len(sa_episode) + 1),
+                            neg_index_as_lookback=True,
+                            fill=0.0,
+                        ),
+                    )
+                    shared_data["stacked_bootstrap_obs"][
+                        sa_episode.id_
+                    ] = stacked_bootstrap
 
         # Env-to-module pipeline. Episodes still operate on lists.
         else:
