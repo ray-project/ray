@@ -173,12 +173,14 @@ class _BoundShufflePhaseHooks(_BoundPhaseHooks, ShufflePhaseHooks):
     def on_input_received(self, bundle: RefBundle) -> None:
         self._metrics.on_input_received(bundle)
 
+    def on_input_consumed(self, bundle: RefBundle) -> None:
+        self._metrics.on_output_taken(bundle)
+
     def on_task_output(
         self,
         task_index: int,
         output_bundle: RefBundle,
     ) -> None:
-        self._metrics.on_output_taken(output_bundle)
         self._metrics.on_task_output_generated(task_index, output_bundle)
 
     def on_block_shuffled(self, block_stats: BlockStats) -> None:
@@ -308,7 +310,12 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     # ------------------------------------------------------------------
 
     def _do_shutdown(self, force: bool = False) -> None:
+        # Kill actors before cancelling tasks: the base method blocks on
+        # ray.get() for each active task during forced shutdown, which hangs
+        # if the actors backing those tasks are still alive.
         self._engine.shutdown(force=force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force=force)
 
     # ------------------------------------------------------------------
@@ -1021,16 +1028,26 @@ class CpuShuffleEngine(ShuffleEngine):
                 )
 
                 hooks.on_block_shuffled(input_block_metadata.to_stats())
+                hooks.on_input_consumed(input_bundle)
 
                 blocks = [(task.get_waitable(), input_block_metadata)]
-                out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
+                # NOTE: Schema doesn't matter because we are creating a ref
+                # bundle for metrics recording purposes.
+                out_bundle = RefBundle(
+                    blocks,
+                    schema=None,
+                    owns_blocks=False,
+                )
+                # Update Shuffle Metrics on task output
                 hooks.on_task_output(task_idx, out_bundle)
+                # TODO wire in stats & exceptions
                 hooks.on_task_finished(
                     task_idx,
                     None,
                     task_exec_stats=None,
                     task_exec_driver_stats=None,
                 )
+                # Update Shuffle progress bar
                 hooks.on_progress(increment=input_block_metadata.num_rows or 0)
 
             task = self._shuffling_tasks[input_index][
@@ -1050,6 +1067,7 @@ class CpuShuffleEngine(ShuffleEngine):
                     task.get_requested_resource_bundle()
                 )
 
+            #  Update Shuffle Metrics on task submission
             hooks.on_task_submitted(
                 cur_shuffle_task_idx,
                 RefBundle(
@@ -1058,6 +1076,7 @@ class CpuShuffleEngine(ShuffleEngine):
                 task_id=task.get_task_id(),
             )
 
+            # Update Shuffle progress bar
             progress = hooks.estimate_progress(
                 cur_shuffle_task_idx + 1,
                 upstream_op_num_outputs,
@@ -1081,6 +1100,7 @@ class CpuShuffleEngine(ShuffleEngine):
             return
 
         def _on_bundle_ready(partition_id: int, bundle: RefBundle):
+            # Add finalized block to the output queue
             hooks.on_output_ready(bundle, task_index=partition_id)
 
             progress = hooks.estimate_progress(
@@ -1089,6 +1109,7 @@ class CpuShuffleEngine(ShuffleEngine):
                 total_num_tasks=self._num_partitions,
             )
             hooks.on_output_estimated(progress.num_bundles, progress.num_rows)
+            # Update Finalize progress bar
             hooks.on_progress(
                 increment=bundle.num_rows() or 0,
                 total=progress.num_rows,
@@ -1109,6 +1130,7 @@ class CpuShuffleEngine(ShuffleEngine):
 
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
+                # Update Finalize Metrics on task completion
                 hooks.on_task_finished(
                     partition_id,
                     exc,

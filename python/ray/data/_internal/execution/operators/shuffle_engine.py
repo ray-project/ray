@@ -95,8 +95,8 @@ class ShufflePhaseHooks(PhaseHooks):
                                            │
         task completes (callback)          │
           ├─ on_block_shuffled ─────────► block_stats.append
-          ├─ on_task_output ────────────► metrics.on_output_taken
-          │                                + on_task_output_generated
+          ├─ on_input_consumed ─────────► metrics.on_output_taken
+          ├─ on_task_output ────────────► metrics.on_task_output_generated
           ├─ on_task_finished ──────────► metrics.on_task_finished
           └─ on_progress ──────────────► bar.update(increment=…)
     """
@@ -104,12 +104,15 @@ class ShufflePhaseHooks(PhaseHooks):
     def on_input_received(self, bundle: RefBundle) -> None:
         """Record that the operator received an input bundle."""
 
+    def on_input_consumed(self, bundle: RefBundle) -> None:
+        """Record that a shuffle task consumed its input."""
+
     def on_task_output(
         self,
         task_index: int,
         output_bundle: RefBundle,
     ) -> None:
-        """Called when intermediate shuffle output is available."""
+        """Record that a shuffle task produced output."""
 
     def on_block_shuffled(self, block_stats: BlockStats) -> None:
         """Record stats for a block that has been shuffled."""
