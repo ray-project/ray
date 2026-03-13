@@ -399,28 +399,18 @@ class ParquetDatasource(Datasource):
         if to_batch_kwargs is None:
             to_batch_kwargs = {}
 
-        # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
-        # network calls when `_ParquetDatasourceReader` is serialized. See
-        # `_SerializedFragment()` implementation for more details.
-        self._pq_fragments = [
-            _ParquetFragment(fragment, file_size)
-            for fragment, file_size in zip(pq_ds.fragments, file_sizes)
-        ]
-        self._pq_paths = [p.path for p in pq_ds.fragments]
-        self._block_udf = _block_udf
-        self._to_batches_kwargs = to_batch_kwargs
         # Store as projection_map (identity mapping if columns specified, None otherwise)
         # Note: Empty list [] means no columns, None means all columns
         # Include partition columns in projection_map if they were requested, so that
         # projection pushdown can properly track them
         if data_columns is None and partition_columns is None:
-            self._projection_map = None
+            projection_map = None
         else:
-            self._projection_map = {}
+            projection_map = {}
             if data_columns is not None:
-                self._projection_map.update({col: col for col in data_columns})
+                projection_map.update({col: col for col in data_columns})
             if partition_columns is not None:
-                self._projection_map.update({col: col for col in partition_columns})
+                projection_map.update({col: col for col in partition_columns})
 
         # Eagerly compute the actual partition columns for _partition_columns.
         # This ensures _partition_columns is always a list (never None).
@@ -433,18 +423,70 @@ class ParquetDatasource(Datasource):
 
         # Store selected partition columns. Always a list (never None) representing
         # the actual partition columns to include.
-        self._partition_columns = (
+        actual_partition_columns = (
             actual_partition_columns if actual_partition_columns is not None else []
         )
         # Track whether partition columns were explicitly part of the user's column selection
-        self._partition_columns_selected = (
-            partition_columns is not None and len(self._partition_columns) > 0
+        partition_columns_selected = (
+            partition_columns is not None and len(actual_partition_columns) > 0
         )
-        self._read_schema = schema
-        self._file_schema = pq_ds.schema
-        self._partition_schema = _get_partition_columns_schema(
-            partitioning, self._pq_paths
+
+        self._init_state(
+            fragments=list(pq_ds.fragments),
+            file_sizes=list(file_sizes),
+            file_schema=pq_ds.schema,
+            read_schema=schema,
+            partition_columns=actual_partition_columns,
+            partition_columns_selected=partition_columns_selected,
+            partition_schema=_get_partition_columns_schema(
+                partitioning, [p.path for p in pq_ds.fragments]
+            ),
+            partitioning=partitioning,
+            projection_map=projection_map,
+            to_batch_kwargs=to_batch_kwargs,
+            _block_udf=_block_udf,
+            shuffle=shuffle,
+            include_paths=include_paths,
         )
+
+    def _init_state(
+        self,
+        *,
+        fragments: List["ParquetFileFragment"],
+        file_sizes: List[int],
+        file_schema: "pyarrow.Schema",
+        read_schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        partition_columns: List[str],
+        partition_columns_selected: bool,
+        partition_schema: "pyarrow.Schema",
+        partitioning: Optional[Partitioning],
+        projection_map: Optional[Dict[str, str]],
+        to_batch_kwargs: Optional[Dict[str, Any]],
+        _block_udf: Optional[Callable[[Block], Block]],
+        shuffle: Union["FileShuffleConfig", Literal["files"], None],
+        include_paths: bool,
+    ):
+        """Shared initialization for fragment state and sampling estimates.
+
+        Called by both ``__init__`` (after path resolution and file listing)
+        and ``from_pyarrow_dataset`` (which skips those steps).
+        """
+        # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
+        # network calls when `_ParquetDatasourceReader` is serialized. See
+        # `_SerializedFragment()` implementation for more details.
+        self._pq_fragments = [
+            _ParquetFragment(fragment, file_size)
+            for fragment, file_size in zip(fragments, file_sizes)
+        ]
+        self._pq_paths = [f.path for f in fragments]
+        self._block_udf = _block_udf
+        self._to_batches_kwargs = to_batch_kwargs or {}
+        self._projection_map = projection_map
+        self._partition_columns = partition_columns
+        self._partition_columns_selected = partition_columns_selected
+        self._read_schema = read_schema
+        self._file_schema = file_schema
+        self._partition_schema = partition_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning
@@ -463,7 +505,7 @@ class ParquetDatasource(Datasource):
         sampled_file_infos = _fetch_file_infos(
             sampled_fragments,
             columns=self._get_data_columns(),
-            schema=schema,
+            schema=read_schema,
             local_scheduling=self._local_scheduling,
         )
 
@@ -475,6 +517,67 @@ class ParquetDatasource(Datasource):
         self._default_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
+
+    @classmethod
+    def from_pyarrow_dataset(
+        cls,
+        pa_dataset: "pyarrow.dataset.Dataset",
+        *,
+        columns: Optional[List[str]] = None,
+        to_batch_kwargs: Optional[Dict[str, Any]] = None,
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        shuffle: Union["FileShuffleConfig", Literal["files"], None] = None,
+        include_paths: bool = False,
+    ) -> "ParquetDatasource":
+        """Create a ParquetDatasource from a pre-built PyArrow dataset.
+
+        This bypasses path resolution, file listing, and dataset construction —
+        useful when another system (e.g. delta-rs) has already built a PyArrow
+        dataset with the correct filesystem, schema, and fragment metadata.
+        """
+        import pyarrow as pa
+
+        instance = cls.__new__(cls)
+        Datasource.__init__(instance)
+        _check_pyarrow_version()
+
+        instance._supports_distributed_reads = True
+        instance._local_scheduling = None
+
+        fragments = list(pa_dataset.get_fragments())
+        filesystem = pa_dataset.filesystem
+
+        pq_paths = [f.path for f in fragments]
+        infos = filesystem.get_file_info(pq_paths)
+        file_sizes = [info.size if info.size is not None else 0 for info in infos]
+
+        instance._source_paths_ref = ray.put(pq_paths)
+        instance._filesystem = filesystem
+
+        # Partition columns are intentionally left empty. For PyArrow datasets
+        # produced by systems like delta-rs, partition columns are materialized
+        # by PyArrow itself (via fragment.to_batches(schema=...)) rather than
+        # parsed from file paths. Setting these to empty prevents Ray Data's
+        # path-based partition parsing from duplicating columns that PyArrow
+        # already provides.
+        instance._init_state(
+            fragments=fragments,
+            file_sizes=file_sizes,
+            file_schema=pa_dataset.schema,
+            read_schema=schema if schema is not None else pa_dataset.schema,
+            partition_columns=[],
+            partition_columns_selected=False,
+            partition_schema=pa.schema([]),
+            partitioning=None,
+            projection_map={col: col for col in columns} if columns else None,
+            to_batch_kwargs=to_batch_kwargs,
+            _block_udf=_block_udf,
+            shuffle=shuffle,
+            include_paths=include_paths,
+        )
+
+        return instance
 
     @property
     def _source_paths(self) -> List[str]:
