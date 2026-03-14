@@ -24,8 +24,9 @@ class AutoscalerEventLogger:
     - Rate limit the events if too spammy.
     """
 
-    def __init__(self, logger: EventLoggerAdapter):
+    def __init__(self, logger: EventLoggerAdapter, log_cluster_shape: bool = True):
         self._logger = logger
+        self._log_cluster_shape = log_cluster_shape
 
     def log_cluster_scheduling_update(
         self,
@@ -64,8 +65,8 @@ class AutoscalerEventLogger:
             None
         """
 
-        # Log any launch events.
-        if launch_requests:
+        # Log any launch/terminate/resize events.
+        if self._log_cluster_shape and launch_requests:
             launch_type_count = defaultdict(int)
             for req in launch_requests:
                 launch_type_count[req.instance_type] += req.count
@@ -75,8 +76,7 @@ class AutoscalerEventLogger:
                 self._logger.info(f"{log_str}")
                 logger.info(f"{log_str}")
 
-        # Log any terminate events.
-        if terminate_requests:
+        if self._log_cluster_shape and terminate_requests:
             termination_by_causes_and_type = defaultdict(int)
             for req in terminate_requests:
                 termination_by_causes_and_type[(req.cause, req.instance_type)] += 1
@@ -96,7 +96,7 @@ class AutoscalerEventLogger:
                 logger.info(f"{log_str}")
 
         # Cluster shape changes.
-        if launch_requests or terminate_requests:
+        if self._log_cluster_shape and (launch_requests or terminate_requests):
             num_cpus = cluster_resources.get("CPU", 0)
             log_str = f"Resized to {int(num_cpus)} CPUs"
 
