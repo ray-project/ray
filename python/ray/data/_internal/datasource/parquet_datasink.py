@@ -180,16 +180,19 @@ class ParquetDatasink(_FileDatasink):
         import pyarrow as pa
 
         blocks = list(blocks)
+        non_empty_blocks: List[Block] = []
+        non_empty_accessors = []
+        for block in blocks:
+            accessor = BlockAccessor.for_block(block)
+            if accessor.num_rows() > 0:
+                non_empty_blocks.append(block)
+                non_empty_accessors.append(accessor)
 
-        if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
+        if not non_empty_blocks:
             return
 
-        blocks = [
-            block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
-        ]
-
         filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
+            non_empty_blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
@@ -204,7 +207,7 @@ class ParquetDatasink(_FileDatasink):
         )
 
         def write_blocks_to_path():
-            tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
+            tables = [accessor.to_arrow() for accessor in non_empty_accessors]
             if user_schema is None:
                 output_schema = pa.unify_schemas([table.schema for table in tables])
             else:
