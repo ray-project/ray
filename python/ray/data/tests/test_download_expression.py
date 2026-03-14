@@ -37,6 +37,45 @@ class TestDownloadExpressionStructure:
         assert not expr1.structurally_equals(non_download_expr)
         assert not non_download_expr.structurally_equals(expr1)
 
+    def test_uri_namespace_download(self):
+        """Test that col('uri').uri.download() creates the same DownloadExpr as download('uri')."""
+        expr_from_namespace = col("uri").uri.download()
+        expr_from_function = download("uri")
+
+        assert isinstance(expr_from_namespace, DownloadExpr)
+        assert expr_from_namespace.uri_column_name == "uri"
+        assert expr_from_namespace.structurally_equals(expr_from_function)
+
+    def test_uri_namespace_download_with_filesystem(self):
+        """Test that col('uri').uri.download(filesystem=...) works correctly."""
+        import pyarrow.fs as pafs
+
+        fs = pafs.LocalFileSystem()
+
+        expr_from_namespace = col("uri").uri.download(filesystem=fs)
+        expr_from_function = download("uri", filesystem=fs)
+
+        assert isinstance(expr_from_namespace, DownloadExpr)
+        assert expr_from_namespace.uri_column_name == "uri"
+        assert expr_from_namespace.filesystem is fs
+        assert expr_from_namespace.structurally_equals(expr_from_function)
+
+    def test_uri_namespace_download_not_on_column_expr(self):
+        """Test that uri.download() raises error when not called on a column expression."""
+        # Should raise error when called on a literal expression
+        from ray.data.expressions import lit
+
+        with pytest.raises(TypeError):
+            lit("test_uri").uri.download()
+
+        # Should raise error when called on a binary expression
+        with pytest.raises(TypeError):
+            (col("uri") + lit("test")).uri.download()
+
+        # Should raise error when called on an alias expression
+        with pytest.raises(TypeError):
+            col("uri").alias("x").uri.download()
+
 
 class TestDownloadExpressionFunctionality:
     """Test actual download functionality with real and mocked data."""
@@ -85,6 +124,47 @@ class TestDownloadExpressionFunctionality:
             assert result["file_id"] == f"id_{i}"
             assert result["metadata"] == f"metadata_{i}"
             assert result["index"] == i
+            assert result["file_uri"] == f"local://{file_paths[i]}"
+
+    def test_uri_namespace_download_with_local_files(self, tmp_path):
+        """Test URI namespace download functionality with local files."""
+        # Create sample files with different content types
+        sample_data = [
+            b"This is test file 1 content via URI namespace",
+            b"Different content for file 2 via URI namespace",
+        ]
+
+        file_paths = []
+        for i, data in enumerate(sample_data):
+            file_path = tmp_path / f"uri_test_file_{i}.txt"
+            file_path.write_bytes(data)
+            file_paths.append(str(file_path))
+
+        # Create dataset with file URIs
+        table = pa.Table.from_arrays(
+            [
+                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array([f"id_{i}" for i in range(len(file_paths))]),
+            ],
+            names=["file_uri", "file_id"],
+        )
+
+        ds = ray.data.from_arrow(table)
+
+        # Add download column using URI namespace
+        ds_with_downloads = ds.with_column("file_bytes", col("file_uri").uri.download())
+
+        # Verify results
+        results = ds_with_downloads.take_all()
+        assert len(results) == len(sample_data)
+
+        for i, result in enumerate(results):
+            # Download column should be added correctly
+            assert "file_bytes" in result
+            assert result["file_bytes"] == sample_data[i]
+
+            # All original columns should be preserved
+            assert result["file_id"] == f"id_{i}"
             assert result["file_uri"] == f"local://{file_paths[i]}"
 
     def test_download_expression_empty_dataset(self):
