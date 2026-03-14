@@ -18,7 +18,7 @@ from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.train.constants import DEFAULT_STORAGE_PATH, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -663,14 +663,13 @@ class Trainable:
                 prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH
             )
 
-        # Record the actor's original working dir before changing to logdir
-        os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
         os.makedirs(self._logdir, exist_ok=True)
 
-        from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+        if self._storage:
+            os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
 
-        if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-            os.chdir(self._logdir)
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                os.chdir(self._logdir)
 
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""

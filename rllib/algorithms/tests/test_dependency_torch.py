@@ -42,6 +42,7 @@ if __name__ == "__main__":
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]
+    del os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"]
 
     algo.stop()
 
