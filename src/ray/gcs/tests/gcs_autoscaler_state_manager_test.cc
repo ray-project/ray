@@ -1155,11 +1155,18 @@ TEST_F(GcsAutoscalerStateManagerTest,
   auto *bundle1 = pg_data->add_bundles();
   (*bundle1->mutable_unit_resources())["CPU"] = 2;
   (*bundle1->mutable_unit_resources())["GPU"] = 1;
-  (*bundle1->mutable_label_selector())["accelerator"] = "in(A100,B200)";
+  auto *constraint1 = bundle1->mutable_label_selector()->add_label_constraints();
+  constraint1->set_label_key("accelerator");
+  constraint1->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  constraint1->add_label_values("A100");
+  constraint1->add_label_values("B200");
 
   auto *bundle2 = pg_data->add_bundles();
   (*bundle2->mutable_unit_resources())["CPU"] = 4;
-  (*bundle2->mutable_label_selector())["accelerator"] = "!in(TPU)";
+  auto *constraint2 = bundle2->mutable_label_selector()->add_label_constraints();
+  constraint2->set_label_key("accelerator");
+  constraint2->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
+  constraint2->add_label_values("TPU");
 
   EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
       .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
@@ -1191,6 +1198,44 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_EQ(c2.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
   ASSERT_EQ(c2.label_values_size(), 1);
   EXPECT_EQ(c2.label_values(0), "TPU");
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsEmptyBundlesFallback) {
+  rpc::PlacementGroupLoad load;
+
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  // PG bundles are empty, we only populate the primary scheduling option.
+  auto *scheduling_option = pg_data->add_scheduling_options();
+
+  auto *bundle1 = scheduling_option->add_bundles();
+  (*bundle1->mutable_unit_resources())["CPU"] = 2;
+  (*bundle1->mutable_unit_resources())["GPU"] = 1;
+
+  auto *bundle2 = scheduling_option->add_bundles();
+  (*bundle2->mutable_unit_resources())["CPU"] = 4;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &r1 = req.bundle_selectors(0).resource_requests(0);
+  const auto &r2 = req.bundle_selectors(0).resource_requests(1);
+
+  // Verify the autoscaler correctly extracted the resources from scheduling_options(0)
+  ASSERT_EQ(r1.resources_bundle().at("CPU"), 2);
+  ASSERT_EQ(r1.resources_bundle().at("GPU"), 1);
+  ASSERT_EQ(r2.resources_bundle().at("CPU"), 4);
 }
 
 }  // namespace gcs

@@ -2255,6 +2255,21 @@ Status CoreWorker::CreatePlacementGroup(
       }
     }
   }
+  // Validate fallback strategy bundles
+  for (const auto &fallback_option :
+       placement_group_creation_options.fallback_strategy_) {
+    for (const auto &bundle : fallback_option.bundles) {
+      for (const auto &resource : bundle) {
+        if (resource.first == kBundle_ResourceLabel) {
+          std::ostringstream stream;
+          stream << kBundle_ResourceLabel
+                 << " is a system reserved resource, which is not "
+                 << "allowed to be used in a placement group fallback strategy. ";
+          return Status::Invalid(stream.str());
+        }
+      }
+    }
+  }
   const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(placement_group_id,
@@ -2266,7 +2281,8 @@ Status CoreWorker::CreatePlacementGroup(
                                 worker_context_->GetCurrentJobID(),
                                 worker_context_->GetCurrentActorID(),
                                 worker_context_->CurrentActorDetached(),
-                                placement_group_creation_options.bundle_label_selector_);
+                                placement_group_creation_options.bundle_label_selector_,
+                                placement_group_creation_options.fallback_strategy_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)

@@ -106,6 +106,12 @@ class LoadMetrics:
             infeasible_bundles = []
         if not pending_placement_groups:
             pending_placement_groups = []
+        else:
+            # Normalize the protobuf data on ingestion for the legacy V1 Autoscaler.
+            # If the active bundles are empty, we use the primary scheduling option.
+            for pg in pending_placement_groups:
+                if len(pg.bundles) == 0 and len(pg.scheduling_options) > 0:
+                    pg.bundles.extend(pg.scheduling_options[0].bundles)
 
         # We are not guaranteed to have a corresponding dynamic resource
         # for every static resource because dynamic resources are based on

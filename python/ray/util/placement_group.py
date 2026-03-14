@@ -17,6 +17,8 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_SPREAD",
 }
 
+VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS = {"bundles", "bundle_label_selector"}
+
 
 @PublicAPI
 class PlacementGroup:
@@ -33,6 +35,7 @@ class PlacementGroup:
     ):
         self.id = id
         self.bundle_cache = bundle_cache
+        self._scheduling_options_cache = None
 
     @property
     def is_empty(self):
@@ -72,18 +75,37 @@ class PlacementGroup:
 
     @property
     def bundle_specs(self) -> List[Dict]:
-        """List[Dict]: Return bundles belonging to this placement group."""
+        """List[Dict]: Return bundles belonging to this placement group.
+
+        This returns the primary resource requirements specified at creation.
+        """
         self._fill_bundle_cache_if_needed()
-        return self.bundle_cache
+        return self.bundle_cache or []
 
     @property
     def bundle_count(self) -> int:
-        self._fill_bundle_cache_if_needed()
-        return len(self.bundle_cache)
+        """Returns the number of bundles in this placement group."""
+        return len(self.bundle_specs)
+
+    def _get_scheduling_options_bundles(self) -> List[List[Dict]]:
+        """Return all possible bundles across primary and fallback options
+        as a nested list of strategies.
+        """
+        # If we haven't fetched the static scheduling options yet, fetch them once.
+        self._fill_scheduling_options_cache_if_needed()
+        return self._scheduling_options_cache or []
 
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
-            self.bundle_cache = _get_bundle_cache(self.id)
+            bundles = _get_bundle_cache(self.id)
+            if bundles:
+                self.bundle_cache = bundles
+
+    def _fill_scheduling_options_cache_if_needed(self) -> None:
+        if not self._scheduling_options_cache:
+            options = _get_all_scheduling_options(self.id)
+            if options:
+                self._scheduling_options_cache = options
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -116,9 +138,28 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    return list(
-        ray._private.state.state.placement_group_table(pg_id)["bundles"].values()
-    )
+    table = ray._private.state.state.placement_group_table(pg_id)
+
+    # TODO(ryanaoleary): Add a new API for active_bundle_specs to return
+    # `table.get("bundles")`, which are the bundles actually scheduled for the PG.
+    scheduling_options = table.get("scheduling_options", [])
+    if scheduling_options:
+        return scheduling_options[0].get("bundles", [])
+    return []
+
+
+@client_mode_wrap
+def _get_all_scheduling_options(pg_id: PlacementGroupID) -> List[List[Dict]]:
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+
+    table = ray._private.state.state.placement_group_table(pg_id)
+
+    all_options = []
+    for strategy in table.get("scheduling_options", []):
+        all_options.append(strategy.get("bundles", []))
+
+    return all_options
 
 
 @PublicAPI
@@ -130,6 +171,7 @@ def placement_group(
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -157,6 +199,9 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
         bundle_label_selector: A list of label selectors to apply to a
             placement group on a per-bundle level.
+        fallback_strategy: A list of scheduling option dicts that define the fallback
+            options to use when attempting to schedule this placement group. Supported
+            options are the bundles and bundle_label_selector to attempt to schedule.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -175,10 +220,14 @@ def placement_group(
         lifetime=lifetime,
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
+        fallback_strategy=fallback_strategy,
     )
 
     if bundle_label_selector is None:
         bundle_label_selector = []
+
+    if fallback_strategy is None:
+        fallback_strategy = []
 
     if lifetime == "detached":
         detached = True
@@ -192,6 +241,7 @@ def placement_group(
         detached,
         _soft_target_node_id,
         bundle_label_selector,
+        fallback_strategy,
     )
 
     return PlacementGroup(placement_group_id)
@@ -310,12 +360,21 @@ def check_placement_group_index(
                 "If placement group is not set, "
                 "the value of bundle index must be -1."
             )
-    elif bundle_index >= placement_group.bundle_count or bundle_index < -1:
-        raise ValueError(
-            f"placement group bundle index {bundle_index} "
-            f"is invalid. Valid placement group indexes: "
-            f"0-{placement_group.bundle_count}"
-        )
+    else:
+        # Fetch the updated scheduling options first.
+        all_bundles = placement_group._get_scheduling_options_bundles()
+        if not all_bundles:
+            # Since bundles must be non-empty (i.e. there must be at least 1 scheduling option),
+            # if there are no bundles to validate yet we return and allow GCS to synchronize.
+            return
+        primary_bundles_len = len(all_bundles[0])
+
+        if bundle_index >= primary_bundles_len or bundle_index < -1:
+            raise ValueError(
+                f"placement group bundle index {bundle_index} "
+                f"is invalid. Valid placement group indexes: "
+                f"0 to {primary_bundles_len - 1}."
+            )
 
 
 def validate_placement_group(
@@ -324,6 +383,7 @@ def validate_placement_group(
     lifetime: Optional[str] = None,
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
@@ -349,6 +409,9 @@ def validate_placement_group(
                 f"The length of `bundle_label_selector` should equal the length of `bundles`."
             )
         _validate_bundle_label_selector(bundle_label_selector)
+
+    if fallback_strategy is not None:
+        _validate_fallback_strategy(fallback_strategy)
 
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
@@ -443,6 +506,45 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
             )
 
 
+def _validate_fallback_strategy(fallback_strategy: List[Dict]):
+    """Validates the placement group fallback strategy."""
+    if not isinstance(fallback_strategy, list):
+        raise ValueError(
+            f"fallback_strategy must be a list, got {type(fallback_strategy)}."
+        )
+
+    for i, option in enumerate(fallback_strategy):
+        if not isinstance(option, dict):
+            raise ValueError(
+                f"fallback_strategy[{i}] must be a dict, got {type(option)}."
+            )
+
+        # Validate placement group fallback options.
+        if "bundles" not in option:
+            raise ValueError(f"fallback_strategy[{i}] must contain 'bundles'.")
+
+        _validate_bundles(option["bundles"])
+
+        if "bundle_label_selector" in option:
+            fallback_labels = option["bundle_label_selector"]
+
+            if len(option["bundles"]) != len(fallback_labels):
+                raise ValueError(
+                    f"In fallback_strategy[{i}], length of `bundle_label_selector` "
+                    f"must equal length of `bundles`."
+                )
+
+            _validate_bundle_label_selector(fallback_labels)
+
+        # Check that fallback strategy only specifies supported options.
+        invalid_options = set(option.keys()) - VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS
+        if invalid_options:
+            raise ValueError(
+                f"fallback_strategy[{i}] contains invalid options: {invalid_options}. "
+                f"Supported options are: {VALID_PLACEMENT_GROUP_FALLBACK_OPTIONS}"
+            )
+
+
 def _valid_resource_shape(resources, bundle_specs):
     """
     If the resource shape cannot fit into every
@@ -467,16 +569,26 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-    bundles = placement_group.bundle_specs
-    resources_valid = _valid_resource_shape(resources, bundles)
-    placement_resources_valid = _valid_resource_shape(placement_resources, bundles)
+    strategies = placement_group._get_scheduling_options_bundles()
+
+    if not strategies:
+        # Since bundles must be non-empty, if there are no scheduling options to validate yet
+        # we return and allow GCS to synchronize.
+        return
+
+    resources_valid = any(
+        _valid_resource_shape(resources, strategy) for strategy in strategies
+    )
+    placement_resources_valid = any(
+        _valid_resource_shape(placement_resources, strategy) for strategy in strategies
+    )
 
     if not resources_valid:
         raise ValueError(
             f"Cannot schedule {task_or_actor_repr} with "
             "the placement group because the resource request "
-            f"{resources} cannot fit into any bundles for "
-            f"the placement group, {bundles}."
+            f"{resources} cannot fit into any bundles across all scheduling strategies for "
+            f"the placement group, {strategies}."
         )
     if not placement_resources_valid:
         # Happens for the default actor case.
@@ -487,8 +599,8 @@ def _validate_resource_shape(
             "the placement group because the actor requires "
             f"{placement_resources.get('CPU', 0)} CPU for "
             "creation, but it cannot "
-            f"fit into any bundles for the placement group, "
-            f"{bundles}. Consider "
+            f"fit into any bundles across all scheduling strategies for the placement group, "
+            f"{strategies}. Consider "
             "creating a placement group with CPU resources."
         )
 
