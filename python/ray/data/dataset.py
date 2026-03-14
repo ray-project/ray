@@ -6590,11 +6590,7 @@ class Dataset:
             A string containing execution timing information, or an empty string if
             the dataset has not been executed.
         """
-        if self._current_executor:
-            return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.stats()
-        return self._get_stats_summary().to_string()
+        return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
     def explain(self):
@@ -6634,6 +6630,23 @@ class Dataset:
         print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats().to_summary()
+
+    @DeveloperAPI
+    def get_stats_summary(self) -> DatasetStatsSummary:
+        """Get stats summary from dataset, handling both streaming and plan stats.
+
+        After materialize() with streaming execution, stats are stored in
+        _current_executor. This method returns the correct stats summary
+        regardless of execution mode.
+
+        Returns:
+            DatasetStatsSummary object containing execution statistics.
+        """
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.get_stats_summary()
         return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
