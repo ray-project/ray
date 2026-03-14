@@ -78,7 +78,7 @@ class MemoryMonitorUtils {
   /**
    * @brief Gets the used memory for a process from the process memory snapshot.
    *
-   * @param snapshot The process memory snapshot.
+   * @param snapshot The snapshot of per process memory usage to retrieve against
    * @param pid The process ID.
    * @return The used memory in bytes for the process. Returns 0 if the process is not
    *         found in the snapshot.
