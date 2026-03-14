@@ -3031,8 +3031,6 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 }
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
-// Allows one in-flight process kill at a time as killing a process could sometimes take
-// seconds.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
   return [this](const SystemMemorySnapshot &system_memory_snapshot) {
     io_service_.post(
