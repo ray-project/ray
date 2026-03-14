@@ -6,6 +6,7 @@ These tests require Ray and test end-to-end list namespace expression evaluation
 import pandas as pd
 import pyarrow as pa
 import pytest
+import numpy as np
 from packaging import version
 
 import ray
@@ -176,6 +177,71 @@ class TestListNamespace:
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
 
+    def test_list_union(self, ray_start_regular_shared, dataset_format):
+        """Test list.union() computes the set union of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [], "list2": [1, 2]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("union_result", col("list1").list.union(col("list2")))
+        
+        def _to_list(x):
+            if isinstance(x, (np.ndarray, list)):
+                return [None if (isinstance(v, float) and np.isnan(v)) else v for v in list(x)]
+            return x
+
+        results = [row["union_result"] for row in result.take_all()]
+        results = sorted([_to_list(r) for r in results], key=lambda x: str(x))
+        
+        expected = sorted([[1, 2, 3, 4, 5], [1, 2, 3], [1, 2], [1, 2, None]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_intersection(self, ray_start_regular_shared, dataset_format):
+        """Test list.intersection() computes the set intersection of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [1, 2], "list2": [3, 4]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("intersection_result", col("list1").list.intersection(col("list2")))
+        
+        def _to_list(x):
+            if isinstance(x, (np.ndarray, list)):
+                return [None if (isinstance(v, float) and np.isnan(v)) else v for v in list(x)]
+            return x
+
+        results = [row["intersection_result"] for row in result.take_all()]
+        results = sorted([_to_list(r) for r in results], key=lambda x: str(x))
+        
+        expected = sorted([[3], [2], [], [None]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_difference(self, ray_start_regular_shared, dataset_format):
+        """Test list.difference() computes the set difference of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [1, 2], "list2": [3, 4]},
+            {"list1": [None, 1, 2], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("difference_result", col("list1").list.difference(col("list2")))
+        
+        def _to_list(x):
+            if isinstance(x, (np.ndarray, list)):
+                return [None if (isinstance(v, float) and np.isnan(v)) else v for v in list(x)]
+            return x
+
+        results = [row["difference_result"] for row in result.take_all()]
+        results = sorted([_to_list(r) for r in results], key=lambda x: str(x))
+        
+        expected = sorted([[1, 2], [1], [1, 2], [1]], key=lambda x: str(x))
+        assert results == expected
 
 if __name__ == "__main__":
     import sys
