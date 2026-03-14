@@ -712,6 +712,21 @@ class ApplicationState:
                 for deployment in config.deployments
                 if isinstance(deployment.request_router_config, dict)
             }
+            deployment_to_deployment_actor_classes = {}
+            for deployment in config.deployments:
+                actors = getattr(deployment, "deployment_actors", None)
+                if actors and actors is not DEFAULT.VALUE:
+                    actor_classes = {}
+                    for actor_cfg in actors:
+                        if isinstance(actor_cfg, dict):
+                            name = actor_cfg.get("name")
+                            cls_path = actor_cfg.get("actor_class")
+                            if isinstance(cls_path, str):
+                                actor_classes[name] = cls_path
+                    if actor_classes:
+                        deployment_to_deployment_actor_classes[
+                            deployment.name
+                        ] = actor_classes
 
             # Kick off new build app task
             logger.info(f"Importing and building app '{self._name}'.")
@@ -727,6 +742,7 @@ class ApplicationState:
                 application_autoscaling_policy_function,
                 deployment_to_autoscaling_policy_function,
                 deployment_to_request_router_cls,
+                deployment_to_deployment_actor_classes,
             )
             self._build_app_task_info = BuildAppTaskInfo(
                 obj_ref=build_app_obj_ref,
@@ -871,11 +887,28 @@ class ApplicationState:
                 for params in args
                 if params["serialized_request_router_cls"] is not None
             }
+            deployment_to_serialized_deployment_actors = {}
+            for params in args:
+                dep_name = params["deployment_name"]
+                # From proto roundtrip (code-defined actors)
+                info = deployment_infos[dep_name]
+                if info.deployment_config.deployment_actors:
+                    for cfg in info.deployment_config.deployment_actors:
+                        if cfg._serialized_actor_class:
+                            deployment_to_serialized_deployment_actors.setdefault(
+                                dep_name, {}
+                            )[cfg.name] = cfg._serialized_actor_class
+                # From build task (config-only actors)
+                if params.get("serialized_deployment_actors"):
+                    deployment_to_serialized_deployment_actors.setdefault(
+                        dep_name, {}
+                    ).update(params["serialized_deployment_actors"])
             overrided_infos = override_deployment_info(
                 deployment_infos,
                 self._build_app_task_info.config,
                 deployment_to_serialized_autoscaling_policy_def,
                 deployment_to_serialized_request_router_cls,
+                deployment_to_serialized_deployment_actors,
             )
             self._route_prefix = self._check_routes(overrided_infos)
             return (
@@ -1489,6 +1522,7 @@ def build_serve_application(
     application_autoscaling_policy_function: Optional[str],
     deployment_to_autoscaling_policy_function: Dict[str, str],
     deployment_to_request_router_cls: Dict[str, str],
+    deployment_to_deployment_actor_classes: Dict[str, Dict[str, str]],
 ) -> Tuple[Optional[bytes], Optional[List[Dict]], Optional[str]]:
     """Import and build a Serve application.
 
@@ -1503,6 +1537,9 @@ def build_serve_application(
         application_autoscaling_policy_function: the application autoscaling policy function name
         deployment_to_autoscaling_policy_function: a dictionary mapping deployment names to autoscaling policy function names
         deployment_to_request_router_cls: a dictionary mapping deployment names to request router class names
+        deployment_to_deployment_actor_classes: mapping of deployment name to
+            {actor_name: actor_class_import_path} for deployment actors
+            specified in the config override (not in code)
 
     Returns:
         Serialized application autoscaling policy def: a serialized autoscaling
@@ -1554,6 +1591,24 @@ def build_serve_application(
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
+
+            if deployment._deployment_config.deployment_actors:
+                for cfg in deployment._deployment_config.deployment_actors:
+                    if not cfg._serialized_actor_class:
+                        cfg._serialize_actor_class()
+
+            serialized_deployment_actors = None
+            if (
+                deployment_to_deployment_actor_classes
+                and deployment.name in deployment_to_deployment_actor_classes
+            ):
+                serialized_deployment_actors = {
+                    actor_name: _get_serialized_def(actor_class_path)
+                    for actor_name, actor_class_path in (
+                        deployment_to_deployment_actor_classes[deployment.name].items()
+                    )
+                }
+
             deployment_to_serialized_autoscaling_policy_def = None
             deployment_to_serialized_request_router_cls = None
             if deployment.name in deployment_to_autoscaling_policy_function:
@@ -1574,6 +1629,7 @@ def build_serve_application(
                     route_prefix="/" if is_ingress else None,
                     serialized_autoscaling_policy_def=deployment_to_serialized_autoscaling_policy_def,
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
+                    serialized_deployment_actors=serialized_deployment_actors,
                 )
             )
         if num_ingress_deployments > 1:
@@ -1607,6 +1663,9 @@ def override_deployment_info(
     override_config: Optional[ServeApplicationSchema],
     deployment_to_serialized_autoscaling_policy_def: Optional[Dict[str, bytes]] = None,
     deployment_to_serialized_request_router_cls: Optional[Dict[str, bytes]] = None,
+    deployment_to_serialized_deployment_actors: Optional[
+        Dict[str, Dict[str, bytes]]
+    ] = None,
 ) -> Dict[str, DeploymentInfo]:
     """Override deployment infos with options from app config.
 
@@ -1617,6 +1676,9 @@ def override_deployment_info(
             options to override those loaded from code.
         deployment_to_serialized_autoscaling_policy_def: serialized autoscaling policy def for each deployment
         deployment_to_serialized_request_router_cls: serialized request router cls for each deployment
+        deployment_to_serialized_deployment_actors: mapping of deployment name
+            to {actor_name: serialized_actor_class_bytes} for each deployment
+            actor, produced by the build task
 
     Returns: the updated deployment infos.
 
@@ -1759,6 +1821,29 @@ def override_deployment_info(
                     options["request_router_config"] = RequestRouterConfig(
                         **request_router_config
                     )
+
+        if (
+            deployment_to_serialized_deployment_actors
+            and deployment_name in deployment_to_serialized_deployment_actors
+        ):
+            serialized_actors = deployment_to_serialized_deployment_actors[
+                deployment_name
+            ]
+            actors_list = options.get(
+                "deployment_actors",
+                original_options.get("deployment_actors"),
+            )
+            if actors_list:
+                for actor_cfg in actors_list:
+                    if isinstance(actor_cfg, dict):
+                        actor_name = actor_cfg.get("name")
+                        if (
+                            isinstance(actor_name, str)
+                            and actor_name in serialized_actors
+                        ):
+                            actor_cfg["_serialized_actor_class"] = serialized_actors[
+                                actor_name
+                            ]
 
         # Override deployment config options
         options.pop("name", None)
