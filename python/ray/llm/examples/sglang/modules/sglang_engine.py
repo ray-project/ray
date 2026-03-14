@@ -15,6 +15,10 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
+    TokenizeRequest,
+    TokenizeResponse,
 )
 
 
@@ -78,6 +82,29 @@ class SGLangServer:
             self.engine = sglang.Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
+
+    def _get_tokenizer(self) -> Any:
+        tokenizer = getattr(self.engine, "tokenizer", None)
+        if tokenizer is None and hasattr(self.engine, "get_tokenizer"):
+            tokenizer = self.engine.get_tokenizer()
+        if tokenizer is None:
+            tokenizer_manager = getattr(self.engine, "tokenizer_manager", None)
+            tokenizer = getattr(tokenizer_manager, "tokenizer", None)
+        if tokenizer is None:
+            raise RuntimeError("Failed to resolve tokenizer from SGLang engine.")
+        return tokenizer
+
+    def _get_max_model_len(self, tokenizer: Any) -> int:
+        tokenizer_manager = getattr(self.engine, "tokenizer_manager", None)
+        max_model_len = getattr(tokenizer_manager, "max_req_input_len", None)
+        if isinstance(max_model_len, int) and max_model_len > 0:
+            return max_model_len
+
+        model_max_length = getattr(tokenizer, "model_max_length", None)
+        if isinstance(model_max_length, int) and model_max_length > 0:
+            return model_max_length
+
+        return 0
 
     async def _generate_and_extract_metadata(
         self, request: Any, prompt_string: str
@@ -231,6 +258,83 @@ class SGLangServer:
         )
 
         yield resp
+
+    async def tokenize(
+        self, request: TokenizeRequest, raw_request: Optional[Any] = None
+    ) -> AsyncGenerator[TokenizeResponse, None]:
+        tokenizer = self._get_tokenizer()
+
+        prompt = getattr(request, "prompt", None)
+        if prompt is None:
+            messages = getattr(request, "messages", None)
+            if messages is not None:
+                prompt = format_messages_to_prompt(messages)
+        if prompt is None:
+            raise ValueError(
+                "Tokenize request must include either 'prompt' or 'messages'."
+            )
+
+        encode_kwargs = {}
+        add_special_tokens = getattr(request, "add_special_tokens", None)
+        if add_special_tokens is not None:
+            encode_kwargs["add_special_tokens"] = bool(add_special_tokens)
+
+        if isinstance(prompt, list):
+            tokens = [
+                [int(token) for token in tokenizer.encode(text, **encode_kwargs)]
+                for text in prompt
+            ]
+            count: Any = [len(token_ids) for token_ids in tokens]
+            token_strs: Optional[Any] = None
+            if getattr(request, "return_token_strs", False):
+                if hasattr(tokenizer, "convert_ids_to_tokens"):
+                    token_strs = [
+                        tokenizer.convert_ids_to_tokens(token_ids)
+                        for token_ids in tokens
+                    ]
+                else:
+                    token_strs = [
+                        [tokenizer.decode([token]) for token in token_ids]
+                        for token_ids in tokens
+                    ]
+        else:
+            tokens = [
+                int(token) for token in tokenizer.encode(prompt, **encode_kwargs)
+            ]
+            count = len(tokens)
+            token_strs = None
+            if getattr(request, "return_token_strs", False):
+                if hasattr(tokenizer, "convert_ids_to_tokens"):
+                    token_strs = tokenizer.convert_ids_to_tokens(tokens)
+                else:
+                    token_strs = [tokenizer.decode([token]) for token in tokens]
+
+        yield TokenizeResponse(
+            count=count,
+            max_model_len=self._get_max_model_len(tokenizer),
+            tokens=tokens,
+            token_strs=token_strs,
+        )
+
+    async def detokenize(
+        self, request: DetokenizeRequest, raw_request: Optional[Any] = None
+    ) -> AsyncGenerator[DetokenizeResponse, None]:
+        tokenizer = self._get_tokenizer()
+
+        decode_kwargs = {}
+        skip_special_tokens = getattr(request, "skip_special_tokens", None)
+        if skip_special_tokens is not None:
+            decode_kwargs["skip_special_tokens"] = bool(skip_special_tokens)
+
+        tokens = request.tokens
+        if tokens and isinstance(tokens[0], list):
+            prompt: Any = [
+                tokenizer.decode(token_ids, **decode_kwargs) for token_ids in tokens
+            ]
+        else:
+            prompt = tokenizer.decode(tokens, **decode_kwargs)
+
+        yield DetokenizeResponse(prompt=prompt)
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
