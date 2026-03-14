@@ -852,6 +852,7 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
     ray_start_regular_shared,
+    propagate_logs,
     tmp_path,
     filename_template,
     should_raise_error,
@@ -896,10 +897,15 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
         with caplog.at_level(logging.WARNING):
             ds.write_parquet(tmp_path, filename_provider=custom_provider, mode="append")
         warning_msg = "Custom FilenameProvider returned non-templatized filename"
+        warning_logs = [
+            record.getMessage()
+            for record in caplog.records
+            if warning_msg in record.getMessage()
+        ]
         if should_warn:
-            assert warning_msg in caplog.text
+            assert len(warning_logs) >= 1
         else:
-            assert warning_msg not in caplog.text
+            assert len(warning_logs) == 0
 
         # Check that files were created
         written_files = os.listdir(tmp_path)
