@@ -23,6 +23,11 @@ class _DummyWorker:
         self.worker_id = b"0" * 28
 
 
+class _DummyPythonDescriptor:
+    def __init__(self, function_id):
+        self.function_id = function_id
+
+
 def test_get_execution_info_cpp_actor_descriptor_uses_cross_language_key():
     worker = _DummyWorker(is_actor_worker=True)
     manager = FunctionActorManager(worker)
@@ -51,6 +56,24 @@ def test_get_execution_info_cpp_non_actor_descriptor_raises_runtime_error():
         RuntimeError, match="without function_id on a non-actor worker"
     ):
         manager.get_execution_info(job_id="job-id", function_descriptor=descriptor)
+
+
+def test_cross_language_and_python_descriptor_share_task_counter_bucket():
+    worker = _DummyWorker(is_actor_worker=True)
+    manager = FunctionActorManager(worker)
+
+    cpp_descriptor = CppFunctionDescriptor("foo", "PYTHON", "Bar")
+    function_id = object()
+    python_descriptor = _DummyPythonDescriptor(function_id=function_id)
+
+    manager._cross_lang_key_to_id[("Bar", "foo")] = function_id
+    manager._num_task_executions[function_id] = 0
+
+    manager.increase_task_counter(python_descriptor)
+    manager.increase_task_counter(cpp_descriptor)
+
+    assert manager.get_task_counter(python_descriptor) == 2
+    assert manager.get_task_counter(cpp_descriptor) == 2
 
 
 if __name__ == "__main__":

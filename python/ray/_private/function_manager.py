@@ -125,6 +125,10 @@ class FunctionActorManager:
         self.lock = threading.RLock()
 
         self.execution_infos = {}
+        # Maps (class_name, function_name) keys to canonical function_id.
+        # This allows cross-language descriptors without function_id to reuse
+        # the same execution and task-counter buckets.
+        self._cross_lang_key_to_id = {}
         # This is the counter to keep track of how many keys have already
         # been exported so that we can find next key quicker.
         self._num_exported = 0
@@ -139,12 +143,14 @@ class FunctionActorManager:
         class_name = getattr(function_descriptor, "class_name", "")
         return (class_name, function_name)
 
-    @staticmethod
-    def _descriptor_cache_key(function_descriptor):
+    def _descriptor_cache_key(self, function_descriptor):
         function_id = getattr(function_descriptor, "function_id", None)
         if function_id is not None:
             return function_id
-        return FunctionActorManager._cross_language_descriptor_key(function_descriptor)
+        cross_lang_key = FunctionActorManager._cross_language_descriptor_key(
+            function_descriptor
+        )
+        return self._cross_lang_key_to_id.get(cross_lang_key, cross_lang_key)
 
     def increase_task_counter(self, function_descriptor):
         key = self._descriptor_cache_key(function_descriptor)
@@ -628,6 +634,7 @@ class FunctionActorManager:
                     )
                 method_id = method_descriptor.function_id
                 method_cross_lang_key = (actor_class_name, actor_method_name)
+                self._cross_lang_key_to_id[method_cross_lang_key] = method_id
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method
                 )
@@ -640,7 +647,6 @@ class FunctionActorManager:
                     self._function_execution_info[method_id]
                 )
                 self._num_task_executions[method_id] = 0
-                self._num_task_executions[method_cross_lang_key] = 0
             self._num_task_executions[function_id] = 0
         return actor_class
 
