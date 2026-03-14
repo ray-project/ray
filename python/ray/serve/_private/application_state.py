@@ -1468,6 +1468,13 @@ class ApplicationStateManager:
             cached = self._app_status_gauge_cache.get(name)
             value = app.status.to_numeric()
 
+            # Throttle gauge reporting to avoid redundant FFI calls each control loop.
+            # Two independent conditions trigger a write:
+            #   - value_changed: reports status transitions (e.g. DEPLOYING -> RUNNING)
+            #     immediately, without waiting for the interval to expire.
+            #   - interval_elapsed: refreshes the gauge periodically even when status is
+            #     unchanged, preventing stale/empty time series in Grafana/Prometheus.
+            # We skip ONLY when both say it is safe — value unchanged AND reported recently.
             value_changed = cached is None or cached[0] != value
             interval_elapsed = (
                 cached is None
