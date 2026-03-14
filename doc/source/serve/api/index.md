@@ -99,6 +99,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.AutoscalingPolicy
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
+   serve.config.DeploymentActorConfig
 ```
 
 ### Schemas
