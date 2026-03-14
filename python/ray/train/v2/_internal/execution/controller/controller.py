@@ -639,6 +639,10 @@ class TrainController:
         # Do not abort run if it's already finished.
         if self.get_state().is_terminal():
             return
+
+        for callback in self._controller_callbacks:
+            callback.before_controller_abort()
+
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
         if self._worker_group:
