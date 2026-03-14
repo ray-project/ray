@@ -34,6 +34,7 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hologres_datasource import HologresDatasource
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -4168,6 +4169,109 @@ def read_clickhouse(
         order_by=order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,
+    )
+
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hologres(
+    *,
+    schema_name: str = "public",
+    table_name: str,
+    connection_uri: str,
+    columns: Optional[List[str]] = None,
+    connection_options: Optional[Dict[str, Any]] = None,
+    where_filter: Optional[str] = None,
+    read_mode: str = "copy_to",
+    is_compressed: bool = True,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a Hologres table.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_hologres( # doctest: +SKIP
+        ...     schema_name="public",
+        ...     table_name="my_table",
+        ...     connection_uri="postgresql://username:password@host:port/database",
+        ...     columns=["timestamp", "age", "status", "text", "label"],
+        ... )
+        >>> # Using the default schema "public"
+        >>> ds = ray.data.read_hologres( # doctest: +SKIP
+        ...     table_name="my_table",
+        ...     connection_uri="postgresql://username:password@host:port/database",
+        ... )
+        >>> # Reading with a WHERE filter
+        >>> ds = ray.data.read_hologres( # doctest: +SKIP
+        ...     table_name="my_table",
+        ...     connection_uri="postgresql://username:password@host:port/database",
+        ...     where_filter="age > 18 AND status = 'active'",
+        ... )
+        >>> # Using copy_to mode for faster data transfer
+        >>> ds = ray.data.read_hologres( # doctest: +SKIP
+        ...     table_name="my_table",
+        ...     connection_uri="postgresql://username:password@host:port/database",
+        ...     read_mode="copy_to",
+        ... )
+
+    Args:
+        schema_name: Name of the schema where the table is located. Defaults to "public".
+        table_name: Name of the table to read from.
+        connection_uri: A string in PostgreSQL connection URI format (e.g.,
+            "postgresql://username:password@host:port/database").
+        columns: Optional list of columns to select from the data source.
+            If no columns are specified, all columns will be selected by default.
+        connection_options: Optional additional arguments to pass to the
+            PostgreSQL connection.
+        where_filter: Optional WHERE clause to filter rows from the table.
+            The filter should be a valid SQL condition (without the WHERE keyword).
+            For example: "age > 18 AND status = 'active'".
+        read_mode: Specifies the method to read data from Hologres. Options are:
+            - "select": Use standard SELECT queries
+            - "copy_to": Use PostgreSQL copy protocol with Arrow format for faster bulk reads (default)
+        is_compressed: Whether the returned data is compressed, true by default, only applicable to read_mode="copy_to"
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the Hologres table.
+    """
+    datasource = HologresDatasource(
+        schema=schema_name,
+        table=table_name,
+        connection_uri=connection_uri,
+        columns=columns,
+        connection_options=connection_options,
+        where_filter=where_filter,
+        read_mode=read_mode,
+        is_compressed=is_compressed,
     )
 
     return read_datasource(

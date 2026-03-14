@@ -11,6 +11,7 @@ dtype
 FLAC
 [Gg]roup[bB]y
 [Hh]asher(s)?
+[Hh]ologres
 [Hh]udi
 [Ii]ndexable
 [Ii]ngest

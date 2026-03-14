@@ -1835,6 +1835,20 @@ py_test(
 )
 
 py_test(
+    name = "test_hologres",
+    size = "small",
+    srcs = ["tests/test_hologres.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/datasource/test_lance.py"],

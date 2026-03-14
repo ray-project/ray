@@ -116,6 +116,15 @@ Delta Sharing
 
    read_delta_sharing_tables
 
+Hologres
+^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hologres
+
 Hudi
 ^^^^
 
