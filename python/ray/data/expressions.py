@@ -1837,8 +1837,13 @@ def uuid() -> UUIDExpr:
     """
     Create a UUID expression that generates unique identifiers.
 
-    This creates an expression that generates unique identifiers (strings) for each row.
-    The identifiers are generated using the UUID4 algorithm.
+    This creates an expression that generates unique identifiers for each row using
+    the UUID4 algorithm. The generated values are 32-character hex strings (no hyphens).
+
+    The return type depends on the block format:
+
+    - **PyArrow blocks**: ``pa.string()``
+    - **Pandas blocks**: ``pd.StringDtype()``
 
     Returns:
         A :class:`UUIDExpr` that generates unique identifiers
@@ -1847,7 +1852,7 @@ def uuid() -> UUIDExpr:
         >>> from ray.data.expressions import uuid
         >>> import ray
         >>> ds = ray.data.range(10)
-        >>> ds.with_column("uuid", uuid().str.replace("-", "")).take(5)  # doctest: +SKIP
+        >>> ds.with_column("uuid", uuid()).take(5)  # doctest: +SKIP
         [{'id': 0, 'uuid': '2899f7bd87164b98a774df730a99c8b3'},
          {'id': 1, 'uuid': 'e398656a73b0475fb6d9d5d4389a23e6'},
          {'id': 2, 'uuid': '6ef8e2a18c6c4b7e8a4089b3fcfd8094'},

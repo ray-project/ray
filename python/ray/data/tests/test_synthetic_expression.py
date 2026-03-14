@@ -360,16 +360,16 @@ def test_uuid_expression_structural_equality_with_non_uuid_expr():
 
 
 def test_uuid_values_format(ray_start_regular_shared):
-    """Test that uuid values are valid UUID strings."""
+    """Test that uuid values are valid UUIDs (str or uuid.UUID depending on block format)."""
     ds = ray.data.range(100).with_column("uuid_col", uuid())
     results = ds.take_all()
 
     assert len(results) == 100
     for result in results:
         uuid_value = result["uuid_col"]
-        assert isinstance(uuid_value, str)
-        # Validate UUID format
-        uuid_module.UUID(uuid_value)  # Will raise ValueError if invalid
+        assert isinstance(uuid_value, (str, uuid_module.UUID))
+        # Validate UUID format (UUID() accepts str or uuid.UUID)
+        uuid_module.UUID(str(uuid_value))  # Will raise ValueError if invalid
         assert "id" in result  # Verify other columns are preserved
 
 
@@ -405,8 +405,8 @@ def test_uuid_with_different_batch_formats(ray_start_regular_shared, batch_forma
 
     assert len(all_values) == 100
     for val in all_values:
-        assert isinstance(val, str)
-        uuid_module.UUID(val)  # Validate UUID format
+        assert isinstance(val, (str, uuid_module.UUID))
+        uuid_module.UUID(str(val))  # Validate UUID format
 
 
 @pytest.mark.parametrize(

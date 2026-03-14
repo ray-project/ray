@@ -1,5 +1,3 @@
-import uuid
-
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -99,11 +97,48 @@ def eval_random(
     raise TypeError(f"Unsupported block type: {block_type}")
 
 
+def _binary16_to_string_array(arr: pa.Array) -> pa.Array:
+    """Convert a pa.binary(16) array to a pa.string() array (32-char hex, no hyphens) via buffers."""
+    raw_bytes = arr.buffers()[1].to_pybytes()
+    s = raw_bytes.hex()
+    n = len(arr)
+    offsets = np.arange(0, 32 * n + 1, 32, dtype=np.int32)
+    return pa.Array.from_buffers(
+        pa.string(),
+        n,
+        [None, pa.py_buffer(offsets.tobytes()), pa.py_buffer(s.encode("ascii"))],
+    )
+
+
+def _vectorized_uuid_v4(num_rows: int) -> pa.Array:
+    """Vectorized UUIDv4 as a PyArrow string array (no Python for-loops).
+
+    Args:
+        num_rows: The number of rows to generate uuid values for.
+
+    Returns:
+        A PyArrow string array of 32-char hex UUIDs (no hyphens).
+    """
+    rng = np.random.default_rng()
+    raw = (
+        np.frombuffer(rng.bytes(16 * num_rows), dtype=np.uint8)
+        .reshape(num_rows, 16)
+        .copy()
+    )
+    raw[:, 6] = (raw[:, 6] & 0x0F) | 0x40  # version 4
+    raw[:, 8] = (raw[:, 8] & 0x3F) | 0x80  # variant 10xx
+    buf = pa.py_buffer(raw.tobytes())
+    binary_arr = pa.Array.from_buffers(pa.binary(16), num_rows, [None, buf])
+    return _binary16_to_string_array(binary_arr)
+
+
 def eval_uuid(
     num_rows: int,
     block_type: BlockType,
 ) -> BlockColumn:
     """Implementation of the uuid expression.
+
+    Both Arrow and Pandas blocks get 32-char hex strings (no hyphens).
 
     Args:
         num_rows: The number of rows to generate uuid values for.
@@ -115,10 +150,11 @@ def eval_uuid(
     Raises:
         TypeError: If the block type is not supported.
     """
-    arr = [str(uuid.uuid4()) for _ in range(num_rows)]
+    arr = _vectorized_uuid_v4(num_rows)
+
     if block_type == BlockType.PANDAS:
-        return pd.Series(arr, dtype=pd.StringDtype())
+        return arr.to_pandas().astype(pd.StringDtype())
     elif block_type == BlockType.ARROW:
-        return pa.array(arr, type=pa.string())
+        return arr
 
     raise TypeError(f"Unsupported block type: {block_type}")
