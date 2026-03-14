@@ -348,106 +348,43 @@ class _ListNamespace:
         return _list_flatten(self._expr)
 
     def union(self, other: "Expr") -> "UDFExpr":
-        """Compute the set union of elements in each list with another list.
-
-        Args:
-            other: The list expression to compute the union with.
-
-        Returns:
-            UDFExpr containing the unique elements present in either list.
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> # Union of two list columns
-            >>> expr = col("list1").list.union(col("list2")) # doctest: +SKIP
-        """
-        return_dtype = self._expr.data_type
-
-        @pyarrow_udf(return_dtype=return_dtype)
-        def _list_union(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
-            result = []
-            for l1, l2 in zip(arr1.to_pylist(), arr2.to_pylist()):
-                if l1 is None or l2 is None:
-                    result.append(None)
-                else:
-                    op_set = set(l1).union(set(l2))
-                    has_null = None in op_set
-                    if has_null:
-                        op_set.remove(None)
-                    res_list = sorted(list(op_set))
-                    if has_null:
-                        res_list.append(None)
-                    result.append(res_list)
-            return pyarrow.array(result)
-
-        return _list_union(self._expr, other)
+        return self._apply_set_operation(other, "union")
 
     def intersection(self, other: "Expr") -> "UDFExpr":
-        """Compute the set intersection of elements in each list with another list.
-
-        Args:
-            other: The list expression to compute the intersection with.
-
-        Returns:
-            UDFExpr containing only the elements present in both lists.
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> # Intersection of two list columns
-            >>> expr = col("list1").list.intersection(col("list2")) # doctest: +SKIP
-        """
-        return_dtype = self._expr.data_type
-
-        @pyarrow_udf(return_dtype=return_dtype)
-        def _list_intersection(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
-            result = []
-            for l1, l2 in zip(arr1.to_pylist(), arr2.to_pylist()):
-                if l1 is None or l2 is None:
-                    result.append(None)
-                else:
-                    op_set = set(l1).intersection(set(l2))
-                    has_null = None in op_set
-                    if has_null:
-                        op_set.remove(None)
-                    res_list = sorted(list(op_set))
-                    if has_null:
-                        res_list.append(None)
-                    result.append(res_list)
-            return pyarrow.array(result)
-
-        return _list_intersection(self._expr, other)
+        return self._apply_set_operation(other, "intersection")
 
     def difference(self, other: "Expr") -> "UDFExpr":
-        """Compute the set difference between each list and another list.
+        return self._apply_set_operation(other, "difference")
 
-        Args:
-            other: The list expression to subtract from the first list.
-
-        Returns:
-            UDFExpr containing elements present in the first list but not the second.
-
-        Example:
-            >>> from ray.data.expressions import col
-            >>> # Difference of two list columns
-            >>> expr = col("list1").list.difference(col("list2")) # doctest: +SKIP
-        """
+    def _apply_set_operation(self, other: "Expr", op_name: str) -> "UDFExpr":
+        """Private helper to apply set operations safely and consistently."""
         return_dtype = self._expr.data_type
 
         @pyarrow_udf(return_dtype=return_dtype)
-        def _list_difference(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
+        def _list_set_op(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
+            pa_type = arr1.type
+
             result = []
             for l1, l2 in zip(arr1.to_pylist(), arr2.to_pylist()):
                 if l1 is None or l2 is None:
                     result.append(None)
                 else:
-                    op_set = set(l1).difference(set(l2))
+                    s1, s2 = set(l1), set(l2)
+                    op_set = getattr(s1, op_name)(s2)
+
                     has_null = None in op_set
                     if has_null:
                         op_set.remove(None)
-                    res_list = sorted(list(op_set))
+
+                    try:
+                        res_list = sorted(op_set)
+                    except TypeError:
+                        res_list = list(op_set)
+
                     if has_null:
                         res_list.append(None)
                     result.append(res_list)
-            return pyarrow.array(result)
 
-        return _list_difference(self._expr, other)
+            return pyarrow.array(result, type=pa_type)
+
+        return _list_set_op(self._expr, other)
