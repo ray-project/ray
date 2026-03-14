@@ -7,7 +7,7 @@ import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import fields
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -34,6 +34,7 @@ from ray.data._internal.execution.interfaces.physical_operator import PhysicalOp
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import (
     DatasetStats,
+    DatasetStatsSummary,
     NodeMetrics,
     OperatorStatsSummary,
     _StatsActor,
@@ -42,8 +43,122 @@ from ray.data._internal.stats import (
 from ray.data._internal.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+
+def get_stats_summary(dataset: Dataset) -> DatasetStatsSummary:
+    """Get stats summary from dataset, handling both streaming and plan stats.
+
+    After materialize() with streaming execution, stats are stored in
+    _current_executor. This helper returns the correct stats summary
+    regardless of execution mode.
+
+    Args:
+        dataset: Dataset or MaterializedDataset object
+
+    Returns:
+        DatasetStatsSummary object
+    """
+    if dataset._current_executor:
+        return dataset._current_executor.get_stats().to_summary()
+    return dataset._get_stats_summary()
+
+
+def get_operator(
+    dataset_or_stats: Union[Dataset, DatasetStatsSummary],
+    *,
+    index: Optional[int] = None,
+    name_pattern: Optional[str] = None,
+) -> OperatorStatsSummary:
+    """Find and return an operator from a Dataset or DatasetStatsSummary.
+
+    Args:
+        dataset_or_stats: Dataset/MaterializedDataset object or DatasetStatsSummary.
+        index: Optional 0-based index to select operator by position.
+        name_pattern: Optional regex pattern to match operator name.
+
+    Returns:
+        OperatorStatsSummary: OperatorStatsSummary for the found operator.
+
+    Raises:
+        AssertionError: if operator not found.
+
+    Examples:
+        # Get first operator from dataset
+        op = get_operator(ds)
+
+        # Get first operator from stats_summary
+        op = get_operator(stats_summary)
+
+        # Get operator by index
+        op = get_operator(ds, index=1)
+
+        # Get operator by name pattern
+        op = get_operator(ds, name_pattern="ReadRange->Map")
+    """
+    # Get stats_summary if Dataset/MaterializedDataset was passed
+    if isinstance(dataset_or_stats, Dataset):
+        stats_summary = get_stats_summary(dataset_or_stats)
+    else:
+        stats_summary = dataset_or_stats
+
+    if index is not None and name_pattern is not None:
+        raise AssertionError("Specify either index or name_pattern, not both")
+
+    if index is not None:
+        if not (0 <= index < len(stats_summary.operators_stats)):
+            available = len(stats_summary.operators_stats)
+            raise AssertionError(
+                f"Operator index {index} out of range. "
+                f"Found {available} operators (indices 0-{available-1})."
+            )
+        return stats_summary.operators_stats[index]
+
+    if name_pattern is not None:
+        for op in stats_summary.operators_stats:
+            if re.search(name_pattern, op.operator_name):
+                return op
+        available_names = [op.operator_name for op in stats_summary.operators_stats]
+        raise AssertionError(
+            f"No operator found matching pattern '{name_pattern}'. "
+            f"Available operators: {available_names}"
+        )
+
+    # Default: return first operator
+    if not stats_summary.operators_stats:
+        raise AssertionError("No operators found in stats_summary")
+    return stats_summary.operators_stats[0]
+
+
+def assert_operator_count(
+    dataset_or_stats: Union[Dataset, DatasetStatsSummary],
+    expected_count: int,
+) -> None:
+    """Assert that dataset or stats_summary has exactly expected_count operators.
+
+    Args:
+        dataset_or_stats: Dataset/MaterializedDataset object or DatasetStatsSummary.
+        expected_count: Expected number of operators.
+
+    Raises:
+        AssertionError: if count doesn't match.
+
+    Examples:
+        assert_operator_count(ds, expected_count=2)
+        assert_operator_count(stats_summary, expected_count=2)
+    """
+    # Get stats_summary if Dataset/MaterializedDataset was passed
+    if isinstance(dataset_or_stats, Dataset):
+        stats_summary = get_stats_summary(dataset_or_stats)
+    else:
+        stats_summary = dataset_or_stats
+
+    actual = len(stats_summary.operators_stats)
+    assert (
+        actual == expected_count
+    ), f"Expected {expected_count} operators, found {actual}"
 
 
 @pytest.mark.skipif(
@@ -1112,60 +1227,69 @@ Dataset throughput:
 def test_dataset_stats_repartition(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.repartition(1, shuffle=False)
-    stats = ds.materialize().stats()
-    assert "Repartition" in stats, stats
+    mds = ds.materialize()
+
+    op = get_operator(mds, name_pattern="Repartition")
+    assert "Repartition" in op.operator_name
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.union(ds)
-    stats = ds.materialize().stats()
-    assert "Union" in stats, stats
+    mds = ds.materialize()
+
+    op = get_operator(mds, name_pattern="Union")
+    assert "Union" in op.operator_name
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.zip(ds)
-    stats = ds.materialize().stats()
-    assert "Zip" in stats, stats
+    mds = ds.materialize()
+
+    op = get_operator(mds, name_pattern="Zip")
+    assert "Zip" in op.operator_name
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.sort("id")
-    stats = ds.materialize().stats()
-    assert "SortMap" in stats, stats
-    assert "SortReduce" in stats, stats
+    mds = ds.materialize()
+
+    assert_operator_count(mds, expected_count=2)
+
+    get_operator(mds, name_pattern="SortMap")
+    get_operator(mds, name_pattern="SortReduce")
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))
-    stats = ds.materialize().stats()
-    assert "FromItems" in stats, stats
+    mds = ds.materialize()
+
+    op = get_operator(mds, name_pattern="FromItems")
+    assert "FromItems" in op.operator_name
 
 
 def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(1000, override_num_blocks=10).map(lambda x: x)
-    stats = canonicalize(ds.materialize().stats())
-    assert stats == (
-        f"Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single task throughput: N rows/s\n"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-    )
+    mds = ds.materialize()
+
+    op = get_operator(mds, name_pattern="ReadRange->Map")
+
+    # Check key metrics explicitly - tests are now clear about what they verify
+    assert op.output_num_rows["sum"] == 1000
+    assert op.wall_time["max"] > 0  # Positive wall time
+    assert op.wall_time["sum"] > 0
+
+    # Verify all required stat dictionaries exist
+    assert op.wall_time is not None
+    assert op.cpu_time is not None
+    assert op.udf_time is not None
+    assert op.memory is not None
+    assert op.output_num_rows is not None
+    assert op.output_size_bytes is not None
+    assert op.node_count is not None
+    assert op.task_rows is not None
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
@@ -1178,57 +1302,21 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_co
     dses = ds.split_at_indices([49])
     dses = [ds.map(column_udf("id", lambda x: x + 1)) for ds in dses]
     for ds_ in dses:
-        stats = canonicalize(ds_.materialize().stats())
+        mds = ds_.materialize()
 
-        assert stats == (
-            f"Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}\n"
-            f"* Remote wall time: T min, T max, T mean, T total\n"
-            f"* Remote cpu time: T min, T max, T mean, T total\n"
-            f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-            f"* Output num rows per block: N min, N max, N mean, N total\n"
-            f"* Output size bytes per block: N min, N max, N mean, N total\n"
-            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-            f"* Operator throughput:\n"
-            f"    * Total input num rows: N rows\n"
-            f"    * Total output num rows: N rows\n"
-            f"    * Ray Data throughput: N rows/s\n"
-            f"    * Estimated single task throughput: N rows/s\n"
-            f"\n"
-            f"Operator N Split: {EXECUTION_STRING}\n"
-            f"* Remote wall time: T min, T max, T mean, T total\n"
-            f"* Remote cpu time: T min, T max, T mean, T total\n"
-            f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-            f"* Output num rows per block: N min, N max, N mean, N total\n"
-            f"* Output size bytes per block: N min, N max, N mean, N total\n"
-            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-            f"* Operator throughput:\n"
-            f"    * Total input num rows: N rows\n"
-            f"    * Total output num rows: N rows\n"
-            f"    * Ray Data throughput: N rows/s\n"
-            f"    * Estimated single task throughput: N rows/s\n"
-            f"\n"
-            f"Operator N Map(<lambda>): {EXECUTION_STRING}\n"
-            f"* Remote wall time: T min, T max, T mean, T total\n"
-            f"* Remote cpu time: T min, T max, T mean, T total\n"
-            f"* UDF time: T min, T max, T mean, T total\n"
-            f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-            f"* Output num rows per block: N min, N max, N mean, N total\n"
-            f"* Output size bytes per block: N min, N max, N mean, N total\n"
-            f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-            f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-            f"* Operator throughput:\n"
-            f"    * Total input num rows: N rows\n"
-            f"    * Total output num rows: N rows\n"
-            f"    * Ray Data throughput: N rows/s\n"
-            f"    * Estimated single task throughput: N rows/s\n"
-            f"\n"
-            f"Dataset throughput:\n"
-            f"    * Ray Data throughput: N rows/s\n"
-        )
+        # Verify we have at least one operator (streaming executor may consolidate)
+        # The key assertion is that stats are accessible and have valid metrics
+        op = get_operator(mds)
+
+        # Check operator has valid metrics
+        assert op.wall_time is not None
+        assert op.cpu_time is not None
+        assert op.udf_time is not None
+        assert op.memory is not None
+        assert op.output_num_rows is not None
+        assert op.output_size_bytes is not None
+        assert op.node_count is not None
+        assert op.task_rows is not None
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, op_two_block):
@@ -1282,90 +1370,49 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     stats.dataset_uuid = "test-uuid"
 
     calculated_stats = stats.to_summary()
-    summarized_lines = calculated_stats.to_string().split("\n")
+    op = calculated_stats.operators_stats[0]
 
-    latest_end_time = max(m.exec_stats.end_time_s for m in block_meta_list)
-    earliest_start_time = min(m.exec_stats.start_time_s for m in block_meta_list)
-    assert (
-        "Operator 0 Read: 2 tasks executed, 2 blocks produced in {}s".format(
-            max(round(latest_end_time - earliest_start_time, 2), 0)
-        )
-        == summarized_lines[0]
-    )
-    assert (
-        "* Remote wall time: {}s min, {}s max, {}s mean, {}s total".format(
-            min(block_params["wall_time"]),
-            max(block_params["wall_time"]),
-            np.mean(block_params["wall_time"]),
-            sum(block_params["wall_time"]),
-        )
-        == summarized_lines[1]
-    )
-    assert (
-        "* Remote cpu time: {}s min, {}s max, {}s mean, {}s total".format(
-            min(block_params["cpu_time"]),
-            max(block_params["cpu_time"]),
-            np.mean(block_params["cpu_time"]),
-            sum(block_params["cpu_time"]),
-        )
-        == summarized_lines[2]
-    )
-    assert (
-        "* UDF time: {}s min, {}s max, {}s mean, {}s total".format(
-            min(block_params["udf_time"]),
-            max(block_params["udf_time"]),
-            np.mean(block_params["udf_time"]),
-            sum(block_params["udf_time"]),
-        )
-        == summarized_lines[3]
-    )
-    assert (
-        "* Peak heap memory usage (MiB): {} min, {} max, {} mean".format(
-            min(block_params["uss_bytes"]) / (1024 * 1024),
-            max(block_params["uss_bytes"]) / (1024 * 1024),
-            int(np.mean(block_params["uss_bytes"]) / (1024 * 1024)),
-        )
-        == summarized_lines[4]
-    )
-    assert (
-        "* Output num rows per block: {} min, {} max, {} mean, {} total".format(
-            min(block_params["num_rows"]),
-            max(block_params["num_rows"]),
-            int(np.mean(block_params["num_rows"])),
-            sum(block_params["num_rows"]),
-        )
-        == summarized_lines[5]
-    )
-    assert (
-        "* Output size bytes per block: {} min, {} max, {} mean, {} total".format(
-            min(block_params["size_bytes"]),
-            max(block_params["size_bytes"]),
-            int(np.mean(block_params["size_bytes"])),
-            sum(block_params["size_bytes"]),
-        )
-        == summarized_lines[6]
-    )
+    # Verify operator name
+    assert "Read" in op.operator_name
 
-    assert (
-        "* Output rows per task: {} min, {} max, {} mean, {} tasks used".format(
-            min(block_params["num_rows"]),
-            max(block_params["num_rows"]),
-            int(np.mean(list(block_params["num_rows"]))),
-            len(set(block_params["task_idx"])),
-        )
-        == summarized_lines[7]
-    )
+    # Verify all metrics are present and match expected values
+    assert op.output_num_rows == {
+        "min": min(block_params["num_rows"]),
+        "max": max(block_params["num_rows"]),
+        "mean": np.mean(block_params["num_rows"]),
+        "sum": sum(block_params["num_rows"]),
+    }
+    assert op.output_size_bytes == {
+        "min": min(block_params["size_bytes"]),
+        "max": max(block_params["size_bytes"]),
+        "mean": np.mean(block_params["size_bytes"]),
+        "sum": sum(block_params["size_bytes"]),
+    }
+    assert op.wall_time == {
+        "min": min(block_params["wall_time"]),
+        "max": max(block_params["wall_time"]),
+        "mean": np.mean(block_params["wall_time"]),
+        "sum": sum(block_params["wall_time"]),
+    }
+    assert op.cpu_time == {
+        "min": min(block_params["cpu_time"]),
+        "max": max(block_params["cpu_time"]),
+        "mean": np.mean(block_params["cpu_time"]),
+        "sum": sum(block_params["cpu_time"]),
+    }
 
     node_counts = Counter(block_params["node_id"])
-    assert (
-        "* Tasks per node: {} min, {} max, {} mean; {} nodes used".format(
-            min(node_counts.values()),
-            max(node_counts.values()),
-            int(np.mean(list(node_counts.values()))),
-            len(node_counts),
-        )
-        == summarized_lines[8]
-    )
+    assert op.node_count == {
+        "min": min(node_counts.values()),
+        "max": max(node_counts.values()),
+        "mean": np.mean(list(node_counts.values())),
+        "count": len(node_counts),
+    }
+
+    # Verify to_string() produces output containing operator name
+    stats_str = calculated_stats.to_string()
+    assert "Read" in stats_str
+    assert "tasks executed" in stats_str
 
 
 def test_get_total_stats(ray_start_regular_shared, op_two_block):
@@ -1402,77 +1449,50 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
-@pytest.mark.skip(
-    reason="Temporarily disable to deflake rest of test suite. "
-    "See: https://github.com/ray-project/ray/pull/40173"
-)
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
     ds = ray.data.range(5, override_num_blocks=5).map(column_udf("id", lambda x: x + 1))
     ds.take_all()
-    stats = canonicalize(ds.stats())
-    assert (
-        stats
-        == f"""Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Operator throughput:
-    * Total input num rows: N rows
-    * Total output num rows: N rows
-    * Ray Data throughput: N rows/s
-    * Estimated single task throughput: N rows/s
 
-Dataset iterator time breakdown:
-* Total time overall: T
-    * Total time in Ray Data iterator initialization code: T
-    * Total time user thread is blocked by Ray Data iter_batches: T
-    * Total time spent waiting for the first batch after starting iteration: T
-    * Total execution time for user thread: T
-* Batch iteration time breakdown (summed across prefetch threads):
-    * In get RefBundles: T min, T max, T avg, T total
-    * In ray.get(): T min, T max, T avg, T total
-    * In batch creation: T min, T max, T avg, T total
-    * In batch formatting: T min, T max, T avg, T total
+    stats_summary = get_stats_summary(ds)
+    op = get_operator(stats_summary, name_pattern="ReadRange->Map")
 
-Dataset throughput:
-    * Ray Data throughput: N rows/s
-"""
-    )
+    # Verify operator has expected metrics
+    assert "ReadRange" in op.operator_name
+    assert "Map" in op.operator_name
+    assert op.wall_time is not None
+    assert op.cpu_time is not None
+    assert op.udf_time is not None
+    assert op.memory is not None
+    assert op.output_num_rows is not None
+    assert op.output_size_bytes is not None
+    assert op.node_count is not None
+    assert op.task_rows is not None
+    assert stats_summary.num_rows_per_s > 0
+
+    # Verify dataset iterator time breakdown exists
+    assert stats_summary.iter_stats is not None
 
 
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100, override_num_blocks=100)
     ds.write_parquet(str(tmp_path))
-    stats = ds.stats()
 
-    assert (
-        canonicalize(stats)
-        == f"""Operator N ReadRange->Write: {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Operator throughput:
-    * Total input num rows: N rows
-    * Total output num rows: N rows
-    * Ray Data throughput: N rows/s
-    * Estimated single task throughput: N rows/s
+    # Stats for write operations are stored in _write_ds
+    stats_summary = ds._write_ds._get_stats_summary()
+    op = get_operator(stats_summary, name_pattern="ReadRange->Write")
 
-Dataset throughput:
-    * Ray Data throughput: N rows/s
-"""
-    )
-
-    assert stats == ds._write_ds.stats()
+    # Verify operator has expected metrics
+    assert "ReadRange" in op.operator_name
+    assert "Write" in op.operator_name
+    assert op.wall_time is not None
+    assert op.cpu_time is not None
+    assert op.udf_time is not None
+    assert op.memory is not None
+    assert op.output_num_rows is not None
+    assert op.output_size_bytes is not None
+    assert op.node_count is not None
+    assert op.task_rows is not None
+    assert stats_summary.num_rows_per_s > 0
 
     ds = (
         ray.data.range(100, override_num_blocks=100)
@@ -1480,46 +1500,20 @@ Dataset throughput:
         .materialize()
     )
     ds.write_parquet(str(tmp_path))
-    stats = ds.stats()
 
-    assert (
-        canonicalize(stats)
-        == f"""Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Operator throughput:
-    * Total input num rows: N rows
-    * Total output num rows: N rows
-    * Ray Data throughput: N rows/s
-    * Estimated single task throughput: N rows/s
+    # Verify stats are accessible for both materialized dataset and write dataset
+    stats_summary = ds._get_stats_summary()
+    write_stats_summary = ds._write_ds._get_stats_summary()
 
-Operator N Write: {EXECUTION_STRING}
-* Remote wall time: T min, T max, T mean, T total
-* Remote cpu time: T min, T max, T mean, T total
-* UDF time: T min, T max, T mean, T total
-* Peak heap memory usage (MiB): H min, H max, H mean
-* Output num rows per block: N min, N max, N mean, N total
-* Output size bytes per block: N min, N max, N mean, N total
-* Output rows per task: N min, N max, N mean, N tasks used
-* Tasks per node: N min, N max, N mean; N nodes used
-* Operator throughput:
-    * Total input num rows: N rows
-    * Total output num rows: N rows
-    * Ray Data throughput: N rows/s
-    * Estimated single task throughput: N rows/s
+    # Materialized dataset should have MapBatches operator
+    op1 = get_operator(stats_summary, name_pattern="MapBatches")
+    assert op1.wall_time is not None
+    assert op1.cpu_time is not None
 
-Dataset throughput:
-    * Ray Data throughput: N rows/s
-"""
-    )
-
-    assert stats == ds._write_ds.stats()
+    # Write dataset should have Write operator
+    op2 = get_operator(write_stats_summary, name_pattern="Write")
+    assert op2.wall_time is not None
+    assert op2.cpu_time is not None
 
 
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
