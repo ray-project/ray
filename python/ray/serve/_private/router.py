@@ -774,12 +774,17 @@ class AsyncioRouter:
             # Replica has died but controller hasn't notified the router yet.
             # Don't consider this replica for requests in the future, and retry
             # routing request.
-            if self.request_router:
-                self.request_router.on_replica_actor_died(replica_id)
-            logger.warning(
-                f"{replica_id} will not be considered for future "
-                "requests because it has died."
-            )
+            if replica_id.actor_id == result.actor_id:
+                if self.request_router:
+                    self.request_router.on_replica_actor_died(replica_id)
+                logger.warning(
+                    f"{replica_id} will not be considered for future requests because it has died."
+                )
+            else:
+                logger.warning(
+                    f"ActorDiedError observed for request on replica {replica_id}, "
+                    "but the error originated from a dependency. Not marking replica dead."
+                )
         elif isinstance(result, ActorUnavailableError):
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -859,16 +864,21 @@ class AsyncioRouter:
                 result.cancel()
 
             raise
-        except ActorDiedError:
+        except ActorDiedError as e:
             # Replica has died but controller hasn't notified the router yet.
             # Don't consider this replica for requests in the future, and retry
             # routing request.
             if replica is not None:
-                self.request_router.on_replica_actor_died(replica.replica_id)
-                logger.warning(
-                    f"{replica.replica_id} will not be considered for future "
-                    "requests because it has died."
-                )
+                if replica.replica_id.actor_id == e.actor_id:
+                    self.request_router.on_replica_actor_died(replica.replica_id)
+                    logger.warning(
+                        f"{replica.replica_id} will not be considered for future requests because it has died."
+                    )
+                else:
+                    logger.warning(
+                        f"ActorDiedError occurred but originated from dependency. "
+                        f"Replica {replica.replica_id} remains valid."
+                    )
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
