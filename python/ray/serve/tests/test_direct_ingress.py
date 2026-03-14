@@ -47,6 +47,7 @@ from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import (
     ApplicationStatus,
     DeploymentStatus,
@@ -375,8 +376,64 @@ def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: duplicate HTTP tests for gRPC")
 
 
-def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
+def test_multiplexed_on_ingress_disallowed(_skip_if_ff_not_enabled, serve_instance):
+    """Deploying an ingress deployment that uses @serve.multiplexed should raise ValueError."""
+
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self, request: Request):
+            model_id = serve.get_multiplexed_model_id()
+            await self.get_model(model_id)
+            return model_id
+
+    with pytest.raises(
+        ValueError, match="Model multiplexing.*not supported on ingress"
+    ):
+        serve.run(MultiplexedIngress.bind())
+
+
+def test_direct_ingress_with_downstream_multiplexing(
+    _skip_if_ff_not_enabled, serve_instance
+):
+    """Ingress forwards to multiplexed downstream; model ID propagated via handle.options()."""
+
+    @serve.deployment
+    class MultiplexedModel:
+        @serve.multiplexed(max_num_models_per_replica=4)
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self):
+            model_id = serve.get_multiplexed_model_id()
+            await self.get_model(model_id)
+            return {"model_id": model_id}
+
+    @serve.deployment
+    class IngressDeployment:
+        def __init__(self, downstream: DeploymentHandle):
+            self._downstream = downstream
+
+        async def __call__(self, request: Request):
+            model_id = request.headers.get("serve_multiplexed_model_id", "default")
+            return await self._downstream.options(
+                multiplexed_model_id=model_id
+            ).remote()
+
+    serve.run(IngressDeployment.bind(MultiplexedModel.bind()))
+
+    http_urls = get_application_urls("HTTP")
+    for http_url in http_urls:
+        r = httpx.get(http_url, headers={"serve_multiplexed_model_id": "model_123"})
+        r.raise_for_status()
+        assert r.json() == {"model_id": "model_123"}
+
+        r = httpx.get(http_url, headers={"serve_multiplexed_model_id": "model_456"})
+        r.raise_for_status()
+        assert r.json() == {"model_id": "model_456"}
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):

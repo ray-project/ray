@@ -13,6 +13,10 @@ model multiplexing optimizes cost and load balances the traffic. This is useful 
 
 To write a multiplexed deployment, use the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 
+:::{important}
+`@serve.multiplexed` is intended for **downstream replicas only**. Don't use it on the ingress deployment (the one exposed over HTTP/gRPC). The ingress is the routing entry point, not a model-serving leaf. Use multiplexing on deployments that are called via `DeploymentHandle` from an upstream ingress. Model IDs are propagated through `handle.options(multiplexed_model_id=...)`.
+:::
+
 Assuming you have multiple PyTorch models inside an AWS S3 bucket with the following structure:
 ```
 s3://my_bucket/1/model.pt
@@ -78,7 +82,7 @@ You can also send a request to a specific model by using handle {mod}`options <r
 :end-before: __serve_handle_send_example_end__
 ```
 
-When using model composition, you can send requests from an upstream deployment to a multiplexed deployment using the Serve DeploymentHandle. You need to set the `multiplexed_model_id` in the options. For example:
+When using model composition, use multiplexing on the **downstream** deployment and call it from an ingress via `DeploymentHandle`. The ingress parses the request (for example, to get the model ID from a header), then forwards to the multiplexed deployment with `handle.options(multiplexed_model_id=...)`. For example:
 ```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_model_composition_example_begin__
