@@ -17,7 +17,6 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
     Executor,
     OutputIterator,
     PhysicalOperator,
@@ -44,7 +43,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.metadata_exporter import (
+    Topology as TopologyMetadata,
+    sanitize_for_struct,
+)
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
@@ -52,6 +54,7 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
@@ -62,6 +65,10 @@ logger = logging.getLogger(__name__)
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
+
+# Maximum string/sequence length for DataContext logging. Set high to avoid truncation
+# while still protecting against pathological cases.
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
@@ -188,7 +195,17 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
-            logger.debug("Execution config: %s", self._options)
+            # Log the full DataContext for traceability
+            if logger.isEnabledFor(logging.DEBUG) and log_once(
+                f"ray_data_log_context_{self._dataset_id}"
+            ):
+                logger.debug(
+                    f"Data Context for dataset {self._dataset_id}:\n%s",
+                    sanitize_for_struct(
+                        self._data_context,
+                        truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
+                    ),
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
@@ -675,57 +692,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-
-def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid DAGs.
-
-    It checks if the sum of min actor pool sizes are larger than the resource
-    limit, as well as other unsupported resource configurations.
-
-    This should be called prior to creating the topology from the DAG.
-
-    Args:
-        dag: The DAG to validate.
-        limits: The limits to validate against.
-    """
-
-    seen = set()
-
-    def walk(op):
-        seen.add(op)
-        for parent in op.input_dependencies:
-            if parent not in seen:
-                yield from walk(parent)
-        yield op
-
-    base_usage = ExecutionResources(cpu=1)
-    for op in walk(dag):
-        min_resource_usage, _ = op.min_max_resource_requirements()
-        base_usage = base_usage.add(min_resource_usage)
-
-    if not base_usage.satisfies_limit(limits):
-        error_message = (
-            "The current cluster doesn't have the required resources to execute your "
-            "Dataset pipeline:\n"
-        )
-        if base_usage.cpu > limits.cpu:
-            error_message += (
-                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
-                f"only has {limits.cpu}.\n"
-            )
-        if base_usage.gpu > limits.gpu:
-            error_message += (
-                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
-                f"only has {limits.gpu}.\n"
-            )
-        if base_usage.object_store_memory > limits.object_store_memory:
-            error_message += (
-                f"- Your application needs {base_usage.object_store_memory}B object "
-                f"store memory, but your cluster only has "
-                f"{limits.object_store_memory}B.\n"
-            )
-        raise ValueError(error_message.strip())
 
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:

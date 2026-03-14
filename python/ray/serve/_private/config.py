@@ -4,18 +4,20 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
-
-from ray import cloudpickle
-from ray._common import ray_option_utils
-from ray._common.pydantic_compat import (
+from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    validator,
+    field_validator,
+    model_validator,
 )
+
+from ray import cloudpickle
+from ray._common import ray_option_utils
 from ray._common.serialization import pickle_dumps
 from ray._common.utils import resources_from_ray_options
 from ray.serve._private.constants import (
@@ -31,6 +33,7 @@ from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
+    DeploymentActorConfig,
     DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -41,6 +44,7 @@ from ray.serve.config import (
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentActorConfig as DeploymentActorConfigProto,
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     EncodingType as EncodingTypeProto,
@@ -210,14 +214,18 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
-    class Config:
-        validate_assignment = True
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
-    @validator("user_config", always=True)
+    @field_validator("user_config")
+    @classmethod
     def user_config_json_serializable(cls, v):
         if isinstance(v, bytes):
             return v
@@ -229,7 +237,8 @@ class DeploymentConfig(BaseModel):
 
         return v
 
-    @validator("logging_config", always=True)
+    @field_validator("logging_config")
+    @classmethod
     def logging_config_valid(cls, v):
         if v is None:
             return v
@@ -241,10 +250,11 @@ class DeploymentConfig(BaseModel):
         # Handle default value
         from ray.serve.schema import LoggingConfig
 
-        v = LoggingConfig(**v).dict()
+        v = LoggingConfig(**v).model_dump()
         return v
 
-    @validator("max_queued_requests", always=True)
+    @field_validator("max_queued_requests")
+    @classmethod
     def validate_max_queued_requests(cls, v):
         if not isinstance(v, int):
             raise TypeError("max_queued_requests must be an integer.")
@@ -256,24 +266,52 @@ class DeploymentConfig(BaseModel):
 
         return v
 
-    @validator("gang_scheduling_config", always=True)
-    def validate_gang_scheduling_config(cls, v, values):
-        if v is None:
-            return v
-        num_replicas = values.get("num_replicas")
-        if num_replicas is not None and num_replicas % v.gang_size != 0:
+    @model_validator(mode="after")
+    def validate_gang_scheduling_config(self):
+        if self.gang_scheduling_config is None:
+            return self
+        if (
+            self.autoscaling_config is not None
+            and self.autoscaling_config.min_replicas == 0
+        ):
             raise ValueError(
-                f"num_replicas ({num_replicas}) must be a multiple of "
-                f"gang_size ({v.gang_size})."
+                "Scale to zero isn't supported for gang-scheduled deployments."
+            )
+        # Skip the num_replicas alignment check when autoscaling is enabled
+        if (
+            self.autoscaling_config is None
+            and self.num_replicas is not None
+            and self.num_replicas % self.gang_scheduling_config.gang_size != 0
+        ):
+            raise ValueError(
+                f"num_replicas ({self.num_replicas}) must be a multiple of "
+                f"gang_size ({self.gang_scheduling_config.gang_size})."
             )
 
-        return v
+        return self
+
+    @model_validator(mode="after")
+    def validate_deployment_actors_unique_names(self):
+        if self.deployment_actors is None:
+            return self
+        seen = set()
+        duplicates = set()
+        for cfg in self.deployment_actors:
+            if cfg.name in seen:
+                duplicates.add(cfg.name)
+            seen.add(cfg.name)
+        if duplicates:
+            raise ValueError(
+                f"deployment_actors must have unique names. "
+                f"Duplicate name(s): {sorted(duplicates)}"
+            )
+        return self
 
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
-        data = self.dict()
+        data = self.model_dump()
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -340,6 +378,26 @@ class DeploymentConfig(BaseModel):
                 gang_placement_strategy=placement_strategy,
                 runtime_failure_policy=failure_policy,
             )
+        if self.deployment_actors:
+            deployment_actors_proto = []
+            for cfg in self.deployment_actors:
+                if not cfg._serialized_actor_class:
+                    cfg._serialize_actor_class()
+                deployment_actors_proto.append(
+                    DeploymentActorConfigProto(
+                        name=cfg.name,
+                        actor_class_name=cfg.actor_class,
+                        _serialized_actor_class=cfg._serialized_actor_class,
+                        serialized_init_args=cloudpickle.dumps(cfg.init_args or ()),
+                        serialized_init_kwargs=cloudpickle.dumps(cfg.init_kwargs or {}),
+                        serialized_actor_options=cloudpickle.dumps(
+                            cfg.actor_options or {}
+                        ),
+                    )
+                )
+            data["deployment_actors"] = deployment_actors_proto
+        else:
+            data.pop("deployment_actors", None)
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -347,7 +405,7 @@ class DeploymentConfig(BaseModel):
 
     def to_dict(self):
         # only use for logging purposes
-        return self.dict()
+        return self.model_dump()
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
@@ -443,6 +501,31 @@ class DeploymentConfig(BaseModel):
             data["gang_scheduling_config"] = GangSchedulingConfig(**gang_config)
         else:
             data.pop("gang_scheduling_config", None)
+        if "deployment_actors" in data and data["deployment_actors"]:
+            deployment_actors = []
+
+            def _loads(b):
+                return cloudpickle.loads(b) if b else None
+
+            for proto_dict in data["deployment_actors"]:
+                serialized_cls = proto_dict.get("_serialized_actor_class")
+                serialized_args = proto_dict.get("serialized_init_args")
+                serialized_kwargs = proto_dict.get("serialized_init_kwargs")
+                serialized_opts = proto_dict.get("serialized_actor_options")
+                actor_class_name = proto_dict.get("actor_class_name", "")
+                deployment_actors.append(
+                    DeploymentActorConfig(
+                        name=proto_dict.get("name"),
+                        actor_class=actor_class_name,
+                        _serialized_actor_class=serialized_cls,
+                        init_args=_loads(serialized_args) or (),
+                        init_kwargs=_loads(serialized_kwargs) or {},
+                        actor_options=_loads(serialized_opts) or {},
+                    )
+                )
+            data["deployment_actors"] = deployment_actors
+        else:
+            data.pop("deployment_actors", None)
 
         return cls(**data)
 
@@ -463,7 +546,7 @@ class DeploymentConfig(BaseModel):
         """
 
         config = cls()
-        valid_config_options = set(config.dict().keys())
+        valid_config_options = set(cls.model_fields.keys())
 
         # Friendly error if a non-DeploymentConfig kwarg was passed in
         for key, val in kwargs.items():
@@ -503,11 +586,11 @@ def handle_num_replicas_auto(
     else:
         # If autoscaling config was specified, values specified in
         # autoscaling config overrides the default configuration
-        default_config = AutoscalingConfig.default().dict(exclude_unset=True)
+        default_config = AutoscalingConfig.default().model_dump(exclude_unset=True)
         autoscaling_config = (
             autoscaling_config
             if isinstance(autoscaling_config, dict)
-            else autoscaling_config.dict(exclude_unset=True)
+            else autoscaling_config.model_dump(exclude_unset=True)
         )
         default_config.update(autoscaling_config)
         autoscaling_config = AutoscalingConfig(**default_config)
@@ -1033,7 +1116,7 @@ def prepare_imperative_http_options(
     elif isinstance(http_options, HTTPOptions):
         # empty `HTTPOptions()` is considered as user specified the default location value `HeadOnly` explicitly
         location_set_explicitly = True
-        http_options = HTTPOptions(**http_options.dict(exclude_unset=True))
+        http_options = HTTPOptions(**http_options.model_dump(exclude_unset=True))
     else:
         raise ValueError(
             f"Unexpected type for http_options: `{type(http_options).__name__}`"

@@ -1,5 +1,6 @@
 import math
 import time
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -13,6 +14,9 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
+)
+from ray.data._internal.execution.interfaces.physical_operator import (
+    TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -31,6 +35,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import TaskExecWorkerStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
@@ -302,7 +307,8 @@ class TestResourceManager:
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
-        input.size_bytes = MagicMock(return_value=1)
+        block_ref, block_meta = input.blocks[0]
+        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
@@ -354,7 +360,12 @@ class TestResourceManager:
         # When the task finishes, we move the data from the streaming generator to the
         # operator's internal outqueue.
         o2.metrics.on_output_queued(input)
-        o2.metrics.on_task_finished(0, None)
+        o2.metrics.on_task_finished(
+            0,
+            None,
+            TaskExecWorkerStats(task_wall_time_s=0.0),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -389,7 +400,12 @@ class TestResourceManager:
 
         # Task inputs no longer count once the task is finished.
         o3.metrics.on_output_queued(input)
-        o3.metrics.on_task_finished(0, None)
+        o3.metrics.on_task_finished(
+            0,
+            None,
+            TaskExecWorkerStats(task_wall_time_s=0.0),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0

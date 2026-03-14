@@ -12,5 +12,6 @@ srcs:
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - PYTHON
+  - CUDA_VERSION
 tags:
   - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON
