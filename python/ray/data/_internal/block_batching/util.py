@@ -193,23 +193,56 @@ def _format_batch(
     batch: Batch,
     batch_format: Optional[str],
     stats: Optional[DatasetStats],
+    ensure_copy: bool = False,
 ) -> Batch:
     with stats.iter_format_batch_s.timer() if stats else nullcontext():
         formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
             batch_format
         )
+        if ensure_copy:
+            formatted_data = _make_batch_writable(formatted_data)
     return dataclasses.replace(batch, data=formatted_data)
+
+
+def _make_batch_writable(batch):
+    """Return a writeable batch.
+
+    ``pa.Array.to_numpy()`` returns read-only arrays by default, so when
+    a caller passes ``ensure_copy=True`` (i.e. ``zero_copy_batch=False``) and the
+    block is Arrow, the numpy-format batch must be explicitly copied to give the UDF
+    writable arrays.
+    """
+    import numpy as np
+
+    if isinstance(batch, dict):
+        # Return a dictionary with the same keys (column names) and values (column numpy arrays),
+        # with the values copied if they are read only (based on the flags.writeable attribute)
+        return {
+            k: v.copy() if (isinstance(v, np.ndarray) and not v.flags.writeable) else v
+            for k, v in batch.items()
+        }
+    elif isinstance(batch, np.ndarray) and not batch.flags.writeable:
+        return batch.copy()
+    # pandas DataFrames already have writable numpy arrays via to_pandas()
+    # by default, Arrow tables are immutable by design
+    return batch
 
 
 def format_batches(
     batch_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Given an iterator of batches, returns an iterator of formatted batches."""
     return _MappingIterator(
         batch_iter,
-        functools.partial(_format_batch, batch_format=batch_format, stats=stats),
+        functools.partial(
+            _format_batch,
+            batch_format=batch_format,
+            stats=stats,
+            ensure_copy=ensure_copy,
+        ),
     )
 
 
