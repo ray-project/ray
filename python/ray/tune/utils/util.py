@@ -145,7 +145,7 @@ def retry_fn(
 
         if proc.is_alive():
             logger.debug(
-                f"Process timed out (try {i+1}/{num_retries}): "
+                f"Process timed out (try {i + 1}/{num_retries}): "
                 f"{getattr(fn, '__name__', None)}"
             )
         elif not errored.is_set():
@@ -199,7 +199,9 @@ class warn_if_slow:
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
             duration = now - self.start
-            logger.warning(self.message.format(name=self.name, duration=duration))
+            logger.warning(
+                self.message.format(name=self.name, duration=duration), stacklevel=2
+            )
 
 
 @DeveloperAPI
@@ -623,8 +625,7 @@ def validate_warmstart(
         for point in points_to_evaluate:
             if not isinstance(point, (dict, list)):
                 raise TypeError(
-                    f"points_to_evaluate expected to include list or dict, "
-                    f"got {point}."
+                    f"points_to_evaluate expected to include list or dict, got {point}."
                 )
 
             if validate_point_name_lengths and (not len(point) == len(parameter_names)):
