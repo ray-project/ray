@@ -181,7 +181,7 @@ class ParquetDatasink(_FileDatasink):
 
         blocks = list(blocks)
         non_empty_blocks: List[Block] = []
-        non_empty_accessors = []
+        non_empty_accessors: List[BlockAccessor] = []
         for block in blocks:
             accessor = BlockAccessor.for_block(block)
             if accessor.num_rows() > 0:
