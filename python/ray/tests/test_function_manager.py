@@ -58,6 +58,19 @@ def test_get_execution_info_cpp_non_actor_descriptor_raises_runtime_error():
         manager.get_execution_info(job_id="job-id", function_descriptor=descriptor)
 
 
+def test_get_execution_info_cpp_non_actor_with_local_code_raises_runtime_error():
+    worker = _DummyWorker(is_actor_worker=False)
+    worker.load_code_from_local = True
+    manager = FunctionActorManager(worker)
+
+    descriptor = CppFunctionDescriptor("foo", "PYTHON", "Bar")
+
+    with pytest.raises(
+        RuntimeError, match="without function_id on a non-actor worker"
+    ):
+        manager.get_execution_info(job_id="job-id", function_descriptor=descriptor)
+
+
 def test_cross_language_and_python_descriptor_share_task_counter_bucket():
     worker = _DummyWorker(is_actor_worker=True)
     manager = FunctionActorManager(worker)

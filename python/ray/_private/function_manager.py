@@ -393,7 +393,8 @@ class FunctionActorManager:
             return self._function_execution_info[key]
         if self._worker.load_code_from_local:
             # Load function from local code.
-            if not function_descriptor.is_actor_method():
+            is_actor_method = getattr(function_descriptor, "is_actor_method", None)
+            if is_actor_method is not None and not is_actor_method():
                 # If the function is not able to be loaded,
                 # try to load it from GCS,
                 # even if load_code_from_local is set True
