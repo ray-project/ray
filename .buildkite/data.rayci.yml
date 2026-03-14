@@ -74,7 +74,7 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:run_in_docker -- --build-name data9build-py3.10
-          "pip install pyrefly==0.51.0 && pyrefly check $(tr '\n' ' ' < ci/lint/pyrefly-allowlist.txt)"
+          "pip install pyrefly==0.51.0 && find python/ray/data -name '*.py' | grep -vFf pyrefly-excluded-files.txt | xargs pyrefly check"
     depends_on: data9build-multipy
 
   # tests
