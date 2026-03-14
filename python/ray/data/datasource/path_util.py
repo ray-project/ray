@@ -328,6 +328,18 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
+def _split_uri(uri: str):
+    """Split a URI into (store_url, path) for use with obstore.
+
+    e.g. "s3://my-bucket/a/b/c.jpg" -> ("s3://my-bucket", "a/b/c.jpg")
+         "https://host.com/a/b"      -> ("https://host.com", "a/b")
+    """
+    parsed = urlparse(uri)
+    store_url = f"{parsed.scheme}://{parsed.netloc}"
+    path = parsed.path.lstrip("/")
+    return store_url, path
+
+
 def _is_http_filesystem(fs: "pyarrow.fs.FileSystem") -> bool:
     """Return whether ``fs`` is a PyFileSystem handled by a fsspec HTTPFileSystem."""
     from pyarrow.fs import FSSpecHandler, PyFileSystem
