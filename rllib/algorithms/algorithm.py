@@ -1583,7 +1583,7 @@ class Algorithm(Checkpointable, Trainable):
                 env_steps,
                 agent_steps,
             ) = self.config.custom_evaluation_function(self, self.eval_env_runner_group)
-            if not env_steps or not agent_steps:
+            if not isinstance(env_steps, int) or not isinstance(agent_steps, int):
                 raise ValueError(
                     "Custom eval function must return "
                     "`Tuple[ResultDict, int, int]` with `int, int` being "
