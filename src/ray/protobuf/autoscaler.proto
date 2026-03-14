@@ -74,12 +74,36 @@ message ResourceRequestByCount {
   int64 count = 2;
 }
 
+// Specifies a locality constraint for bundle scheduling, defining which
+// label the placement strategy should be applied to.
+message LocalityConstraint {
+  // The label name that defines the locality domain (e.g. "ray.io/gpu-domain")
+  string label_name = 1;
+  // The placement strategy to enforce within this locality domain.
+  PlacementStrategy placement_strategy = 2;
+}
+
+// Specifies the locality requirements for a set of bundles. The
+// locality_constraint defines the desired placement behavior (e.g. STRICT_PACK
+// on a rack), while label_selectors filters down the pool of overall nodes
+// (e.g. reschedule a bundle on a specific gpu domain, or only schedule on
+// nodes with A100 GPUs)
+message LocalityRequirement {
+  // The locality constraint to apply
+  LocalityConstraint locality_constraint = 1;
+  // Optional label selectors to filter down the pool of target nodes
+  repeated LabelSelector label_selectors = 2;
+}
+
 // A bundle selector used to specify the resource bundles that should be
 // allocated together. All bundles in the same resource request require gang
 // allocation semantics: they should be allocated all or nothing.
 message BundleSelector {
   // The list of resource requests that should be allocated together.
   repeated ResourceRequest resource_requests = 1;
+  // Locality requirements for the bundles in this selector, specifying
+  // both the locality constraint and any label selectors to narrow the target domain.
+  LocalityRequirement locality_requirement = 2;
 }
 
 message GangResourceRequest {
