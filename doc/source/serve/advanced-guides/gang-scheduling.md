@@ -72,6 +72,7 @@ Each replica in a gang has access to a `GangContext` through the replica context
 | `rank` | `int` | This replica's rank within the gang (0-indexed) |
 | `world_size` | `int` | Total number of replicas in this gang (equal to `gang_size`) |
 | `member_replica_ids` | `List[str]` | Replica IDs of all gang members, ordered by rank |
+| `pg_name` | `str` | Name of the gang placement group |
 
 Replicas can use `rank` and `world_size` to set up distributed communication, e.g. initializing NCCL process groups, and `member_replica_ids` to discover and connect to their peers.
 
