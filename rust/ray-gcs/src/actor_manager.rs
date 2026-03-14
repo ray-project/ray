@@ -257,6 +257,13 @@ impl GcsActorManager {
         }
 
         self.registered_actors.write().insert(actor_id, actor_data);
+        // Store the task spec immediately so that GetNamedActorInfo can return
+        // it even before CreateActor is called. This matches C++ behavior where
+        // GcsActor stores the TaskSpec from the moment of registration, ensuring
+        // make_actor_handle can reconstruct the PythonFunctionDescriptor.
+        self.actor_task_specs
+            .write()
+            .insert(actor_id, task_spec);
         *self
             .state_counts
             .write()
@@ -670,8 +677,13 @@ impl GcsActorManager {
         };
 
         if let Some(actor) = actor {
-            // Notify raylet to kill the actor's worker and release resources
-            self.notify_raylet_to_kill_actor(&actor).await;
+            // Publish DEAD state BEFORE notifying the raylet to kill the worker.
+            // This matches C++ behavior where PublishActor runs concurrently with
+            // NotifyRayletToKillActor. Publishing first ensures the core worker
+            // receives the death_cause (with ActorDiedErrorContext) before the
+            // worker process dies, so GetErrorInfoFromActorDeathCause correctly
+            // populates actor_died_error in RayErrorInfo.
+            self.publish_actor_state(&actor);
 
             // Remove from named actors
             if !actor.name.is_empty() {
@@ -679,8 +691,10 @@ impl GcsActorManager {
                     .write()
                     .remove(&(actor.ray_namespace.clone(), actor.name.clone()));
             }
-            // Publish DEAD state
-            self.publish_actor_state(&actor);
+
+            // Notify raylet to kill the actor's worker and release resources
+            self.notify_raylet_to_kill_actor(&actor).await;
+
             self.dead_actors.write().insert(actor_id, actor);
             // Clean up task spec
             self.actor_task_specs.write().remove(&actor_id);
