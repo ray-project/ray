@@ -481,13 +481,21 @@ class SampleBatch(dict):
         else:
             permutation = np.random.permutation(len(self[SampleBatch.SEQ_LENS]))
 
-        self_as_dict = dict(self)
-        infos = self_as_dict.pop(Columns.INFOS, None)
-        shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
-        if infos is not None:
-            self_as_dict[Columns.INFOS] = [infos[i] for i in permutation]
-
-        self.update(shuffled)
+        # Shuffle each column in-place one at a time to avoid allocating a
+        # full copy of all data at once (which would double peak memory).
+        for key in list(self.keys()):
+            val = self[key]
+            if key == Columns.INFOS:
+                # Infos is a list, not a numpy array.
+                self[key] = [val[i] for i in permutation]
+            else:
+                try:
+                    self[key] = tree.map_structure(
+                        lambda v: v[permutation], val
+                    )
+                except (IndexError, TypeError):
+                    # Fallback for non-indexable values.
+                    pass
 
         # Flush cache such that intercepted values are recalculated after the
         # shuffling.
