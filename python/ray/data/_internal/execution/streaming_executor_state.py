@@ -2,9 +2,8 @@
 
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
-
+import dataclasses
 import logging
-import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -12,7 +11,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import (
+    ThreadSafeBundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -51,107 +53,82 @@ Topology = Dict[PhysicalOperator, "OpState"]
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
     This class is thread-safe.
+
+    Args:
+        num_splits: Number of output splits operator's output is partitioned into.
+            In case of `num_splits` > 1, bundles are routed to corresponding queue
+             based on their `bundle.output_split_idx`.
     """
 
-    def __init__(self):
-        self._num_blocks = 0
-        self._queue = create_bundle_queue()
-        self._num_per_split = defaultdict(int)
-        self._lock = threading.Lock()
-        # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(create_bundle_queue)
-        super().__init__()
+    def __init__(self, num_splits: int):
+        assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
+
+        self._queues: List[ThreadSafeBundleQueue] = [
+            ThreadSafeBundleQueue(create_bundle_queue()) for _ in range(num_splits)
+        ]
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
-        with self._lock:
-            # The split queues contain bundles popped from the main queue. So, a bundle
-            # will either be in the main queue or in one of the split queues, and we
-            # don't need to worry about double counting.
-            return self._queue.estimate_size_bytes() + sum(
-                split_queue.estimate_size_bytes()
-                for split_queue in self._outputs_by_split.values()
-            )
+        return sum(q.estimate_size_bytes() for q in self._queues)
 
     @property
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
-        with self._lock:
-            return self._num_blocks
+        return sum(q.num_blocks() for q in self._queues)
 
     def __len__(self):
-        with self._lock:
-            return len(self._queue)
+        return sum(len(q) for q in self._queues)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
 
         Args:
             output_split_idx: If specified, only check ref bundles with the
-                given output split.
+                given output split. When None, checks the default queue (index 0).
         """
-        if output_split_idx is None:
-            with self._lock:
-                return len(self._queue) > 0
-        else:
-            with self._lock:
-                return self._num_per_split[output_split_idx] > 0
+        return self._get_queue_for(output_split_idx).has_next()
 
-    def append(self, ref: RefBundle):
+    def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
-        with self._lock:
-            self._queue.add(ref)
-            self._num_blocks += len(ref.blocks)
-            if ref.output_split_idx is not None:
-                self._num_per_split[ref.output_split_idx] += 1
+        self._get_queue_for(bundle.output_split_idx).add(bundle)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
+
         Args:
             output_split_idx: If specified, only pop a RefBundle
-                with the given output split.
+                with the given output split. When None, pops from the default
+                queue (index 0).
         Returns:
             A RefBundle if available, otherwise None.
         """
-        ret = None
-        if output_split_idx is None:
-            try:
-                with self._lock:
-                    ret = self._queue.get_next()
-            except IndexError:
-                pass
-        else:
-            with self._lock:
-                split_queue = self._outputs_by_split[output_split_idx]
-            if len(split_queue) == 0:
-                # Move all ref bundles to their indexed queues
-                # Note, the reason why we do indexing here instead of in the append
-                # is because only the last `OpBufferQueue` in the DAG, which will call
-                # pop with output_split_idx, needs indexing.
-                # If we also index the `OpBufferQueue`s in the middle, we cannot
-                # preserve the order of ref bundles with different output splits.
-                with self._lock:
-                    while len(self._queue) > 0:
-                        ref = self._queue.get_next()
-                        self._outputs_by_split[ref.output_split_idx].add(ref)
-            try:
-                ret = split_queue.get_next()
-            except IndexError:
-                pass
-        if ret is None:
+        try:
+            bundle = self._get_queue_for(output_split_idx).get_next()
+            # NOTE: We're making a copy of the `RefBundle` object to seal off
+            #       any potential modifcations to it from propagating backwards:
+            #
+            #       For ex, `OutputSplitter` modifies `RefBundle.output_split_idx`
+            #       that could affect original bundles that could be materialized,
+            #       therefore undermining these when these are being reused.
+            return dataclasses.replace(bundle)
+        except IndexError:
             return None
-        with self._lock:
-            self._num_blocks -= len(ret.blocks)
-            if ret.output_split_idx is not None:
-                self._num_per_split[ret.output_split_idx] -= 1
-        return ret
 
     def clear(self):
-        with self._lock:
-            self._queue.clear()
-            self._num_blocks = 0
-            self._num_per_split.clear()
+        for q in self._queues:
+            q.clear()
+
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
+        target_output_split_idx = output_split_idx or 0
+
+        assert target_output_split_idx < len(self._queues), (
+            f"Output split index is out of range (got {target_output_split_idx}, "
+            f"but only {list(range(len(self._queues)))} splits are available)"
+        )
+
+        # If output split idx is null, fallback to the first queue
+        return self._queues[target_output_split_idx]
 
 
 @dataclass
@@ -190,7 +167,9 @@ class OpState:
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.output_queue: OpBufferQueue = OpBufferQueue()
+        self.output_queue: OpBufferQueue = OpBufferQueue(
+            num_splits=op.num_output_splits()
+        )
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
