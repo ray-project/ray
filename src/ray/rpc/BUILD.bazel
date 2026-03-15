@@ -102,6 +102,19 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "raw_push_client_call",
+    hdrs = ["raw_push_client_call.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":client_call",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:status",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
     name = "server_call",
     srcs = ["server_call.cc"],
     hdrs = ["server_call.h"],
@@ -119,6 +132,24 @@ ray_cc_library(
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/rpc/authentication:authentication_token_validator",
         "//src/ray/stats:stats_metric",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+ray_cc_library(
+    name = "raw_push_server_call",
+    hdrs = ["raw_push_server_call.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":metrics",
+        ":rpc_callback_types",
+        ":server_call",
+        "//src/ray/common:asio",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:status",
+        "//src/ray/object_manager:push_bytes",
+        "//src/ray/protobuf:object_manager_cc_grpc",
+        "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -164,6 +195,7 @@ ray_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":raw_push_server_call",
         "//src/ray/common:asio",
         "//src/ray/object_manager:object_manager_grpc_client_manager",
         "//src/ray/protobuf:object_manager_cc_grpc",

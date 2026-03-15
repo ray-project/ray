@@ -663,8 +663,6 @@ int main(int argc, char *argv[]) {
       RAY_LOG(FATAL) << "Object store memory should be set.";
     }
     object_manager_config.object_store_memory = object_store_memory;
-    object_manager_config.max_bytes_in_flight =
-        RayConfig::instance().object_manager_max_bytes_in_flight();
     object_manager_config.plasma_directory = plasma_directory;
     object_manager_config.fallback_directory = fallback_directory;
     object_manager_config.huge_pages = huge_pages;

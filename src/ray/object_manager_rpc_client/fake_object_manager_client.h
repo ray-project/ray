@@ -37,10 +37,10 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
                           ClientCallManager &client_call_manager)
       : address_(address), port_(port) {}
 
-  void Push(const PushRequest &request,
-            const ClientCallback<PushReply> &callback) override {
+  void Push(grpc::ByteBuffer request,
+            std::function<void(const Status &)> callback) override {
     num_push_requests++;
-    push_callbacks.push_back(callback);
+    push_callbacks.push_back(std::move(callback));
   }
 
   void Pull(const PullRequest &request,
@@ -59,10 +59,9 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
     if (push_callbacks.empty()) {
       return false;
     }
-    PushReply reply;
     auto callback = push_callbacks.front();
     push_callbacks.pop_front();
-    callback(status, std::move(reply));
+    callback(status);
     return true;
   }
 
@@ -96,7 +95,7 @@ class FakeObjectManagerClient : public ObjectManagerClientInterface {
   uint32_t num_pull_requests = 0;
   uint32_t num_free_objects_requests = 0;
 
-  std::list<ClientCallback<PushReply>> push_callbacks;
+  std::list<std::function<void(const Status &)>> push_callbacks;
   std::list<ClientCallback<PullReply>> pull_callbacks;
   std::list<ClientCallback<FreeObjectsReply>> free_objects_callbacks;
 

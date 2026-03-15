@@ -14,6 +14,11 @@
 
 #pragma once
 
+#include <grpcpp/support/byte_buffer.h>
+
+#include <functional>
+
+#include "ray/common/status.h"
 #include "ray/rpc/rpc_callback_types.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
@@ -25,12 +30,12 @@ class ObjectManagerClientInterface {
  public:
   virtual ~ObjectManagerClientInterface() = default;
 
-  /// Push object to remote object manager
+  /// Push object chunk to remote object manager as a raw ByteBuffer.
   ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server
-  virtual void Push(const PushRequest &request,
-                    const ClientCallback<PushReply> &callback) = 0;
+  /// \param request The pre-serialized ByteBuffer containing header + data.
+  /// \param callback The callback invoked with the RPC status.
+  virtual void Push(grpc::ByteBuffer request,
+                    std::function<void(const Status &)> callback) = 0;
 
   /// Pull object from remote object manager
   ///

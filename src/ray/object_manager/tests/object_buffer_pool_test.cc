@@ -73,7 +73,12 @@ TEST_F(ObjectBufferPoolTest, TestBasic) {
       object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
   EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
   EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 chunk_size_,
+                                 0,
+                                 0,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 }
 
 TEST_F(ObjectBufferPoolTest, TestMultiChunk) {
@@ -91,7 +96,12 @@ TEST_F(ObjectBufferPoolTest, TestMultiChunk) {
   EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
   EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
   for (int i = 0; i < 3; i++) {
-    object_buffer_pool_.WriteChunk(obj_id, 3 * chunk_size_, 0, i, mock_data_);
+    object_buffer_pool_.WriteChunk(obj_id,
+                                   3 * chunk_size_,
+                                   0,
+                                   i,
+                                   reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                   mock_data_.size());
   }
 }
 
@@ -110,7 +120,12 @@ TEST_F(ObjectBufferPoolTest, TestAbort) {
 
   EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
   EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, chunk_size_, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 chunk_size_,
+                                 0,
+                                 0,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 }
 
 TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
@@ -121,23 +136,43 @@ TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
   int64_t data_size_2 = 2 * chunk_size_;
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_1, 0, 0).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 data_size_1,
+                                 0,
+                                 0,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 
   // Object gets created again with a different size.
   EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
   EXPECT_CALL(*mock_plasma_client_, Abort(obj_id));
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 1).ok());
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 1, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 data_size_2,
+                                 0,
+                                 1,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 
   ASSERT_TRUE(
       object_buffer_pool_.CreateChunk(obj_id, owner_address, data_size_2, 0, 0).ok());
   // Writing a chunk with a stale data size has no effect.
-  object_buffer_pool_.WriteChunk(obj_id, data_size_1, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 data_size_1,
+                                 0,
+                                 0,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 
   EXPECT_CALL(*mock_plasma_client_, Seal(obj_id));
   EXPECT_CALL(*mock_plasma_client_, Release(obj_id));
-  object_buffer_pool_.WriteChunk(obj_id, data_size_2, 0, 0, mock_data_);
+  object_buffer_pool_.WriteChunk(obj_id,
+                                 data_size_2,
+                                 0,
+                                 0,
+                                 reinterpret_cast<const uint8_t *>(mock_data_.data()),
+                                 mock_data_.size());
 }
 
 }  // namespace ray
