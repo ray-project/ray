@@ -28,7 +28,7 @@ steps:
           - "12.3.2-cudnn9"
       adjustments:
         - with:
-            python: "3.10"
+            python: "3.12"
             cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -110,7 +110,7 @@ steps:
           - "12.3.2-cudnn9"
       adjustments:
         - with:
-            python: "3.10"
+            python: "3.12"
             cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -149,7 +149,7 @@ steps:
           - cpu
       adjustments:
         - with:
-            python: "3.10"
+            python: "3.12"
             platform: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
@@ -213,7 +213,6 @@ steps:
           - "3.10"
         cuda:
           - "12.1.1-cudnn8"
-          - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -240,8 +239,11 @@ steps:
       - ray-ml-anyscale-cuda-build
     matrix:
       setup:
-        python:
-          - "3.10"
-        platform:
-          - cu12.1.1-cudnn8
-          - cu13.0.0-cudnn
+          python:
+            - "3.12"
+          platform:
+            - cu13.0.0-cudnn
+        adjustments:
+          - with:
+              python: "3.10"
+              platform: "cu12.1.1-cudnn8"
