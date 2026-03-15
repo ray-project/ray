@@ -124,7 +124,7 @@ class TestHangingExecutionIssueDetector:
         _ = ray.data.range(1).map(f1).materialize()
 
         log_output = log_capture.getvalue()
-        warn_msg = r"A task of operator .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
+        warn_msg = r"A task \(task_id=.+\) of operator .+(?:\(pid=.+, node_id=.+, attempt=.+\) )?has been running or stuck in scheduling for [\d\.]+s"
         assert re.search(warn_msg, log_output) is None, log_output
 
         # # test hanging does log hanging warning
@@ -193,7 +193,7 @@ class TestHangingExecutionIssueDetector:
         issues = detector.detect()
         assert len(issues) > 0, "Expected hanging issue to be detected"
         assert issues[0].issue_type.value == "hanging"
-        assert "has been running for" in issues[0].message
+        assert "has been running or stuck in scheduling for" in issues[0].message
         assert "longer than the average task duration" in issues[0].message
 
 
