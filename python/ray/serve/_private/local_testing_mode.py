@@ -5,7 +5,7 @@ import logging
 import queue
 import time
 from functools import wraps
-from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle
@@ -340,6 +340,28 @@ class LocalRouter(Router):
             )
         )
         return noop_future
+
+    def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[List[ReplicaResult]]:
+        """Broadcast in local testing mode calls the single local replica."""
+        result_future = self.assign_request(
+            request_meta, *request_args, **request_kwargs
+        )
+        # Wrap the single replica result in a list to match the broadcast API.
+        wrapper_future = concurrent.futures.Future()
+
+        def _on_done(fut: concurrent.futures.Future):
+            try:
+                wrapper_future.set_result([fut.result()])
+            except Exception as e:
+                wrapper_future.set_exception(e)
+
+        result_future.add_done_callback(_on_done)
+        return wrapper_future
 
     def shutdown(self):
         noop_future = concurrent.futures.Future()

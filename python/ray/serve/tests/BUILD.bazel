@@ -106,6 +106,7 @@ py_test_module_list(
         "test_backpressure.py",
         "test_backpressure_grpc.py",
         "test_batching.py",
+        "test_broadcast.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller.py",
