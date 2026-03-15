@@ -61,6 +61,7 @@ def _generate_checkpoint_writing_transform(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
         it1, it2 = itertools.tee(blocks, 2)
+        write_result_written = False
         for block in it1:
             ba = BlockAccessor.for_block(block)
             if ba.num_rows() > 0:
@@ -70,7 +71,11 @@ def _generate_checkpoint_writing_transform(
                         f"absent in the block to be written. Do not drop or rename "
                         f"this column."
                     )
-            checkpoint_writer.write_block_checkpoint(ba)
+            write_result = None
+            if not write_result_written and ba.num_rows() > 0:
+                write_result = ctx.kwargs.get("_datasink_write_return")
+                write_result_written = write_result is not None
+            checkpoint_writer.write_block_checkpoint(ba, write_result=write_result)
 
         return list(it2)
 
