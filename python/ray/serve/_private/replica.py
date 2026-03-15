@@ -1189,6 +1189,7 @@ class ReplicaBase(ABC):
         def register_handle_callback(deployment_id: DeploymentID) -> None:
             self._dynamically_created_handles.add(deployment_id)
 
+        code_version = self._version.code_version
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
@@ -1197,6 +1198,7 @@ class ReplicaBase(ABC):
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
             gang_context=self._gang_context,
+            code_version=code_version,
         )
 
     def _configure_logger_and_profilers(
