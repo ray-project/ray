@@ -2776,16 +2776,34 @@ def disconnect(exiting_interpreter=False):
         # Shutdown all of the threads that we've started. TODO(rkn): This
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
-        worker.threads_stopped.set()
+        if hasattr(worker, "threads_stopped"):
+            worker.threads_stopped.set()
         if hasattr(worker, "gcs_error_subscriber"):
             worker.gcs_error_subscriber.close()
         if hasattr(worker, "gcs_log_subscriber"):
             worker.gcs_log_subscriber.close()
-        if hasattr(worker, "listener_thread"):
-            worker.listener_thread.join()
-        if hasattr(worker, "logger_thread"):
-            worker.logger_thread.join()
-        worker.threads_stopped.clear()
+
+        # Joining the listener/logger threads from within those same threads
+        # will deadlock. Avoid joining the current thread in these cases.
+        current_thread = threading.current_thread()
+
+        def _safe_join_and_clear_thread(thread_attr_name):
+            if hasattr(worker, thread_attr_name):
+                thread_obj = getattr(worker, thread_attr_name)
+                if (
+                    thread_obj is not None
+                    and thread_obj is not current_thread
+                ):
+                    thread_obj.join()
+                # Clear the reference so a subsequent disconnect() call does not
+                # attempt to join an already-finished or invalid thread object.
+                setattr(worker, thread_attr_name, None)
+
+        _safe_join_and_clear_thread("listener_thread")
+        _safe_join_and_clear_thread("logger_thread")
+
+        if hasattr(worker, "threads_stopped"):
+            worker.threads_stopped.clear()
 
         # Ignore the prefix if the logging config is set.
         ignore_prefix = worker.job_logging_config is not None
@@ -2795,6 +2813,8 @@ def disconnect(exiting_interpreter=False):
             print_worker_logs(leftover, sys.stderr, ignore_prefix)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
+    # Always clear worker state so that a subsequent reconnect can start
+    # from a clean slate, even if this worker was not marked as connected.
     worker.node = None  # Disconnect the worker from the node.
     worker.serialization_context_map.clear()
     try:
