@@ -1,11 +1,13 @@
 import logging
 import os
+import pickle
 import uuid
 from abc import abstractmethod
+from typing import Any
 
 from pyarrow import parquet as pq
 
-from ray.data._internal.util import call_with_retry
+from ray._common.retry import call_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.context import DataContext
@@ -30,7 +32,7 @@ class CheckpointWriter:
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     @abstractmethod
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(self, block: BlockAccessor, **kwargs):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
@@ -59,7 +61,9 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
 
         self.filesystem.create_dir(self.checkpoint_path_unwrapped, recursive=True)
 
-    def write_block_checkpoint(self, block: BlockAccessor):
+    def write_block_checkpoint(
+        self, block: BlockAccessor, write_result: Any = None, **kwargs
+    ):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
@@ -67,7 +71,8 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
         if block.num_rows() == 0:
             return
 
-        file_name = f"{uuid.uuid4()}.parquet"
+        file_id = str(uuid.uuid4())
+        file_name = f"{file_id}.parquet"
         ckpt_file_path = os.path.join(self.checkpoint_path_unwrapped, file_name)
 
         checkpoint_ids_block = block.select(columns=[self.id_col])
@@ -81,6 +86,12 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
                 ckpt_file_path,
                 filesystem=self.filesystem,
             )
+
+            if write_result is not None:
+                meta_name = f"{file_id}.meta.pkl"
+                meta_path = os.path.join(self.checkpoint_path_unwrapped, meta_name)
+                with self.filesystem.open_output_stream(meta_path) as f:
+                    pickle.dump(write_result, f)
 
         try:
             return call_with_retry(
