@@ -13,6 +13,7 @@ import socket
 import subprocess
 import sys
 import time
+from functools import cache
 from pathlib import Path
 from typing import IO, AnyStr, List, Optional
 
@@ -369,9 +370,23 @@ def find_node_ids():
     return _find_address_from_flag("--node_id")
 
 
+@cache
+def _cached_find_gcs_addresses():
+    return frozenset(_find_address_from_flag("--gcs-address"))
+
+
 def find_gcs_addresses():
-    """Finds any local GCS processes based on grepping ps."""
-    return _find_address_from_flag("--gcs-address")
+    """Finds any local GCS processes based on grepping ps.
+
+    Empty discovery results are not cached.
+    """
+    addresses = _cached_find_gcs_addresses()
+    if not addresses:
+        _cached_find_gcs_addresses.cache_clear()
+    return set(addresses)
+
+
+find_gcs_addresses.cache_clear = _cached_find_gcs_addresses.cache_clear
 
 
 def find_bootstrap_address(temp_dir: Optional[str]):
