@@ -1,0 +1,4 @@
+pyarrow==23.0.1
+hudi
+pylance
+modin
