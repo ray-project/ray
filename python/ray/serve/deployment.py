@@ -12,7 +12,11 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
-from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentActorConfig,
+    GangSchedulingConfig,
+)
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -240,6 +244,9 @@ class Deployment:
         gang_scheduling_config: Default[
             Union[Dict, GangSchedulingConfig, None]
         ] = DEFAULT.VALUE,
+        deployment_actors: Default[
+            Optional[List[Union[Dict, DeploymentActorConfig]]]
+        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -390,6 +397,9 @@ class Deployment:
 
         if gang_scheduling_config is not DEFAULT.VALUE:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
+
+        if deployment_actors is not DEFAULT.VALUE:
+            new_deployment_config.deployment_actors = deployment_actors
 
         gc = new_deployment_config.gang_scheduling_config
         if (
