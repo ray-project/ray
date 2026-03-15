@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import math
-import os
 import random
 import threading
 import time
@@ -879,39 +878,59 @@ assert ds.take_all() == [{"id": 0}]
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-def test_actor_udf_cleanup(
+def test_actor_udf_ray_shutdown_hook(
     shutdown_only,
     tmp_path,
     restore_data_context,
     target_max_block_size_infinite_or_default,
 ):
-    """Test that for the actor map operator, the UDF object is deleted properly."""
+    """Test that __ray_shutdown__ is called on UDFs when actors exit gracefully.
+
+    This tests the fix for https://github.com/ray-project/ray/issues/60453
+    """
     ray.shutdown()
     ray.init(num_cpus=2)
     ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
+    ctx.enable_actor_pool_on_exit_hook = True
 
-    test_file = tmp_path / "test.txt"
+    shutdown_file = tmp_path / "shutdown.txt"
+    del_file = tmp_path / "del.txt"
 
-    # Simulate the case that the UDF depends on some external resources that
-    # need to be cleaned up.
     class StatefulUDF:
-        def __init__(self):
-            with open(test_file, "w") as f:
-                f.write("test")
+        def __init__(self, shutdown_path, del_path):
+            self.shutdown_path = shutdown_path
+            self.del_path = del_path
 
         def __call__(self, row):
             return row
 
+        def __ray_shutdown__(self):
+            # Write to file when __ray_shutdown__ is called
+            with open(self.shutdown_path, "w") as f:
+                f.write("shutdown called")
+
         def __del__(self):
-            # Delete the file when the UDF is deleted.
-            os.remove(test_file)
+            # Write to file when __del__ is called
+            with open(self.del_path, "w") as f:
+                f.write("del called")
 
     ds = ray.data.range(10)
-    ds = ds.map(StatefulUDF, concurrency=1)
+    ds = ds.map(
+        StatefulUDF,
+        concurrency=1,
+        fn_constructor_kwargs={
+            "shutdown_path": str(shutdown_file),
+            "del_path": str(del_file),
+        },
+    )
     assert sorted(extract_values("id", ds.take_all())) == list(range(10))
 
-    wait_for_condition(lambda: not os.path.exists(test_file))
+    # Both __ray_shutdown__ and __del__ should be called
+    wait_for_condition(lambda: shutdown_file.exists())
+    wait_for_condition(lambda: del_file.exists())
+
+    assert shutdown_file.read_text() == "shutdown called"
+    assert del_file.read_text() == "del called"
 
 
 def test_actor_pool_strategy_default_num_actors(
