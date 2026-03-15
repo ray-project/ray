@@ -7,6 +7,7 @@ from ray_release.aws import (
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
     add_tags_to_aws_config,
 )
+from ray_release.compute_config_utils import is_new_schema
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.test import Test
 from ray_release.util import dict_hash, get_anyscale_sdk
@@ -89,13 +90,18 @@ class ClusterManager(abc.ABC):
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
+        if is_new_schema(cluster_compute):
+            schema_name, config_key = "new-schema", "advanced_instance_config"
+        else:
+            schema_name, config_key = "legacy-schema", "advanced_configurations_json"
+
         if "aws" in cluster_compute:
             raise ValueError(
-                "aws field is invalid in compute config, "
-                "use advanced_configurations_json instead"
+                f"aws field is invalid in {schema_name} compute config, "
+                f"use {config_key} instead"
             )
-        aws = cluster_compute.get("advanced_configurations_json", {})
-        cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
+        aws = cluster_compute.get(config_key, {})
+        cluster_compute[config_key] = add_tags_to_aws_config(
             aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         )
         return cluster_compute

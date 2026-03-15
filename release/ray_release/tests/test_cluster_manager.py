@@ -39,6 +39,19 @@ TEST_CLUSTER_COMPUTE = {
     ],
 }
 
+TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
+    "cloud": "test-cloud",
+    "zones": ["us-west-2a"],
+    "head_node": {"instance_type": "m5.4xlarge"},
+    "worker_nodes": [
+        {
+            "instance_type": "m5.xlarge",
+            "min_nodes": 0,
+            "max_nodes": 0,
+        }
+    ],
+}
+
 
 def _fail(*args, **kwargs):
     raise RuntimeError()
@@ -300,6 +313,34 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(
             self.cluster_manager.cluster_compute["advanced_configurations_json"],
             target_cluster_compute["advanced_configurations_json"],
+        )
+
+    def testClusterComputeExtraTagsNewSchema(self):
+        new_schema_compute = TEST_CLUSTER_COMPUTE_NEW_SCHEMA.copy()
+        self.cluster_manager.set_cluster_compute(
+            new_schema_compute, extra_tags={"foo": "bar"}
+        )
+
+        # Tags should be injected into advanced_instance_config, not
+        # advanced_configurations_json
+        self.assertIn("advanced_instance_config", self.cluster_manager.cluster_compute)
+        self.assertNotIn(
+            "advanced_configurations_json", self.cluster_manager.cluster_compute
+        )
+        self.assertEqual(
+            self.cluster_manager.cluster_compute["advanced_instance_config"],
+            {
+                "TagSpecifications": [
+                    {
+                        "ResourceType": "instance",
+                        "Tags": [{"Key": "foo", "Value": "bar"}],
+                    },
+                    {
+                        "ResourceType": "volume",
+                        "Tags": [{"Key": "foo", "Value": "bar"}],
+                    },
+                ]
+            },
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
