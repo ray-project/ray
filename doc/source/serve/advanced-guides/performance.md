@@ -198,6 +198,98 @@ You can also configure each option individually. The following table details the
 
 You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
+(serve-haproxy)=
+### Use HAProxy load balancing
+
+By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+
+When HAProxy mode is enabled:
+- An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
+- Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely.
+- Live traffic flows through the HAProxy subprocess, not through any Python actor.
+
+#### Prerequisites
+
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+
+#### Enabling HAProxy
+
+Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes before starting Ray:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+```
+
+This environment variable must be set on all nodes in the ray cluster.
+
+::::{tab-set}
+
+:::{tab-item} KubeRay
+```yaml
+# In the Ray container spec for head and worker groups:
+env:
+  - name: RAY_SERVE_ENABLE_HA_PROXY
+    value: "1"
+```
+:::
+
+:::{tab-item} VM cluster
+```bash
+# On every node (head and workers)
+export RAY_SERVE_ENABLE_HA_PROXY=1
+ray start --head  # or ray start --address=<head-ip>:6379 on workers
+```
+:::
+
+::::
+
+#### Installing HAProxy manually (example)
+
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
+
+The following steps are for Ubuntu/Debian:
+```bash
+# Install build dependencies
+apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl libc6-dev \
+    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
+
+# Build HAProxy from source
+export HAPROXY_VERSION="2.8.12"
+curl -sSfL -o /tmp/haproxy.tar.gz \
+  "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
+make -C /tmp/haproxy-build TARGET=linux-glibc \
+  USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
+rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
+
+# Install runtime dependencies
+apt-get install -y --no-install-recommends socat liblua5.3-0
+
+# Create required directories
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+```
+
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+
+(serve-interdeployment-grpc)=
+### Use gRPC for interdeployment communication
+
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+
+#### When not to use gRPC
+
+1. Since gRPC is required to serialize every payload, it should not be used for large payloads (greater than ~1 MB). If gRPC was enabled by default, individual handles' transport mechanism can be manually set to actor RPC with `handle.options(_by_reference=True)`, and passes larger objects by reference.
+
+2. When passing a Ray Serve `DeploymentResponse` from one deployment into another, the value is resolved at the caller and passed over the wire by value. This means the object is serialized and deserialized at every hop, even if intermediate deployments don't access it. This is a Ray Core behavior that applies to both gRPC and actor RPC. To avoid this, store the value with `ray.put()` and store the resulting `ObjectRef` inside a container (e.g., a list or dataclass), so intermediate deployments can forward the reference without materializing the data. See {doc}`Passing Object Arguments </ray-core/objects>` for details.
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __start_grpc_override__
+:end-before: __end_grpc_override__
+:language: python
+```
+
 ## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
