@@ -39,6 +39,84 @@ def test_json_read(
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
 
+@pytest.mark.parametrize("num_files", [2, 3])
+def test_json_read_multiple_files_with_override_num_blocks(
+    ray_start_regular_shared,
+    tmp_path,
+    num_files,
+    target_max_block_size_infinite_or_default,
+):
+    """read_json merges multiple files correctly with override_num_blocks=2."""
+    two_values = [["a", "b", "c"], ["e", "f", "g"], ["h", "i", "j"]]
+    dfs = []
+    paths = []
+    for i in range(num_files):
+        df = pd.DataFrame(
+            {"one": list(range(i * 3 + 1, (i + 1) * 3 + 1)), "two": two_values[i]}
+        )
+        path = os.path.join(tmp_path, f"test{i}.json")
+        df.to_json(path, orient="records", lines=True)
+        dfs.append(df)
+        paths.append(path)
+    ds = ray.data.read_json(paths, override_num_blocks=2)
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
+    expected = pd.concat(dfs, ignore_index=True)
+    assert expected.equals(dsdf)
+
+
+def test_json_read_directory(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_json reads all JSON files from a single directory."""
+    path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1.to_json(os.path.join(path, "data0.json"), orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2.to_json(os.path.join(path, "data1.json"), orient="records", lines=True)
+    ds = ray.data.read_json(path)
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
+    pd.testing.assert_frame_equal(df, dsdf)
+
+
+def test_json_read_multiple_directories(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_json reads files across multiple directories."""
+    dir1 = os.path.join(tmp_path, "test_json_dir1")
+    dir2 = os.path.join(tmp_path, "test_json_dir2")
+    os.mkdir(dir1)
+    os.mkdir(dir2)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1.to_json(os.path.join(dir1, "data0.json"), orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df2.to_json(os.path.join(dir2, "data1.json"), orient="records", lines=True)
+    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
+    df3.to_json(os.path.join(dir2, "data2.json"), orient="records", lines=True)
+    ds = ray.data.read_json([dir1, dir2])
+    df = pd.concat([df1, df2, df3], ignore_index=True)
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
+    assert df.equals(dsdf)
+
+
+def test_json_read_mixed_directory_and_file_paths(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_json accepts a mix of directory and file paths."""
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df1.to_json(os.path.join(dir_path, "data0.json"), orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json")
+    df2.to_json(path2, orient="records", lines=True)
+    ds = ray.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2], ignore_index=True)
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
+    assert df.equals(dsdf)
+
+
 def test_zipped_json_read(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
