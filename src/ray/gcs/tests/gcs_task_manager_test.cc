@@ -1008,8 +1008,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_name.mutable_events_by_task());
   EXPECT_EQ(reply_name.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_name.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_name.num_total_stored(), 3);
-  EXPECT_EQ(reply_name.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_name.num_total_stored(), 1);
+  EXPECT_EQ(reply_name.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_name.num_truncated(), 0);
 
   auto reply_not_name = SyncGetTaskEvents({},
@@ -1041,8 +1041,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_names.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_names.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_names.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_names.num_total_stored(), 3);
-  EXPECT_EQ(reply_multiple_names.num_filtered_on_gcs(), 3);
+  EXPECT_EQ(reply_multiple_names.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_names.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_names.num_truncated(), 0);
 
   // Test filter by actor id
@@ -1056,8 +1056,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_actor_id.mutable_events_by_task());
   EXPECT_EQ(reply_actor_id.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_actor_id.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_actor_id.num_total_stored(), 3);
-  EXPECT_EQ(reply_actor_id.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_actor_id.num_total_stored(), 1);
+  EXPECT_EQ(reply_actor_id.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_actor_id.num_truncated(), 0);
 
   auto reply_not_actor_id = SyncGetTaskEvents({},
@@ -1093,8 +1093,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_actor_ids.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_actor_ids.num_total_stored(), 3);
-  EXPECT_EQ(reply_multiple_actor_ids.num_filtered_on_gcs(), 3);
+  EXPECT_EQ(reply_multiple_actor_ids.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_actor_ids.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_truncated(), 0);
 
   // Test filter by latest state
@@ -1107,11 +1107,11 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                        "RUnnING");
   ExpectTaskEventsEq(event_data_task_state_job2.mutable_events_by_task(),
                      reply_state.mutable_events_by_task());
-  EXPECT_EQ(reply_name.num_profile_task_events_dropped(), 0);
-  EXPECT_EQ(reply_name.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_name.num_total_stored(), 3);
-  EXPECT_EQ(reply_name.num_filtered_on_gcs(), 2);
-  EXPECT_EQ(reply_name.num_truncated(), 0);
+  EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_total_stored(), 1);
+  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_state.num_truncated(), 0);
 
   auto reply_not_state =
       SyncGetTaskEvents({},
@@ -1147,8 +1147,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_state.mutable_events_by_task());
   EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_state.num_total_stored(), 3);
-  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_state.num_total_stored(), 2);
+  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_state.num_truncated(), 0);
 
   reply_not_state =
@@ -1182,8 +1182,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_state.events_by_task_size(), 0);
   EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_state.num_total_stored(), 3);
-  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 3);
+  EXPECT_EQ(reply_state.num_total_stored(), 0);
+  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_state.num_truncated(), 0);
 
   reply_not_state =
@@ -1225,8 +1225,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_state.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_state.num_total_stored(), 3);
-  EXPECT_EQ(reply_multiple_state.num_filtered_on_gcs(), 3);
+  EXPECT_EQ(reply_multiple_state.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_state.num_truncated(), 0);
 
   // Test multiple filters
