@@ -1,5 +1,5 @@
 """
-Validates that ray-images.yaml is well-formed and internally consistent.
+Validates that ray-images.json is well-formed and internally consistent.
 """
 
 import pytest
@@ -13,7 +13,7 @@ REQUIRED_DEFAULTS = ["python", "gpu_platform", "architecture"]
 
 class TestRayImagesSchema:
     def test_has_image_types(self):
-        assert len(IMAGE_TYPES) > 0, "ray-images.yaml has no image types defined"
+        assert len(IMAGE_TYPES) > 0, "ray-images.json has no image types defined"
 
     @pytest.mark.parametrize("image_type", IMAGE_TYPES)
     def test_required_keys(self, image_type):
