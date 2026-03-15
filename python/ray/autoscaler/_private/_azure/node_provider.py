@@ -16,6 +16,10 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray._common.azure_utils import (
+    catch_azure_credential_errors,
+    handle_azure_credential_error,
+)
 from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
     _delete_role_assignments_for_principal,
@@ -76,7 +80,11 @@ class AzureNodeProvider(NodeProvider):
             # Get subscription from logged in azure profile
             # if it isn't provided in the provider_config
             # so operations like `get-head-ip` will work
-            subscription_id = get_cli_profile().get_subscription_id()
+            try:
+                subscription_id = get_cli_profile().get_subscription_id()
+            except Exception as e:
+                handle_azure_credential_error(e, resource_type="subscription")
+                raise
             logger.info(
                 "subscription_id not found in provider config, falling back "
                 f"to subscription_id from the logged in azure profile: {subscription_id}"
@@ -101,14 +109,18 @@ class AzureNodeProvider(NodeProvider):
                 f"Skipping Azure-specific authentication methods to avoid timeouts."
             )
 
-        credential = DefaultAzureCredential(
-            exclude_shared_token_cache_credential=True,
-            exclude_managed_identity_credential=not on_azure,
-            exclude_workload_identity_credential=not on_azure,
-        )
-        self.compute_client = ComputeManagementClient(credential, subscription_id)
-        self.network_client = NetworkManagementClient(credential, subscription_id)
-        self.resource_client = ResourceManagementClient(credential, subscription_id)
+        try:
+            credential = DefaultAzureCredential(
+                exclude_shared_token_cache_credential=True,
+                exclude_managed_identity_credential=not on_azure,
+                exclude_workload_identity_credential=not on_azure,
+            )
+            self.compute_client = ComputeManagementClient(credential, subscription_id)
+            self.network_client = NetworkManagementClient(credential, subscription_id)
+            self.resource_client = ResourceManagementClient(credential, subscription_id)
+        except Exception as e:
+            handle_azure_credential_error(e, resource_type="management clients")
+            raise
 
         self.lock = RLock()
 
@@ -291,11 +303,13 @@ class AzureNodeProvider(NodeProvider):
 
         return sorted(available_zones)
 
+    @catch_azure_credential_errors(resource_type="compute")
     def stopped_nodes(self, tag_filters):
         """Return a list of stopped node ids filtered by the specified tags dict."""
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [k for k, v in nodes.items() if v["status"].startswith("deallocat")]
 
+    @catch_azure_credential_errors(resource_type="compute")
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
@@ -318,22 +332,26 @@ class AzureNodeProvider(NodeProvider):
             if not v["status"].startswith("deallocat") or k in self.terminating_nodes
         ]
 
+    @catch_azure_credential_errors(resource_type="compute")
     def is_running(self, node_id):
         """Return whether the specified node is running."""
         # always get current status
         node = self._get_node(node_id=node_id)
         return node["status"] == "running"
 
+    @catch_azure_credential_errors(resource_type="compute")
     def is_terminated(self, node_id):
         """Return whether the specified node is terminated."""
         # always get current status
         node = self._get_node(node_id=node_id)
         return node["status"].startswith("deallocat")
 
+    @catch_azure_credential_errors(resource_type="compute")
     def node_tags(self, node_id):
         """Returns the tags of the given node (string dict)."""
         return self._get_cached_node(node_id=node_id)["tags"]
 
+    @catch_azure_credential_errors(resource_type="network")
     def external_ip(self, node_id):
         """Returns the external ip of the given node."""
         ip = (
@@ -342,6 +360,7 @@ class AzureNodeProvider(NodeProvider):
         )
         return ip
 
+    @catch_azure_credential_errors(resource_type="network")
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
         ip = (
@@ -350,6 +369,7 @@ class AzureNodeProvider(NodeProvider):
         )
         return ip
 
+    @catch_azure_credential_errors(resource_type="resource")
     def create_node(self, node_config, tags, count):
         resource_group = self.provider_config["resource_group"]
 
@@ -496,6 +516,7 @@ class AzureNodeProvider(NodeProvider):
             parameters=parameters,
         ).wait(timeout=AUTOSCALER_NODE_START_WAIT_S)
 
+    @catch_azure_credential_errors(resource_type="compute")
     @synchronized
     def set_node_tags(self, node_id, tags):
         """Sets the tag values (string dict) for the specified node."""
@@ -532,6 +553,7 @@ class AzureNodeProvider(NodeProvider):
                 )
                 stop(resource_group_name=resource_group, vm_name=node_id)
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="compute")
                 logger.warning("Failed to stop VM: {}".format(e))
 
         # If node_id is in terminating nodes dict, it's already terminating
@@ -601,6 +623,7 @@ class AzureNodeProvider(NodeProvider):
                 timeout=AUTOSCALER_NODE_TERMINATE_WAIT_S
             )
         except Exception as e:
+            handle_azure_credential_error(e, resource_type="compute")
             logger.warning("Failed to delete VM: {}".format(e))
 
         # Delete disks (no need to wait for these, but gather the LROs for end)
@@ -617,6 +640,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="compute")
                 logger.warning("Failed to delete disk: {}".format(e))
 
         # Delete NICs
@@ -633,6 +657,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="network")
                 logger.warning("Failed to delete NIC: {}".format(e))
 
         while (
@@ -656,6 +681,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="network")
                 logger.warning("Failed to delete public IP: {}".format(e))
 
         while (

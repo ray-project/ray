@@ -132,11 +132,17 @@ class ProtocolsProvider:
             )
 
         account_url = f"https://{azure_storage_account_name}.blob.core.windows.net/"
-        transport_params = {
-            "client": BlobServiceClient(
-                account_url=account_url, credential=DefaultAzureCredential()
-            )
-        }
+        try:
+            transport_params = {
+                "client": BlobServiceClient(
+                    account_url=account_url, credential=DefaultAzureCredential()
+                )
+            }
+        except Exception as e:
+            from ray._common.azure_utils import handle_azure_credential_error
+
+            handle_azure_credential_error(e, resource_type="Blob Storage")
+            raise
 
         return open_file, transport_params
 
@@ -193,10 +199,16 @@ class ProtocolsProvider:
                 )
 
             # Handle ABFSS URI with adlfs
-            filesystem = adlfs.AzureBlobFileSystem(
-                account_name=azure_storage_account_name,
-                credential=DefaultAzureCredential(),
-            )
+            try:
+                filesystem = adlfs.AzureBlobFileSystem(
+                    account_name=azure_storage_account_name,
+                    credential=DefaultAzureCredential(),
+                )
+            except Exception as e:
+                from ray._common.azure_utils import handle_azure_credential_error
+
+                handle_azure_credential_error(e, resource_type="ABFSS")
+                raise
             return filesystem.open(uri, mode)
 
         return open_file, None

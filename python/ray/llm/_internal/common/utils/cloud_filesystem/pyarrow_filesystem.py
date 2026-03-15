@@ -143,10 +143,16 @@ class PyArrowFileSystem(BaseCloudFileSystem):
             )
 
         # Create the adlfs filesystem
-        adlfs_fs = adlfs.AzureBlobFileSystem(
-            account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential(),
-        )
+        try:
+            adlfs_fs = adlfs.AzureBlobFileSystem(
+                account_name=azure_storage_account_name,
+                credential=DefaultAzureCredential(),
+            )
+        except Exception as e:
+            from ray._common.azure_utils import handle_azure_credential_error
+
+            handle_azure_credential_error(e, resource_type="Azure storage")
+            raise
 
         # Wrap with PyArrow's PyFileSystem for compatibility
         fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
