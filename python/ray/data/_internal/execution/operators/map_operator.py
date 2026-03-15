@@ -62,7 +62,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.util import MemoryProfiler, unify_ref_bundles_schema
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -70,7 +70,6 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     TaskExecWorkerStats,
-    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -906,7 +905,7 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
         itertools.chain(block for bundle in bundles for block in bundle.blocks)
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles)
-    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
+    schema = unify_ref_bundles_schema(bundles)
     return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
 
 

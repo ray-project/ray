@@ -481,6 +481,33 @@ def test_ref_bundle_eq_and_hash():
     assert bundle != diff_meta_bundle
 
 
+def test_merge_ref_bundles_reconciles_pyarrow_schemas():
+    block_ref_one = ObjectRef(b"1" * 28)
+    block_ref_two = ObjectRef(b"2" * 28)
+
+    metadata_one = BlockMetadata(
+        num_rows=1, size_bytes=10, exec_stats=None, input_files=None
+    )
+    metadata_two = BlockMetadata(
+        num_rows=1, size_bytes=10, exec_stats=None, input_files=None
+    )
+
+    bundle_one = RefBundle(
+        blocks=[(block_ref_one, metadata_one)],
+        owns_blocks=True,
+        schema=pa.schema([("a", pa.int64())]),
+    )
+    bundle_two = RefBundle(
+        blocks=[(block_ref_two, metadata_two)],
+        owns_blocks=True,
+        schema=pa.schema([("a", pa.int64()), ("b", pa.string())]),
+    )
+
+    merged = RefBundle.merge_ref_bundles([bundle_one, bundle_two])
+
+    assert merged.schema == pa.schema([("a", pa.int64()), ("b", pa.string())])
+
+
 if __name__ == "__main__":
     import sys
 
