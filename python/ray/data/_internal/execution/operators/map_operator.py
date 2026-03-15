@@ -568,6 +568,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            # Tag with the originating task index so downstream bundlers
+            # (e.g. ShuffleRefBundler) can group by source read task.
+            output.read_task_id = task_index
             self._metrics.on_task_output_generated(task_index, output)
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)

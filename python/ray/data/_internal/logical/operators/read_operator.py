@@ -16,6 +16,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import Expr
 
 __all__ = [
@@ -53,6 +54,11 @@ class Read(
         self.datasource_or_legacy_reader = datasource_or_legacy_reader
         self.parallelism = parallelism
         self.detected_parallelism = None
+
+    @property
+    def shuffle_config(self) -> "Optional[FileShuffleConfig]":
+        shuffle = getattr(self.datasource, "_shuffle", None)
+        return shuffle if isinstance(shuffle, FileShuffleConfig) else None
 
     def output_data(self):
         return None
@@ -106,7 +112,9 @@ class Read(
             )
 
         # Otherwise, estimate total number of blocks from estimated total
-        # byte size
+        # byte size. When sub-file shuffle is active, the read operator produces
+        # smaller blocks but the shuffle operator merges them back to
+        # target_max_block_size, so the final estimate is unchanged.
         return math.ceil(metadata.size_bytes / target_max_block_size)
 
     @functools.cached_property

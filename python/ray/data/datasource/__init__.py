@@ -25,6 +25,7 @@ from ray.data.datasource.datasource import (
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     FileShuffleConfig,
+    SubFileShuffleConfig,
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
@@ -57,6 +58,7 @@ __all__ = [
     "DummyOutputDatasink",
     "FileBasedDatasource",
     "FileShuffleConfig",
+    "SubFileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
     "MCAPDatasource",
