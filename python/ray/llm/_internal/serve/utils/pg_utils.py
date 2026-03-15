@@ -22,11 +22,10 @@ def _sort_bundle_indices_by_node(
         then remaining nodes in deterministic order.
     """
     node_to_bundles: Dict[str, List[int]] = defaultdict(list)
+    # bundle_idx is already in ascending order: created sequentially during
+    # placement group creation and preserved by the GCS protobuf.
     for bundle_idx, node_id in bundles_to_node_id.items():
         node_to_bundles[node_id].append(bundle_idx)
-
-    for bundles in node_to_bundles.values():
-        bundles.sort()
 
     result: List[int] = []
     if driver_node_id in node_to_bundles:
