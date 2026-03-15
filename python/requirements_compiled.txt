@@ -2142,7 +2142,7 @@ sqlalchemy==2.0.32
     #   pymars
 sqlglot==25.6.1
     # via fugue
-sqlparse==0.5.1
+sqlparse==0.5.4
     # via mlflow-skinny
 stack-data==0.6.3
     # via ipython
