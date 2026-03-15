@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
+    """The final result of a ML training run or a Tune trial."""
+
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None

@@ -18,6 +18,7 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.api.validation_config import (
     ValidationConfig,
     ValidationTaskConfig,
@@ -583,14 +584,24 @@ def test_report_get_all_reported_checkpoints(tmp_path):
             ray.train.report(metrics={}, checkpoint=None)
             with create_dict_checkpoint({}) as checkpoint:
                 ray.train.report(metrics={}, checkpoint=checkpoint)
-            assert len(ray.train.get_all_reported_checkpoints()) == 1
+
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.COMMITTED
+
             with create_dict_checkpoint({}) as checkpoint:
                 ray.train.report(metrics={}, checkpoint=checkpoint)
         else:
             ray.train.report(metrics={}, checkpoint=None)
             ray.train.report(metrics={}, checkpoint=None)
             ray.train.report(metrics={}, checkpoint=None)
-            assert len(ray.train.get_all_reported_checkpoints()) == 2
+
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 2
+            assert all(
+                rc.status == ReportedCheckpointStatus.COMMITTED
+                for rc in reported_checkpoints
+            )
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -620,25 +631,27 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
                     checkpoint=cp1,
                     validation=True,
                 )
-            assert [
-                reported_checkpoint.metrics
-                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.COMMITTED
-                )
-            ] == [
-                {"training_score": 1},
-            ]
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert (
+                reported_checkpoints[0].status
+                == ReportedCheckpointStatus.PENDING_VALIDATION
+            )
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
 
-            # Assert that we get validated chceckpoints
+            # Assert that we get validated checkpoints
             signal_actor.send.remote()
-            assert [
-                reported_checkpoint.metrics
-                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.VALIDATED
-                )
-            ] == [
-                {"training_score": 1, "validation_score": 100},
-            ]
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.VALIDATED
+            )
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATED
+            assert reported_checkpoints[0].metrics == {
+                "training_score": 1,
+                "validation_score": 100,
+            }
         else:
             ray.train.report(metrics={}, checkpoint=None)
 
