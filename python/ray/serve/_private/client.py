@@ -296,6 +296,10 @@ class ServeControllerClient:
     ) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = ray.get(self._controller.get_proxies.remote())
+
+        if not proxy_handles:
+            return
+
         serving_refs = [
             handle.serving.remote(
                 wait_for_applications_running=wait_for_applications_running

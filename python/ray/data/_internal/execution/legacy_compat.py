@@ -5,6 +5,7 @@ It should be deleted once we fully move to the new executor backend.
 import logging
 from typing import Iterator, Optional, Tuple
 
+from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
@@ -15,6 +16,7 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -25,12 +27,14 @@ logger = logging.getLogger(__name__)
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
+    data_context: DataContext,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
+        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a bundle iterator.
@@ -41,7 +45,8 @@ def execute_to_legacy_bundle_iterator(
         preserve_order=False,
     )
 
-    bundle_iter = executor.execute(dag, initial_stats=stats)
+    callbacks = get_execution_callbacks(data_context)
+    bundle_iter = executor.execute(dag, initial_stats=stats, callbacks=callbacks)
 
     topology: "Topology" = executor._topology
 
@@ -95,6 +100,7 @@ def execute_to_ref_bundle(
     plan: ExecutionPlan,
     dataset_uuid: str,
     preserve_order: bool,
+    data_context: DataContext,
 ) -> RefBundle:
     """Execute a plan with the new executor and return the output as a RefBundle.
 
@@ -103,6 +109,7 @@ def execute_to_ref_bundle(
         plan: The legacy plan to execute.
         dataset_uuid: UUID of the dataset for this execution.
         preserve_order: Whether to preserve order in execution.
+        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a RefBundle.
@@ -112,7 +119,9 @@ def execute_to_ref_bundle(
         plan,
         preserve_order,
     )
-    bundles = executor.execute(dag, initial_stats=stats)
+
+    callbacks = get_execution_callbacks(data_context)
+    bundles = executor.execute(dag, initial_stats=stats, callbacks=callbacks)
     ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)

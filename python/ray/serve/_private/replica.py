@@ -56,27 +56,27 @@ from ray.serve._private.common import (
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
+    gRPCStreamingRequest,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     HEALTHY_MESSAGE,
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
-    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -132,10 +132,23 @@ from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
     get_asgi_route_name,
 )
+from ray.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
+    is_span_recording,
+    is_tracing_enabled,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
+    set_span_attributes,
+    set_span_exception,
+    setup_tracing,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     asyncio_grpc_exception_handler,
+    check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     get_component_file_name,  # noqa: F401
     is_grpc_enabled,
@@ -143,7 +156,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import GangContext, _get_in_flight_requests
+from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -151,6 +164,7 @@ from ray.serve.exceptions import (
     RayServeException,
     gRPCStatusError,
 )
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
@@ -158,9 +172,10 @@ from ray.serve.generated.serve_pb2 import (
     ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
-from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -262,6 +277,7 @@ ReplicaMetadata = Tuple[
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
+    Optional[GangContext],  # gang_context
 ]
 
 
@@ -325,6 +341,10 @@ class ReplicaMetricsManager:
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
+
+        # Tracks in-flight metrics push to controller. Skip if new one is sent.
+        self._pending_metrics_push_ref: Optional[ObjectRef] = None
+        self._metrics_push_lock = threading.Lock()
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -625,13 +645,14 @@ class ReplicaMetricsManager:
             self._autoscaling_config.metrics_interval_s,
         )
         # Collect autoscaling metrics locally periodically.
+        record_interval_s = (
+            self._autoscaling_config.look_back_period_s
+            * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
+        )
         self._metrics_pusher.register_or_update_task(
             self.RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                self._autoscaling_config.metrics_interval_s,
-            ),
+            min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
 
     def should_collect_ongoing_requests(self) -> bool:
@@ -892,9 +913,15 @@ class ReplicaMetricsManager:
             aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
-        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
-            replica_metric_report
-        )
+        with self._metrics_push_lock:
+            if self._pending_metrics_push_ref is not None:
+                if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
+                    return  # Previous push still in flight, skip and try again later
+            self._pending_metrics_push_ref = (
+                self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+                    compress_metric_report(replica_metric_report)
+                )
+            )
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -1107,6 +1134,7 @@ class ReplicaBase(ABC):
             route_patterns,
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
+            self._gang_context,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1329,7 +1357,14 @@ class ReplicaBase(ABC):
         # Design: We return it so it can be passed to _wrap_request() which
         # stores it in _RequestContext. Users can then access it via serve.context
         # if needed (advanced use case), while keeping it out of their method signatures.
+        #
+        # For gRPC requests (when using RAY_SERVE_USE_GRPC_BY_DEFAULT),
+        # the _ray_trace_ctx is not injected into kwargs since there's no Ray actor
+        # call. Instead, the tracing context is passed via request_metadata.tracing_context.
+        # We fall back to using that if _ray_trace_ctx is not in kwargs.
         ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
+        if ray_trace_ctx is None:
+            ray_trace_ctx = request_metadata.tracing_context
 
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
@@ -1345,20 +1380,88 @@ class ReplicaBase(ABC):
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request: gRPCRequest = request_args[0]
+            if len(request_args) == 1 and isinstance(
+                request_args[0], gRPCStreamingRequest
+            ):
+                # Handle client streaming or bidirectional streaming request
+                streaming_request: gRPCStreamingRequest = request_args[0]
+                request_args, request_kwargs = self._setup_grpc_streaming_args(
+                    request_metadata, streaming_request
+                )
+            else:
+                # Handle unary or server streaming request
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request: gRPCRequest = request_args[0]
 
-            method_info = self._user_callable_wrapper.get_user_method_info(
-                request_metadata.call_method
-            )
-            request_args = (request.user_request_proto,)
-            request_kwargs = (
-                {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-                if method_info.takes_grpc_context_kwarg
-                else {}
-            )
+                method_info = self._user_callable_wrapper.get_user_method_info(
+                    request_metadata.call_method
+                )
+                request_args = (request.user_request_proto,)
+                request_kwargs = (
+                    {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+                    if method_info.takes_grpc_context_kwarg
+                    else {}
+                )
 
         return request_args, request_kwargs, ray_trace_ctx
+
+    def _setup_grpc_streaming_args(
+        self,
+        request_metadata: RequestMetadata,
+        streaming_request: gRPCStreamingRequest,
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Set up request args for gRPC client/bidirectional streaming.
+
+        Creates a gRPCInputStream that wraps the callback to the proxy,
+        allowing the user method to iterate over incoming request messages.
+        """
+        # Look up the proxy actor fresh per-request to avoid stale handles
+        # if the proxy actor restarts (same name, new actor ID). This mirrors
+        # the per-request lookup in StreamingHTTPRequest.receive_asgi_messages.
+        proxy_actor = ray.get_actor(
+            streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
+        )
+
+        # Create a cancel event that will be set when the client cancels
+        cancel_event = asyncio.Event()
+
+        # Create an async iterator that fetches messages from the proxy
+        async def request_message_iterator():
+            while True:
+                # Ray handles serialization - no manual pickle needed
+                (
+                    has_more,
+                    message,
+                    is_cancelled,
+                ) = await proxy_actor.receive_grpc_messages.remote(
+                    streaming_request.session_id
+                )
+                if is_cancelled:
+                    # Set the cancel event so is_cancelled() returns True
+                    cancel_event.set()
+                if not has_more:
+                    break
+                yield message
+
+        # Create the gRPCInputStream wrapper with the cancel event
+        input_stream = gRPCInputStream(
+            request_message_iterator(), cancel_event=cancel_event
+        )
+
+        method_info = self._user_callable_wrapper.get_user_method_info(
+            request_metadata.call_method
+        )
+
+        request_args = (input_stream,)
+        request_kwargs = (
+            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+            if method_info.takes_grpc_context_kwarg
+            else {}
+        )
+
+        return request_args, request_kwargs
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1708,6 +1811,20 @@ class Replica(ReplicaBase):
 
         super().__init__(**kwargs)
 
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
@@ -1796,7 +1913,7 @@ class Replica(ReplicaBase):
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.dict(), "port": port})
+                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
                 )
             )
 
@@ -1819,7 +1936,9 @@ class Replica(ReplicaBase):
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
-                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                options = gRPCOptions(
+                    **{**self._grpc_options.model_dump(), "port": port}
+                )
                 return await start_grpc_server(
                     self._direct_ingress_service_handler_factory,
                     options,
@@ -1900,6 +2019,33 @@ class Replica(ReplicaBase):
             return super()._can_accept_request(request_metadata)
 
     @contextmanager
+    def _tracing_context(self, request_metadata: RequestMetadata):
+        if not is_tracing_enabled():
+            yield
+            return
+
+        call_method = request_metadata.call_method
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name=f"replica_handle_request {self._deployment_id.name} {call_method}",
+            trace_context=trace_context,
+        )
+        with trace_manager:
+            if is_span_recording():
+                trace_attributes = {
+                    "request_id": request_metadata.request_id,
+                    "replica_id": self._replica_id.unique_id,
+                    "deployment": self._deployment_id.name,
+                    "app": self._deployment_id.app_name,
+                    "call_method": request_metadata.call_method,
+                    "route": request_metadata.route,
+                    "multiplexed_model_id": request_metadata.multiplexed_model_id,
+                    "is_streaming": request_metadata.is_streaming,
+                }
+                set_span_attributes(trace_attributes)
+            yield
+
+    @contextmanager
     def _wrap_request(
         self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
     ) -> Generator[StatusCodeCallback, None, None]:
@@ -1909,22 +2055,53 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                route=request_metadata.route,
-                request_id=request_metadata.request_id,
-                _internal_request_id=request_metadata.internal_request_id,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id=request_metadata.multiplexed_model_id,
-                grpc_context=request_metadata.grpc_context,
-                cancel_on_parent_request_cancel=self._ingress
-                and RAY_SERVE_ENABLE_DIRECT_INGRESS,
-                _ray_trace_ctx=ray_trace_ctx,
+        with self._tracing_context(request_metadata):
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context._RequestContext(
+                    route=request_metadata.route,
+                    request_id=request_metadata.request_id,
+                    _internal_request_id=request_metadata.internal_request_id,
+                    app_name=self._deployment_id.app_name,
+                    multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    grpc_context=request_metadata.grpc_context,
+                    cancel_on_parent_request_cancel=self._ingress
+                    and RAY_SERVE_ENABLE_DIRECT_INGRESS,
+                    _ray_trace_ctx=ray_trace_ctx,
+                )
             )
+
+            with self._handle_errors_and_metrics(
+                request_metadata
+            ) as status_code_callback:
+                yield status_code_callback
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+    ):
+        super()._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata
         )
 
-        with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
-            yield status_code_callback
+        if is_span_recording():
+            if request_metadata.is_http_request:
+                set_http_span_attributes(
+                    method=request_metadata._http_method,
+                    status_code=status_code,
+                    route=request_metadata.route,
+                )
+            else:
+                set_rpc_span_attributes(
+                    system=request_metadata._request_protocol,
+                    method=request_metadata.call_method,
+                    status_code=status_code,
+                    service=self._deployment_id.name,
+                )
+            if user_exception is not None:
+                set_span_exception(user_exception, escaped=False)
 
     @_wrap_grpc_call
     async def HandleRequest(
@@ -2052,6 +2229,23 @@ class Replica(ReplicaBase):
 
         return healthy, message
 
+    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        tracing_ctx = {}
+        for key, value in context.invocation_metadata():
+            if key in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key] = value
+
+        return tracing_ctx
+
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
@@ -2093,7 +2287,7 @@ class Replica(ReplicaBase):
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=None,
+            tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
             is_direct_ingress=True,
         )
@@ -2197,6 +2391,24 @@ class Replica(ReplicaBase):
             raise ValueError(f"Unsupported streaming type: {streaming_type}")
 
         return handler
+
+    def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
+        """Extract tracing context from ASGI request headers.
+
+        This method extracts both "traceparent" and "tracestate" headers from the
+        request headers to maintain proper trace context propagation.
+        """
+        if not is_tracing_enabled():
+            return None
+
+        tracing_ctx = None
+        for key, value in headers:
+            key_str = key.decode()
+            if key_str in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key_str] = value.decode()
+
+        return tracing_ctx
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
@@ -2314,7 +2526,7 @@ class Replica(ReplicaBase):
             multiplexed_model_id="",
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
-            tracing_context=None,
+            tracing_context=self.get_asgi_tracing_context(scope["headers"]),
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
         )
@@ -2359,7 +2571,14 @@ class Replica(ReplicaBase):
 
                 await send(msg)
                 response_started = True
-                if msg.get("more_body") is False:
+                # more_body: "Signifies if there is additional content to come (as part
+                # of a Response Body message). If False, and the server is not expecting
+                # Response Trailers, response will be taken as complete and closed.
+                # Optional; if missing defaults to False."
+                # https://asgi.readthedocs.io/en/latest/specs/www.html#response-body-send-event
+                if msg["type"] == "http.response.body" and not msg.get(
+                    "more_body", False
+                ):
                     response_finished = True
 
             async def call_asgi():
@@ -2728,8 +2947,7 @@ class UserCallableWrapper:
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
-        self._warned_about_sync_method_event_loop = False
-        self._warned_about_sync_method_threadpool = False
+        self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
@@ -2918,16 +3136,6 @@ class UserCallableWrapper:
         )
 
         if is_sync_method and run_sync_in_threadpool:
-            if (
-                not self._warned_about_sync_method_threadpool
-                and run_sync_methods_in_threadpool_override is None
-            ):
-                self._warned_about_sync_method_threadpool = True
-                warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING.format(
-                        method_name=callable.__name__,
-                    )
-                )
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
@@ -2958,12 +3166,12 @@ class UserCallableWrapper:
         else:
             if (
                 is_sync_method
-                and not self._warned_about_sync_method_event_loop
+                and not self._warned_about_sync_method_change
                 and run_sync_methods_in_threadpool_override is None
             ):
-                self._warned_about_sync_method_event_loop = True
+                self._warned_about_sync_method_change = True
                 warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING.format(
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING.format(
                         method_name=callable.__name__,
                     )
                 )

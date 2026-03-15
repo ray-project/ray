@@ -84,7 +84,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -642,8 +642,10 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame`` (requires cudf to be installed).
+                If ``batch_format`` is set to ``None`` input block format
+                will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -968,8 +970,9 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
+                If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -980,7 +983,7 @@ class Dataset:
             A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "cudf"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -1016,6 +1019,15 @@ class Dataset:
                 if column_idx == -1:
                     return batch.append_column(col, column)
                 return batch.set_column(column_idx, col, column)
+
+            elif batch_format == "cudf":
+                import cudf
+
+                # cuDF uses pandas-like API: batch[col] = column
+                if isinstance(column, (cudf.DataFrame, cudf.Index, cudf.Series)):
+                    column.index = batch.index
+                batch[col] = column
+                return batch
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -2430,7 +2442,7 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2448,7 +2460,7 @@ class Dataset:
                 "Couldn't create non-empty splits with the given proportions."
             )
 
-        return self.split_at_indices(split_indices)
+        return ds.split_at_indices(split_indices)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2517,9 +2529,21 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            self._validate_test_size_int(test_size, ds)
-            ds_length = ds.count()
+            ds, ds_length = self._try_count_or_materialize(ds)
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
+
+    def _try_count_or_materialize(self, ds: "Dataset") -> Tuple["Dataset", int]:
+        dataset_length = ds._meta_count()
+        if dataset_length is None:
+            # Materialize once so split_at_indices() can reuse the computed snapshot.
+            # Calling count() first would execute the upstream pipeline for counting,
+            # then execute it again for the split.
+            ds = ds.materialize()
+            dataset_length = ds._meta_count()
+            if dataset_length is None:
+                dataset_length = ds.count()
+        return ds, dataset_length
 
     def _stratified_train_test_split(
         self, ds: "Dataset", test_size: Union[int, float], stratify: str
@@ -2575,12 +2599,18 @@ class Dataset:
                 f"than 1. Got {test_size}."
             )
 
-    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+    def _validate_test_size_int(
+        self,
+        test_size: int,
+        ds: "Dataset",
+        ds_length: Optional[int] = None,
+    ) -> int:
         """Validate test_size when it's an int and return dataset length.
 
         Args:
             test_size: Test size as int.
             ds: Dataset to validate against.
+            ds_length: Dataset length if already known.
 
         Returns:
             Dataset length for reuse.
@@ -2588,7 +2618,8 @@ class Dataset:
         Raises:
             ValueError: If test_size is not in valid range.
         """
-        ds_length = ds.count()
+        if ds_length is None:
+            ds_length = ds.count()
         if test_size <= 0 or test_size >= ds_length:
             raise ValueError(
                 "If `test_size` is an int, it must be bigger than 0 and smaller "
@@ -2639,9 +2670,9 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(8)
             >>> train, test = ds.streaming_train_test_split(test_size=0.25, split_type="hash", hash_column="id")
-            >>> train.take_batch()
+            >>> train.take_batch()  # doctest: +SKIP
             {'id': array([0, 2, 3, 4, 5, 6])}
-            >>> test.take_batch()
+            >>> test.take_batch()  # doctest: +SKIP
             {'id': array([1, 7])}
 
         Args:
@@ -3656,7 +3687,9 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -5660,7 +5693,9 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -7094,7 +7129,7 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return self.base_schema.names
+        return list(self.base_schema.names)
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
@@ -7106,7 +7141,10 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data.extensions import ArrowTensorType, TensorDtype
+        from ray.data._internal.tensor_extensions.arrow import (
+            create_arrow_fixed_shape_tensor_type,
+        )
+        from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
             dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
@@ -7126,18 +7164,16 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-                if self._context.use_arrow_tensor_v2:
-                    pa_tensor_type_class = ArrowTensorTypeV2
-                else:
-                    pa_tensor_type_class = ArrowTensorType
-
-                # Manually convert our Pandas tensor extension type to Arrow.
-                arrow_types.append(
-                    pa_tensor_type_class(
-                        shape=dtype._shape,
-                        dtype=_convert_to_pa_type(dtype._dtype),
+                pa_dtype = _convert_to_pa_type(dtype._dtype)
+                if any(dim is None for dim in dtype._shape):
+                    tensor_type = ArrowVariableShapedTensorType(
+                        pa_dtype, len(dtype._shape)
                     )
-                )
+                else:
+                    tensor_type = create_arrow_fixed_shape_tensor_type(
+                        shape=dtype._shape, dtype=pa_dtype
+                    )
+                arrow_types.append(tensor_type)
 
             else:
                 try:
