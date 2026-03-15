@@ -37,7 +37,17 @@ enum class SchedulingType {
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
   AFFINITY_WITH_BUNDLE = 8,
-  NODE_LABEL = 9
+  NODE_LABEL = 9,
+};
+
+// Label-domain-level scheduling strategies for placement groups.
+// Only STRICT_PACK is supported for now.
+enum class LabelDomainSchedulingStrategy {
+  NONE = 0,
+  PACK = 1,
+  SPREAD = 2,
+  STRICT_PACK = 3,
+  STRICT_SPREAD = 4,
 };
 
 // Options that controls the scheduling behavior.
@@ -170,6 +180,15 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
+  // The scheduling strategy for the label domain level.
+  // Set to NONE to disable label domain level scheduling.
+  LabelDomainSchedulingStrategy label_domain_scheduling_strategy_ =
+      LabelDomainSchedulingStrategy::NONE;
+  // The label domain target for label-domain-aware scheduling.
+  // first: the node label key used to partition nodes into groups.
+  // second: if non-empty, constrains scheduling to this domain value
+  //   (bundle rescheduling). If empty, a new group is selected.
+  std::pair<std::string, std::string> target_label_domain_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.

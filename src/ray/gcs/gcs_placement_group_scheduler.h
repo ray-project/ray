@@ -471,6 +471,17 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 
+  /**
+   * @brief Determines whether a placement group requires label-domain-aware
+   * scheduling.
+   *
+   * @param pg The placement group to inspect.
+   * @return The node label key to use for domain grouping, or std::nullopt if
+   *   the placement group does not require label-domain scheduling.
+   */
+  std::optional<std::string> IsLabelDomainPlacementGroup(
+      const GcsPlacementGroup &pg) const;
+
   /// Help function to check if the resource_name has the pattern
   /// {original_resource_name}_group_{placement_group_id}, which means
   /// wildcard resource.
@@ -509,6 +520,18 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
+
+  /**
+   * @brief Tracks the selected label domain value for each (placement group,
+   * label key) pair.
+   *
+   * @details Outer key is the placement group ID. Inner key is the node label
+   * key (e.g. "ray.io/gpu-domain"), inner value is the selected domain value
+   * (e.g. "rack-1"). The nested map supports multiple tiers of label-domain
+   * scheduling for the same placement group.
+   */
+  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<std::string, std::string>>
+      placement_group_label_domains_;
 
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
