@@ -429,5 +429,44 @@ def test_load_and_validate_test_collection_file():
     assert [test for test in tests if test.get_name() == "test_name"]
 
 
+def test_all_compute_configs_convert_to_new_sdk():
+    """Test that all release test compute configs can be converted to new ComputeConfig."""
+    from ray_release.job_manager.anyscale_job_manager import _convert_compute_config
+    from ray_release.template import load_test_cluster_compute
+
+    tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
+
+    converted = 0
+    errors = []
+    for test in tests:
+        cluster_compute_file = test.get("cluster", {}).get("cluster_compute")
+        if not cluster_compute_file:
+            continue
+
+        try:
+            compute_config_dict = load_test_cluster_compute(test)
+        except Exception:
+            # Skip tests whose compute config can't be loaded in the test
+            # sandbox (e.g., missing files from non-included directories).
+            continue
+
+        if compute_config_dict is None:
+            continue
+
+        # Skip kuberay configs — they use K8s resource model, not cloud instances.
+        if test.is_kuberay():
+            continue
+
+        try:
+            result = _convert_compute_config(compute_config_dict)
+            assert result is not None
+            converted += 1
+        except Exception as e:
+            errors.append(f"{test.get_name()}: {e}")
+
+    assert not errors, "Compute config conversion errors:\n" + "\n".join(errors)
+    assert converted > 0, f"No compute configs were converted"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
