@@ -300,22 +300,30 @@ def make_rdt_callback(instance, gpu_object_store, rdt_manager, actor_handle,
                 transport = get_tensor_transport_manager("NIXL")
 
                 # Perform NIXL READ to fetch tensor from source
-                try:
-                    tensors = transport.recv_multiple_tensors(
-                        rdt_obj_id,
-                        meta,
-                        NixlCommunicatorMetadata(),
-                        target_buffers=target_tensors,
-                    )
-                except Exception as e:
-                    # Wrap in RayTaskError-compatible format
-                    from ray.exceptions import RayTaskError
-                    err = RayTaskError(
-                        function_name=real_method,
-                        cause=e,
-                        traceback_str=traceback.format_exc(),
-                    )
-                    raise err
+                # Retry on NOT_FOUND to handle UCX backend warmup races
+                import time as _time
+                _max_retries = 2
+                for _attempt in range(_max_retries + 1):
+                    try:
+                        tensors = transport.recv_multiple_tensors(
+                            rdt_obj_id,
+                            meta,
+                            NixlCommunicatorMetadata(),
+                            target_buffers=target_tensors,
+                        )
+                        break
+                    except Exception as e:
+                        if _attempt < _max_retries and "NOT_FOUND" in str(e):
+                            _time.sleep(0.1 * (_attempt + 1))
+                            continue
+                        # Wrap in RayTaskError-compatible format
+                        from ray.exceptions import RayTaskError
+                        err = RayTaskError(
+                            function_name=real_method,
+                            cause=e,
+                            traceback_str=traceback.format_exc(),
+                        )
+                        raise err
 
                 # Store received tensors in local rdt_store for potential reuse
                 if rdt_manager is not None:

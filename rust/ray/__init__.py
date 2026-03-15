@@ -731,11 +731,6 @@ class _ActorMethodHandle:
                 if rdt_ref._rdt_error is not None:
                     result_ref._rdt_error = rdt_ref._rdt_error
                 elif rdt_ref._rdt_meta is not None:
-                    # Check if source actor was explicitly killed
-                    if (src_actor_id_key is not None
-                            and src_actor_id_key in _runtime._killed_actors):
-                        result_ref._rdt_error = exceptions.ActorDiedError()
-                        return
                     # Metadata resolved — do the real dispatch
                     real_ref = self._remote_rdt_nixl(args, [(idx, rdt_ref)], driver)
                     result_ref._binary = real_ref._binary
@@ -748,7 +743,7 @@ class _ActorMethodHandle:
                 else:
                     result_ref._rdt_error = exceptions.ActorDiedError()
             except Exception as e:
-                result_ref._rdt_error = exceptions.ActorDiedError()
+                result_ref._rdt_error = e
             finally:
                 result_ref._rdt_pending.set()
 

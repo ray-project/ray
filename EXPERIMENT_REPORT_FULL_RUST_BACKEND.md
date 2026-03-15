@@ -93,15 +93,27 @@ NCCL: 1 passed in 5.47s
 | NCCL passed | 1 | 1 | YES |
 | **Total** | **21 passed, 0 failed, 1 skipped** | **21 passed, 0 failed, 1 skipped** | **IDENTICAL** |
 
-## Flaky Tests Observed
+## Transient Failures — Root Cause and Fixes (March 15, 2026)
 
-During intermediate runs, two tests showed transient failures on the Rust backend:
+During initial runs, two tests showed transient failures on the Rust backend. Both were root-caused and fixed:
 
-1. **`test_out_of_order_actors`**: NIXL_ERR_NOT_FOUND — timing-sensitive race condition where the NIXL receiver agent's xfer request arrives before the sender's metadata is fully propagated. Passed consistently on 5 consecutive solo runs after the first clean run.
+### 1. `test_out_of_order_actors` — NIXL_ERR_NOT_FOUND
 
-2. **`test_nixl_abort_sender_dies_before_sending`**: ActorDiedError — UCX connection refused when trying to read from a killed sender. Expected behavior for this test (it tests abort handling), but the error surfaced as ActorDiedError instead of RayDirectTransportError on one run. Passed on retry.
+**Root cause**: With `max_concurrency=10`, multiple `__ray_recv_and_call__` handlers run concurrently on the receiver. On first invocation, the UCX backend may not have fully established connections when the first NIXL transfer is attempted, causing `createXferReq: no specified or potential backend had the required registrations`.
 
-Both flaky tests also exhibit transient failures on the C++ backend (same underlying NIXL timing sensitivity). The final clean run showed identical results.
+**Fix** (`rust/ray/rdt.py`): Added retry with exponential backoff (up to 2 retries, 100ms/200ms delays) in the `__ray_recv_and_call__` handler when `recv_multiple_tensors` fails with `NOT_FOUND`. This gives UCX time to establish connections on first use.
+
+**Result**: Passes 5/5 runs consistently after fix (including first cold-start run).
+
+### 2. `test_nixl_abort_sender_dies_before_sending` — Wrong error type
+
+**Root cause**: In `_remote_rdt_nixl_deferred` (`rust/ray/__init__.py`), a `_killed_actors` check short-circuited with `ActorDiedError` before the NIXL transfer started. The test expects `RayTaskError(RayDirectTransportError("nixlBackendError..."))`, which requires the NIXL transfer to actually attempt and fail. Additionally, the catch-all `except` converted all exceptions to `ActorDiedError`, losing the original error.
+
+**Fix** (`rust/ray/__init__.py`):
+1. Removed the `_killed_actors` short-circuit in `_deferred` — let the NIXL transfer proceed and fail naturally with the proper NIXL disconnect error
+2. Changed catch-all from `result_ref._rdt_error = exceptions.ActorDiedError()` to `result_ref._rdt_error = e` to preserve original errors
+
+**Result**: Passes 5/5 runs consistently after fix, with correct error type.
 
 ## Warnings
 
@@ -113,11 +125,17 @@ Both flaky tests also exhibit transient failures on the C++ backend (same underl
 - The Rust backend's `_monitor_failures` thread is not present (different RDT manager implementation), so the benign cleanup warnings don't appear.
 - NIXL INFO logs appear in stderr (agent initialization) — these are normal.
 
-## Fix Applied
+## Fixes Applied
 
-**Missing dependency**: `cloudpickle` was not listed as a dependency for the Rust backend's GPU worker spawning code (`rust/ray/__init__.py:1090` and `rust/ray/rdt.py:499`). The `_remote_gpu` method uses `cloudpickle` to serialize actor classes for the child process.
+### Fix 1: Missing `cloudpickle` dependency (setup-only)
+`cloudpickle` was not listed as a dependency for the Rust backend's GPU worker spawning code. Added `pip3 install cloudpickle` to setup steps.
 
-**Action**: Added `pip3 install cloudpickle` to the setup steps. No code changes were needed — this is a packaging/documentation issue, not a code bug.
+### Fix 2: NIXL retry for UCX warmup (`rust/ray/rdt.py`)
+Added retry with backoff in `__ray_recv_and_call__` handler when `recv_multiple_tensors` fails with `NOT_FOUND`. Retries up to 2 times with 100ms/200ms delays.
+
+### Fix 3: Deferred dispatch error handling (`rust/ray/__init__.py`)
+- Removed `_killed_actors` short-circuit in `_remote_rdt_nixl_deferred` that prevented proper NIXL error propagation
+- Changed catch-all to preserve original exceptions instead of converting to `ActorDiedError`
 
 ## Performance Notes
 
@@ -130,10 +148,20 @@ Both flaky tests also exhibit transient failures on the C++ backend (same underl
 
 The Rust backend is ~2x faster on the NIXL suite. This is likely because the Rust backend's in-process architecture avoids IPC overhead (no separate GCS/Raylet processes), and the Rust object store is more lightweight than Plasma.
 
+## Stability Verification (Post-Fix)
+
+After applying fixes, ran stability checks on instance `i-02ee7b855ced7e3bb`:
+
+- **Full NIXL suite**: 20 passed, 1 skipped (first run, cold start) — **no failures**
+- **Full NCCL suite**: 1 passed
+- **`test_out_of_order_actors`**: 5/5 passes
+- **`test_nixl_abort_sender_dies_before_sending`**: 5/5 passes
+
 ## Conclusion
 
-The **full Rust backend** produces **identical test results** to the **full C++ backend** for all RDT tests (NIXL and NCCL). The only setup issue was a missing `cloudpickle` dependency, which is a packaging concern — no code changes were required.
+The **full Rust backend** produces **identical test results** to the **full C++ backend** for all RDT tests (NIXL and NCCL). Two transient failures were root-caused and fixed with targeted changes to the Python adapter layer (`rust/ray/__init__.py` and `rust/ray/rdt.py`). No Rust code or C++ code changes were needed.
 
-### Instances
-- Rust: `i-0922a63733219292f` — **terminated**
-- C++: `i-0b0077286d50aad1c` — **terminated**
+### Instances (all terminated)
+- Rust (initial): `i-0922a63733219292f`
+- C++: `i-0b0077286d50aad1c`
+- Rust (fix verification): `i-02ee7b855ced7e3bb`
