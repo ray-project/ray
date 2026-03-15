@@ -23,6 +23,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -38,8 +39,10 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
-logger = logging.getLogger(__name__)
+PartitionOffsets = Dict[int, Union[int, str]]
+PerPartitionOffsets = Dict[str, PartitionOffsets]
 
+logger = logging.getLogger(__name__)
 
 # Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
 # TODO(youcheng): Remove this mapping and use consumer_config directly.
@@ -296,6 +299,59 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _validate_offsets(
+    start_offset: Union[int, datetime, Literal["earliest"], PerPartitionOffsets],
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets],
+) -> None:
+    if isinstance(start_offset, dict):
+        for topic, partition_map in start_offset.items():
+            if not isinstance(partition_map, dict):
+                raise ValueError(
+                    f"start_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
+                )
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"start_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "latest":
+                    raise ValueError(
+                        f"start_offset[{topic!r}][{partition_id}] cannot be 'latest'."
+                    )
+    else:
+        if isinstance(start_offset, int) and isinstance(end_offset, int):
+            if start_offset > end_offset:
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
+            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, str) and start_offset == "latest":
+            raise ValueError("start_offset cannot be 'latest'")
+
+    if isinstance(end_offset, dict):
+        for topic, partition_map in end_offset.items():
+            if not isinstance(partition_map, dict):
+                raise ValueError(
+                    f"end_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
+                )
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"end_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "earliest":
+                    raise ValueError(
+                        f"end_offset[{topic!r}][{partition_id}] cannot be 'earliest'."
+                    )
+    else:
+        if isinstance(end_offset, str) and end_offset == "earliest":
+            raise ValueError("end_offset cannot be 'earliest'")
+
+
 def _resolve_datetime_to_offset(
     consumer: "Consumer",
     topic_partition: "TopicPartition",
@@ -374,6 +430,15 @@ def _resolve_offsets(
     # of messages in the partition.
     end_offset = min(end_offset, latest_offset)
 
+    if isinstance(start_offset, int) and start_offset < earliest_offset:
+        logger.warning(
+            f"start_offset ({start_offset}) is below the earliest available offset "
+            f"({earliest_offset}) for partition {topic_partition.partition} in topic "
+            f"{topic_partition.topic} (data may have been deleted by Kafka retention). "
+            f"Falling back to earliest available offset ({earliest_offset})."
+        )
+        start_offset = earliest_offset
+
     if start_offset > end_offset:
         start_str = (
             f"{original_start}"
@@ -403,8 +468,12 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-        end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+        start_offset: Union[
+            int, datetime, Literal["earliest"], PerPartitionOffsets
+        ] = "earliest",
+        end_offset: Union[
+            int, datetime, Literal["latest"], PerPartitionOffsets
+        ] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         consumer_config: Optional[Dict[str, Any]] = None,
         timeout_ms: Optional[int] = None,
@@ -449,18 +518,7 @@ class KafkaDatasource(Datasource):
         if timeout_ms is not None and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
 
-        if isinstance(start_offset, int) and isinstance(end_offset, int):
-            if start_offset > end_offset:
-                raise ValueError("start_offset must be less than end_offset")
-
-        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
-                raise ValueError("start_offset must be less than end_offset")
-
-        if isinstance(start_offset, str) and start_offset == "latest":
-            raise ValueError("start_offset cannot be 'latest'")
-        if isinstance(end_offset, str) and end_offset == "earliest":
-            raise ValueError("end_offset cannot be 'earliest'")
+        _validate_offsets(start_offset, end_offset)
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -553,6 +611,26 @@ class KafkaDatasource(Datasource):
         end_offset = self._end_offset
         timeout_ms = self._timeout_ms
         target_max_block_size = self._target_max_block_size
+
+        # Validate that any partitions referenced in a per-partition dict
+        # actually exist on the broker. Check once per topic before the loop.
+        actual_partition_ids: Dict[str, Set[int]] = {}
+        for topic_name, partition_id in topic_partitions:
+            actual_partition_ids.setdefault(topic_name, set()).add(partition_id)
+
+        for param_name, offset in (
+            ("start_offset", start_offset),
+            ("end_offset", end_offset),
+        ):
+            if isinstance(offset, dict):
+                for topic, partition_map in offset.items():
+                    existing_partitions = actual_partition_ids.get(topic, set())
+                    for pid in partition_map:
+                        if pid not in existing_partitions:
+                            raise ValueError(
+                                f"{param_name} references partition {pid} in topic "
+                                f"{topic!r}, but that partition does not exist."
+                            )
 
         tasks = []
         for topic_name, partition_id in topic_partitions:
@@ -716,7 +794,23 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
+            effective_start = (
+                start_offset.get(topic_name, {}).get(partition_id, "earliest")
+                if isinstance(start_offset, dict)
+                else start_offset
+            )
+            effective_end = (
+                end_offset.get(topic_name, {}).get(partition_id, "latest")
+                if isinstance(end_offset, dict)
+                else end_offset
+            )
+            kafka_read_fn = create_kafka_read_fn(
+                topic_name,
+                partition_id,
+                start_offset=effective_start,
+                end_offset=effective_end,
+            )
+
             # Create read task
             task = ReadTask(
                 read_fn=kafka_read_fn,
