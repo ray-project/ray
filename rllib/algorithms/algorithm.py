@@ -1562,7 +1562,7 @@ class Algorithm(Checkpointable, Trainable):
 
             if self.config.enable_env_runner_and_connector_v2:
                 if log_once("no_eval_results") and not self.metrics.peek(
-                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS), default={}
                 ):
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
@@ -1630,7 +1630,7 @@ class Algorithm(Checkpointable, Trainable):
                 env_steps,
                 agent_steps,
             ) = self.config.custom_evaluation_function(self, self.eval_env_runner_group)
-            if not env_steps or not agent_steps:
+            if not isinstance(env_steps, int) or not isinstance(agent_steps, int):
                 raise ValueError(
                     "Custom eval function must return "
                     "`Tuple[ResultDict, int, int]` with `int, int` being "
