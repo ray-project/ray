@@ -4281,6 +4281,7 @@ def read_delta(
     path: Union[str, List[str]],
     version: Optional[int] = None,
     *,
+    storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -4288,25 +4289,61 @@ def read_delta(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
+
+    This reader uses the ``deltalake`` library to read the Delta transaction
+    log and constructs a PyArrow dataset that preserves the table's unified
+    schema, partition information, and column statistics. This enables:
+
+    - Schema evolution support (older files with missing columns are null-filled)
+    - Correct handling of cloud storage URIs (Azure, S3, GCS)
+    - Column statistics from the Delta log for row-group pruning
+    - Authentication via ``storage_options``
 
     Examples:
 
+        Read a local Delta table:
+
         >>> import ray
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+        >>> ds = ray.data.read_delta("/path/to/delta-table/") # doctest: +SKIP
+
+        Read from S3 with credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     storage_options={
+        ...         "AWS_ACCESS_KEY_ID": "...",
+        ...         "AWS_SECRET_ACCESS_KEY": "...",
+        ...     },
+        ... )
+
+        Read from Azure with default credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "az://container/delta-table/",
+        ...     storage_options={"use_azure_cli": "true"},
+        ... )
 
     Args:
-        path: A single file path for a Delta Lake table. Multiple tables are not yet
+        path: A single path to a Delta Lake table. Multiple tables are not
             supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        version: The version of the Delta Lake table to read. If not specified,
+            the latest version is read.
+        storage_options: A dictionary of storage options passed to the
+            ``deltalake`` library for authentication and configuration.
+            Supported keys depend on the storage backend:
+            `S3 options <https://docs.rs/object_store/latest/object_store/\
+            aws/enum.AmazonS3ConfigKey.html#variants>`_,
+            `Azure options <https://docs.rs/object_store/latest/object_store/\
+            azure/enum.AzureConfigKey.html#variants>`_,
+            `GCS options <https://docs.rs/object_store/latest/object_store/\
+            gcp/enum.GoogleConfigKey.html#variants>`_.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4324,11 +4361,6 @@ def read_delta(
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        partition_filter: A
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
-            with a custom callback to read only selected partitions of a dataset.
-        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
-            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
@@ -4347,8 +4379,8 @@ def read_delta(
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified
+        Delta Lake table.
 
     """
     # Modified from ray.data._internal.util._check_import, which is meant for objects,
@@ -4372,22 +4404,26 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
+    dt = DeltaTable(path, version=version, storage_options=storage_options)
+    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
 
-    return read_parquet(
-        paths,
-        filesystem=filesystem,
+    datasource = ParquetDatasource.from_pyarrow_dataset(
+        pa_dataset,
         columns=columns,
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+        to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+    )
+
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
-        **arrow_parquet_args,
     )
 
 
