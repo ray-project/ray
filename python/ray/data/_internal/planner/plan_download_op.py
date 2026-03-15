@@ -1,7 +1,9 @@
+import asyncio
 import logging
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from urllib.parse import urlparse
 
 import pyarrow as pa
@@ -22,11 +24,24 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _split_uri,
+)
 
 logger = logging.getLogger(__name__)
 
 URI_DOWNLOAD_MAX_WORKERS = 16
+
+RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
+
+try:
+    from obstore import parse_scheme as obstore_parse_scheme
+
+    OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE
+except ImportError:
+    OBSTORE_AVAILABLE = False
+    obstore_parse_scheme = None
 
 
 def plan_download_op(
@@ -109,7 +124,13 @@ def plan_download_op(
 
     fn, init_fn = _get_udf(
         download_bytes_threaded,
-        (uri_column_names, output_bytes_column_names, data_context, filesystem),
+        (
+            uri_column_names,
+            output_bytes_column_names,
+            data_context,
+            filesystem,
+            OBSTORE_AVAILABLE,
+        ),
         {},
         None,
         None,
@@ -163,24 +184,244 @@ def _arrow_batcher(table: pa.Table, output_batch_size: int):
         yield batch_table
 
 
+def _extract_credentials_from_filesystem(
+    filesystem: Optional["pa.fs.FileSystem"],
+) -> Dict[str, Any]:
+    """Extract credentials from a PyArrow filesystem for use with obstore.
+
+    Maps PyArrow filesystem configuration to obstore keyword arguments.
+    See obstore docs for available options per store type.
+
+    Args:
+        filesystem: A PyArrow filesystem instance.
+
+    Returns:
+        A dict of keyword arguments to pass to obstore's ``from_url``.
+    """
+    if filesystem is None:
+        return {}
+
+    # Unwrap RetryingPyFileSystem if present
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+
+    kwargs: Dict[str, Any] = {}
+
+    # Import filesystem types for isinstance checks
+    try:
+        from pyarrow.fs import S3FileSystem
+    except ImportError:
+        S3FileSystem = None
+
+    try:
+        from pyarrow.fs import GcsFileSystem
+    except ImportError:
+        GcsFileSystem = None
+
+    try:
+        from pyarrow.fs import AzureFileSystem
+    except ImportError:
+        AzureFileSystem = None
+
+    if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
+        if hasattr(filesystem, "region") and filesystem.region:
+            kwargs["region"] = filesystem.region
+        if hasattr(filesystem, "access_key") and filesystem.access_key:
+            kwargs["access_key_id"] = filesystem.access_key
+        if hasattr(filesystem, "secret_key") and filesystem.secret_key:
+            kwargs["secret_access_key"] = filesystem.secret_key
+        if hasattr(filesystem, "session_token") and filesystem.session_token:
+            kwargs["session_token"] = filesystem.session_token
+        if hasattr(filesystem, "endpoint_override") and filesystem.endpoint_override:
+            kwargs["endpoint"] = filesystem.endpoint_override
+        if hasattr(filesystem, "anonymous") and filesystem.anonymous:
+            kwargs["skip_signature"] = True
+
+    elif GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
+        if hasattr(filesystem, "project_id") and filesystem.project_id:
+            kwargs["project_id"] = filesystem.project_id
+
+    elif AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
+        if hasattr(filesystem, "account_name") and filesystem.account_name:
+            kwargs["account_name"] = filesystem.account_name
+        if hasattr(filesystem, "account_key") and filesystem.account_key:
+            kwargs["account_key"] = filesystem.account_key
+
+    return kwargs
+
+
+def _is_obstore_supported_url(path: str) -> bool:
+    """Check if *path* is a URL that obstore can handle.
+
+    obstore supports ``s3://``, ``gs://``, ``az://``, ``file://``,
+    ``http://``, and ``https://`` schemes.  Uses obstore's native
+    ``parse_scheme`` when available.
+
+    Returns ``False`` for relative paths or unsupported schemes.
+    This function should only be called when obstore is known to be available.
+    """
+    try:
+        obstore_parse_scheme(path)
+        return True
+    except Exception:
+        return False
+
+
+async def _download_uris_with_obstore(
+    uris: List[str],
+    uri_column_name: str,
+    filesystem: Optional["pa.fs.FileSystem"] = None,
+) -> List[Optional[bytes]]:
+    """Download URIs concurrently using obstore's async API.
+
+    Creates and caches one ``ObjectStore`` per unique (scheme, authority)
+    combination, then fires all downloads concurrently via asyncio.gather.
+    If a PyArrow *filesystem* is provided, its credentials are extracted
+    and forwarded to obstore's store construction.
+
+    Args:
+        uris: URIs to download.
+        uri_column_name: Column name (used only for error logging).
+        filesystem: Optional PyArrow filesystem whose credentials are
+            forwarded to the obstore store.
+
+    Returns:
+        Downloaded bytes in the same order as *uris*.  ``None`` entries
+        indicate failed downloads.
+    """
+    import obstore as obs
+    from obstore.store import from_url
+
+    store_cache: dict = {}
+    retry_config = {"max_retries": 10}
+    fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+
+    def _get_store(store_url: str):
+        if store_url not in store_cache:
+            store_cache[store_url] = from_url(
+                store_url, retry_config=retry_config, **fs_kwargs
+            )
+        return store_cache[store_url]
+
+    async def _download_one(uri: str) -> Optional[bytes]:
+        try:
+            store_url, path = _split_uri(uri)
+            store = _get_store(store_url)
+            result = await obs.get_async(store, path)
+            return bytes(await result.bytes_async())
+        except OSError as e:
+            logger.debug(
+                f"OSError reading uri '{uri}' for column " f"'{uri_column_name}': {e}"
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error reading uri '{uri}' for column "
+                f"'{uri_column_name}': {e}"
+            )
+            return None
+
+    tasks = [_download_one(uri) for uri in uris]
+    return list(await asyncio.gather(*tasks))
+
+
+def _download_uris_with_pyarrow(
+    uris: List[str],
+    uri_column_name: str,
+    data_context: DataContext,
+    filesystem: Optional["pa.fs.FileSystem"] = None,
+) -> List[Optional[bytes]]:
+    """Download URIs concurrently using a PyArrow filesystem thread pool.
+
+    Uses lazy filesystem resolution: the filesystem is resolved from the first
+    URI and reused for all subsequent URIs in the batch. Downloads run in
+    parallel across ``URI_DOWNLOAD_MAX_WORKERS`` threads via ``make_async_gen``,
+    with ordering preserved to match the input URI list.
+
+    Args:
+        uris: URIs to download.
+        uri_column_name: Column name (used only for error logging).
+        data_context: Ray Data context, used for retryable error configuration.
+        filesystem: PyArrow filesystem to use. If None, auto-detected from the
+            URI scheme.
+
+    Returns:
+        Downloaded bytes in the same order as *uris*. ``None`` entries indicate
+        failed downloads.
+    """
+
+    def load_uri_bytes(uri_iterator):
+        cached_fs = filesystem
+        for uri in uri_iterator:
+            read_bytes = None
+            try:
+                # Use cached FS if available, otherwise resolve the filesystem for the uri.
+                resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
+                    uri, filesystem=cached_fs
+                )
+                cached_fs = resolved_fs
+
+                # Wrap with retrying filesystem
+                fs = RetryingPyFileSystem.wrap(
+                    resolved_fs,
+                    retryable_errors=data_context.retried_io_errors,
+                )
+                # We only pass one uri to resolve and unwrap it from the list of resolved paths,
+                # if fails, we will catch the index error and log it.
+                resolved_path = resolved_paths[0]
+                if resolved_path is None:
+                    continue
+
+                # Use open_input_stream to handle the rare scenario where the data source is not seekable.
+                with fs.open_input_stream(resolved_path) as f:
+                    read_bytes = f.read()
+            except OSError as e:
+                logger.debug(
+                    f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
+                )
+            except Exception as e:
+                # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
+                # `foo://bar` to avoid failing because of one invalid uri.
+                logger.warning(
+                    f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
+                )
+            finally:
+                yield read_bytes
+
+    return list(
+        make_async_gen(
+            base_iterator=iter(uris),
+            fn=load_uri_bytes,
+            preserve_ordering=True,
+            num_workers=URI_DOWNLOAD_MAX_WORKERS,
+        )
+    )
+
+
 def download_bytes_threaded(
     block: pa.Table,
     uri_column_names: List[str],
     output_bytes_column_names: List[str],
     data_context: DataContext,
     filesystem: Optional["pa.fs.FileSystem"] = None,
+    use_obstore: bool = False,
 ) -> Iterator[pa.Table]:
-    """Optimized version that uses make_async_gen for concurrent downloads.
+    """Download bytes for URI columns, appending them as new columns.
 
     Supports downloading from multiple URI columns in a single operation.
+    When ``use_obstore`` is True and obstore is installed, uses obstore's async
+    API for higher concurrency and Rust-level connection pooling. Otherwise
+    falls back to threaded downloads through PyArrow's filesystem abstraction.
 
     Args:
         block: Input PyArrow table containing URI columns.
         uri_column_names: Names of columns containing URIs to download.
-        output_bytes_column_names: Names for the output columns containing downloaded bytes.
+        output_bytes_column_names: Names for the output columns containing
+            downloaded bytes.
         data_context: Ray Data context for configuration.
         filesystem: PyArrow filesystem to use for reading remote files.
             If None, the filesystem is auto-detected from the path scheme.
+        use_obstore: Whether to use obstore's async download path.
 
     Yields:
         pa.Table: PyArrow table with the downloaded bytes added as new columns.
@@ -190,70 +431,24 @@ def download_bytes_threaded(
 
     output_block = block
 
-    # Download each URI column and add it to the output block
     for uri_column_name, output_bytes_column_name in zip(
         uri_column_names, output_bytes_column_names
     ):
-        # Extract URIs from PyArrow table
         uris = output_block.column(uri_column_name).to_pylist()
 
         if len(uris) == 0:
             continue
 
-        def load_uri_bytes(uri_iterator):
-            """Resolve filesystem and download bytes for each URI.
-
-            Takes an iterator of URIs and yields bytes for each.
-            Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
-            If a filesystem was provided explicitly, it will be used for all URIs.
-            """
-            cached_fs = filesystem
-            for uri in uri_iterator:
-                read_bytes = None
-                try:
-                    # Use cached FS if available, otherwise resolve the filesystem for the uri.
-                    resolved_paths, resolved_fs = _resolve_paths_and_filesystem(
-                        uri, filesystem=cached_fs
-                    )
-                    cached_fs = resolved_fs
-
-                    # Wrap with retrying filesystem
-                    fs = RetryingPyFileSystem.wrap(
-                        resolved_fs, retryable_errors=data_context.retried_io_errors
-                    )
-                    # We only pass one uri to resolve and unwrap it from the list of resolved paths,
-                    # if fails, we will catch the index error and log it.
-                    resolved_path = resolved_paths[0]
-                    if resolved_path is None:
-                        continue
-
-                    # Download bytes
-                    # Use open_input_stream to handle the rare scenario where the data source is not seekable.
-                    with fs.open_input_stream(resolved_path) as f:
-                        read_bytes = f.read()
-                except OSError as e:
-                    logger.debug(
-                        f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
-                    )
-                except Exception as e:
-                    # Catch unexpected errors like pyarrow.lib.ArrowInvalid caused by an invalid uri like
-                    # `foo://bar` to avoid failing because of one invalid uri.
-                    logger.warning(
-                        f"Unexpected error reading uri '{uri}' for column '{uri_column_name}': {e}"
-                    )
-                finally:
-                    yield read_bytes
-
-        # Use make_async_gen to resolve and download URI bytes concurrently
-        # preserve_ordering=True ensures results are returned in the same order as input URIs
-        uri_bytes = list(
-            make_async_gen(
-                base_iterator=iter(uris),
-                fn=load_uri_bytes,
-                preserve_ordering=True,
-                num_workers=URI_DOWNLOAD_MAX_WORKERS,
+        if use_obstore and _is_obstore_supported_url(uris[0]):
+            uri_bytes = asyncio.run(
+                _download_uris_with_obstore(
+                    uris, uri_column_name, filesystem=filesystem
+                )
             )
-        )
+        else:
+            uri_bytes = _download_uris_with_pyarrow(
+                uris, uri_column_name, data_context, filesystem=filesystem
+            )
 
         # Add the new column to the PyArrow table
         output_block = output_block.add_column(
@@ -347,7 +542,9 @@ class PartitionActor:
         nrows_per_partition = math.floor(
             target_nbytes_per_partition / avg_nbytes_per_row
         )
-        return nrows_per_partition
+        # max(1, ...) guards against files larger than target_max_block_size
+        # producing nrows=0, which would crash _arrow_batcher.
+        return max(1, nrows_per_partition)
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""
