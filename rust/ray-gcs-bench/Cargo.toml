@@ -1,0 +1,19 @@
+[package]
+name = "ray-gcs-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Benchmark tool for Ray GCS server"
+
+[[bin]]
+name = "ray-gcs-bench"
+path = "src/main.rs"
+
+[dependencies]
+ray-proto = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+prost = { workspace = true }
+clap = { workspace = true }
+rand = { workspace = true }
+hdrhistogram = "7"

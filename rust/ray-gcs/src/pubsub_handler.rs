@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use parking_lot::Mutex;
+use dashmap::DashMap;
 use tokio::sync::{broadcast, Notify};
 
 /// Channel types for pub/sub — values must match the proto ChannelType enum.
@@ -56,7 +56,9 @@ pub struct InternalPubSubHandler {
     /// Per-channel broadcast senders (for internal Rust subscribers).
     channels: HashMap<i32, broadcast::Sender<PubSubMessage>>,
     /// Per-subscriber state for long-poll delivery.
-    subscribers: Mutex<HashMap<Vec<u8>, SubscriberState>>,
+    /// Uses DashMap for per-subscriber locking instead of a global Mutex,
+    /// allowing concurrent publish to different subscribers.
+    subscribers: DashMap<Vec<u8>, SubscriberState>,
     /// Notification for waking up long-polling subscribers.
     notify: Notify,
     /// Global sequence counter.
@@ -74,7 +76,7 @@ impl InternalPubSubHandler {
         }
         Self {
             channels,
-            subscribers: Mutex::new(HashMap::new()),
+            subscribers: DashMap::new(),
             notify: Notify::new(),
             sequence_counter: AtomicI64::new(1),
         }
@@ -103,9 +105,9 @@ impl InternalPubSubHandler {
         let encoded = prost::Message::encode_to_vec(&pub_message);
         self.publish(channel_type, key_id.clone(), encoded);
 
-        // Deliver to long-poll subscribers
-        let mut subs = self.subscribers.lock();
-        for state in subs.values_mut() {
+        // Deliver to long-poll subscribers (DashMap provides per-entry locking)
+        for mut entry in self.subscribers.iter_mut() {
+            let state = entry.value_mut();
             // Check if this subscriber is interested in this channel
             if let Some(keys) = state.subscriptions.get(&channel_type) {
                 // Empty keys list means "subscribe to all keys in this channel"
@@ -117,7 +119,6 @@ impl InternalPubSubHandler {
                 }
             }
         }
-        drop(subs);
 
         // Wake up any long-polling subscribers
         self.notify.notify_waiters();
@@ -145,17 +146,14 @@ impl InternalPubSubHandler {
         max_processed_sequence_id: i64,
     ) -> Vec<ray_proto::ray::rpc::PubMessage> {
         // Drain any messages with sequence_id > max_processed_sequence_id
-        {
-            let mut subs = self.subscribers.lock();
-            if let Some(state) = subs.get_mut(subscriber_id) {
-                // Remove already-processed messages
-                state
-                    .pending_messages
-                    .retain(|m| m.sequence_id > max_processed_sequence_id);
+        if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
+            // Remove already-processed messages
+            state
+                .pending_messages
+                .retain(|m| m.sequence_id > max_processed_sequence_id);
 
-                if !state.pending_messages.is_empty() {
-                    return std::mem::take(&mut state.pending_messages);
-                }
+            if !state.pending_messages.is_empty() {
+                return std::mem::take(&mut state.pending_messages);
             }
         }
 
@@ -163,8 +161,7 @@ impl InternalPubSubHandler {
         self.notify.notified().await;
 
         // After notification, drain messages
-        let mut subs = self.subscribers.lock();
-        if let Some(state) = subs.get_mut(subscriber_id) {
+        if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
             state
                 .pending_messages
                 .retain(|m| m.sequence_id > max_processed_sequence_id);
@@ -180,8 +177,8 @@ impl InternalPubSubHandler {
         channel_type: i32,
         key_id: Vec<u8>,
     ) {
-        let mut subs = self.subscribers.lock();
-        let state = subs
+        let mut state = self
+            .subscribers
             .entry(subscriber_id)
             .or_insert_with(|| SubscriberState {
                 pending_messages: Vec::new(),
@@ -196,7 +193,7 @@ impl InternalPubSubHandler {
 
     /// Handle unsubscribe command for a specific channel.
     pub fn handle_unsubscribe_command(&self, subscriber_id: &[u8]) {
-        self.subscribers.lock().remove(subscriber_id);
+        self.subscribers.remove(subscriber_id);
     }
 }
 
@@ -254,10 +251,10 @@ mod tests {
         let handler = InternalPubSubHandler::new();
 
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
-        assert!(handler.subscribers.lock().contains_key(&b"sub1".to_vec()));
+        assert!(handler.subscribers.contains_key(&b"sub1".to_vec()));
 
         handler.handle_unsubscribe_command(b"sub1");
-        assert!(!handler.subscribers.lock().contains_key(&b"sub1".to_vec()));
+        assert!(!handler.subscribers.contains_key(&b"sub1".to_vec()));
 
         // Double-unsubscribe should not panic
         handler.handle_unsubscribe_command(b"sub1");
@@ -322,8 +319,7 @@ mod tests {
         // Publish to channel 4 — sub1 should NOT receive it
         handler.publish_pubmessage(make_pub_msg(4, b"job1"));
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert!(state.pending_messages.is_empty());
     }
 
@@ -337,8 +333,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(3, b"actor_A"));
         handler.publish_pubmessage(make_pub_msg(3, b"actor_B"));
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         // Only actor_A should be delivered
         assert_eq!(state.pending_messages.len(), 1);
         assert_eq!(state.pending_messages[0].key_id, b"actor_A");
@@ -354,8 +349,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(3, b"actor_B"));
         handler.publish_pubmessage(make_pub_msg(3, b"actor_C"));
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert_eq!(state.pending_messages.len(), 3);
     }
 
@@ -371,8 +365,7 @@ mod tests {
         assert_eq!(messages.len(), 2);
 
         // Second poll returns nothing (messages already drained)
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert!(state.pending_messages.is_empty());
     }
 
@@ -424,8 +417,7 @@ mod tests {
         let messages = vec![make_pub_msg(3, b"actor1"), make_pub_msg(4, b"job1")];
         handler.handle_publish(messages);
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert_eq!(state.pending_messages.len(), 2);
     }
 
@@ -438,8 +430,7 @@ mod tests {
             handler.publish_pubmessage(make_pub_msg(3, format!("k{i}").as_bytes()));
         }
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         let seq_ids: Vec<i64> = state
             .pending_messages
             .iter()
@@ -486,8 +477,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(3, b"actor_B"));
         handler.publish_pubmessage(make_pub_msg(3, b"actor_C"));
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         // Only A and B should be delivered
         assert_eq!(state.pending_messages.len(), 2);
     }
@@ -509,8 +499,7 @@ mod tests {
             ChannelType::GcsActorChannel as i32,
             b"actor_id".to_vec(),
         );
-        let subs = handler.subscribers.lock();
-        assert!(subs.contains_key(&b"sub1".to_vec()));
+        assert!(handler.subscribers.contains_key(&b"sub1".to_vec()));
     }
 
     #[test]
@@ -521,8 +510,7 @@ mod tests {
 
         handler.handle_unsubscribe_command(b"sub1");
 
-        let subs = handler.subscribers.lock();
-        assert!(!subs.contains_key(&b"sub1".to_vec()));
+        assert!(!handler.subscribers.contains_key(&b"sub1".to_vec()));
     }
 
     #[test]
@@ -538,8 +526,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(5, b"c"));
         handler.publish_pubmessage(make_pub_msg(6, b"d"));
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         // Should only receive from channels 3 and 5
         assert_eq!(state.pending_messages.len(), 2);
         let channels: Vec<i32> = state
@@ -564,8 +551,7 @@ mod tests {
         ];
         handler.handle_publish(msgs);
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert_eq!(state.pending_messages.len(), 3);
     }
 
@@ -581,8 +567,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(5, b"n"));
         handler.publish_pubmessage(make_pub_msg(6, b"w")); // not subscribed
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         assert_eq!(state.pending_messages.len(), 3);
     }
 
@@ -592,8 +577,7 @@ mod tests {
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, b"actor_A".to_vec());
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, b"actor_A".to_vec());
 
-        let subs = handler.subscribers.lock();
-        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         let keys = state.subscriptions.get(&3).unwrap();
         assert_eq!(keys.len(), 1); // Not duplicated
     }

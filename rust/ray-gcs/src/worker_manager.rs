@@ -11,7 +11,7 @@
 //! Replaces `src/ray/gcs/gcs_worker_manager.h/cc`.
 
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use parking_lot::RwLock;
 
@@ -31,8 +31,8 @@ pub struct GcsWorkerManager {
     oom_count: AtomicI64,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
-    /// Pubsub handler for publishing worker state changes.
-    pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
+    /// Pubsub handler for publishing worker state changes (set once during init).
+    pubsub_handler: OnceLock<Arc<InternalPubSubHandler>>,
 }
 
 impl GcsWorkerManager {
@@ -42,19 +42,18 @@ impl GcsWorkerManager {
             system_error_count: AtomicI64::new(0),
             oom_count: AtomicI64::new(0),
             table_storage,
-            pubsub_handler: RwLock::new(None),
+            pubsub_handler: OnceLock::new(),
         }
     }
 
-    /// Set the pubsub handler (called during server initialization).
+    /// Set the pubsub handler (called once during server initialization).
     pub fn set_pubsub_handler(&self, handler: Arc<InternalPubSubHandler>) {
-        *self.pubsub_handler.write() = Some(handler);
+        let _ = self.pubsub_handler.set(handler);
     }
 
     /// Publish worker failure via pubsub.
     fn publish_worker_failure(&self, worker_data: &ray_proto::ray::rpc::WorkerTableData) {
-        let pubsub = self.pubsub_handler.read();
-        if let Some(ref handler) = *pubsub {
+        if let Some(handler) = self.pubsub_handler.get() {
             // WorkerDeltaData is a separate type from WorkerTableData.
             // Build the delta from the failure info.
             let addr = worker_data.worker_address.as_ref();

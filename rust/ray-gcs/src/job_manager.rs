@@ -11,7 +11,7 @@
 //! Replaces `src/ray/gcs/gcs_job_manager.h/cc`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use parking_lot::RwLock;
 use ray_common::id::{JobID, NodeID};
@@ -36,8 +36,8 @@ pub struct GcsJobManager {
     finished_jobs_count: std::sync::atomic::AtomicI64,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
-    /// Pubsub handler for publishing job state changes.
-    pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
+    /// Pubsub handler for publishing job state changes (set once during init).
+    pubsub_handler: OnceLock<Arc<InternalPubSubHandler>>,
 }
 
 impl GcsJobManager {
@@ -49,19 +49,18 @@ impl GcsJobManager {
             finish_listeners: RwLock::new(Vec::new()),
             finished_jobs_count: std::sync::atomic::AtomicI64::new(0),
             table_storage,
-            pubsub_handler: RwLock::new(None),
+            pubsub_handler: OnceLock::new(),
         }
     }
 
-    /// Set the pubsub handler (called during server initialization).
+    /// Set the pubsub handler (called once during server initialization).
     pub fn set_pubsub_handler(&self, handler: Arc<InternalPubSubHandler>) {
-        *self.pubsub_handler.write() = Some(handler);
+        let _ = self.pubsub_handler.set(handler);
     }
 
     /// Publish job state change via pubsub.
     fn publish_job_state(&self, job_data: &ray_proto::ray::rpc::JobTableData) {
-        let pubsub = self.pubsub_handler.read();
-        if let Some(ref handler) = *pubsub {
+        if let Some(handler) = self.pubsub_handler.get() {
             let pub_msg = ray_proto::ray::rpc::PubMessage {
                 channel_type: ChannelType::GcsJobChannel as i32,
                 key_id: job_data.job_id.clone(),

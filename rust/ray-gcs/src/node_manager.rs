@@ -11,7 +11,7 @@
 //! Replaces `src/ray/gcs/gcs_node_manager.h/cc`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use parking_lot::RwLock;
 use ray_common::id::NodeID;
@@ -39,8 +39,8 @@ pub struct GcsNodeManager {
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
-    /// Pubsub handler for publishing node state changes.
-    pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
+    /// Pubsub handler for publishing node state changes (set once during init).
+    pubsub_handler: OnceLock<Arc<InternalPubSubHandler>>,
 }
 
 impl GcsNodeManager {
@@ -53,19 +53,18 @@ impl GcsNodeManager {
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
             table_storage,
-            pubsub_handler: RwLock::new(None),
+            pubsub_handler: OnceLock::new(),
         }
     }
 
-    /// Set the pubsub handler (called during server initialization).
+    /// Set the pubsub handler (called once during server initialization).
     pub fn set_pubsub_handler(&self, handler: Arc<InternalPubSubHandler>) {
-        *self.pubsub_handler.write() = Some(handler);
+        let _ = self.pubsub_handler.set(handler);
     }
 
     /// Publish node state change via pubsub.
     fn publish_node_state(&self, node_info: &ray_proto::ray::rpc::GcsNodeInfo) {
-        let pubsub = self.pubsub_handler.read();
-        if let Some(ref handler) = *pubsub {
+        if let Some(handler) = self.pubsub_handler.get() {
             let pub_msg = ray_proto::ray::rpc::PubMessage {
                 channel_type: ChannelType::GcsNodeInfoChannel as i32,
                 key_id: node_info.node_id.clone(),

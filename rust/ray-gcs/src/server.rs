@@ -11,7 +11,9 @@
 //! Replaces `src/ray/gcs/gcs_server.h/cc`.
 
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use ray_common::config::RayConfig;
 
@@ -415,8 +417,11 @@ impl GcsServer {
         };
         let auth = ray_rpc::auth::AuthInterceptor::new(auth_mode, self.config.auth_token.clone());
 
-        // Serve
-        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        // Serve with TCP_NODELAY to disable Nagle's algorithm (~40ms latency fix).
+        let incoming = {
+            let stream = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            NodelaySetter(stream)
+        };
         tonic::transport::Server::builder()
             .add_service(rpc::job_info_gcs_service_server::JobInfoGcsServiceServer::with_interceptor(job_svc, auth.clone()))
             .add_service(rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer::with_interceptor(node_svc, auth.clone()))
@@ -523,6 +528,23 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         ctrl_c.await.ok();
+    }
+}
+
+/// Stream wrapper that sets TCP_NODELAY on every accepted connection.
+struct NodelaySetter(tokio_stream::wrappers::TcpListenerStream);
+
+impl tokio_stream::Stream for NodelaySetter {
+    type Item = Result<tokio::net::TcpStream, std::io::Error>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match Pin::new(&mut self.0).poll_next(cx) {
+            Poll::Ready(Some(Ok(stream))) => {
+                let _ = stream.set_nodelay(true);
+                Poll::Ready(Some(Ok(stream)))
+            }
+            other => other,
+        }
     }
 }
 
