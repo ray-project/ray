@@ -844,17 +844,24 @@ class TestScaleDownReplicaSelection:
 
     def test_downscale_prefers_fallback_node_then_newest(self, ray_cluster):
         cluster = ray_cluster
-        cluster.add_node(num_cpus=1)
-        cluster.add_node(num_cpus=1, labels={"region": "us-west"})
-        cluster.wait_for_nodes()
-        ray.init(address=cluster.address)
+
+        primary_label = {"region": "us-west"}
+        fallback_label = {"region": "us-east"}
 
         actor_resources = {"CPU": 1}
         ray_actor_options = {
             "num_cpus": 1,
-            "label_selector": {"region": "us-west"},
-            "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+            "label_selector": primary_label,
+            "fallback_strategy": [{"label_selector": fallback_label}],
         }
+
+        num_fallback_replicas = 3
+        num_match_replicas = 2
+
+        cluster.add_node(num_cpus=0)
+        cluster.add_node(num_cpus=num_fallback_replicas, labels=fallback_label)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
 
         scheduler, cluster_node_info_cache = self._create_scheduler()
         dep_id = DeploymentID(name="deployment_fallback")
@@ -864,69 +871,83 @@ class TestScaleDownReplicaSelection:
             ReplicaConfig.create(lambda: None, ray_actor_options=ray_actor_options),
         )
 
-        match_old = ReplicaID(unique_id="replica_match_old", deployment_id=dep_id)
-        match_new = ReplicaID(unique_id="replica_match_new", deployment_id=dep_id)
-        fallback = ReplicaID(unique_id="replica_fallback", deployment_id=dep_id)
+        fallback_replica_ids = []
+        fallback_actors = []
 
+        for i in range(num_fallback_replicas):
+            fallback_replica_id = ReplicaID(
+                unique_id=f"replica_fallback_{i}", deployment_id=dep_id
+            )
+            fallback_actor = self._scale_up_replica(
+                scheduler,
+                dep_id=dep_id,
+                replica_id=fallback_replica_id,
+                actor_resources=actor_resources,
+                actor_options={
+                    "name": f"dep_fallback_actor_{i}",
+                    **ray_actor_options,
+                },
+                mark_running=True,
+            )
+            fallback_replica_ids.append(fallback_replica_id)
+            fallback_actors.append(fallback_actor)
+
+        cluster.add_node(num_cpus=num_match_replicas, labels=primary_label)
         cluster.wait_for_nodes()
         cluster_node_info_cache.update()
-        match_old_actor = self._scale_up_replica(
-            scheduler,
-            dep_id=dep_id,
-            replica_id=match_old,
-            actor_resources=actor_resources,
-            actor_options={"name": "dep_match_old_actor", **ray_actor_options},
-            mark_running=True,
-        )
 
-        cluster.add_node(num_cpus=1, labels={"region": "us-east"})
-        cluster.wait_for_nodes()
-        fallback_actor = self._scale_up_replica(
-            scheduler,
-            dep_id=dep_id,
-            replica_id=fallback,
-            actor_resources=actor_resources,
-            actor_options={"name": "dep_fallback_actor", **ray_actor_options},
-            mark_running=True,
-        )
+        match_replica_ids = []
+        match_actors = []
 
-        cluster.add_node(num_cpus=1, labels={"region": "us-west"})
-        cluster.wait_for_nodes()
-        match_new_actor = self._scale_up_replica(
-            scheduler,
-            dep_id=dep_id,
-            replica_id=match_new,
-            actor_resources=actor_resources,
-            actor_options={"name": "dep_match_new_actor", **ray_actor_options},
-            mark_running=True,
-        )
+        for i in range(num_match_replicas):
+            match_replica_id = ReplicaID(
+                unique_id=f"replica_match_{i}", deployment_id=dep_id
+            )
+            match_actor = self._scale_up_replica(
+                scheduler,
+                dep_id=dep_id,
+                replica_id=match_replica_id,
+                actor_resources=actor_resources,
+                actor_options={
+                    "name": f"dep_match_actor_{i}",
+                    **ray_actor_options,
+                },
+                mark_running=True,
+            )
+            match_replica_ids.append(match_replica_id)
+            match_actors.append(match_actor)
 
-        # 1) Fallback node (us-east) should be downscaled first.
-        assert self._scale_down(scheduler, dep_id, num_to_stop=1) == {fallback}
-        scheduler.on_replica_stopping(fallback)
-        ray.kill(fallback_actor, no_restart=True)
+        # 1) Fallback replicas should be downscaled first on order of newest to oldest
+        for i in reversed(range(num_fallback_replicas)):
+            fallback = fallback_replica_ids[i]
+            fallback_actor = fallback_actors[i]
+            assert self._scale_down(scheduler, dep_id, num_to_stop=1) == {fallback}
+            scheduler.on_replica_stopping(fallback)
+            ray.kill(fallback_actor, no_restart=True)
 
-        # 2) Between remaining replicas on same node, newer replica should stop first.
-        assert self._scale_down(scheduler, dep_id, num_to_stop=1) == {match_new}
-        scheduler.on_replica_stopping(match_new)
-        ray.kill(match_new_actor, no_restart=True)
+        # 2) Then between remaining matching replicas, newer replica should be downscaled first.
+        for i in reversed(range(num_match_replicas)):
+            match = match_replica_ids[i]
+            match_actor = match_actors[i]
+            assert self._scale_down(scheduler, dep_id, num_to_stop=1) == {match}
+            scheduler.on_replica_stopping(match)
+            ray.kill(match_actor, no_restart=True)
 
-        scheduler.on_replica_stopping(match_old)
-        ray.kill(match_old_actor, no_restart=True)
         scheduler.on_deployment_deleted(dep_id)
 
     def test_downscale_prefers_nodes_with_fewer_total_replicas(self, ray_cluster):
         cluster = ray_cluster
         # Create a head node without CPUs so replicas schedule on worker nodes.
         cluster.add_node(num_cpus=0)
-        cluster.add_node(num_cpus=1, labels={"region": "us-west"})
+        primary_label = {"region": "us-south"}
+        cluster.add_node(num_cpus=1, labels=primary_label)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
         actor_resources = {"CPU": 1}
         ray_actor_options = {
             "num_cpus": 1,
-            "label_selector": {"region": "us-west"},
+            "label_selector": primary_label,
         }
 
         scheduler, cluster_node_info_cache = self._create_scheduler()
@@ -950,8 +971,9 @@ class TestScaleDownReplicaSelection:
             mark_running=True,
         )
 
-        cluster.add_node(num_cpus=2, labels={"region": "us-west"})
+        cluster.add_node(num_cpus=2, labels=primary_label)
         cluster.wait_for_nodes()
+        cluster_node_info_cache.update()
 
         replica_2_actor = self._scale_up_replica(
             scheduler,
