@@ -7,7 +7,7 @@ from pyarrow.fs import LocalFileSystem
 
 import ray
 from ray.data.block import BlockAccessor
-from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
+from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink, SaveMode
 
 
 class FlakyOutputStream:
@@ -145,6 +145,33 @@ def test_write_creates_dir(tmp_path, ray_start_regular_shared):
     ds.write_datasink(MockFileDatasink(path=path, try_create_dir=True))
 
     assert os.path.isdir(path)
+
+
+def test_on_write_failed_called_if_on_write_start_fails(
+    tmp_path, ray_start_regular_shared
+):
+    class FailingStartDatasink(BlockBasedFileDatasink):
+        def __init__(self, path: str):
+            super().__init__(path=path, mode=SaveMode.ERROR)
+            self.num_failed = 0
+            self.error = None
+
+        def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+            file.write(b"")
+
+        def on_write_failed(self, error: Exception) -> None:
+            self.num_failed += 1
+            self.error = error
+
+    path = os.path.join(tmp_path, "existing")
+    os.mkdir(path)
+    sink = FailingStartDatasink(path=path)
+
+    with pytest.raises(ValueError, match="already exists"):
+        ray.data.range(1).write_datasink(sink)
+
+    assert sink.num_failed == 1
+    assert isinstance(sink.error, ValueError)
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
