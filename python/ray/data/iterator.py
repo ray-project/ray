@@ -39,6 +39,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
+    import jax
     import tensorflow as tf
     import torch
 
@@ -615,6 +616,71 @@ class DataIterator(abc.ABC):
         )
 
         return mapped_iterable
+
+    @PublicAPI(stability="alpha")
+    def iter_jax_batches(
+        self,
+        *,
+        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+        prefetch_batches: int = 1,
+        batch_size: Optional[int] = 256,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
+        """Return a batched iterable of JAX Arrays over the dataset.
+
+        This iterator fetches data blocks, converts them to NumPy arrays, and
+        loads them directly onto JAX-addressable devices using Global SPMD
+        sharding.
+
+        This iterable will yield single-tensor batches if the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors.
+
+        Args:
+            named_sharding: The JAX NamedSharding object defining the global
+                mesh and partition layout. Default is ``None``, in which case
+                the array will be sharded along the batch dimension across all devices.
+            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            batch_size: The number of rows in each batch for each host. Must be divisible
+                by the number of local devices. Defaults to 256.
+            drop_last: Whether to drop the last batch if incomplete.
+            local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
+            local_shuffle_seed: Seed for local random shuffle.
+
+        Returns:
+            An iterable over JAX Array batches.
+        """
+
+        import jax
+
+        num_local_devices = jax.local_device_count()
+
+        if batch_size is not None and batch_size % num_local_devices != 0:
+            raise ValueError(
+                f"The provided batch_size ({batch_size}) must be evenly "
+                f"divisible by the number of local JAX devices "
+                f"({num_local_devices}) on this host."
+            )
+
+        # Directly Fetch the underlying blocks as NumPy arrays.
+        batch_iterable = self._iter_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+        from ray.data.util.jax_util import jax_sync_generator
+
+        return jax_sync_generator(
+            batch_iterable,
+            drop_last,
+            named_sharding,
+        )
 
     def to_torch(
         self,
