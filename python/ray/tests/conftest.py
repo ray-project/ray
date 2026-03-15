@@ -569,6 +569,17 @@ def ray_start_with_dashboard(request, maybe_setup_external_redis):
 
 
 @pytest.fixture
+def ray_start_with_dashboard_and_proxy(request, httpserver, maybe_setup_external_redis):
+    hsurl = httpserver.url_for("/")
+
+    param = getattr(request, "param", {})
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, proxy_server_url=hsurl, **param) as info:
+        yield info
+
+
+@pytest.fixture
 def make_sure_dashboard_http_port_unused():
     """Make sure the dashboard agent http port is unused."""
     for process in psutil.process_iter():

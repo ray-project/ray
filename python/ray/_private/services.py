@@ -1190,6 +1190,7 @@ def start_api_server(
     backup_count: int = 0,
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
+    proxy_server_url: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1221,6 +1222,8 @@ def start_api_server(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump dashboard stderr.
             If None, stderr is not redirected.
+        proxy_server_url: The url to redirect api requests to
+            Ex: --proxy-server-url=http://historyserver:8080
 
     Returns:
         A tuple of :
@@ -1299,6 +1302,7 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
+            f"--proxy-server-url={proxy_server_url or ''}",
         ]
 
         if stdout_filepath:
