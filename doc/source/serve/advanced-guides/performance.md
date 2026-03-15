@@ -222,10 +222,6 @@ export RAY_SERVE_ENABLE_HA_PROXY=1
 
 This environment variable must be set on all nodes in the ray cluster.
 
-:::{note}
-If benchmarking locally (e.g. from the head node in a Ray Cluster), you must also set `RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0` so that ingress replicas on worker nodes bind to all interfaces. Without this, ingress replicas bind to `127.0.0.1` (the default) and the head node's HAProxy will not be able to reach them.
-:::
-
 ::::{tab-set}
 
 :::{tab-item} KubeRay
@@ -234,8 +230,6 @@ If benchmarking locally (e.g. from the head node in a Ray Cluster), you must als
 env:
   - name: RAY_SERVE_ENABLE_HA_PROXY
     value: "1"
-  - name: RAY_SERVE_DEFAULT_HTTP_HOST
-    value: "0.0.0.0"
 ```
 :::
 
@@ -243,7 +237,6 @@ env:
 ```bash
 # On every node (head and workers)
 export RAY_SERVE_ENABLE_HA_PROXY=1
-export RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
 ray start --head  # or ray start --address=<head-ip>:6379 on workers
 ```
 :::
@@ -285,7 +278,11 @@ The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_
 
 By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
 
-Individual handles can override back to actor RPC with `handle.options(_by_reference=True)`. This is useful for large payloads (over ~1 MB) where passing objects by reference through Ray's object store is more efficient than serializing over gRPC:
+#### When not to use gRPC
+
+1. Since gRPC is required to serialize every payload, it should not be used for large payloads (greater than ~1 MB). If gRPC was enabled by default, individual handles' transport mechanism can be manually set to actor RPC with `handle.options(_by_reference=True)`, and passes larger objects by reference.
+
+2. When passing a Ray Serve `DeploymentResponse` from one deployment into another, the value is resolved at the caller and passed over the wire by value. This means the object is serialized and deserialized at every hop, even if intermediate deployments don't access it. This is a Ray Core behavior that applies to both gRPC and actor RPC. To avoid this, store the value with `ray.put()` and store the resulting `ObjectRef` inside a container (e.g., a list or dataclass), so intermediate deployments can forward the reference without materializing the data. See {doc}`Passing Object Arguments </ray-core/objects>` for details.
 
 ```{literalinclude} ../doc_code/interdeployment_grpc.py
 :start-after: __start_grpc_override__
