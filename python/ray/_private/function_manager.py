@@ -125,19 +125,44 @@ class FunctionActorManager:
         self.lock = threading.RLock()
 
         self.execution_infos = {}
+        # Maps (class_name, function_name) keys to canonical function_id.
+        # This allows cross-language descriptors without function_id to reuse
+        # the same execution and task-counter buckets.
+        self._cross_lang_key_to_id = {}
         # This is the counter to keep track of how many keys have already
         # been exported so that we can find next key quicker.
         self._num_exported = 0
         # This is to protect self._num_exported when doing exporting
         self._export_lock = threading.Lock()
 
+    @staticmethod
+    def _cross_language_descriptor_key(function_descriptor):
+        function_name = getattr(function_descriptor, "function_name", None)
+        if function_name is None:
+            return None
+        class_name = getattr(function_descriptor, "class_name", "")
+        return (class_name, function_name)
+
+    def _descriptor_cache_key(self, function_descriptor):
+        function_id = getattr(function_descriptor, "function_id", None)
+        if function_id is not None:
+            return function_id
+        cross_lang_key = FunctionActorManager._cross_language_descriptor_key(
+            function_descriptor
+        )
+        return self._cross_lang_key_to_id.get(cross_lang_key, cross_lang_key)
+
     def increase_task_counter(self, function_descriptor):
-        function_id = function_descriptor.function_id
-        self._num_task_executions[function_id] += 1
+        key = self._descriptor_cache_key(function_descriptor)
+        if key is None:
+            return
+        self._num_task_executions[key] += 1
 
     def get_task_counter(self, function_descriptor):
-        function_id = function_descriptor.function_id
-        return self._num_task_executions[function_id]
+        key = self._descriptor_cache_key(function_descriptor)
+        if key is None:
+            return 0
+        return self._num_task_executions[key]
 
     def compute_collision_identifier(self, function_or_class):
         """The identifier is used to detect excessive duplicate exports.
@@ -356,19 +381,25 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
-        function_id = function_descriptor.function_id
+        key = self._descriptor_cache_key(function_descriptor)
+        if key is None:
+            raise KeyError(
+                "Error occurs in get_execution_info: unsupported function descriptor "
+                f"{function_descriptor}."
+            )
         # If the function has already been loaded,
         # There's no need to load again
-        if function_id in self._function_execution_info:
-            return self._function_execution_info[function_id]
+        if key in self._function_execution_info:
+            return self._function_execution_info[key]
         if self._worker.load_code_from_local:
             # Load function from local code.
-            if not function_descriptor.is_actor_method():
+            is_actor_method = getattr(function_descriptor, "is_actor_method", None)
+            if is_actor_method is not None and not is_actor_method():
                 # If the function is not able to be loaded,
                 # try to load it from GCS,
                 # even if load_code_from_local is set True
                 if self._load_function_from_local(function_descriptor) is True:
-                    return self._function_execution_info[function_id]
+                    return self._function_execution_info[key]
         # Load function from GCS.
         # Wait until the function to be executed has actually been
         # registered on this worker. We will push warnings to the user if
@@ -378,8 +409,7 @@ class FunctionActorManager:
         with profiling.profile("wait_for_function"):
             self._wait_for_function(function_descriptor, job_id)
         try:
-            function_id = function_descriptor.function_id
-            info = self._function_execution_info[function_id]
+            info = self._function_execution_info[key]
         except KeyError as e:
             message = (
                 "Error occurs in get_execution_info: "
@@ -391,7 +421,9 @@ class FunctionActorManager:
 
     def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
-        function_id = function_descriptor.function_id
+        function_id = getattr(function_descriptor, "function_id", None)
+        if function_id is None:
+            return False
 
         module_name, function_name = (
             function_descriptor.module_name,
@@ -435,13 +467,20 @@ class FunctionActorManager:
         while True:
             with self.lock:
                 if self._worker.actor_id.is_nil():
-                    if function_descriptor.function_id in self._function_execution_info:
+                    function_id = getattr(function_descriptor, "function_id", None)
+                    if function_id is None:
+                        raise RuntimeError(
+                            "Received a function descriptor without function_id "
+                            "on a non-actor worker: "
+                            f"{function_descriptor}."
+                        )
+                    if function_id in self._function_execution_info:
                         break
                     else:
                         key = make_function_table_key(
                             b"RemoteFunction",
                             job_id,
-                            function_descriptor.function_id.binary(),
+                            function_id.binary(),
                         )
                         if self.fetch_and_register_remote_function(key) is True:
                             break
@@ -595,6 +634,8 @@ class FunctionActorManager:
                         module_name, actor_method_name, actor_class_name
                     )
                 method_id = method_descriptor.function_id
+                method_cross_lang_key = (actor_class_name, actor_method_name)
+                self._cross_lang_key_to_id[method_cross_lang_key] = method_id
                 executor = self._make_actor_method_executor(
                     actor_method_name, actor_method
                 )
@@ -602,6 +643,9 @@ class FunctionActorManager:
                     function=executor,
                     function_name=actor_method_name,
                     max_calls=0,
+                )
+                self._function_execution_info[method_cross_lang_key] = (
+                    self._function_execution_info[method_id]
                 )
                 self._num_task_executions[method_id] = 0
             self._num_task_executions[function_id] = 0
