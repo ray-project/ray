@@ -80,6 +80,7 @@ class OneToOneOperator(PhysicalOperator):
         input_op: PhysicalOperator,
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
     ):
         """Create a OneToOneOperator.
         Args:
@@ -87,8 +88,16 @@ class OneToOneOperator(PhysicalOperator):
             name: The name of this operator.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            target_num_rows_per_block_override: The target maximum number of rows to
+                include in an output block.
         """
-        super().__init__(name, [input_op], data_context, target_max_block_size_override)
+        super().__init__(
+            name,
+            [input_op],
+            data_context,
+            target_max_block_size_override,
+            target_num_rows_per_block_override,
+        )
 
     @property
     def input_dependency(self) -> PhysicalOperator:
@@ -109,6 +118,7 @@ class AllToAllOperator(
         input_op: PhysicalOperator,
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
         name: str = "AllToAll",
@@ -121,6 +131,8 @@ class AllToAllOperator(
             input_op: Operator generating input data for this op.
             data_context: The DataContext instance containing configuration settings.
             target_max_block_size_override: The target maximum number of bytes to
+                include in an output block.
+            target_num_rows_per_block_override: The target maximum number of rows to
                 include in an output block.
             num_outputs: The number of expected output bundles for progress bar.
             sub_progress_bar_names: The names of internal sub progress bars.
@@ -135,7 +147,13 @@ class AllToAllOperator(
         self._input_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._stats: StatsDict = {}
-        super().__init__(name, [input_op], data_context, target_max_block_size_override)
+        super().__init__(
+            name,
+            [input_op],
+            data_context,
+            target_max_block_size_override,
+            target_num_rows_per_block_override,
+        )
 
     def num_outputs_total(self) -> Optional[int]:
         return (
@@ -187,6 +205,7 @@ class AllToAllOperator(
             op_name=self.name,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
             target_max_block_size_override=self.target_max_block_size_override,
+            target_num_rows_per_block_override=self.target_num_rows_per_block_override,
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).

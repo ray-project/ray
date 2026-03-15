@@ -121,7 +121,8 @@ def plan_download_op(
         BlockMapTransformFn(
             download_transform_fn,
             output_block_size_option=OutputBlockSizeOption.of(
-                target_max_block_size=data_context.target_max_block_size
+                target_max_block_size=data_context.target_max_block_size,
+                target_num_rows_per_block=data_context.target_max_block_rows,
             ),
         ),
     ]

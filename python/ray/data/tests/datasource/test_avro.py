@@ -4,6 +4,8 @@ import fastavro
 import pytest
 
 import ray
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 
 schema = {
     "type": "record",
@@ -34,6 +36,26 @@ def test_read_empty_avro_files(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_avro(path)
 
     assert ds.count() == 0
+
+
+def test_read_avro_target_max_block_rows(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.target_max_block_size = None
+    ctx.target_max_block_rows = 10
+
+    path = os.path.join(tmp_path, "sample_100.avro")
+    records = [{"test_field": f"test_value{i}"} for i in range(100)]
+    with open(path, "wb") as out:
+        fastavro.writer(out, schema, records)
+
+    ds = ray.data.read_avro(path).materialize()
+
+    assert ds.num_blocks() >= 10
+    for block_ref in ds.get_internal_block_refs():
+        block = ray.get(block_ref)
+        assert BlockAccessor.for_block(block).num_rows() <= 10
 
 
 if __name__ == "__main__":

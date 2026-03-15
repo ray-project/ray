@@ -18,7 +18,10 @@ class InheritTargetMaxBlockSizeRule(Rule):
         return plan
 
     def _propagate_target_max_block_size_to_upstream_ops(
-        self, dag: PhysicalOperator, target_max_block_size: Optional[int] = None
+        self,
+        dag: PhysicalOperator,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
     ):
         if dag.target_max_block_size_override is not None:
             # Set the target block size to inherit for
@@ -26,9 +29,18 @@ class InheritTargetMaxBlockSizeRule(Rule):
             target_max_block_size = dag.target_max_block_size_override
         elif target_max_block_size is not None:
             # Inherit from downstream op.
-            dag.override_target_max_block_size(target_max_block_size)
+            dag.override_target_block_size(
+                target_max_block_size, dag.target_num_rows_per_block_override
+            )
+
+        if dag.target_num_rows_per_block_override is not None:
+            target_num_rows_per_block = dag.target_num_rows_per_block_override
+        elif target_num_rows_per_block is not None:
+            dag.override_target_block_size(
+                dag.target_max_block_size_override, target_num_rows_per_block
+            )
 
         for upstream_op in dag.input_dependencies:
             self._propagate_target_max_block_size_to_upstream_ops(
-                upstream_op, target_max_block_size
+                upstream_op, target_max_block_size, target_num_rows_per_block
             )
