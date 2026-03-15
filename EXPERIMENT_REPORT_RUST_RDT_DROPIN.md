@@ -1,9 +1,9 @@
 # Experiment Report: Rust RDT as Drop-in Replacement for Python RDT (C++ Backend)
 
-**Date:** March 15, 2026 (redo)
+**Date:** March 15, 2026 (v3 — with unit test fixes)
 **Branch:** `cc-to-rust-experimental`
-**Instance:** `i-09c0b35d3d58c6fe7` (g4dn.12xlarge, 4x T4, us-west-2) — terminated after experiment
-**Previous run:** `i-04a9e16e0eb93099f` (March 15, 2026) — terminated
+**Instance:** `i-001fb74c7c3d3ce4b` (g4dn.12xlarge, 4x T4, us-west-2) — terminated after experiment
+**Previous runs:** `i-09c0b35d3d58c6fe7`, `i-04a9e16e0eb93099f` — both terminated
 
 ## Objective
 
@@ -48,14 +48,14 @@ Verify that the Rust `PyRDTStore` (from `ray-core-worker-pylib`) is a functional
 
 | Metric | Python RDT | Rust RDT | Match? |
 |--------|-----------|----------|--------|
-| Passed | 103 | 103 | IDENTICAL |
-| Failed | 2 | 2 | IDENTICAL |
+| Passed | 105 | 105 | IDENTICAL |
+| Failed | 0 | 0 | IDENTICAL |
 | Total | 105 | 105 | IDENTICAL |
-| Time | 5.45s | 3.74s | Rust 31% faster |
+| Time | 2.86s | 2.89s | ~same |
 
-The 2 failures are FakeTensor compatibility issues with the installed Ray nightly (not RDT-related):
-- `TestCollectiveTensorTransport::test_send_device_mismatch` — FakeTensor not recognized by `collective.send()`
-- `TestCudaIpcTransport::test_extract_metadata_different_gpu_raises` — FakeTensor lacks `requires_grad` attr
+**Test fixes applied (v3):** Two tests previously failed due to incomplete mocking of torch internals (not RDT bugs). Fixed by adding proper mocks:
+- `TestCollectiveTensorTransport::test_send_device_mismatch` — Added `patch("ray.util.collective.send")` to mock `collective.send()` which was type-checking FakeTensor before the device validation could trigger
+- `TestCudaIpcTransport::test_extract_metadata_different_gpu_raises` — Added `patch("torch.cuda.Event")`, `patch("torch.cuda.current_stream")`, and `patch("torch.multiprocessing.reductions.reduce_tensor")` to mock torch CUDA calls that ran before the GPU index check
 
 ### Integration Tests — NIXL (21 tests)
 
@@ -80,28 +80,28 @@ All 6 warnings on both sides are benign `_monitor_failures` thread race conditio
 
 | Metric | Python RDT | Rust RDT | Match? |
 |--------|-----------|----------|--------|
-| **Unit Passed** | 103 | 103 | IDENTICAL |
-| **Unit Failed** | 2 | 2 | IDENTICAL |
+| **Unit Passed** | 105 | 105 | IDENTICAL |
+| **Unit Failed** | 0 | 0 | IDENTICAL |
 | **Integration Passed** | 21 | 21 | IDENTICAL |
 | **Integration Skipped** | 1 | 1 | IDENTICAL |
 | **Integration Failed** | 0 | 0 | IDENTICAL |
 | **Integration Warnings** | 6 | 6 | IDENTICAL |
-| **Unit Time** | 5.45s | 3.74s | Rust 31% faster |
-| **Integration Time** | 196.78s | 193.98s | ~same |
+| **Unit Time** | 2.86s | 2.89s | ~same |
+| **Integration Time** | 197.51s | 194.84s | ~same |
 
 ## Key Findings
 
-1. **Zero code changes needed** — The Rust `PyRDTStore` worked as a perfect drop-in replacement. No fixes to Rust code, Python bindings, or transport backends were required.
+1. **Zero RDT code changes needed** — The Rust `PyRDTStore` worked as a perfect drop-in replacement. No fixes to Rust code, Python bindings, or transport backends were required.
 
-2. **Behavioral parity** — All 22 integration tests (20 NIXL + 1 NCCL + 1 skipped) produced identical results. Same warnings, same skip reasons, same pass/fail pattern.
+2. **Unit test fixes (test-only)** — Two unit tests had incomplete mocking of torch internals, causing failures unrelated to RDT. Fixed by adding proper mocks for `collective.send()`, `torch.cuda.Event`, `torch.cuda.current_stream`, and `reduce_tensor`. All 105 tests now pass on both Python and Rust RDT.
 
-3. **Unit test parity** — All 105 unit tests produced identical results (103 pass, 2 fail for unrelated FakeTensor reasons).
+3. **Behavioral parity** — All 22 integration tests (20 NIXL + 1 NCCL + 1 skipped) produced identical results. Same warnings, same skip reasons, same pass/fail pattern.
 
-4. **Unit test performance** — Rust RDT was 31% faster on unit tests (3.74s vs 5.45s), due to GIL-free condvar waits in the Rust implementation.
+4. **Unit test parity** — All 105 unit tests produced identical results (105 pass, 0 fail) on both Python and Rust RDT.
 
-5. **Integration test performance** — Approximately the same (~194s vs ~197s). Integration tests are dominated by GPU transport time (NIXL RDMA, NCCL collective ops), not RDT store operations.
+5. **Integration test performance** — Approximately the same (~195s vs ~198s). Integration tests are dominated by GPU transport time (NIXL RDMA, NCCL collective ops), not RDT store operations.
 
-6. **Reproducibility confirmed** — This redo on a fresh instance matches the previous run (i-04a9e16e0eb93099f) exactly. Results are stable across instances.
+6. **Reproducibility confirmed** — Consistent results across three independent runs on separate instances.
 
 ## Individual NIXL Test Results (both Python and Rust RDT — identical)
 

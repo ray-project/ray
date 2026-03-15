@@ -1284,8 +1284,12 @@ class TestCollectiveTensorTransport:
         meta = CollectiveTransportMetadata(tensor_meta=[], tensor_device="cuda")
         comm = CollectiveCommunicatorMetadata(communicator_name="g", src_rank=0, dst_rank=1)
 
-        with pytest.raises(ValueError, match="does not match"):
-            t.send_multiple_tensors([t1, t2], meta, comm)
+        # Mock ray.util.collective to avoid real torch type check on FakeTensor.
+        # t1 (cuda) matches device so collective.send is called (mocked),
+        # then t2 (cpu != cuda) triggers the ValueError.
+        with patch("ray.util.collective.send"):
+            with pytest.raises(ValueError, match="does not match"):
+                t.send_multiple_tensors([t1, t2], meta, comm)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1373,8 +1377,17 @@ class TestCudaIpcTransport:
             mock_ctx.get_node_id.return_value = "node1"
             mock_ray.get_runtime_context.return_value = mock_ctx
 
-            with pytest.raises(ValueError, match="same GPU"):
-                t.extract_tensor_transport_metadata("obj1", [t1, t2])
+            # Mock torch.cuda and reduce_tensor (imported locally inside the
+            # method) to avoid real CUDA operations on FakeTensor. t1 passes
+            # the GPU index check, but t2 (index 1 != 0) raises ValueError.
+            with patch("torch.cuda.Event") as mock_event, \
+                 patch("torch.cuda.current_stream") as mock_stream, \
+                 patch("torch.multiprocessing.reductions.reduce_tensor"):
+                mock_event.return_value = MagicMock()
+                mock_stream.return_value = MagicMock()
+
+                with pytest.raises(ValueError, match="same GPU"):
+                    t.extract_tensor_transport_metadata("obj1", [t1, t2])
 
     def test_extract_metadata_empty(self):
         t = self._make_transport()
