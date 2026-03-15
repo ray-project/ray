@@ -388,6 +388,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       inflight_task_callbacks;
   std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
+  bool schedule_owner_driven_restart = false;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
@@ -417,16 +418,13 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       queue->second.is_restartable_ = is_restartable;
 
       if (queue->second.is_restartable_ && queue->second.owned_) {
-        // Owner-driven restart: the actor is restartable and we own it.
-        // This handles both out-of-scope (lineage reconstruction) and
-        // worker/node death for non-detached actors.
-        // Move wait_for_death_info_tasks out so they can be failed properly;
-        // they already exhausted retries and should get the death error info.
-        wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks_);
-        queue->second.wait_for_death_info_tasks_ =
-            std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
-        // Trigger owner-driven restart via GCS.
-        RestartActorForLineageReconstruction(actor_id);
+        // Actor is out of scope so there should be no inflight actor tasks.
+        RAY_CHECK(queue->second.wait_for_death_info_tasks_.empty());
+        RAY_CHECK(inflight_task_callbacks.empty());
+        if (!queue->second.actor_submit_queue_->Empty()) {
+          // There are pending lineage reconstruction tasks.
+          RestartActorForLineageReconstruction(actor_id);
+        }
       } else {
         // If there are pending requests, treat the pending tasks as failed.
         RAY_LOG(INFO).WithField(actor_id)
@@ -444,6 +442,11 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       // will eventually get restarted or marked as permanently dead.
       queue->second.state_ = rpc::ActorTableData::RESTARTING;
       queue->second.num_restarts_ = num_restarts;
+      if (queue->second.owned_) {
+        // Owner-driven scheduling: request GCS to schedule the restarting actor.
+        // GCS deferred scheduling for non-detached actors, waiting for the owner.
+        schedule_owner_driven_restart = true;
+      }
     }
   }
 
@@ -483,6 +486,21 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
   FailInflightTasksOnRestart(inflight_task_callbacks);
+
+  if (schedule_owner_driven_restart) {
+    // Request GCS to schedule the restarting actor. GCS deferred scheduling
+    // for non-detached actors, waiting for the owner to confirm.
+    actor_creator_.AsyncRestartActorForLineageReconstruction(
+        actor_id,
+        /*num_restarts_due_to_lineage_reconstructions=*/0,
+        [actor_id](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING).WithField(actor_id)
+                << "Failed to schedule actor from owner: " << status.ToString();
+          }
+        },
+        /*is_owner_driven_restart=*/true);
+  }
 }
 
 void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo &task) {

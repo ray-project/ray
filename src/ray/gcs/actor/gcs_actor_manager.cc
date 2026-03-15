@@ -338,11 +338,32 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
     rpc::SendReplyCallback send_reply_callback) {
   auto actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id)
-      << "HandleRestartActorForLineageReconstruction";
+      << "HandleRestartActorForLineageReconstruction"
+      << " is_owner_driven_restart=" << request.is_owner_driven_restart();
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
     GCS_RPC_SEND_REPLY(
         send_reply_callback, reply, Status::Invalid("Actor is permanently dead."));
+    return;
+  }
+
+  // Handle owner-driven restart: the actor is already in RESTARTING state
+  // with deferred scheduling. Just schedule it.
+  if (request.is_owner_driven_restart()) {
+    auto actor = iter->second;
+    if (actor->GetState() == rpc::ActorTableData::RESTARTING &&
+        actors_pending_owner_scheduling_.erase(actor_id)) {
+      gcs_actor_scheduler_->Schedule(actor);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    } else if (actor->GetState() == rpc::ActorTableData::ALIVE ||
+               actor->GetState() == rpc::ActorTableData::RESTARTING) {
+      // Already scheduled or restarted (e.g., duplicate request).
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    } else {
+      GCS_RPC_SEND_REPLY(send_reply_callback,
+                         reply,
+                         Status::Invalid("Actor is not in a restartable state."));
+    }
     return;
   }
 
@@ -992,6 +1013,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       << "Destroying actor, force_kill=" << force_kill
       << ", timeout_ms=" << graceful_shutdown_timeout_ms;
   actor_to_restart_for_lineage_reconstruction_callbacks_.erase(actor_id);
+  actors_pending_owner_scheduling_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
@@ -1283,15 +1305,19 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   }
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  // For non-detached actors, let the owner drive the restart instead of GCS.
-  // GCS sets the actor to DEAD (with a restartable death cause), and the owner
-  // will request a restart via RestartActorForLineageReconstruction.
-  bool need_reschedule = need_reconstruct;
-  if (need_reschedule && actor_iter != registered_actors_.end() &&
+  // For non-detached actors, defer scheduling so the owner can drive the restart.
+  // The actor goes to RESTARTING state but is not scheduled until the owner requests it.
+  bool defer_scheduling = false;
+  if (need_reconstruct && actor_iter != registered_actors_.end() &&
       !actor_iter->second->IsDetached()) {
-    need_reschedule = false;
+    defer_scheduling = true;
   }
-  RestartActor(actor_id, /*need_reschedule=*/need_reschedule, death_cause);
+  RestartActor(actor_id,
+               /*need_reschedule=*/need_reconstruct,
+               death_cause,
+               /*done_callback=*/nullptr,
+               /*restart_reason=*/std::nullopt,
+               defer_scheduling);
 }
 
 void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
@@ -1350,15 +1376,15 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
   }
 
   for (auto &actor_id : scheduling_actor_ids) {
-    // For non-detached actors, let the owner drive restart.
+    // For non-detached actors, defer scheduling so the owner can drive restart.
     auto actor = GetActor(actor_id);
-    bool need_reschedule = true;
-    if (actor && !actor->IsDetached()) {
-      need_reschedule = false;
-    }
+    bool defer = (actor && !actor->IsDetached());
     RestartActor(actor_id,
-                 /*need_reschedule=*/need_reschedule,
-                 GenNodeDiedCause(actor, node));
+                 /*need_reschedule=*/true,
+                 GenNodeDiedCause(actor, node),
+                 /*done_callback=*/nullptr,
+                 /*restart_reason=*/std::nullopt,
+                 defer);
   }
 
   // Try reconstructing all workers created on the node.
@@ -1383,15 +1409,15 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
 
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
-      // For non-detached actors, let the owner drive restart.
+      // For non-detached actors, defer scheduling so the owner can drive restart.
       auto actor = GetActor(entry.second);
-      bool need_reschedule = true;
-      if (actor && !actor->IsDetached()) {
-        need_reschedule = false;
-      }
+      bool defer = (actor && !actor->IsDetached());
       RestartActor(entry.second,
-                   /*need_reschedule=*/need_reschedule,
-                   GenNodeDiedCause(actor, node));
+                   /*need_reschedule=*/true,
+                   GenNodeDiedCause(actor, node),
+                   /*done_callback=*/nullptr,
+                   /*restart_reason=*/std::nullopt,
+                   defer);
     }
   }
 
@@ -1468,7 +1494,8 @@ void GcsActorManager::RestartActor(
     bool need_reschedule,
     const rpc::ActorDeathCause &death_cause,
     std::function<void()> done_callback,
-    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
+    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason,
+    bool defer_scheduling) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1562,7 +1589,12 @@ void GcsActorManager::RestartActor(
                 io_context_});
          },
          io_context_});
-    gcs_actor_scheduler_->Schedule(actor);
+    if (defer_scheduling) {
+      // Owner will request scheduling via an owner-driven restart RPC.
+      actors_pending_owner_scheduling_.insert(actor_id);
+    } else {
+      gcs_actor_scheduler_->Schedule(actor);
+    }
   } else {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);

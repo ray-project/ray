@@ -150,11 +150,13 @@ void ActorInfoAccessor::AsyncRestartActorForLineageReconstruction(
     const ray::ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstruction,
     const rpc::StatusCallback &callback,
-    int64_t timeout_ms) {
+    int64_t timeout_ms,
+    bool is_owner_driven_restart) {
   rpc::RestartActorForLineageReconstructionRequest request;
   request.set_actor_id(actor_id.Binary());
   request.set_num_restarts_due_to_lineage_reconstruction(
       num_restarts_due_to_lineage_reconstruction);
+  request.set_is_owner_driven_restart(is_owner_driven_restart);
   context_->GetGcsRpcClient().RestartActorForLineageReconstruction(
       std::move(request),
       [callback](const Status &status,

@@ -36,7 +36,8 @@ class FakeActorCreator : public ActorCreatorInterface {
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      rpc::StatusCallback callback) override {}
+      rpc::StatusCallback callback,
+      bool is_owner_driven_restart = false) override {}
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,

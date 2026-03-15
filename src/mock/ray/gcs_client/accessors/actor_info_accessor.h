@@ -66,7 +66,8 @@ class FakeActorInfoAccessor : public gcs::ActorInfoAccessorInterface {
   void AsyncRestartActorForLineageReconstruction(const ActorID &,
                                                  uint64_t,
                                                  const rpc::StatusCallback &,
-                                                 int64_t = -1) override {}
+                                                 int64_t = -1,
+                                                 bool = false) override {}
   Status SyncRegisterActor(const TaskSpecification &) override { return Status::OK(); }
   void AsyncKillActor(
       const ActorID &, bool, bool, const rpc::StatusCallback &, int64_t = -1) override {}

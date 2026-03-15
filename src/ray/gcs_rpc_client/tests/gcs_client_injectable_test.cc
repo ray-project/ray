@@ -117,7 +117,8 @@ class TestActorInfoAccessor : public ActorInfoAccessorInterface {
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
       const rpc::StatusCallback &callback,
-      int64_t timeout_ms = -1) override {}
+      int64_t timeout_ms = -1,
+      bool is_owner_driven_restart = false) override {}
   Status SyncRegisterActor(const ray::TaskSpecification &task_spec) override {
     return Status::OK();
   }
