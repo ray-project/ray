@@ -10,9 +10,9 @@
 //!
 //! Replaces `src/ray/gcs/gcs_job_manager.h/cc`.
 
-use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use ray_common::id::{JobID, NodeID};
 
@@ -25,11 +25,11 @@ pub type JobFinishCallback = Box<dyn Fn(&JobID) + Send + Sync>;
 /// The GCS job manager tracks all jobs in the cluster.
 pub struct GcsJobManager {
     /// Currently running jobs: job_id → start_time_ms.
-    running_jobs: RwLock<HashMap<JobID, i64>>,
+    running_jobs: DashMap<JobID, i64>,
     /// Cached job configs: job_id → JobConfig proto.
-    job_configs: RwLock<HashMap<JobID, ray_proto::ray::rpc::JobConfig>>,
-    /// All job data (including finished).
-    job_data: RwLock<HashMap<JobID, ray_proto::ray::rpc::JobTableData>>,
+    job_configs: DashMap<JobID, ray_proto::ray::rpc::JobConfig>,
+    /// All job data (including finished) — DashMap for per-entry concurrency.
+    job_data: DashMap<JobID, ray_proto::ray::rpc::JobTableData>,
     /// Listeners notified when a job finishes.
     finish_listeners: RwLock<Vec<JobFinishCallback>>,
     /// Count of finished jobs since GCS start.
@@ -43,9 +43,9 @@ pub struct GcsJobManager {
 impl GcsJobManager {
     pub fn new(table_storage: Arc<GcsTableStorage>) -> Self {
         Self {
-            running_jobs: RwLock::new(HashMap::new()),
-            job_configs: RwLock::new(HashMap::new()),
-            job_data: RwLock::new(HashMap::new()),
+            running_jobs: DashMap::new(),
+            job_configs: DashMap::new(),
+            job_data: DashMap::new(),
             finish_listeners: RwLock::new(Vec::new()),
             finished_jobs_count: std::sync::atomic::AtomicI64::new(0),
             table_storage,
@@ -82,19 +82,15 @@ impl GcsJobManager {
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        let mut running = self.running_jobs.write();
-        let mut configs = self.job_configs.write();
-        let mut data = self.job_data.write();
-
         for (key, job) in all_jobs {
             let job_id = JobID::from_hex(&key);
             if !job.is_dead {
-                running.insert(job_id, job.start_time as i64);
+                self.running_jobs.insert(job_id, job.start_time as i64);
             }
             if let Some(config) = &job.config {
-                configs.insert(job_id, config.clone());
+                self.job_configs.insert(job_id, config.clone());
             }
-            data.insert(job_id, job);
+            self.job_data.insert(job_id, job);
         }
         Ok(())
     }
@@ -111,11 +107,11 @@ impl GcsJobManager {
 
         // Cache config
         if let Some(config) = &job_data.config {
-            self.job_configs.write().insert(job_id, config.clone());
+            self.job_configs.insert(job_id, config.clone());
         }
 
-        self.running_jobs.write().insert(job_id, now);
-        self.job_data.write().insert(job_id, job_data.clone());
+        self.running_jobs.insert(job_id, now);
+        self.job_data.insert(job_id, job_data.clone());
 
         // Persist
         self.table_storage
@@ -137,21 +133,19 @@ impl GcsJobManager {
         let key = hex::encode(job_id_bytes);
 
         // Update in-memory state
-        self.running_jobs.write().remove(&job_id);
+        self.running_jobs.remove(&job_id);
         self.finished_jobs_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Update persisted data (clone outside lock to avoid holding lock across await)
-        let updated = {
-            let mut job_data = self.job_data.write();
-            if let Some(data) = job_data.get_mut(&job_id) {
-                data.is_dead = true;
-                data.end_time = ray_util::time::current_time_ms();
-                Some(data.clone())
-            } else {
-                None
-            }
+        // Update job data — DashMap entry lock is held only briefly
+        let updated = if let Some(mut entry) = self.job_data.get_mut(&job_id) {
+            entry.is_dead = true;
+            entry.end_time = ray_util::time::current_time_ms();
+            Some(entry.clone())
+        } else {
+            None
         };
+
         if let Some(ref updated) = updated {
             let _ = self.table_storage.job_table().put(&key, updated).await;
             // Publish via pubsub
@@ -173,11 +167,10 @@ impl GcsJobManager {
         &self,
         limit: Option<usize>,
     ) -> Vec<ray_proto::ray::rpc::JobTableData> {
-        let data = self.job_data.read();
         if let Some(limit) = limit {
-            data.values().take(limit).cloned().collect()
+            self.job_data.iter().take(limit).map(|r| r.value().clone()).collect()
         } else {
-            data.values().cloned().collect()
+            self.job_data.iter().map(|r| r.value().clone()).collect()
         }
     }
 
@@ -204,12 +197,12 @@ impl GcsJobManager {
 
     /// Get a cached job config.
     pub fn get_job_config(&self, job_id: &JobID) -> Option<ray_proto::ray::rpc::JobConfig> {
-        self.job_configs.read().get(job_id).cloned()
+        self.job_configs.get(job_id).map(|r| r.value().clone())
     }
 
     /// Number of currently running jobs.
     pub fn num_running_jobs(&self) -> usize {
-        self.running_jobs.read().len()
+        self.running_jobs.len()
     }
 
     /// Total finished jobs since GCS start.
