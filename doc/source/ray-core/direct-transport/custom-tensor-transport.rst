@@ -81,45 +81,105 @@ The following diagram shows where each method is called in the ray.put / ray.get
 
 
 The API reference page for :class:`TensorTransportManager <ray.experimental.TensorTransportManager>` has more details what each method does how to implement them.
-Below is an example implementation of a custom tensor transport.
+Feel free to check out implementations of Ray's default transports (NCCL, NIXL, etc.) in the ``python/ray/experimental/rdt/`` directory.
+The following is an walk-through for implementing and using a custom tensor transport.
 
-Example Shared Memory Tensor Transport Manager
-===============================================
+Example: Shared memory tensor transport
+========================================
+
+The following walks through a complete custom tensor transport that transfers ``numpy`` arrays through shared memory.
 
 
+Note that because shared memory is one-sided (the receiver directly reads the memory block the sender wrote to),
+``is_one_sided`` returns ``True`` and Ray never calls ``send_multiple_tensors``.
+
+Define metadata classes
+-----------------------
+
+Start by extending :class:`TensorTransportMetadata <ray.experimental.TensorTransportMetadata>` and :class:`CommunicatorMetadata <ray.experimental.CommunicatorMetadata>` to carry any transport-specific state.
+``ShmTransportMetadata`` stores the shared memory block name and size so the receiver can locate and read the data.
+This transport doesn't need any communicator metadata, so ``ShmCommunicatorMetadata`` is empty.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_metadata_start__
+   :end-before: __custom_metadata_end__
+
+Transport properties
+--------------------
+
+Define your ``TensorTransportManager`` subclass and implement the property methods.
+``tensor_transport_backend`` returns the name that users pass to ``@ray.method(tensor_transport=...)``.
+``is_one_sided`` and ``can_abort_transport`` tell Ray how to orchestrate transfers and handle errors.
+``actor_has_tensor_transport`` lets Ray check whether a given actor can use this transport.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_properties_start__
+   :end-before: __custom_properties_end__
+
+Extract tensor transport metadata
+---------------------------------
+
+Ray calls ``extract_tensor_transport_metadata`` on the source actor right after the task produces its result tensors.
+Record shapes and dtypes, then perform any transport-specific registration. Here, the implementation serializes the tensors
+into a shared memory block and records the block name and size in the metadata so the receiver can find it.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_extract_start__
+   :end-before: __custom_extract_end__
+
+Get communicator metadata
+-------------------------
+
+Ray calls ``get_communicator_metadata`` on the owner/driver process before orchestrating the transfer.
+Return any information both actors need to coordinate, such as ranks in a collective group.
+For one-sided transports such as shared memory, an empty metadata object is fine.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_communicator_start__
+   :end-before: __custom_communicator_end__
+
+Send and receive
+----------------
+
+``recv_multiple_tensors`` runs on the destination actor. For this shared memory transport, it opens the
+shared memory block by name and deserializes the tensors.
+
+``send_multiple_tensors`` runs on the source actor for two-sided transports. Since shared memory is one-sided,
+Ray never calls this method, so it raises ``NotImplementedError`` as a safety guard.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_send_recv_start__
+   :end-before: __custom_send_recv_end__
+
+Cleanup
+-------
+
+``garbage_collect`` runs on the source actor when Ray's reference counting determines the object is out of scope.
+Release any transport resources here, in this case closing and unlinking the shared memory block.
+
+``abort_transport`` runs on both actors when a system error occurs during transfer, if ``can_abort_transport`` returns ``True``.
+Since this transport returns ``False`` for ``can_abort_transport``, Ray kills the involved actors instead,
+so ``abort_transport`` is a no-op.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_cleanup_start__
+   :end-before: __custom_cleanup_end__
 
 Registering your transport
 ==========================
 
-After implementing your transport, register it using :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>`:
+After implementing your transport, register it with :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>` and use it in actor methods:
 
-.. code-block:: python
-
-   from ray.experimental import register_tensor_transport
-
-   register_tensor_transport(
-       "MY_TRANSPORT",    # Transport name
-       ["cuda", "cpu"],   # List of supported device types
-       MyCustomTransport, # Your TensorTransportManager class
-   )
-
-You can then use your transport in actor methods:
-
-.. code-block:: python
-
-    @ray.remote
-    class MyActor:
-        @ray.method(tensor_transport="MY_TRANSPORT")
-        def create_tensor(self):
-            return torch.randn(1000, 1000)
-
-        def sum_tensor(self, tensor: torch.Tensor):
-            return torch.sum(tensor).item()
-
-    actors = [MyActor.remote() for _ in range(2)]
-    ref = actors[0].create_tensor.remote()
-    result = actors[1].sum_tensor.remote(ref)
-    ray.get(result)
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_usage_start__
+   :end-before: __custom_usage_end__
 
 
 Limitations
