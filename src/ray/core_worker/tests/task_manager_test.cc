@@ -825,6 +825,203 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
+// Pool tasks (max_retries=0 but actor_pool_id set) should have lineage pinned
+// for reconstruction via the pool.
+TEST_F(TaskManagerLineageTest, TestPoolTaskLineagePinned) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "pool_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           /*max_retries=*/0,
+                           false,
+                           "",
+                           0,
+                           std::nullopt);
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
+
+  // Tag as pool task.
+  ActorPoolID pool_id = ActorPoolID::FromRandom();
+  spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
+  spec.GetMutableMessage().set_actor_pool_work_item_id(
+      TaskID::FromRandom(JobID::Nil()).Binary());
+
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+  auto return_id = spec.ReturnId(0);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Complete with plasma return.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  // Despite max_retries=0, lineage should be pinned because it's a pool task.
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // Releasing the return object should free lineage.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+}
+
+// Non-pool actor tasks with max_retries=0 should NOT have lineage pinned.
+TEST_F(TaskManagerLineageTest, TestNonPoolTaskNotPinned) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "non_pool_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           /*max_retries=*/0,
+                           false,
+                           "",
+                           0,
+                           std::nullopt);
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
+
+  // No pool_id set — this is a normal actor task with 0 retries.
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+  auto return_id = spec.ReturnId(0);
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  // Lineage should NOT be pinned since max_retries=0 and no pool.
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+
+  // Clean up return reference.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+}
+
+// Pool task resubmission should succeed even with num_retries_left=0.
+TEST_F(TaskManagerLineageTest, TestPoolTaskResubmitSucceeds) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "pool_resubmit_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           /*max_retries=*/0,
+                           false,
+                           "",
+                           0,
+                           std::nullopt);
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
+
+  ActorPoolID pool_id = ActorPoolID::FromRandom();
+  spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
+
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+  auto return_id = spec.ReturnId(0);
+
+  // Complete with plasma return so lineage is pinned.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+
+  // Simulate object loss — resubmit should work for pool tasks.
+  std::vector<ObjectID> task_deps;
+  auto error = manager_.ResubmitTask(spec.TaskId(), &task_deps);
+  ASSERT_FALSE(error.has_value());
+  num_retries_++;
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+
+  // Clean up: complete again and release reference.
+  rpc::PushTaskReply reply2;
+  auto return_object2 = reply2.add_return_objects();
+  return_object2->set_object_id(return_id.Binary());
+  auto data2 = GenerateRandomBuffer();
+  return_object2->set_data(data2->Data(), data2->Size());
+  return_object2->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply2, rpc::Address(), false);
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // pinned when lineage pinning is enabled in the ReferenceCounter.
 TEST_F(TaskManagerLineageTest, TestLineagePinned) {

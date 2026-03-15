@@ -31,6 +31,7 @@
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/core_worker/actor_pool_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker_options.h"
@@ -280,6 +281,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   WorkerContext &GetWorkerContext() { return *worker_context_; }
+
+  ActorPoolManager &GetActorPoolManager() { return *actor_pool_manager_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_->GetCurrentTaskID(); }
 
@@ -1161,6 +1164,75 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
       bool all_namespaces);
 
+  ///
+  /// Actor Pool methods (for cross-actor retry).
+  ///
+
+  /// Register a new actor pool.
+  ///
+  /// \param config Pool configuration (retry, ordering, autoscaling).
+  /// \param initial_actors Optional initial set of actor IDs to add to the pool.
+  /// \return The ID of the newly created pool.
+  ActorPoolID RegisterActorPool(const ActorPoolConfig &config,
+                                const std::vector<ActorID> &initial_actors = {});
+
+  /// Unregister an actor pool and clean up resources.
+  ///
+  /// \param pool_id The ID of the pool to unregister.
+  void UnregisterActorPool(const ActorPoolID &pool_id);
+
+  /// Add an actor to a pool.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \param actor_id The ID of the actor to add.
+  void AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id);
+
+  /// Remove an actor from a pool.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \param actor_id The ID of the actor to remove.
+  void RemoveActorFromPool(const ActorPoolID &pool_id, const ActorID &actor_id);
+
+  /// Submit a task to an actor pool.
+  /// The pool will select an appropriate actor based on load and locality.
+  ///
+  /// \param pool_id The ID of the pool to submit to.
+  /// \param function The function to execute.
+  /// \param args The task arguments.
+  /// \param task_options Task options (num_returns, resources, etc).
+  /// \return Object references for the task's return values.
+  std::vector<rpc::ObjectReference> SubmitTaskToActorPool(
+      const ActorPoolID &pool_id,
+      const RayFunction &function,
+      std::vector<std::unique_ptr<TaskArg>> args,
+      const TaskOptions &task_options);
+
+  /// Get all actor IDs in a pool.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \return Vector of actor IDs in the pool.
+  std::vector<ActorID> GetActorPoolActors(const ActorPoolID &pool_id) const;
+
+  /// Get statistics for a pool.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \return Pool statistics.
+  PoolStats GetActorPoolStats(const ActorPoolID &pool_id) const;
+
+ private:
+  /// Submit an actor task on behalf of an actor pool.
+  /// This is used by ActorPoolManager to delegate TaskSpec building to CoreWorker.
+  /// The task is submitted with max_retries=0 because the pool handles retries.
+  std::vector<rpc::ObjectReference> SubmitActorTaskForPool(
+      const ActorID &actor_id,
+      const RayFunction &function,
+      std::vector<std::unique_ptr<TaskArg>> args,
+      const TaskOptions &task_options,
+      TaskCompletionCallback on_complete,
+      const ActorPoolID &pool_id = ActorPoolID::Nil(),
+      const TaskID &work_item_id = TaskID::Nil());
+
+ public:
   /// Get the expected return ids of the next task.
   std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
                                             const ActorID &callee_actor_id);
@@ -1819,6 +1891,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Interface to manage actor handles.
   std::unique_ptr<ActorManager> actor_manager_;
+
+  /// Interface to manage actor pools (for cross-actor retry).
+  std::unique_ptr<ActorPoolManager> actor_pool_manager_;
 
   ///
   /// Fields related to task execution.

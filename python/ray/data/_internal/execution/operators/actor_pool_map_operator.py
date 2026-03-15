@@ -64,7 +64,22 @@ from ray.data.context import (
 from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
+# Lazy import to avoid circular dependencies
+_ClassBasedActorPoolAdapter = None
+
 logger = logging.getLogger(__name__)
+
+
+def _get_class_based_actor_pool_adapter():
+    """Lazy import of ClassBasedActorPoolAdapter to avoid circular imports."""
+    global _ClassBasedActorPoolAdapter
+    if _ClassBasedActorPoolAdapter is None:
+        from ray.data._internal.execution.operators.core_actor_pool_adapter import (
+            ClassBasedActorPoolAdapter,
+        )
+
+        _ClassBasedActorPoolAdapter = ClassBasedActorPoolAdapter
+    return _ClassBasedActorPoolAdapter
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -171,27 +186,65 @@ class ActorPoolMapOperator(MapOperator):
         # class per operator with a unique name.
         self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
 
-        self._actor_pool = _ActorPool(
-            self._start_actor,
-            per_actor_resource_usage,
-            min_size=compute_strategy.min_size,
-            max_size=compute_strategy.max_size,
-            initial_size=compute_strategy.initial_size,
-            max_actor_concurrency=max_actor_concurrency,
-            max_tasks_in_flight_per_actor=(
-                # Unless explicitly overridden by the user, max tasks-in-flight config
-                # will fall back to be:
-                #
-                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
-                compute_strategy.max_tasks_in_flight_per_actor
-                or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency
-                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
-            ),
-            map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+        max_tasks_in_flight_per_actor = (
+            # Unless explicitly overridden by the user, max tasks-in-flight config
+            # will fall back to be:
+            #
+            #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
+            compute_strategy.max_tasks_in_flight_per_actor
+            or data_context.max_tasks_in_flight_per_actor
+            or max_actor_concurrency
+            * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
         )
-        self._actor_task_selector = self._create_task_selector(self._actor_pool)
+
+        # Use new Core Actor Pool if feature flag is enabled.
+        # Fall back to legacy path when ray_remote_args_fn is set, because the
+        # Core pool creates actors with static options baked in at construction
+        # time and has no hook for per-actor dynamic arg generation.
+        use_core_pool = (
+            data_context.use_core_actor_pool and not self._ray_remote_args_fn
+        )
+        if use_core_pool:
+            Adapter = _get_class_based_actor_pool_adapter()
+            self._actor_pool = Adapter(
+                actor_cls=self._map_worker_cls,
+                per_actor_resource_usage=per_actor_resource_usage,
+                min_size=compute_strategy.min_size,
+                max_size=compute_strategy.max_size,
+                initial_size=compute_strategy.initial_size,
+                max_actor_concurrency=max_actor_concurrency,
+                max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                actor_kwargs={
+                    "ctx": data_context,
+                    "src_fn_name": name,
+                    "map_transformer": map_transformer,
+                    "actor_location_tracker": get_or_create_actor_location_tracker(),
+                },
+                actor_options=self._ray_remote_args,
+                operator_id=self.id,
+                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            )
+            logger.debug(
+                f"Using ClassBasedActorPoolAdapter for operator {name} "
+                f"(min={compute_strategy.min_size}, max={compute_strategy.max_size})"
+            )
+        else:
+            self._actor_pool = _ActorPool(
+                self._start_actor,
+                per_actor_resource_usage,
+                min_size=compute_strategy.min_size,
+                max_size=compute_strategy.max_size,
+                initial_size=compute_strategy.initial_size,
+                max_actor_concurrency=max_actor_concurrency,
+                max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            )
+        # The task selector manages Python-side actor selection (legacy path).
+        # On the Core pool path, C++ handles selection, so skip creating it.
+        if not getattr(self._actor_pool, "supports_pool_submission", False):
+            self._actor_task_selector = self._create_task_selector(self._actor_pool)
+        else:
+            self._actor_task_selector = None
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
@@ -261,6 +314,11 @@ class ActorPoolMapOperator(MapOperator):
             )
         )
 
+        # For ClassBasedActorPoolAdapter, register callbacks for pending refs
+        # to transition actors from pending to running when ready
+        if self.data_context.use_core_actor_pool:
+            self._register_pending_actor_callbacks()
+
         # If `wait_for_min_actors_s` is specified and is positive, then
         # Actor Pool will block until min number of actors is provisioned.
         #
@@ -294,6 +352,8 @@ class ActorPoolMapOperator(MapOperator):
             should be able to launch a task.
 
         """
+        if getattr(self._actor_pool, "supports_pool_submission", False):
+            return self._actor_pool.num_free_task_slots() > 0
         return self._actor_task_selector.can_schedule_task()
 
     def _start_actor(
@@ -339,6 +399,27 @@ class ActorPoolMapOperator(MapOperator):
         )
         return actor, res_ref
 
+    def _register_pending_actor_callbacks(self):
+        """Register callbacks for pending actors in ClassBasedActorPoolAdapter.
+
+        When using the class-based adapter, actors are created by the adapter's
+        internal ActorPool. We need to register callbacks so that when actors
+        become ready (get_location returns), we transition them from pending
+        to running state.
+        """
+        pending_refs = self._actor_pool.get_pending_actor_refs()
+        for res_ref in pending_refs:
+
+            def _task_done_callback(ref):
+                has_actor = self._actor_pool.pending_to_running(ref)
+                if not has_actor:
+                    return
+
+            self._submit_metadata_task(
+                res_ref,
+                lambda ref=res_ref: _task_done_callback(ref),
+            )
+
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
@@ -363,6 +444,9 @@ class ActorPoolMapOperator(MapOperator):
 
     def _try_schedule_tasks_internal(self, strict: bool) -> int:
         """Try to dispatch tasks from the internal queue"""
+
+        if getattr(self._actor_pool, "supports_pool_submission", False):
+            return self._try_schedule_via_pool()
 
         num_submitted_tasks = 0
 
@@ -417,6 +501,47 @@ class ActorPoolMapOperator(MapOperator):
                 self._locality_misses += 1
 
         return num_submitted_tasks
+
+    def _try_schedule_via_pool(self) -> int:
+        """Submit tasks through the C++ ActorPoolManager.
+
+        Actor selection, load balancing, and fault tolerance are handled by C++.
+        """
+        num_submitted = 0
+
+        while self._bundle_queue and self._actor_pool.num_free_task_slots() > 0:
+            bundle = self._bundle_queue.get_next()
+            self._metrics.on_input_dequeued(bundle, input_index=0)
+            input_blocks = [block for block, _ in bundle.blocks]
+
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                op_name=self.name,
+                target_max_block_size_override=self.target_max_block_size_override,
+            )
+
+            gen, _ = self._actor_pool.submit_task(
+                method_name="submit",
+                args=(
+                    self.data_context,
+                    ctx,
+                    *input_blocks,
+                ),
+                kwargs=dict(
+                    slices=bundle.slices,
+                    **self.get_map_task_kwargs(),
+                ),
+                num_returns="streaming",
+                remote_args=self._ray_actor_task_remote_args,
+            )
+
+            def _task_done_callback():
+                self._actor_pool.on_task_completed()
+
+            self._submit_data_task(gen, bundle, _task_done_callback)
+            num_submitted += 1
+
+        return num_submitted
 
     def _refresh_actor_cls(self):
         """When `self._ray_remote_args_fn` is specified, this method should
@@ -611,7 +736,10 @@ class ActorPoolMapOperator(MapOperator):
 
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
-        self._actor_task_selector.refresh_state()
+        # Only refresh the task selector on the legacy path. The Core pool path
+        # (ClassBasedActorPoolAdapter) manages actor selection in C++.
+        if self._actor_task_selector is not None:
+            self._actor_task_selector.refresh_state()
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
@@ -624,13 +752,18 @@ class ActorPoolMapOperator(MapOperator):
 class _MapWorker:
     """An actor worker for MapOperator."""
 
+    # Label key for logical actor ID (shared with ActorPool and _ActorPool)
+    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
+
     def __init__(
         self,
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        logical_actor_id: str,
-        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
+        logical_actor_id: Optional[str] = None,
+        actor_location_tracker: Optional[
+            ray.actor.ActorHandle[ActorLocationTracker]
+        ] = None,
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
@@ -639,10 +772,16 @@ class _MapWorker:
         DataContext._set_current(ctx)
         # Initialize state for this actor with retry logic for UDF init failures.
         self._init_udf_with_retries(ctx)
-        self._logical_actor_id = logical_actor_id
-        actor_location_tracker.update_actor_location.remote(
-            self._logical_actor_id, ray.get_runtime_context().get_node_id()
-        )
+
+        # Logical actor ID is either passed explicitly (callback-based path)
+        # or injected via actor_kwargs by ActorPool (class-based path)
+        # If neither, use empty string as a fallback
+        self._logical_actor_id = logical_actor_id or ""
+
+        if actor_location_tracker is not None:
+            actor_location_tracker.update_actor_location.remote(
+                self._logical_actor_id, ray.get_runtime_context().get_node_id()
+            )
 
     def _init_udf_with_retries(self, ctx: DataContext) -> None:
         """Initialize the UDF with retry logic for transient failures."""

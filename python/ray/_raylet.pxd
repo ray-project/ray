@@ -41,6 +41,7 @@ from ray.includes.libcoreworker cimport (
 from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID,
+    CActorPoolID,
     CTaskID,
 )
 from ray.includes.function_descriptor cimport (
@@ -121,6 +122,14 @@ cdef class ActorID(BaseID):
     cdef CActorID data
 
     cdef CActorID native(self)
+
+    cdef size_t hash(self)
+
+
+cdef class ActorPoolID(BaseID):
+    cdef CActorPoolID data
+
+    cdef CActorPoolID native(self)
 
     cdef size_t hash(self)
 

@@ -188,4 +188,22 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CPlacementGroupID Of(CJobID job_id)
 
+    cdef cppclass CActorPoolID "ray::ActorPoolID" \
+                               (CBaseID[CActorPoolID]):
+
+        @staticmethod
+        CActorPoolID FromBinary(const c_string &binary)
+
+        @staticmethod
+        CActorPoolID FromHex(const c_string &hex_str)
+
+        @staticmethod
+        CActorPoolID FromRandom()
+
+        @staticmethod
+        const CActorPoolID Nil()
+
+        @staticmethod
+        size_t Size()
+
     ctypedef uint32_t ObjectIDIndexType

@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "ray/core_worker/core_worker_shutdown_executor.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/shutdown_coordinator.h"
 
 #ifndef _WIN32
@@ -395,6 +396,48 @@ CoreWorker::CoreWorker(
                                                     *actor_task_execution_arg_waiter_,
                                                     options_.initialize_thread_callback);
   }
+
+  // Initialize the actor pool manager for cross-actor retry support.
+  // We use the full constructor with io_service and submit callback for:
+  // 1. Delayed retry scheduling via io_service_
+  // 2. Delegating TaskSpec building to CoreWorker via submit callback
+  actor_pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_,
+      *actor_task_submitter_,
+      *task_manager_,
+      io_service_,
+      [this](const ActorID &actor_id,
+             const RayFunction &function,
+             std::vector<std::unique_ptr<TaskArg>> args,
+             const TaskOptions &task_options,
+             TaskCompletionCallback on_complete,
+             const ActorPoolID &pool_id,
+             const TaskID &work_item_id) {
+        return this->SubmitActorTaskForPool(actor_id,
+                                            function,
+                                            std::move(args),
+                                            task_options,
+                                            std::move(on_complete),
+                                            pool_id,
+                                            work_item_id);
+      },
+      dynamic_cast<LocalityDataProviderInterface *>(reference_counter_.get()));
+
+  // Wire pool task completion callback from ActorTaskSubmitter to ActorPoolManager.
+  // This enables cross-actor retry by notifying the pool when tasks complete.
+  actor_task_submitter_->SetPoolTaskCompletionCallback(
+      [this](const ActorPoolID &pool_id,
+             const TaskID &work_item_id,
+             const TaskID &task_id,
+             const ActorID &actor_id,
+             const Status &status,
+             const rpc::RayErrorInfo *error_info) {
+        // Route completion to ActorPoolManager if the pool exists
+        if (actor_pool_manager_->HasPool(pool_id)) {
+          actor_pool_manager_->OnPoolTaskComplete(
+              pool_id, work_item_id, task_id, actor_id, status, error_info);
+        }
+      });
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
@@ -807,6 +850,29 @@ void CoreWorker::InternalHeartbeat() {
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
+      // Pool tasks: redirect to a healthy actor chosen by the pool.
+      if (spec.IsPoolTask()) {
+        const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
+        ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
+        if (actor_pool_manager_->HasPool(pool_id)) {
+          ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(pool_id);
+          if (new_actor_id.IsNil()) {
+            // No healthy actors — re-enqueue with a short delay.
+            absl::MutexLock lock(&mutex_);
+            task_to_retry.execution_time_ms =
+                current_time_ms() + RayConfig::instance().actor_pool_retry_delay_ms();
+            to_resubmit_.push(task_to_retry);
+            continue;
+          }
+          // Redirect the task to the selected actor.
+          auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+          mutable_actor_spec->set_actor_id(new_actor_id.Binary());
+          const TaskID creation_task_id = TaskID::ForActorCreationTask(new_actor_id);
+          const ObjectID dummy_obj_id =
+              ObjectID::FromIndex(creation_task_id, /*index=*/1);
+          mutable_actor_spec->set_actor_creation_dummy_object_id(dummy_obj_id.Binary());
+        }
+      }
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
       actor_task_submitter_->SubmitTask(spec);
@@ -2653,6 +2719,172 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
     return std::make_pair(std::move(actors), Status::TimedOut(stream.str()));
   }
   return std::make_pair(std::move(actors), std::move(status));
+}
+
+///
+/// Actor Pool methods implementation.
+///
+
+ActorPoolID CoreWorker::RegisterActorPool(const ActorPoolConfig &config,
+                                          const std::vector<ActorID> &initial_actors) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->RegisterPool(config, initial_actors);
+}
+
+void CoreWorker::UnregisterActorPool(const ActorPoolID &pool_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  actor_pool_manager_->UnregisterPool(pool_id);
+}
+
+void CoreWorker::AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  // Get the actor's location from the owner address (best effort)
+  // The actual location will be updated when the actor reports its address
+  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+  NodeID location = NodeID::FromBinary(actor_handle->GetOwnerAddress().node_id());
+  actor_pool_manager_->AddActorToPool(pool_id, actor_id, location);
+}
+
+void CoreWorker::RemoveActorFromPool(const ActorPoolID &pool_id,
+                                     const ActorID &actor_id) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  actor_pool_manager_->RemoveActorFromPool(pool_id, actor_id);
+}
+
+std::vector<rpc::ObjectReference> CoreWorker::SubmitTaskToActorPool(
+    const ActorPoolID &pool_id,
+    const RayFunction &function,
+    std::vector<std::unique_ptr<TaskArg>> args,
+    const TaskOptions &task_options) {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->SubmitTaskToPool(
+      pool_id, function, std::move(args), task_options);
+}
+
+std::vector<ActorID> CoreWorker::GetActorPoolActors(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetPoolActors(pool_id);
+}
+
+PoolStats CoreWorker::GetActorPoolStats(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetPoolStats(pool_id);
+}
+
+std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
+    const ActorID &actor_id,
+    const RayFunction &function,
+    std::vector<std::unique_ptr<TaskArg>> args,
+    const TaskOptions &task_options,
+    TaskCompletionCallback on_complete,
+    const ActorPoolID &pool_id,
+    const TaskID &work_item_id) {
+  // This method is called by ActorPoolManager to submit tasks.
+  // We set max_retries=0 because the pool handles cross-actor retries.
+
+  absl::ReleasableMutexLock lock(&actor_task_mutex_);
+
+  if (!actor_task_submitter_->CheckActorExists(actor_id)) {
+    RAY_LOG(WARNING) << "Actor " << actor_id << " not found for pool task submission";
+    if (on_complete) {
+      rpc::RayErrorInfo error_info;
+      error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+      error_info.set_error_message("Actor not found");
+      on_complete(Status::NotFound("Actor not found"), &error_info);
+    }
+    return {};
+  }
+
+  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+
+  // Subscribe to actor state updates so that ActorTaskSubmitter learns the
+  // actor's address (via ConnectActor) when it becomes ALIVE.  Without this,
+  // the task sits queued in the submitter forever because it doesn't know
+  // where to send it.  The method is idempotent.
+  actor_manager_->SubscribeActorState(actor_id);
+
+  // Build TaskSpec
+  TaskSpecBuilder builder;
+  const auto next_task_index = worker_context_->GetNextTaskIndex();
+  const TaskID actor_task_id =
+      TaskID::ForActorTask(worker_context_->GetCurrentJobID(),
+                           worker_context_->GetCurrentInternalTaskId(),
+                           next_task_index,
+                           actor_handle->GetActorID());
+
+  const std::unordered_map<std::string, double> required_resources;
+  const auto task_name = task_options.name.empty()
+                             ? function.GetFunctionDescriptor()->DefaultTaskName()
+                             : task_options.name;
+
+  int64_t depth = worker_context_->GetTaskDepth() + 1;
+
+  BuildCommonTaskSpec(builder,
+                      actor_handle->CreationJobID(),
+                      actor_task_id,
+                      task_name,
+                      worker_context_->GetCurrentTaskID(),
+                      next_task_index,
+                      GetCallerId(),
+                      rpc_address_,
+                      function,
+                      args,
+                      task_options.num_returns,
+                      task_options.resources,
+                      required_resources,
+                      /*debugger_breakpoint=*/"",
+                      depth,
+                      /*serialized_runtime_env_info=*/"{}",
+                      CurrentCallSite(),
+                      worker_context_->GetMainThreadOrActorCreationTaskID(),
+                      task_options.concurrency_group_name,
+                      /*include_job_config=*/false,
+                      task_options.generator_backpressure_num_objects,
+                      task_options.enable_task_events,
+                      /*labels=*/{},
+                      /*label_selector=*/{},
+                      /*fallback_strategy=*/{});
+
+  // Set actor task spec with max_retries=0 (pool handles retries)
+  actor_handle->SetActorTaskSpec(builder,
+                                 ObjectID::Nil(),
+                                 /*max_retries=*/0,
+                                 /*retry_exceptions=*/false,
+                                 /*serialized_retry_exception_allowlist=*/"",
+                                 task_options.concurrency_group_name,
+                                 task_options.tensor_transport);
+
+  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
+
+  // Tag the task with pool metadata so downstream components (TaskManager,
+  // ActorTaskSubmitter) can identify it as a pool task for lineage pinning
+  // and cross-actor retry routing.
+  if (!pool_id.IsNil()) {
+    task_spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
+    task_spec.GetMutableMessage().set_actor_pool_work_item_id(work_item_id.Binary());
+  }
+
+  RAY_LOG(DEBUG) << "Submitting pool actor task " << task_spec.DebugString();
+
+  // Add pending task and get return refs
+  auto returned_refs = task_manager_->AddPendingTask(
+      rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/0);
+
+  // Note: The on_complete callback passed here is NOT directly invoked by TaskManager
+  // because TaskManager doesn't support completion callbacks. Instead, task completion
+  // is wired through ActorTaskSubmitter::HandlePushTaskReply(), which detects pool
+  // tasks via task_spec.has_actor_pool_id() and notifies via the callback set in
+  // SetPoolTaskCompletionCallback(). That callback routes to OnPoolTaskComplete()
+  // which handles success/failure and triggers cross-actor retry if needed.
+  //
+  // The on_complete parameter here is intentionally unused - ActorPoolManager now
+  // passes nullptr since completion is handled via the ActorTaskSubmitter path.
+  (void)on_complete;
+
+  // Submit the task
+  actor_task_submitter_->SubmitTask(task_spec);
+
+  return returned_refs;
 }
 
 std::string CoreWorker::GetActorName() const {

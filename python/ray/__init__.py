@@ -87,6 +87,7 @@ import ray._raylet  # noqa: E402
 from ray._raylet import (  # noqa: E402,F401
     ActorClassID,
     ActorID,
+    ActorPoolID,
     NodeID,
     Config as _Config,
     JobID,
@@ -262,6 +263,7 @@ __all__ += [
 __all__ += [
     "ActorClassID",
     "ActorID",
+    "ActorPoolID",
     "NodeID",
     "JobID",
     "WorkerID",

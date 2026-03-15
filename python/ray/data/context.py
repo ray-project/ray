@@ -211,6 +211,11 @@ DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
 
+# Feature flag to use the new C++-backed Core Actor Pool instead of the internal
+# Python actor pool. This enables cross-actor retry and improved performance.
+# Set RAY_DATA_USE_CORE_ACTOR_POOL=1 to enable.
+DEFAULT_USE_CORE_ACTOR_POOL = env_bool("RAY_DATA_USE_CORE_ACTOR_POOL", False)
+
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
@@ -667,6 +672,8 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    # Use new C++-backed Core Actor Pool for improved performance and cross-actor retry
+    use_core_actor_pool: bool = DEFAULT_USE_CORE_ACTOR_POOL
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
