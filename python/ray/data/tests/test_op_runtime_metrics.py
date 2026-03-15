@@ -24,10 +24,11 @@ def test_average_max_uss_per_task():
 
     def create_bundle(uss_bytes: int):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = uss_bytes
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=uss_bytes,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=0,
@@ -166,10 +167,11 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
     def create_output_bundle(gen_time_s, ser_time_s):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.wall_time_s = gen_time_s
-        stats.block_ser_time_s = ser_time_s
-        stats.max_uss_bytes = 0
+        stats = BlockExecStats(
+            wall_time_s=gen_time_s,
+            block_ser_time_s=ser_time_s,
+            max_uss_bytes=0,
+        )
         metadata = BlockMetadata(
             num_rows=1,
             size_bytes=0,
@@ -270,10 +272,11 @@ def test_block_size_bytes_histogram():
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=0,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=size_bytes,
@@ -318,10 +321,11 @@ def test_block_size_rows_histogram():
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=0,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
