@@ -158,6 +158,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
 void ReferenceCounter::AddObjectRefStats(
     const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> &pinned_objects,
+    const absl::flat_hash_map<ObjectID, std::pair<std::string, int64_t>> &rdt_objects,
     rpc::CoreWorkerStats *stats,
     const int64_t limit) const {
   absl::MutexLock lock(&mutex_);
@@ -196,6 +197,17 @@ void ReferenceCounter::AddObjectRefStats(
       // TaskManager in case the task spec has already been GCed.
       ref_proto->set_task_status(rpc::TaskStatus::FINISHED);
     }
+
+    auto rdt_it = rdt_objects.find(ref.first);
+    if (rdt_it != rdt_objects.end()) {
+      ref_proto->set_is_rdt(true);
+      ref_proto->set_device(rdt_it->second.first);
+      // We don't replace the object size with the tensor size since it could be part of a
+      // larger object like some form of container (dictionary, list, etc.).
+      if (ref_proto->object_size() > 0) {
+        ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+      }
+    }
   }
   // Also include any unreferenced objects that are pinned in memory.
   for (const auto &entry : pinned_objects) {
@@ -211,6 +223,15 @@ void ReferenceCounter::AddObjectRefStats(
       ref_proto->set_object_size(entry.second.first);
       ref_proto->set_call_site(entry.second.second);
       ref_proto->set_pinned_in_memory(true);
+
+      auto rdt_it = rdt_objects.find(entry.first);
+      if (rdt_it != rdt_objects.end()) {
+        ref_proto->set_is_rdt(true);
+        ref_proto->set_device(rdt_it->second.first);
+        if (ref_proto->object_size() > 0) {
+          ref_proto->set_object_size(ref_proto->object_size() + rdt_it->second.second);
+        }
+      }
     }
   }
 
