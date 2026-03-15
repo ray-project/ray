@@ -4,6 +4,7 @@ import time
 
 # coding: utf-8
 from typing import Dict, List, Optional, Tuple
+from unittest.mock import patch
 
 import pytest
 
@@ -2736,6 +2737,211 @@ def test_get_nodes_with_resource_availabilities():
             "type_gpu4": 0.1,
         },
     ) == ({"type_gpu4": 1}, [])
+
+
+def test_infeasible_shape_caching():
+    """
+    Test that identical requests failing to schedule on a node are cached,
+    drastically reducing calls to _try_schedule_one to prevent O(N^2 * M) hangs.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,  # Cluster can fit max one node
+        ),
+    }
+
+    # Start with 1 existing node that has 2 CPUs available.
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 2},
+                total_resources={"CPU": 2},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+            ),
+            cloud_instance_id="c-1",
+        ),
+    ]
+
+    # Submit 1,000 identical tasks that all request 2 CPUs.
+    # Every request after the initial one should be cached and fail early.
+    resource_requests = [ResourceRequestUtil.make({"CPU": 2}) for _ in range(1000)]
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=resource_requests,
+        instances=instances,
+        max_num_nodes=1,
+    )
+
+    # Validate _try_schedule_one is only called twice by the scheduler.
+    orig_try_schedule_one = SchedulingNode._try_schedule_one
+    with patch.object(
+        SchedulingNode,
+        "_try_schedule_one",
+        autospec=True,
+        side_effect=orig_try_schedule_one,
+    ) as mock_try_schedule:
+        reply = scheduler.schedule(request)
+
+        # 1 task should be scheduled on the existing node. The other 999 fail.
+        assert len(reply.infeasible_resource_requests) == 999
+
+        #   Call 1: Fits the first 2-CPU request (Node is now full).
+        #   Call 2: Evaluates the second 2-CPU request, fails, and adds to infeasible_shapes.
+        #   Calls 3-1000: Bypassed entirely by the cache.
+        assert mock_try_schedule.call_count == 2
+
+
+def test_infeasible_shape_caching_with_label_mutation():
+    """
+    Test that dynamically adding labels clears the unavailable_shapes cache
+    so interleaved valid requests aren't skipped.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    ANTI_AFFINITY = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=1,
+        ),
+    }
+
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 4},
+                total_resources={"CPU": 4},
+                node_id=b"r1",
+                labels={"required-label": "true"},
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+            ),
+            cloud_instance_id="c-1",
+        ),
+    ]
+
+    # Req A: needs "pg: 1" which is missing on node, fails initially.
+    req_a = ResourceRequestUtil.make(
+        {"CPU": 1},
+        constraints=[(ANTI_AFFINITY, "dummy-anti", "1")],
+        label_selectors=[[("pg", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
+    )
+
+    # Req B: Needs "required-label: true", adds "pg=1" to the node upon scheduling.
+    req_b = ResourceRequestUtil.make(
+        {"CPU": 1},
+        constraints=[(ANTI_AFFINITY, "pg", "1")],
+        label_selectors=[
+            [("required-label", LabelSelectorOperator.LABEL_OPERATOR_IN, ["true"])]
+        ],
+    )
+
+    # Manually group the requests to force an interleaved [A, B, A] ordering.
+    req_a_grouped = ResourceRequestUtil.group_by_count([req_a])[0]
+    req_b_grouped = ResourceRequestUtil.group_by_count([req_b])[0]
+    resource_requests = [req_a_grouped, req_b_grouped, req_a_grouped]
+
+    request = SchedulingRequest(
+        disable_launch_config_check=False,
+        node_type_configs=node_type_configs,
+        resource_requests=resource_requests,
+        current_instances=instances,
+        max_num_nodes=1,
+    )
+
+    reply = scheduler.schedule(request)
+
+    # Expected Sequence of Events:
+    # 1. Req A1 evaluates -> fails (no pg=1 on node). Caches shape A.
+    # 2. Req B evaluates -> succeeds. Mutates node state to add pg=1. Clears cache.
+    # 3. Req A2 evaluates -> Cache miss. Succeeds because node now has pg=1.
+
+    # Only the first Request A should have been marked infeasible.
+    assert len(reply.infeasible_resource_requests) == 1
+
+    # The scheduled node should have launched 0 new nodes (everything fit on the existing node)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
+def test_identical_node_state_caching():
+    """
+    Test that the scheduler avoids redundant deepcopies and simulations
+    for nodes with identical states.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=100,
+        ),
+    }
+
+    # Create 100 identical pending nodes
+    instances = []
+    for i in range(100):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.REQUESTED,
+                    instance_id=f"pending-{i}",
+                )
+            )
+        )
+
+    # Submit a single request that requires 1 CPU
+    resource_requests = [ResourceRequestUtil.make({"CPU": 1})]
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=resource_requests,
+        instances=instances,
+        max_num_nodes=100,
+    )
+
+    # Track how many times try_schedule is actually called on a node
+    orig_try_schedule = SchedulingNode.try_schedule
+    with patch.object(
+        SchedulingNode,
+        "try_schedule",
+        autospec=True,
+        side_effect=orig_try_schedule,
+    ) as mock_try_schedule:
+
+        reply = scheduler.schedule(request)
+
+        # The scheduler should evaluate exactly one of the 100 identical pending nodes
+        assert mock_try_schedule.call_count == 1
+
+        # It should successfully schedule the task without needing to launch any new nodes,
+        # because it used the first pending node.
+        to_launch, _ = _launch_and_terminate(reply)
+        assert to_launch == {}
+        assert len(reply.infeasible_resource_requests) == 0
 
 
 if __name__ == "__main__":
