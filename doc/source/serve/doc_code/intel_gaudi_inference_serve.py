@@ -54,7 +54,7 @@ class LlamaModel:
         self.tokenizer.padding_side = "left"
 
         # Use async loop in streaming
-        self.loop = asyncio.get_running_loop()
+        self.loop = asyncio.get_event_loop()
 
     def tokenize(self, prompt: str):
         """Tokenize the input and move to HPU."""

@@ -181,14 +181,22 @@ def create_router(
             component
         ).set_exception_handler(asyncio_grpc_exception_handler)
     else:
+        # Verify there's an available event loop. A running loop is ideal,
+        # but a set-but-not-running loop (e.g., during two-phase replica init
+        # where the loop is set but not yet in run_forever()) is also OK.
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            raise RuntimeError(
-                "No event loop running. You cannot use a handle initialized with "
-                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
-                "loop."
-            )
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    raise RuntimeError
+            except RuntimeError:
+                raise RuntimeError(
+                    "No event loop available. You cannot use a handle initialized "
+                    "with `_run_router_in_separate_loop=False` when not inside an "
+                    "asyncio event loop."
+                )
 
         router_wrapper_cls = CurrentLoopRouter
 

@@ -2,6 +2,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -131,11 +132,23 @@ def test_no_spammy_errors_in_grpc_proxy(ray_instance, tmp_dir):
 
 
 def test_same_loop_handle(serve_instance):
-    # With a local handle, where there is no running asyncio loop,
+    # With a local handle in a thread with no event loop set,
     # setting _run_router_in_separate_loop=False should error.
     h = serve.run(Downstream.bind())
-    with pytest.raises(RuntimeError, match="No event loop running"):
-        h._init(_run_router_in_separate_loop=False)
+    error = None
+
+    def _test_no_loop():
+        nonlocal error
+        try:
+            h._init(_run_router_in_separate_loop=False)
+        except RuntimeError as e:
+            error = e
+
+    t = threading.Thread(target=_test_no_loop)
+    t.start()
+    t.join()
+    assert error is not None
+    assert "No event loop available" in str(error)
 
     # However setting _run_router_in_separate_loop=False in a replica
     # should work since there is a running asyncio event loop.

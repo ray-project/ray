@@ -294,16 +294,6 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            async def __init__(self, *args, **kwargs):
-                # Call user-defined constructor.
-                if inspect.iscoroutinefunction(cls.__init__):
-                    await cls.__init__(self, *args, **kwargs)
-                else:
-                    cls.__init__(self, *args, **kwargs)
-
-                ServeUsageTag.FASTAPI_USED.record("1")
-                ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
-
             async def __del__(self):
                 await ASGIAppReplicaWrapper.__del__(self)
 
@@ -313,6 +303,26 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                         await cls.__del__(self)
                     else:
                         cls.__del__(self)
+
+        # Define __init__ outside the class body so it can be sync or async
+        # depending on the user's cls.__init__. When sync, the user code thread
+        # can call it directly with the event loop NOT running, allowing
+        # libraries like SGLang to use loop.run_until_complete() in __init__.
+        if inspect.iscoroutinefunction(cls.__init__):
+
+            async def _wrapper_init(self, *args, **kwargs):
+                await cls.__init__(self, *args, **kwargs)
+                ServeUsageTag.FASTAPI_USED.record("1")
+                ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
+
+        else:
+
+            def _wrapper_init(self, *args, **kwargs):
+                cls.__init__(self, *args, **kwargs)
+                ServeUsageTag.FASTAPI_USED.record("1")
+                ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
+
+        ASGIIngressWrapper.__init__ = _wrapper_init
 
         copy_class_metadata(ASGIIngressWrapper, cls)
 
@@ -609,12 +619,14 @@ def _run_many(
                 name=t.name,
                 route_prefix=t.route_prefix,
                 logging_config=t.logging_config,
-                make_deployment_handle=make_local_deployment_handle
-                if _local_testing_mode
-                else None,
-                default_runtime_env=ray.get_runtime_context().runtime_env
-                if not _local_testing_mode
-                else None,
+                make_deployment_handle=(
+                    make_local_deployment_handle if _local_testing_mode else None
+                ),
+                default_runtime_env=(
+                    ray.get_runtime_context().runtime_env
+                    if not _local_testing_mode
+                    else None
+                ),
                 external_scaler_enabled=t.external_scaler_enabled,
             )
         )

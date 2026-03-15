@@ -635,7 +635,10 @@ class TestSeparateThread:
 
         class GetLoop:
             def __init__(self):
-                self._constructor_loop = asyncio.get_running_loop()
+                # With two-phase init, the loop is set but NOT running during
+                # sync __init__, so use get_event_loop() instead of
+                # get_running_loop().
+                self._constructor_loop = asyncio.get_event_loop()
 
             async def check_health(self):
                 check_health_loop = asyncio.get_running_loop()
@@ -730,6 +733,98 @@ class TestSeparateThread:
 
         sync_event.set()
         assert await blocked_future == "Sorry I got stuck!"
+
+    @pytest.mark.asyncio
+    async def test_sync_init_can_use_run_until_complete(self):
+        """Sync __init__ can call loop.run_until_complete() because
+        the event loop is set but NOT running during Phase 1."""
+
+        class UsesRunUntilComplete:
+            def __init__(self):
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(asyncio.sleep(0))
+                self._initialized = True
+
+            async def __call__(self):
+                return "ok"
+
+        user_callable_wrapper = _make_user_callable_wrapper(
+            UsesRunUntilComplete,
+            run_user_code_in_separate_thread=True,
+        )
+        await user_callable_wrapper.initialize_callable()
+        assert user_callable_wrapper.user_callable._initialized is True
+
+        request_metadata = _make_request_metadata()
+        result = await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), dict()
+        )
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_post_init_loop_running(self):
+        """After init, the event loop should be running and async methods
+        should work via run_coroutine_threadsafe."""
+
+        class CheckLoopRunning:
+            async def __call__(self):
+                loop = asyncio.get_running_loop()
+                assert loop.is_running()
+                return "running"
+
+        user_callable_wrapper = _make_user_callable_wrapper(
+            CheckLoopRunning,
+            run_user_code_in_separate_thread=True,
+        )
+        await user_callable_wrapper.initialize_callable()
+
+        request_metadata = _make_request_metadata()
+        result = await user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), dict()
+        )
+        assert result == "running"
+
+    @pytest.mark.asyncio
+    async def test_background_tasks_from_init(self):
+        """Tasks queued via create_task() during __init__ should execute
+        once the loop starts running."""
+        results = []
+
+        class InitWithBackgroundTask:
+            def __init__(self):
+                loop = asyncio.get_event_loop()
+                loop.call_soon(lambda: results.append("task_ran"))
+
+            async def __call__(self):
+                return "ok"
+
+        user_callable_wrapper = _make_user_callable_wrapper(
+            InitWithBackgroundTask,
+            run_user_code_in_separate_thread=True,
+        )
+        await user_callable_wrapper.initialize_callable()
+
+        request_metadata = _make_request_metadata()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
+        assert "task_ran" in results
+
+    @pytest.mark.asyncio
+    async def test_init_error_propagates(self):
+        """Exceptions in __init__ should propagate to the caller."""
+
+        class FailingInit:
+            def __init__(self):
+                raise ValueError("init failed")
+
+            async def __call__(self):
+                return "ok"
+
+        user_callable_wrapper = _make_user_callable_wrapper(
+            FailingInit,
+            run_user_code_in_separate_thread=True,
+        )
+        with pytest.raises(ValueError, match="init failed"):
+            await user_callable_wrapper.initialize_callable()
 
 
 if __name__ == "__main__":
