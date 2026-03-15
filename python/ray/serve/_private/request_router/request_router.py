@@ -857,10 +857,12 @@ class RequestRouter(ABC):
             new_replica_id_set.add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
-            replica_id_set_strs = {r.unique_id for r in new_replica_id_set}
+            added = new_replica_id_set - self._replica_id_set
+            removed = self._replica_id_set - new_replica_id_set
             logger.info(
                 f"Got updated replicas for {self._deployment_id}: "
-                f"{replica_id_set_strs}.",
+                f"{len(new_replica_id_set)} total "
+                f"(+{len(added)} added, -{len(removed)} removed).",
                 extra={"log_to_stderr": False},
             )
 
@@ -1298,19 +1300,24 @@ class RequestRouter(ABC):
         """Compatibility shim for RunningReplicaInfo datatype."""
         replica_wrappers = []
         for r in running_replicas:
-            try:
-                replica_wrappers.append(self.create_replica_wrapper(r))
-            except ValueError:
-                # NOTE(abrar): ValueError is raised when the actor handle is not found
-                # by ray.get_actor.
+            # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
+            # calls on every update (e.g. during scaling storms).
+            if r.replica_id in self._replicas:
+                replica_wrappers.append(self._replicas[r.replica_id])
+            else:
+                try:
+                    replica_wrappers.append(self.create_replica_wrapper(r))
+                except ValueError:
+                    # NOTE(abrar): ValueError is raised when the actor handle is not found
+                    # by ray.get_actor.
 
-                # Actor has died (e.g., due to node failure) but controller hasn't
-                # detected it yet. Skip this replica; controller will send an update
-                # when it detects the failure.
-                logger.warning(
-                    f"Failed to get handle to replica {r.replica_id} during router "
-                    "update. The replica actor may have died. Skipping this replica."
-                )
+                    # Actor has died (e.g., due to node failure) but controller hasn't
+                    # detected it yet. Skip this replica; controller will send an update
+                    # when it detects the failure.
+                    logger.warning(
+                        f"Failed to get handle to replica {r.replica_id} during router "
+                        "update. The replica actor may have died. Skipping this replica."
+                    )
         return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
@@ -1390,4 +1397,12 @@ class RequestRouter(ABC):
             internal_request_id: The internal unique identifier for the request
                 (from RequestMetadata.internal_request_id).
         """
-        pass
+        # Decrement the queue length cache when a request completes. Without this,
+        # with max_ongoing_requests=1 the cache gets stuck at 1 after routing,
+        # causing every subsequent pick to require blocking probe RPCs.
+        if self._use_replica_queue_len_cache:
+            current = self._replica_queue_len_cache.get(replica_id)
+            if current is not None:
+                new_queue_len = max(0, current - 1)
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
+                self._update_router_queue_len_gauge(replica_id, new_queue_len)

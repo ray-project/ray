@@ -1743,6 +1743,115 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_router):
 @pytest.mark.parametrize(
     "pow_2_router",
     [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_on_request_completion(pow_2_router):
+    """
+    Verify that on_request_completed decrements the queue length cache.
+    Without this, with max_ongoing_requests=1 the cache gets stuck at 1
+    after routing, causing every subsequent pick to require blocking probe RPCs.
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate: request was sent, on_send_request bumped cache to 1
+    s.on_send_request(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    # Request completes - cache should decrement to 0
+    s.on_request_completed(r1.replica_id, "internal-req-1")
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_multiple_requests(pow_2_router):
+    """Verify that multiple request completions correctly decrement the cache."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate 3 in-flight requests
+    s._replica_queue_len_cache.update(r1.replica_id, 3)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 3
+
+    # Each completion decrements
+    s.on_request_completed(r1.replica_id, "req-1")
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 2
+
+    s.on_request_completed(r1.replica_id, "req-2")
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    s.on_request_completed(r1.replica_id, "req-3")
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_does_not_go_negative(pow_2_router):
+    """Verify that cache never goes below 0 (e.g. duplicate completion callbacks)."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    s._replica_queue_len_cache.update(r1.replica_id, 0)
+
+    # Duplicate or spurious completion - should stay at 0
+    s.on_request_completed(r1.replica_id, "req-1")
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_skipped_when_expired(pow_2_router):
+    """
+    Verify that on_request_completed does not add a cache entry when the
+    replica's cache entry has expired (get returns None).
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Expire the cache entry (from initial probe)
+    TIMER.advance(RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S + 1)
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+    # Completion should not add an entry (we only update when current is not None)
+    s.on_request_completed(r1.replica_id, "req-1")
+
+    # Cache should still be empty - we don't incorrectly create an entry
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
         {"prefer_local_node": True, "prefer_local_az": True},
     ],
     indirect=True,
