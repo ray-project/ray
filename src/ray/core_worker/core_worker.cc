@@ -39,6 +39,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
@@ -55,6 +56,26 @@ namespace ray::core {
 namespace {
 // Default capacity for serialization caches.
 constexpr size_t kDefaultSerializationCacheCap = 500;
+
+struct NormalizedReturnInfo {
+  int64_t num_returns;
+  bool returns_dynamic;
+  bool is_streaming_generator;
+};
+
+NormalizedReturnInfo NormalizeNumReturns(int64_t num_returns) {
+  NormalizedReturnInfo info{num_returns, false, false};
+  info.returns_dynamic = num_returns == -1;
+  if (info.returns_dynamic) {
+    info.num_returns = 1;
+  }
+  info.is_streaming_generator = num_returns == kStreamingGeneratorReturn;
+  if (info.is_streaming_generator) {
+    info.num_returns = 1;
+    info.returns_dynamic = true;
+  }
+  return info;
+}
 
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
@@ -370,6 +391,11 @@ CoreWorker::CoreWorker(
                               object_id]() { free_actor_object_callback(object_id); },
                              "CoreWorker.FreeActorObjectCallback");
           }) {
+  if (RayConfig::instance().core_worker_task_building_thread_pool_size() > 0) {
+    task_building_executor_ = std::make_unique<BoundedExecutor>(
+        RayConfig::instance().core_worker_task_building_thread_pool_size(),
+        options_.initialize_thread_callback);
+  }
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -530,6 +556,9 @@ CoreWorker::CoreWorker(
 
 CoreWorker::~CoreWorker() {
   WaitForShutdownComplete();
+  if (task_building_executor_) {
+    task_building_executor_->Join();
+  }
   RAY_LOG(INFO) << "Core worker is destructed";
 }
 
@@ -1884,23 +1913,8 @@ void CoreWorker::BuildCommonTaskSpec(
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
 
-  bool returns_dynamic = num_returns == -1;
-  if (returns_dynamic) {
-    // This remote function returns 1 ObjectRef, whose value
-    // is a generator of ObjectRefs.
-    num_returns = 1;
-  }
-  // TODO(sang): Remove this and integrate it to
-  // nun_returns == -1 once migrating to streaming
-  // generator.
-  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
-  if (is_streaming_generator) {
-    num_returns = 1;
-    // We are using the dynamic return if
-    // the streaming generator is used.
-    returns_dynamic = true;
-  }
-  RAY_CHECK(num_returns >= 0);
+  auto return_info = NormalizeNumReturns(num_returns);
+  RAY_CHECK(return_info.num_returns >= 0);
   builder.SetCommonTaskSpec(
       task_id,
       name,
@@ -1914,9 +1928,9 @@ void CoreWorker::BuildCommonTaskSpec(
       task_index,
       caller_id,
       address,
-      num_returns,
-      returns_dynamic,
-      is_streaming_generator,
+      return_info.num_returns,
+      return_info.returns_dynamic,
+      return_info.is_streaming_generator,
       generator_backpressure_num_objects,
       required_resources,
       required_placement_resources,
@@ -1969,7 +1983,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
-  TaskSpecBuilder builder;
   const auto next_task_index = worker_context_->GetNextTaskIndex();
   const auto task_id = TaskID::ForNormalTask(worker_context_->GetCurrentJobID(),
                                              worker_context_->GetCurrentInternalTaskId(),
@@ -1981,50 +1994,147 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
   int64_t depth = worker_context_->GetTaskDepth() + 1;
-  // TODO(ekl) offload task building onto a thread pool for performance
-
-  BuildCommonTaskSpec(builder,
-                      worker_context_->GetCurrentJobID(),
-                      task_id,
-                      task_name,
-                      current_task_id != TaskID::Nil()
-                          ? current_task_id
-                          : worker_context_->GetCurrentTaskID(),
-                      next_task_index,
-                      GetCallerId(),
-                      rpc_address_,
-                      function,
-                      args,
-                      task_options.num_returns,
-                      constrained_resources,
-                      constrained_resources,
-                      debugger_breakpoint,
-                      depth,
-                      task_options.serialized_runtime_env_info,
-                      call_site,
-                      worker_context_->GetMainThreadOrActorCreationTaskID(),
-                      /*concurrency_group_name=*/"",
-                      /*include_job_config=*/true,
-                      /*generator_backpressure_num_objects=*/
-                      task_options.generator_backpressure_num_objects,
-                      /*enable_task_events=*/task_options.enable_task_events,
-                      task_options.labels,
-                      task_options.label_selector,
-                      task_options.fallback_strategy);
+  auto reference_call_site = CurrentCallSite();
+  auto parent_task_id = current_task_id != TaskID::Nil()
+                            ? current_task_id
+                            : worker_context_->GetCurrentTaskID();
+  auto caller_id = GetCallerId();
+  auto job_id = worker_context_->GetCurrentJobID();
+  auto main_thread_or_actor_creation_task_id =
+      worker_context_->GetMainThreadOrActorCreationTaskID();
   ActorID root_detached_actor_id;
   if (!worker_context_->GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
   }
-  builder.SetNormalTaskSpec(max_retries,
-                            retry_exceptions,
-                            serialized_retry_exception_allowlist,
-                            scheduling_strategy,
-                            root_detached_actor_id);
-  TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
+  auto build_task_spec =
+      [job_id,
+       task_id,
+       parent_task_id,
+       next_task_index,
+       caller_id,
+       debugger_breakpoint_copy = std::string(debugger_breakpoint),
+       depth,
+       call_site_copy = std::string(call_site),
+       main_thread_or_actor_creation_task_id,
+       max_retries,
+       retry_exceptions,
+       serialized_retry_exception_allowlist_copy =
+           std::string(serialized_retry_exception_allowlist),
+       root_detached_actor_id](
+          CoreWorker &worker,
+          const std::string &task_name_to_build,
+          const RayFunction &function_to_build,
+          const std::vector<std::unique_ptr<TaskArg>> &args_to_build,
+          int64_t num_returns_to_build,
+          const std::unordered_map<std::string, double> &resources,
+          const std::string &serialized_runtime_env_info,
+          int64_t generator_backpressure_num_objects,
+          bool enable_task_events,
+          const std::unordered_map<std::string, std::string> &labels,
+          const LabelSelector &label_selector,
+          const std::vector<FallbackOption> &fallback_strategy,
+          const rpc::SchedulingStrategy &sched_strategy) -> TaskSpecification {
+    TaskSpecBuilder builder;
+    worker.BuildCommonTaskSpec(builder,
+                               job_id,
+                               task_id,
+                               task_name_to_build,
+                               parent_task_id,
+                               next_task_index,
+                               caller_id,
+                               worker.rpc_address_,
+                               function_to_build,
+                               args_to_build,
+                               num_returns_to_build,
+                               resources,
+                               resources,
+                               debugger_breakpoint_copy,
+                               depth,
+                               serialized_runtime_env_info,
+                               call_site_copy,
+                               main_thread_or_actor_creation_task_id,
+                               "",
+                               true,
+                               generator_backpressure_num_objects,
+                               enable_task_events,
+                               labels,
+                               label_selector,
+                               fallback_strategy);
+    builder.SetNormalTaskSpec(max_retries,
+                              retry_exceptions,
+                              serialized_retry_exception_allowlist_copy,
+                              sched_strategy,
+                              root_detached_actor_id);
+    return std::move(builder).ConsumeAndBuild();
+  };
+
+  TaskSpecification task_spec;
+  if (task_building_executor_) {
+    auto promise = std::make_shared<std::promise<TaskSpecification>>();
+    auto future = promise->get_future();
+    auto task_building_hook = task_building_hook_;
+    task_building_executor_->Post(
+        [self = shared_from_this(),
+         task_name = std::move(task_name),
+         constrained_resources = std::move(constrained_resources),
+         function,
+         args = &args,
+         serialized_runtime_env_info = task_options.serialized_runtime_env_info,
+         num_returns = task_options.num_returns,
+         generator_backpressure_num_objects =
+             task_options.generator_backpressure_num_objects,
+         enable_task_events = task_options.enable_task_events,
+         labels = task_options.labels,
+         label_selector = task_options.label_selector,
+         fallback_strategy = task_options.fallback_strategy,
+         scheduling_strategy,
+         build_task_spec,
+         promise,
+         task_building_hook]() mutable {
+          try {
+            if (task_building_hook) {
+              task_building_hook();
+            }
+            promise->set_value(build_task_spec(*self,
+                                               task_name,
+                                               function,
+                                               *args,
+                                               num_returns,
+                                               constrained_resources,
+                                               serialized_runtime_env_info,
+                                               generator_backpressure_num_objects,
+                                               enable_task_events,
+                                               labels,
+                                               label_selector,
+                                               fallback_strategy,
+                                               scheduling_strategy));
+          } catch (...) {
+            try {
+              promise->set_exception(std::current_exception());
+            } catch (...) {
+            }
+          }
+        });
+    task_spec = future.get();
+  } else {
+    task_spec = build_task_spec(*this,
+                                task_name,
+                                function,
+                                args,
+                                task_options.num_returns,
+                                constrained_resources,
+                                task_options.serialized_runtime_env_info,
+                                task_options.generator_backpressure_num_objects,
+                                task_options.enable_task_events,
+                                task_options.labels,
+                                task_options.label_selector,
+                                task_options.fallback_strategy,
+                                scheduling_strategy);
+  }
+
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
-  std::vector<rpc::ObjectReference> returned_refs;
-  returned_refs = task_manager_->AddPendingTask(
-      task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+  auto returned_refs = task_manager_->AddPendingTask(
+      task_spec.CallerAddress(), task_spec, reference_call_site, max_retries);
 
   io_service_.post(
       [this, task_spec = std::move(task_spec)]() mutable {

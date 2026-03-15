@@ -235,17 +235,64 @@ ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
 }
 
-std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
+TaskManager::PendingTaskReferences TaskManager::AddPendingTaskReferences(
     const rpc::Address &caller_address,
-    const TaskSpecification &spec,
+    const TaskID &task_id,
+    size_t num_returns,
     const std::string &call_site,
-    int max_retries) {
+    int max_retries,
+    bool is_actor_creation_task,
+    const std::optional<std::string> &tensor_transport) {
+  PendingTaskReferences refs;
+  refs.returned_refs.reserve(num_returns);
+  refs.return_ids.reserve(num_returns);
+
+  for (size_t i = 0; i < num_returns; i++) {
+    auto return_id = ObjectID::FromIndex(task_id, i + 1);
+    if (!is_actor_creation_task) {
+      LineageReconstructionEligibility lineage_eligibility;
+      if (max_retries == 0) {
+        lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
+      } else {
+        lineage_eligibility = LineageReconstructionEligibility::ELIGIBLE;
+      }
+      reference_counter_.AddOwnedObject(return_id,
+                                        /*contained_ids=*/{},
+                                        caller_address,
+                                        call_site,
+                                        -1,
+                                        lineage_eligibility,
+                                        /*add_local_ref=*/true,
+                                        /*pinned_at_node_id=*/std::optional<NodeID>(),
+                                        tensor_transport);
+    }
+
+    refs.return_ids.push_back(return_id);
+    rpc::ObjectReference ref;
+    ref.set_object_id(return_id.Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    if (tensor_transport.has_value()) {
+      ref.set_tensor_transport(*tensor_transport);
+      reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_id,
+                                                            free_actor_object_callback_);
+    }
+
+    refs.returned_refs.push_back(std::move(ref));
+  }
+
+  return refs;
+}
+
+void TaskManager::RegisterPendingTaskSpec(const TaskSpecification &spec,
+                                          const std::string &call_site,
+                                          int max_retries,
+                                          std::vector<ObjectID> return_ids) {
   int32_t max_oom_retries =
       (max_retries != 0) ? RayConfig::instance().task_oom_retries() : 0;
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries, " << max_oom_retries << " oom retries";
 
-  // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -265,62 +312,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     task_deps.push_back(actor_creation_return_id);
   }
 
-  // Add new owned objects for the return values of the task.
-  size_t num_returns = spec.NumReturns();
-  std::vector<rpc::ObjectReference> returned_refs;
-  returned_refs.reserve(num_returns);
-  std::vector<ObjectID> return_ids;
-  return_ids.reserve(num_returns);
-  auto tensor_transport = spec.TensorTransport();
-  for (size_t i = 0; i < num_returns; i++) {
-    auto return_id = spec.ReturnId(i);
-    if (!spec.IsActorCreationTask()) {
-      LineageReconstructionEligibility lineage_eligibility;
-      if (max_retries == 0) {
-        lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
-      } else {
-        lineage_eligibility = LineageReconstructionEligibility::ELIGIBLE;
-      }
-      // We pass an empty vector for inner IDs because we do not know the return
-      // value of the task yet. If the task returns an ID(s), the worker will
-      // publish the WaitForRefRemoved message that we are now a borrower for
-      // the inner IDs. Note that this message can be received *before* the
-      // PushTaskReply.
-      // NOTE(swang): We increment the local ref count to ensure that the
-      // object is considered in scope before we return the ObjectRef to the
-      // language frontend. Note that the language bindings should set
-      // skip_adding_local_ref=True to avoid double referencing the object.
-      reference_counter_.AddOwnedObject(return_id,
-                                        /*contained_ids=*/{},
-                                        caller_address,
-                                        call_site,
-                                        -1,
-                                        lineage_eligibility,
-                                        /*add_local_ref=*/true,
-                                        /*pinned_at_node_id=*/std::optional<NodeID>(),
-                                        tensor_transport);
-    }
-
-    return_ids.push_back(return_id);
-    rpc::ObjectReference ref;
-    auto return_object_id = spec.ReturnId(i);
-    ref.set_object_id(return_object_id.Binary());
-    ref.mutable_owner_address()->CopyFrom(caller_address);
-    ref.set_call_site(call_site);
-    if (tensor_transport.has_value()) {
-      ref.set_tensor_transport(*tensor_transport);
-      // Register the callback to free the GPU object when it is out of scope.
-      reference_counter_.AddObjectOutOfScopeOrFreedCallback(return_object_id,
-                                                            free_actor_object_callback_);
-    }
-
-    returned_refs.push_back(std::move(ref));
-  }
-
   reference_counter_.UpdateSubmittedTaskReferences(return_ids, task_deps);
 
-  // If it is a generator task, create an object ref stream.
-  // The language frontend is responsible for calling DeleteObjectRefStream.
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
@@ -334,8 +327,12 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    auto inserted = submissible_tasks_.try_emplace(
-        spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
+    auto inserted = submissible_tasks_.try_emplace(spec.TaskId(),
+                                                   spec,
+                                                   max_retries,
+                                                   spec.NumReturns(),
+                                                   task_counter_,
+                                                   max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
@@ -347,8 +344,22 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       spec,
       rpc::TaskStatus::PENDING_ARGS_AVAIL,
       /* include_task_info */ true));
+}
 
-  return returned_refs;
+std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
+    const rpc::Address &caller_address,
+    const TaskSpecification &spec,
+    const std::string &call_site,
+    int max_retries) {
+  auto refs = AddPendingTaskReferences(caller_address,
+                                       spec.TaskId(),
+                                       spec.NumReturns(),
+                                       call_site,
+                                       max_retries,
+                                       spec.IsActorCreationTask(),
+                                       spec.TensorTransport());
+  RegisterPendingTaskSpec(spec, call_site, max_retries, refs.return_ids);
+  return refs.returned_refs;
 }
 
 std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
