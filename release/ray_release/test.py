@@ -564,6 +564,9 @@ class Test(dict):
     def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
         byod_type = self.get_byod_type()
+        # gpu-cu130 has no ray-ml image; it uses the base ray image instead.
+        if byod_type == "gpu-cu130":
+            return False
         return byod_type == "gpu" or byod_type.startswith("gpu-")
 
     def use_byod_llm_image(self) -> bool:

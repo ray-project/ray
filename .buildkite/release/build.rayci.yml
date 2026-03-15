@@ -239,11 +239,7 @@ steps:
       - ray-ml-anyscale-cuda-build
     matrix:
       setup:
-          python:
-            - "3.12"
-          platform:
-            - cu13.0.0-cudnn
-        adjustments:
-          - with:
-              python: "3.10"
-              platform: "cu12.1.1-cudnn8"
+        python:
+          - "3.10"
+        platform:
+          - cu12.1.1-cudnn8
