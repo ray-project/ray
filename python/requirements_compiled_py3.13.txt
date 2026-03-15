@@ -220,7 +220,7 @@ beautifulsoup4==4.11.1
     #   nbconvert
 billiard==4.2.1
     # via celery
-black==22.10.0
+black==26.3.1
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
