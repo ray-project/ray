@@ -3,6 +3,7 @@
 These tests require Ray and test end-to-end list namespace expression evaluation.
 """
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
@@ -175,6 +176,116 @@ class TestListNamespace:
             names=["flattened"],
         )
         assert result_table.select(["flattened"]).combine_chunks().equals(expected)
+
+    def _to_list(self, x):
+        """Helper to standardize NumPy arrays and Arrow objects for comparison."""
+        if isinstance(x, (np.ndarray, list)):
+            return [
+                None if (isinstance(v, float) and np.isnan(v)) else v for v in list(x)
+            ]
+        return x
+
+    def test_list_union(self, ray_start_regular_shared, dataset_format):
+        """Test list.union() computes the set union of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [], "list2": [1, 2]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("union_result", col("list1").list.union(col("list2")))
+
+        results = [row["union_result"] for row in result.take_all()]
+        results = sorted([self._to_list(r) for r in results], key=lambda x: str(x))
+
+        expected = sorted(
+            [[1, 2, 3, 4, 5], [1, 2, 3], [1, 2], [1, 2, None]], key=lambda x: str(x)
+        )
+        assert results == expected
+
+    def test_list_intersection(self, ray_start_regular_shared, dataset_format):
+        """Test list.intersection() computes the set intersection of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [1, 2], "list2": [3, 4]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column(
+            "intersection_result", col("list1").list.intersection(col("list2"))
+        )
+
+        results = [row["intersection_result"] for row in result.take_all()]
+        results = sorted([self._to_list(r) for r in results], key=lambda x: str(x))
+
+        expected = sorted([[3], [2], [], [None]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_difference(self, ray_start_regular_shared, dataset_format):
+        """Test list.difference() computes the set difference of two lists."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [1, 1, 2], "list2": [2, 3]},
+            {"list1": [1, 2], "list2": [3, 4]},
+            {"list1": [None, 1, 2], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column(
+            "difference_result", col("list1").list.difference(col("list2"))
+        )
+
+        results = [row["difference_result"] for row in result.take_all()]
+        results = sorted([self._to_list(r) for r in results], key=lambda x: str(x))
+
+        expected = sorted([[1, 2], [1], [1, 2], [1]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_symmetric_difference(self, ray_start_regular_shared, dataset_format):
+        """Test list.symmetric_difference() operation."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column(
+            "sym_diff", col("list1").list.symmetric_difference(col("list2"))
+        )
+
+        results = [row["sym_diff"] for row in result.take_all()]
+        results = sorted([self._to_list(r) for r in results], key=lambda x: str(x))
+
+        expected = sorted([[1, 2, 4, 5], [1, 2]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_set_operations_strings(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test set operations on lists of strings."""
+        data = [{"list1": ["a", "b", "c"], "list2": ["b", "c", "d"]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("union", col("list1").list.union(col("list2")))
+
+        results = [row["union"] for row in result.take_all()]
+        assert self._to_list(results[0]) == ["a", "b", "c", "d"]
+
+    def test_list_set_operations_mismatched_types(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test set operations when Arrow list inner types are mismatched (e.g., int32 vs int64)."""
+        if dataset_format != "arrow":
+            pytest.skip("Explicit type mismatch creation is specific to Arrow backend.")
+
+        arr1 = pa.array([[1, 2]], type=pa.list_(pa.int32()))
+        arr2 = pa.array([[2, 3]], type=pa.list_(pa.int64()))
+        table = pa.Table.from_arrays([arr1, arr2], names=["list1", "list2"])
+
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("union", col("list1").list.union(col("list2")))
+
+        results = [row["union"] for row in result.take_all()]
+        assert self._to_list(results[0]) == [1, 2, 3]
 
 
 if __name__ == "__main__":
