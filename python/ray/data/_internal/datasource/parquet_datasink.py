@@ -380,7 +380,11 @@ class ParquetDatasink(_FileDatasink):
         row_number_array = combined_pl[self.row_number_column_name].to_arrow()
 
         # Concatenate the original Arrow tables so all column types are preserved as-is.
-        arrow_combined = pa.concat_tables(tables, promote_options="default")
+        # Reuse the internal concat() which handles PyArrow version compatibility
+        # (promote_options vs promote kwarg) and extension type support.
+        from ray.data._internal.arrow_ops.transform_pyarrow import concat
+
+        arrow_combined = concat(tables, preserve_order=True)
 
         return arrow_combined.append_column(
             pa.field(self.row_number_column_name, pa.int64()),
