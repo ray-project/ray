@@ -473,11 +473,13 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
 
-        return IcebergWriteResult(
+        result = IcebergWriteResult(
             data_files=all_data_files,
             upsert_keys=upsert_keys,
             schemas=block_schemas,
         )
+
+        return result
 
     def _commit_overwrite(
         self, txn: "Table.transaction", data_files: List["DataFile"]
@@ -508,32 +510,96 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """
-        Complete the write by reconciling schemas and committing all data files.
-
-        This runs on the driver after all workers finish writing files.
-        Collects all DataFile objects and schemas from all workers, reconciles schemas
-        (allowing type promotion), updates table schema if needed, then performs a single
-        atomic commit.
+        Commit the write transaction to Iceberg.
+        This method is called on the driver after all write tasks have completed.
         """
         import time
 
         t_start = time.perf_counter()
         logger.info("[on_write_complete] Starting commit phase (mode=%s)", self._mode)
 
+        write_returns = write_result.write_returns
+
+        context = DataContext.get_current()
+        if context.checkpoint_config:
+            from ray.data.checkpoint.checkpoint_filter import IcebergCheckpointLoader
+
+            try:
+                existing_data_file_paths = set()
+                for r in write_returns:
+                    if not r or not r.data_files:
+                        continue
+                    for df in r.data_files:
+                        file_path = getattr(df, "file_path", None)
+                        if file_path is not None:
+                            existing_data_file_paths.add(file_path)
+
+                loader = IcebergCheckpointLoader(context.checkpoint_config)
+                previous_results = loader.load_write_results()
+                deduped_previous_results = []
+                num_skipped_results = 0
+                for r in previous_results:
+                    if not r:
+                        continue
+                    if r.data_files:
+                        all_duplicate = True
+                        for df in r.data_files:
+                            file_path = getattr(df, "file_path", None)
+                            if (
+                                file_path is None
+                                or file_path not in existing_data_file_paths
+                            ):
+                                all_duplicate = False
+                                break
+                        if all_duplicate:
+                            num_skipped_results += 1
+                            continue
+                        for df in r.data_files:
+                            file_path = getattr(df, "file_path", None)
+                            if file_path is not None:
+                                existing_data_file_paths.add(file_path)
+                    deduped_previous_results.append(r)
+
+                write_returns.extend(deduped_previous_results)
+                logger.info(
+                    "[on_write_complete] Loaded %d results from checkpoint (skipped_duplicates=%d, merged_total=%d)",
+                    len(deduped_previous_results),
+                    num_skipped_results,
+                    len(write_returns),
+                )
+            except Exception as e:
+                logger.warning(
+                    "[on_write_complete] Failed to load checkpoint results: %s", e
+                )
+
+        valid_results = [
+            r
+            for r in write_returns
+            if r and (r.data_files or (r.upsert_keys is not None))
+        ]
+
+        if not valid_results:
+            logger.info("[on_write_complete] No data to commit to Iceberg table.")
+            return
+
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
         upsert_keys_tables: List["pa.Table"] = []
+        seen_data_file_paths = set()
 
-        for write_return in write_result.write_returns:
-            if not write_return:
-                continue
-
-            if write_return.data_files:  # Only add schema if we have data files
-                all_data_files.extend(write_return.data_files)
-                all_schemas.extend(write_return.schemas)
-                if write_return.upsert_keys is not None:
-                    upsert_keys_tables.append(write_return.upsert_keys)
+        for result in valid_results:
+            if result.data_files:
+                for df in result.data_files:
+                    file_path = getattr(df, "file_path", None)
+                    if file_path is not None:
+                        if file_path in seen_data_file_paths:
+                            continue
+                        seen_data_file_paths.add(file_path)
+                    all_data_files.append(df)
+                all_schemas.extend(result.schemas)
+                if result.upsert_keys is not None:
+                    upsert_keys_tables.append(result.upsert_keys)
 
         logger.info(
             "[on_write_complete] Collected results: %d data files, %d schema blocks, "

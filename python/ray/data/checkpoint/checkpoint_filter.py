@@ -1,7 +1,7 @@
 import abc
 import logging
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import numpy
 import pyarrow
@@ -169,6 +169,63 @@ class IdColumnCheckpointLoader(CheckpointLoader):
         """
         # Sort by the ID column.
         return checkpoint_ds.sort(self.id_column)
+
+
+class IcebergCheckpointLoader:
+    """Loader for Iceberg write results."""
+
+    def __init__(self, config: CheckpointConfig):
+        self.config = config
+        self.filesystem = config.filesystem
+        self.path = _unwrap_protocol(config.checkpoint_path)
+
+    def load_write_results(self) -> List[Any]:
+        import pickle
+
+        results = []
+        try:
+            selector = pyarrow.fs.FileSelector(self.path)
+            info_list = self.filesystem.get_file_info(selector)
+            for info in info_list:
+                if info.type == pyarrow.fs.FileType.File:
+                    # Match "{uuid}.meta.pkl"
+                    if info.base_name.endswith(".meta.pkl"):
+                        try:
+                            with self.filesystem.open_input_stream(info.path) as f:
+                                results.append(pickle.load(f))
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to load checkpoint metadata {info.base_name}: {e}"
+                            )
+        except Exception as e:
+            logger.warning(f"Failed to list checkpoint directory: {e}")
+        return results
+
+    def get_checkpoint_ids(self, id_col: str) -> "set[Any]":
+        """Load all IDs from the checkpoint files."""
+        try:
+            # Check if there are any parquet files first to avoid read_parquet error on empty dir
+            selector = pyarrow.fs.FileSelector(self.path)
+            info_list = self.filesystem.get_file_info(selector)
+            has_parquet = any(
+                f.base_name.endswith(".parquet")
+                for f in info_list
+                if f.type == pyarrow.fs.FileType.File
+            )
+
+            if not has_parquet:
+                return set()
+
+            ds = ray.data.read_parquet(
+                self.config.checkpoint_path,
+                filesystem=self.filesystem,
+                columns=[id_col],
+            )
+            rows = ds.take_all()
+            return {row[id_col] for row in rows}
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint IDs: {e}")
+            return set()
 
 
 class BatchBasedCheckpointFilter(CheckpointFilter):
