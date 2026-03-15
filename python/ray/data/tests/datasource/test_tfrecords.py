@@ -2,7 +2,6 @@ import json
 import os
 import sys
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -457,38 +456,6 @@ def test_read_tfrecords(
     assert np.array_equal(df["string_empty"][0], np.array([], dtype=np.bytes_))
 
 
-@pytest.fixture
-def mock_ray_data_read_tfrecords(mocker):
-    mock_read_tfrecords = mocker.patch("ray.data.read_tfrecords")
-    mock_read_tfrecords.return_value = MagicMock(spec=Dataset)
-    return mock_read_tfrecords
-
-
-@pytest.mark.parametrize("num_cpus", [1, 2, 4])
-def test_read_tfrecords_ray_remote_args(
-    ray_start_regular_shared_2_cpus,
-    mock_ray_data_read_tfrecords,
-    tmp_path,
-    num_cpus,
-):
-    import tensorflow as tf
-
-    example = tf_records_empty()[0]
-    path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
-        writer.write(example.SerializeToString())
-    ray_remote_args = {"num_cpus": num_cpus}
-    ds = read_tfrecords_with_tfx_read_override(
-        paths=[path],
-        ray_remote_args=ray_remote_args,
-    )
-    assert isinstance(ds, Dataset)
-    mock_ray_data_read_tfrecords.assert_called_once()
-    args, kwargs = mock_ray_data_read_tfrecords.call_args
-    assert kwargs["paths"] == [path]
-    assert kwargs["ray_remote_args"] == ray_remote_args
-
-
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
@@ -775,19 +742,6 @@ def test_read_with_invalid_schema(
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
     )
-
-
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(
-    tmp_path, ray_start_regular_shared_2_cpus, min_rows_per_file
-):
-    ray.data.range(100, override_num_blocks=20).write_tfrecords(
-        tmp_path, min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
-        assert len(list(dataset)) == min_rows_per_file
 
 
 def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):

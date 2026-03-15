@@ -4,10 +4,15 @@ from urllib.parse import urlparse
 
 import pyarrow
 import pytest
+from fsspec.implementations.http import HTTPFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data.tests.mock_http_server import *
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -468,6 +473,55 @@ def test_read_s3_file_error(shutdown_only, s3_path):
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
         )
         _handle_read_os_error(error, dummy_path)
+
+
+def test_read_ray_remote_args(ray_start_cluster, tmp_path):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"foo": 100},
+        num_cpus=1,
+        _system_config={"max_direct_call_object_size": 0},
+    )
+    cluster.add_node(resources={"bar": 100}, num_cpus=1)
+
+    ray.shutdown()
+    ray.init(cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
+
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+    with open(os.path.join(path, "file2.txt"), "w") as f:
+        f.write("goodbye")
+
+    ds = ray.data.read_text(
+        path, override_num_blocks=2, ray_remote_args={"resources": {"bar": 1}}
+    )
+
+    block_refs = _ref_bundles_iterator_to_block_refs_list(
+        ds.iter_internal_ref_bundles()
+    )
+    ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(block_refs)
+    locations = []
+    for block in block_refs:
+        locations.extend(location_data[block]["node_ids"])
+    assert set(locations) == {bar_node_id}, locations
+    assert ds.count() == 3
+
+
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() > 0
+    ds = ray.data.read_text(http_file)
+    assert ds.count() > 0
 
 
 if __name__ == "__main__":
