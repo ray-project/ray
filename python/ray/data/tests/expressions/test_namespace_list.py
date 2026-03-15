@@ -242,6 +242,51 @@ class TestListNamespace:
         expected = sorted([[1, 2], [1], [1, 2], [1]], key=lambda x: str(x))
         assert results == expected
 
+    def test_list_symmetric_difference(self, ray_start_regular_shared, dataset_format):
+        """Test list.symmetric_difference() operation."""
+        data = [
+            {"list1": [1, 2, 3], "list2": [3, 4, 5]},
+            {"list1": [None, 1], "list2": [2, None]},
+        ]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column(
+            "sym_diff", col("list1").list.symmetric_difference(col("list2"))
+        )
+
+        results = [row["sym_diff"] for row in result.take_all()]
+        results = sorted([self._to_list(r) for r in results], key=lambda x: str(x))
+
+        expected = sorted([[1, 2, 4, 5], [1, 2]], key=lambda x: str(x))
+        assert results == expected
+
+    def test_list_set_operations_strings(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test set operations on lists of strings."""
+        data = [{"list1": ["a", "b", "c"], "list2": ["b", "c", "d"]}]
+        ds = _create_dataset(data, dataset_format)
+        result = ds.with_column("union", col("list1").list.union(col("list2")))
+
+        results = [row["union"] for row in result.take_all()]
+        assert self._to_list(results[0]) == ["a", "b", "c", "d"]
+
+    def test_list_set_operations_mismatched_types(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test set operations when Arrow list inner types are mismatched (e.g., int32 vs int64)."""
+        if dataset_format != "arrow":
+            pytest.skip("Explicit type mismatch creation is specific to Arrow backend.")
+
+        arr1 = pa.array([[1, 2]], type=pa.list_(pa.int32()))
+        arr2 = pa.array([[2, 3]], type=pa.list_(pa.int64()))
+        table = pa.Table.from_arrays([arr1, arr2], names=["list1", "list2"])
+
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+        result = ds.with_column("union", col("list1").list.union(col("list2")))
+
+        results = [row["union"] for row in result.take_all()]
+        assert self._to_list(results[0]) == [1, 2, 3]
+
 
 if __name__ == "__main__":
     import sys

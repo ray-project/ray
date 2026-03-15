@@ -334,21 +334,70 @@ class _ListNamespace:
 
         return _list_flatten(self._expr)
 
-    def union(self, other: "Expr") -> "UDFExpr":
-        return self._apply_set_operation(other, "union")
+    def union(self, other: "Expr", ordered: bool = True) -> "UDFExpr":
+        """Compute the set union of elements in each list with another list.
 
-    def intersection(self, other: "Expr") -> "UDFExpr":
-        return self._apply_set_operation(other, "intersection")
+        Args:
+            other: The list expression to compute the union with.
+            ordered: Whether to sort the resulting list. Defaults to True.
 
-    def difference(self, other: "Expr") -> "UDFExpr":
-        return self._apply_set_operation(other, "difference")
+        Returns:
+            UDFExpr containing the unique elements present in either list.
+        """
+        return self._apply_set_operation(other, "union", ordered)
 
-    def _apply_set_operation(self, other: "Expr", op_name: str) -> "UDFExpr":
-        """Private helper to apply set operations safely and consistently."""
+    def intersection(self, other: "Expr", ordered: bool = True) -> "UDFExpr":
+        """Compute the set intersection of elements in each list with another list.
+
+        Args:
+            other: The list expression to compute the intersection with.
+            ordered: Whether to sort the resulting list. Defaults to True.
+
+        Returns:
+            UDFExpr containing only the elements present in both lists.
+        """
+        return self._apply_set_operation(other, "intersection", ordered)
+
+    def difference(self, other: "Expr", ordered: bool = True) -> "UDFExpr":
+        """Compute the set difference between each list and another list.
+
+        Args:
+            other: The list expression to subtract from the first list.
+            ordered: Whether to sort the resulting list. Defaults to True.
+
+        Returns:
+            UDFExpr containing elements present in the first list but not the second.
+        """
+        return self._apply_set_operation(other, "difference", ordered)
+
+    def symmetric_difference(self, other: "Expr", ordered: bool = True) -> "UDFExpr":
+        """Compute the symmetric difference of elements in each list with another list.
+
+        Args:
+            other: The list expression to compute the symmetric difference with.
+            ordered: Whether to sort the resulting list. Defaults to True.
+
+        Returns:
+            UDFExpr containing elements present in either list, but not both.
+        """
+        return self._apply_set_operation(other, "symmetric_difference", ordered)
+
+    def _apply_set_operation(
+        self, other: "Expr", op_name: str, ordered: bool
+    ) -> "UDFExpr":
+        """Private helper to apply set operations safely and consistently.
+
+        Null semantics:
+        - If an input row evaluates to None, the output is None.
+        - If lists contain None as an element, None is preserved and appended
+          at the end of the result list (common in systems that sort nulls last).
+        """
         return_dtype = self._expr.data_type
 
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_set_op(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
+            # TODO: Optimize with native Arrow compute kernels (e.g., using
+            # pc.list_flatten + pc.is_in) to avoid this to_pylist() round-trip overhead.
             pa_type = arr1.type
 
             result = []
@@ -363,9 +412,13 @@ class _ListNamespace:
                     if has_null:
                         op_set.remove(None)
 
-                    try:
-                        res_list = sorted(op_set)
-                    except TypeError:
+                    if ordered:
+                        try:
+                            res_list = sorted(op_set)
+                        except TypeError:
+                            # Fallback to arbitrary ordering if elements are non-comparable
+                            res_list = list(op_set)
+                    else:
                         res_list = list(op_set)
 
                     if has_null:
