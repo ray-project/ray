@@ -9,7 +9,7 @@ from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
-from ray.data.datasource.filename_provider import FilenameProvider
+from ray.data.datasource.filename_provider import FilenameProvider, _DefaultFilenameProvider
 
 if TYPE_CHECKING:
     import pyarrow
@@ -171,6 +171,7 @@ class ParquetDatasink(_FileDatasink):
             file_format=FILE_FORMAT,
             mode=mode,
         )
+        self._warned_custom_filename_not_templated = False
 
     def write(
         self,
@@ -249,8 +250,16 @@ class ParquetDatasink(_FileDatasink):
             # No extension and not templatized, add extension and template
             basename_template = f"{filename}-{{i}}.{FILE_FORMAT}"
         else:
-            # TODO(@goutamvenkat-anyscale): Add a warning if you pass in a custom
-            # filename provider and it isn't templatized.
+            if (
+                not self._warned_custom_filename_not_templated
+                and not isinstance(self.filename_provider, _DefaultFilenameProvider)
+            ):
+                logger.warning(
+                    "Custom FilenameProvider returned non-templatized filename '%s'. "
+                    "Ray Data will append '-{i}' to avoid file overwrite conflicts.",
+                    filename,
+                )
+                self._warned_custom_filename_not_templated = True
             # Use pathlib.Path to properly handle filenames with dots
             filename_path = Path(filename)
             stem = filename_path.stem  # filename without extension
