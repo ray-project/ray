@@ -116,6 +116,9 @@ class GPUTestActor:
     def block_main_thread(self, signal_actor):
         ray.get(signal_actor.wait.remote())
 
+    def get_nixl_transport_metadata(self, obj_id: str):
+        return get_tensor_transport_manager("NIXL")._get_meta(obj_id)
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ray_get_rdt_ref_created_by_actor_task(ray_start_regular):
@@ -600,6 +603,64 @@ def test_register_nixl_memory(ray_start_regular):
     assert key in transport._tensor_desc_cache
     # The reference count should be 1 due to being bumped by register_nixl_memory
     assert transport._tensor_desc_cache[key].metadata_count == 1
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_memory_pool(ray_start_regular, device):
+    """
+    Test NIXL memory pool: use the pre-allocated memory pool for NIXL transfers when available.
+    """
+    runtime_env = {
+        "env_vars": {
+            "RAY_NIXL_MEMORY_POOL_ENABLED": "1",
+            "RAY_NIXL_CPU_MEMORY_POOL_SIZE": "48" if device == "cpu" else "0",
+            "RAY_NIXL_GPU_MEMORY_POOL_SIZE": "48" if device == "cuda" else "0",
+        }
+    }
+    src_actor = GPUTestActor.options(runtime_env=runtime_env).remote()
+    dst_actor = GPUTestActor.remote()
+
+    # Transfer the first small tensor (using memory pool internally).
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to(device), device)
+    assert ray.get(dst_actor.sum.remote(ref1, device)) == 6
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref1.hex())).pool_offsets
+        is not None
+    )
+
+    # Transfer the second small tensor (using memory pool internally).
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to(device), device)
+    assert ray.get(dst_actor.sum.remote(ref2, device)) == 15
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref2.hex())).pool_offsets
+        is not None
+    )
+
+    # Transfer the third small tensor (falling back to traditional mode).
+    ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to(device), device)
+    assert ray.get(dst_actor.sum.remote(ref3, device)) == 24
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref3.hex())).pool_offsets
+        is None
+    )
+
+    del ref1, ref2
+
+    # Wait for GC to free the tensors on the sender.
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 1,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Transfer the fourth tensor (after GC,using memory pool internally).
+    ref4 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to(device), device)
+    assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref4.hex())).pool_offsets
+        is not None
+    )
 
 
 if __name__ == "__main__":
