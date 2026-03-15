@@ -321,6 +321,45 @@ actor = A.remote()
     assert "max_concurrency must be greater than 0" in output
 
 
+def test_per_group_independent_ordering(ray_start_regular_shared):
+    """
+    Verify that a blocking task on one concurrency group doesn't affect another
+    even on an in-order actor. Sequencing should be independent per concurrency group.
+    When group_a has a long-running task, multiple sequential tasks submitted to group_b
+    should still be able to complete in order.
+    """
+
+    @ray.remote
+    def dependency_task(signal):
+        ray.get(signal.wait.remote())
+
+    @ray.remote(concurrency_groups={"group_a": 1, "group_b": 1})
+    class MyActor:
+        @ray.method(concurrency_group="group_a")
+        async def slow_a(self, _blocking_ref):
+            return "a_done"
+
+        @ray.method(concurrency_group="group_b")
+        def fast_b(self, index):
+            return f"b_{index}"
+
+    signal = SignalActor.remote()
+    actor = MyActor.remote()
+
+    # ref_a will be blocked in dependency resolution
+    ref = dependency_task.remote(signal)
+    ref_a = actor.slow_a.remote(ref)
+
+    # Tasks on group_b should still be able to finish
+    refs_b = [actor.fast_b.remote(i) for i in range(5)]
+    results_b = ray.get(refs_b)
+    assert results_b == [f"b_{i}" for i in range(5)]
+
+    # Unblock group_a and verify it completes.
+    ray.get(signal.send.remote())
+    assert ray.get(ref_a) == "a_done"
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))

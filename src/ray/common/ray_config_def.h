@@ -86,6 +86,26 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
+/// The reserved memory bytes for system processes
+/// enforced via cgroup memory.low constraint which only
+/// reclaims the system processes' memory when nothing else can be reclaimed.
+/// Default is 0, meaning no memory.low constraint is applied.
+RAY_CONFIG(int64_t, system_memory_bytes_low, 0)
+
+/// The proportion of total memory the user processes are allowed to use.
+/// Enforced by the cgroup memory.high constraint which throttles the
+/// user processes' when the threshold is reached.
+/// Default is 1.0, meaning the user processes are allowed to use 100% of the total
+/// memory.
+RAY_CONFIG(float, user_memory_proportion_high, 1.0)
+
+/// The proportion of total memory the user processes are allowed to use.
+/// Enforced by the cgroup memory.max constraint which triggers the
+//. kernel OOM killer when the threshold is reached.
+/// Default is 1.0, meaning the user processes are allowed to use 100% of the total
+/// memory.
+RAY_CONFIG(float, user_memory_proportion_max, 1.0)
+
 /// The TTL for when the task failure entry is considered
 /// eligible for garbage collection.
 RAY_CONFIG(uint64_t, task_failure_entry_ttl_ms, 15 * 60 * 1000)
@@ -954,7 +974,7 @@ RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
 // The number of grpc clients between object managers.
-RAY_CONFIG(int, object_manager_client_connection_num, 4)
+RAY_CONFIG(int, object_manager_client_connection_num, 2)
 
 // The actual number of threads for object transfers through the object manager is this
 // number * 3. There num_threads started for each of these 3 things:
@@ -1046,3 +1066,7 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
 RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+
+// Whether to enable/disable multiple gRPC connections to improve object transfer
+// throughput.
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)

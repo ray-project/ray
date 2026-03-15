@@ -452,7 +452,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
     return;
   }
 
-  RAY_LOG(DEBUG).WithField(node_id).WithField(node_id)
+  RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
       << "Sending object chunks of object to node, number of chunks: "
       << chunk_reader->GetNumChunks()
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
