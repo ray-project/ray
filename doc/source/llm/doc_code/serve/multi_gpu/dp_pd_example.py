@@ -69,6 +69,7 @@ prefill_config = LLMConfig(
         # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
+        "enforce_eager": True,  # Skip CUDA graph capture for CI compatibility
     },
     experimental_configs={
         "dp_size_per_node": 2,
@@ -90,6 +91,7 @@ decode_config = LLMConfig(
         # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
+        "enforce_eager": True,  # Skip CUDA graph capture for CI compatibility
     },
     experimental_configs={
         "dp_size_per_node": 2,

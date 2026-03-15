@@ -17,6 +17,7 @@ config = vLLMEngineProcessorConfig(
         "enable_chunked_prefill": True,
         "max_num_batched_tokens": 4096,  # Reduce if CUDA OOM occurs
         "max_model_len": 4096,  # Constrain to fit test GPU memory
+        "enforce_eager": True,  # Skip CUDA graph capture for CI compatibility
     },
     concurrency=1,
     batch_size=64,
