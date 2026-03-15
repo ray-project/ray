@@ -1,9 +1,11 @@
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.train import BackendConfig
+from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ResizeDecision,
@@ -11,8 +13,14 @@ from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, Worker
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
+    RunSettings,
     RunStatus,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -20,11 +28,14 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
 from ray.train.v2._internal.state.util import (
+    construct_data_config,
     current_time_ns,
     mark_workers_dead,
     update_train_run_aborted,
     update_train_run_attempt_aborted,
 )
+from ray.train.v2._internal.util import TrainingFramework
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +58,57 @@ class TrainStateManager:
         job_id: str,
         controller_actor_id: str,
         controller_log_file_path: str,
+        run_config: RunConfig,
+        train_loop_config: Optional[Dict[str, Any]],
+        scaling_config: ScalingConfig,
+        backend_config: BackendConfig,
+        datasets: Dict[str, ray.data.Dataset],
+        dataset_config: DataConfig,
     ) -> None:
+
+        run_config_schema = RunConfigSchema(
+            name=run_config.name,
+            failure_config=FailureConfigSchema(
+                max_failures=run_config.failure_config.max_failures,
+                controller_failure_limit=run_config.failure_config.controller_failure_limit,
+            ),
+            worker_runtime_env=run_config.worker_runtime_env,
+            checkpoint_config=CheckpointConfigSchema(
+                num_to_keep=run_config.checkpoint_config.num_to_keep,
+                checkpoint_score_attribute=run_config.checkpoint_config.checkpoint_score_attribute,
+                checkpoint_score_order=run_config.checkpoint_config.checkpoint_score_order,
+            ),
+            storage_path=run_config.storage_path,
+            storage_filesystem=str(run_config.storage_filesystem)
+            if run_config.storage_filesystem is not None
+            else None,
+        )
+
+        scaling_config_schema = ScalingConfigSchema(
+            num_workers=scaling_config.num_workers,
+            use_gpu=scaling_config.use_gpu,
+            resources_per_worker=scaling_config.resources_per_worker,
+            placement_strategy=scaling_config.placement_strategy,
+            accelerator_type=scaling_config.accelerator_type,
+            use_tpu=scaling_config.use_tpu,
+            topology=scaling_config.topology,
+            bundle_label_selector=scaling_config.bundle_label_selector,
+        )
+
+        backend_config_schema = BackendConfigSchema(
+            framework=backend_config.framework,
+            config=backend_config.to_dict(),
+        )
+
+        run_settings = RunSettings(
+            train_loop_config=train_loop_config,
+            backend_config=backend_config_schema,
+            scaling_config=scaling_config_schema,
+            datasets=list(datasets.keys()),
+            data_config=construct_data_config(dataset_config),
+            run_config=run_config_schema,
+        )
+
         run = TrainRun(
             id=id,
             name=name,
@@ -56,7 +117,10 @@ class TrainStateManager:
             status_detail=None,
             controller_actor_id=controller_actor_id,
             start_time_ns=current_time_ns(),
+            end_time_ns=None,
             controller_log_file_path=controller_log_file_path,
+            framework_versions={"ray": ray.__version__},
+            run_settings=run_settings,
         )
         self._runs[run.id] = run
         self._create_or_update_train_run(run)
@@ -132,6 +196,13 @@ class TrainStateManager:
     ):
         run = self._runs[run_id]
         update_train_run_aborted(run=run, graceful=True)
+        self._create_or_update_train_run(run)
+
+    def update_train_run_framework_versions(
+        self, run_id: str, framework_versions: Dict[str, str]
+    ):
+        run = self._runs[run_id]
+        run.framework_versions = framework_versions
         self._create_or_update_train_run(run)
 
     def create_train_run_attempt(
@@ -222,6 +293,10 @@ class TrainStateManager:
         run_attempt = self._run_attempts[run_id][attempt_id]
         update_train_run_attempt_aborted(run_attempt=run_attempt, graceful=True)
         self._create_or_update_train_run_attempt(run_attempt)
+
+    def get_train_run_framework(self, run_id: str) -> Optional[TrainingFramework]:
+        run = self._runs[run_id]
+        return run.run_settings.backend_config.framework
 
     def _create_or_update_train_run(self, run: TrainRun) -> None:
         ref = self._state_actor.create_or_update_train_run.remote(run)

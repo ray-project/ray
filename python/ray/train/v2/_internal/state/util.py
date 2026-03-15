@@ -1,7 +1,10 @@
 import time
 
+from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
+from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    DataConfig as DataConfigSchema,
     RunAttemptStatus,
     RunStatus,
     TrainRun,
@@ -49,3 +52,34 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
     """Returns whether actor is alive."""
     actor_state = get_actor(actor_id, timeout=timeout)
     return actor_state and actor_state.state != "DEAD"
+
+
+def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
+    exec_options = data_config._execution_options
+
+    execution_options = (
+        None
+        if not exec_options
+        else {
+            ds_name: execution_options_to_dict(options)
+            for ds_name, options in exec_options.items()
+        }
+    )
+
+    return DataConfigSchema(
+        datasets_to_split=data_config._datasets_to_split,
+        execution_options=execution_options,
+        enable_shard_locality=data_config._enable_shard_locality,
+    )
+
+
+def execution_options_to_dict(execution_options: ExecutionOptions) -> dict:
+    """Convert this ExecutionOptions object to a dict."""
+    return {
+        "resource_limits": execution_options.resource_limits.to_resource_dict(),
+        "exclude_resources": execution_options.exclude_resources.to_resource_dict(),
+        "locality_with_output": execution_options.locality_with_output,
+        "preserve_order": execution_options.preserve_order,
+        "actor_locality_enabled": execution_options.actor_locality_enabled,
+        "verbose_progress": execution_options.verbose_progress,
+    }

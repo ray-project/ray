@@ -2,9 +2,10 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
+import ray
 from ray.train import Checkpoint
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
@@ -31,8 +32,15 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
+    BackendConfig as BackendConfigSchema,
+    CheckpointConfig as CheckpointConfigSchema,
+    DataConfig as DataConfigSchema,
+    FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
+    RunConfig as RunConfigSchema,
+    RunSettings,
     RunStatus,
+    ScalingConfig as ScalingConfigSchema,
     TrainResources,
     TrainRun,
     TrainRunAttempt,
@@ -172,6 +180,7 @@ def create_mock_train_run(
     end_time_ns: Optional[int] = None,
     id: Optional[str] = None,
     status_detail: Optional[str] = None,
+    train_loop_config: Optional[Dict] = None,
 ):
     return TrainRun(
         schema_version=0,
@@ -184,6 +193,41 @@ def create_mock_train_run(
         start_time_ns=time.time_ns(),
         end_time_ns=end_time_ns,
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
+        framework_versions={"ray": ray.__version__},
+        run_settings=RunSettings(
+            train_loop_config=train_loop_config,
+            backend_config=BackendConfigSchema(framework=None, config={}),
+            scaling_config=ScalingConfigSchema(
+                num_workers=1,
+                use_gpu=False,
+                resources_per_worker=None,
+                placement_strategy="PACK",
+                accelerator_type=None,
+                use_tpu=False,
+                topology=None,
+                bundle_label_selector=None,
+            ),
+            datasets=["dataset_1"],
+            data_config=DataConfigSchema(
+                datasets_to_split="all",
+                execution_options=None,
+                enable_shard_locality=True,
+            ),
+            run_config=RunConfigSchema(
+                name="test_run",
+                failure_config=FailureConfigSchema(
+                    max_failures=0, controller_failure_limit=-1
+                ),
+                worker_runtime_env={"type": "conda"},
+                checkpoint_config=CheckpointConfigSchema(
+                    num_to_keep=None,
+                    checkpoint_score_attribute=None,
+                    checkpoint_score_order="max",
+                ),
+                storage_path="s3://bucket/path",
+                storage_filesystem=None,
+            ),
+        ),
     )
 
 
@@ -210,7 +254,6 @@ def create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
-        schema_version=0,
         attempt_id=attempt_id,
         run_id=run_id or _RUN_ID,
         status=status,
