@@ -33,6 +33,7 @@ from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
@@ -1049,6 +1050,31 @@ def test_parquet_reader_batch_size(
     assert ds.count() == 1000
 
 
+def test_read_parquet_filter_deprecated_warns(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "data.parquet")
+    pq.write_table(pa.table({"a": [1, 2, 3, 4, 5]}), path)
+
+    with pytest.warns(DeprecationWarning, match="read_parquet"):
+        ds = ray.data.read_parquet(path, filter=pds.field("a") > 2)
+
+    assert sorted(row["a"] for row in ds.take_all()) == [3, 4, 5]
+
+
+def test_read_parquet_filter_and_dataset_filter_warns_and_combines(
+    ray_start_regular_shared, tmp_path
+):
+    path = os.path.join(tmp_path, "data.parquet")
+    pq.write_table(pa.table({"a": [1, 2, 3, 4, 5]}), path)
+
+    with pytest.warns(DeprecationWarning, match="read_parquet"):
+        ds = ray.data.read_parquet(path, filter=pds.field("a") > 2)
+
+    with pytest.warns(DeprecationWarning, match="combined with AND"):
+        rows = ds.filter(expr=col("a") < 5).take_all()
+
+    assert sorted(row["a"] for row in rows) == [3, 4]
+
+
 def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"spam": [1, 2, 3]})
     path = os.path.join(tmp_path, "data.parquet")
@@ -1627,9 +1653,9 @@ def test_max_block_size_none_respects_override_num_blocks(
 
     # Verify that the combined result contains the same data as the expected result
     # by checking that each column's non-null values match
-    for col in expected_df.columns:
-        expected_values = expected_df[col].dropna()
-        actual_values = out_df[col].dropna()
+    for col_name in expected_df.columns:
+        expected_values = expected_df[col_name].dropna()
+        actual_values = out_df[col_name].dropna()
         assert len(expected_values) == len(actual_values)
         assert set(expected_values) == set(actual_values)
 
@@ -2373,7 +2399,7 @@ def test_hive_partitioned_parquet_operations(
             Args:
                 columns: List of column names to track (identity mapping initially).
             """
-            self.names: dict[str, str] = {col: col for col in columns}
+            self.names: dict[str, str] = {column: column for column in columns}
 
         def __getitem__(self, key: str) -> str:
             return self.names[key]

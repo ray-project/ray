@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -314,6 +315,7 @@ class ParquetDatasource(Datasource):
         columns: Optional[List[str]] = None,
         dataset_kwargs: Optional[Dict[str, Any]] = None,
         to_batch_kwargs: Optional[Dict[str, Any]] = None,
+        read_filter: Optional["pyarrow.dataset.Expression"] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union["pyarrow.lib.Schema"]] = None,
@@ -411,6 +413,21 @@ class ParquetDatasource(Datasource):
 
         if to_batch_kwargs is None:
             to_batch_kwargs = {}
+        if "filter" in to_batch_kwargs:
+            warnings.warn(
+                "Passing `filter` via parquet read kwargs is deprecated and will be "
+                "removed in a future release. Use `read_parquet(...).filter(expr=...)` "
+                "with predicate expressions instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            to_batch_filter = to_batch_kwargs.pop("filter")
+            if read_filter is None:
+                read_filter = to_batch_filter
+            else:
+                read_filter = read_filter & to_batch_filter
+
+        self._read_filter = read_filter
 
         # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
         # network calls when `_ParquetDatasourceReader` is serialized. See
@@ -531,6 +548,19 @@ class ParquetDatasource(Datasource):
             if self._predicate_expr is not None
             else None
         )
+        if self._read_filter is not None:
+            if filter_expr is None:
+                filter_expr = self._read_filter
+            else:
+                warnings.warn(
+                    "Both `read_parquet(filter=...)` and `Dataset.filter(...)` were "
+                    "provided. The filters are combined with AND. "
+                    "`read_parquet(filter=...)` is deprecated; use "
+                    "`read_parquet(...).filter(expr=...)` instead.",
+                    DeprecationWarning,
+                    stacklevel=3,
+                )
+                filter_expr = filter_expr & self._read_filter
 
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
@@ -898,14 +928,6 @@ def _read_batches_from(
     # NOTE: Passed in kwargs overrides always take precedence
     # TODO deprecate to_batches_kwargs
     use_threads = to_batches_kwargs.pop("use_threads", use_threads)
-    # TODO: We should deprecate filter through the read_parquet API and only allow through dataset.filter()
-    filter_from_kwargs = to_batches_kwargs.pop("filter", None)
-    if filter_from_kwargs is not None:
-        filter_expr = (
-            filter_from_kwargs
-            if filter_expr is None
-            else filter_expr & filter_from_kwargs
-        )
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
