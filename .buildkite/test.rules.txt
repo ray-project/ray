@@ -94,11 +94,14 @@ python/requirements/
 @ python_dependencies
 ;
 
+# Things that need to execute on GPU's
 python/ray/dag/
 python/ray/experimental/channel/
 python/ray/experimental/rdt/
 python/ray/experimental/collective/
 python/ray/tests/rdt/
+python/ray/dashboard/modules/reporter/gpu_providers.py
+python/ray/tests/test_gpu_provider_on_gpu.py
 @ python cgraphs_direct_transport
 ;
 
