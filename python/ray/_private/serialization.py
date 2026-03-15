@@ -224,10 +224,21 @@ class SerializationContext:
                 rdt_manager = ray._private.worker.global_worker.rdt_manager
                 rdt_meta = rdt_manager.get_rdt_metadata(obj.hex())
                 if rdt_meta.tensor_transport_meta is None:
-                    raise NotImplementedError(
-                        f"Tensor transport metadata is not available for object id: {obj.hex()} at the time of borrowing. "
-                        "This is likely because the object you're trying to borrow an object that was not created on the "
-                        "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
+                    from ray._private import ray_constants
+
+                    timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                    tensor_transport_meta = (
+                        rdt_manager.wait_for_tensor_transport_metadata(
+                            obj.hex(), timeout
+                        )
+                    )
+                    if tensor_transport_meta is None:
+                        raise TimeoutError(
+                            f"Timed out after {timeout}s waiting for tensor transport metadata "
+                            f"for object {obj.hex()} during borrowing serialization."
+                        )
+                    rdt_meta = rdt_meta._replace(
+                        tensor_transport_meta=tensor_transport_meta
                     )
                 # We don't want to send over any target buffers the user set
                 if rdt_meta.target_buffers:

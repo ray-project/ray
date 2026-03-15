@@ -342,9 +342,6 @@ def test_out_of_order_actors(ray_start_regular):
     assert sum(results) == 1500
 
 
-@pytest.mark.skip(
-    "If the tensor metadata doesn't exist at the time of borrowing, this will fail."
-)
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_nixl_borrow_after_abort(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
