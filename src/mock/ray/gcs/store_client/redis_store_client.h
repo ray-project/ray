@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
+#include "gmock/gmock.h"
+#include "ray/gcs/store_client/redis_store_client.h"
+
 namespace ray {
 namespace gcs {
 
-class MockStoreClient : public StoreClient {
+class MockRedisStoreClient : public RedisStoreClient {
  public:
   MOCK_METHOD(void,
               AsyncPut,
