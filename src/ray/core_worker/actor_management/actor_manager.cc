@@ -251,6 +251,13 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                           /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
+    // Release pinned constructor arg refs when actor permanently dies.
+    // Non-detached actors with max_restarts > 0 have extra refs on their
+    // constructor args to keep them pinned in plasma for potential restarts.
+    if (!gcs::IsActorRestartable(actor_data) && release_actor_creation_refs_callback_) {
+      TaskID creation_task_id = TaskID::ForActorCreationTask(actor_id);
+      release_actor_creation_refs_callback_(creation_task_id);
+    }
     actor_task_submitter_.DisconnectActor(actor_id,
                                           actor_data.num_restarts(),
                                           /*dead=*/true,

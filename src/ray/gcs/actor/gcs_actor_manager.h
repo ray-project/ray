@@ -325,7 +325,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
                     const rpc::ActorDeathCause &death_cause,
                     std::function<void()> done_callback = nullptr,
                     std::optional<rpc::events::ActorLifecycleEvent::RestartReason>
-                        restart_reason = std::nullopt);
+                        restart_reason = std::nullopt,
+                    bool defer_scheduling = false);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -441,6 +442,9 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RestartActorForLineageReconstructionCallback>>
       actor_to_restart_for_lineage_reconstruction_callbacks_;
+  /// Actors in RESTARTING state with deferred scheduling, waiting for the owner
+  /// to request scheduling via an owner-driven restart RPC.
+  absl::flat_hash_set<ActorID> actors_pending_owner_scheduling_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.

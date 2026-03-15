@@ -52,9 +52,14 @@ void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
 void ActorCreator::AsyncRestartActorForLineageReconstruction(
     const ActorID &actor_id,
     uint64_t num_restarts_due_to_lineage_reconstructions,
-    rpc::StatusCallback callback) {
+    rpc::StatusCallback callback,
+    bool is_owner_driven_restart) {
   actor_client_.AsyncRestartActorForLineageReconstruction(
-      actor_id, num_restarts_due_to_lineage_reconstructions, callback);
+      actor_id,
+      num_restarts_due_to_lineage_reconstructions,
+      callback,
+      /*timeout_ms=*/-1,
+      is_owner_driven_restart);
 }
 
 void ActorCreator::AsyncReportActorOutOfScope(

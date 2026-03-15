@@ -540,6 +540,45 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
   }
 }
 
+void ReferenceCounter::AddActorCreationArgReferences(
+    const std::vector<ObjectID> &arg_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &arg_id : arg_ids) {
+    auto it = object_id_refs_.find(arg_id);
+    if (it == object_id_refs_.end()) {
+      // This can happen if a large argument is transparently passed by reference
+      // because we don't hold a Python reference to its ObjectID.
+      it = object_id_refs_.emplace(arg_id, Reference()).first;
+    }
+    bool was_in_use = it->second.RefCount() > 0;
+    it->second.submitted_task_ref_count++;
+    it->second.lineage_ref_count++;
+    if (!was_in_use && it->second.RefCount() > 0) {
+      SetNestedRefInUseRecursive(it);
+    }
+  }
+}
+
+void ReferenceCounter::RemoveActorCreationArgReferences(
+    const std::vector<ObjectID> &arg_ids, std::vector<ObjectID> *deleted) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &arg_id : arg_ids) {
+    auto it = object_id_refs_.find(arg_id);
+    if (it == object_id_refs_.end()) {
+      continue;
+    }
+    if (it->second.submitted_task_ref_count > 0) {
+      it->second.submitted_task_ref_count--;
+    }
+    if (it->second.lineage_ref_count > 0) {
+      it->second.lineage_ref_count--;
+    }
+    if (it->second.RefCount() == 0) {
+      DeleteReferenceInternal(it, deleted);
+    }
+  }
+}
+
 void ReferenceCounter::UpdateFinishedTaskReferences(
     const std::vector<ObjectID> &return_ids,
     const std::vector<ObjectID> &argument_ids,

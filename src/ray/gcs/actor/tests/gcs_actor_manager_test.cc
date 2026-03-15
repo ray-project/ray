@@ -25,6 +25,7 @@
 #include "mock/ray/gcs/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/protobuf_utils.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
@@ -568,12 +569,28 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   io_service_.run_one();
   ASSERT_EQ(finished_actors.size(), 1);
 
-  // Remove worker and then check that the actor is being restarted.
+  // Remove worker and then check that the non-detached actor goes RESTARTING
+  // with deferred scheduling (not scheduled until the owner requests it).
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  // Actor is not yet scheduled (deferred for owner).
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  drain_io_context();
 
-  // Add node and check that the actor is restarted.
+  // Simulate owner-driven scheduling via HandleRestartActorForLineageReconstruction
+  // with is_owner_driven_restart=true.
+  {
+    rpc::RestartActorForLineageReconstructionRequest request;
+    request.set_actor_id(actor->GetActorID().Binary());
+    request.set_is_owner_driven_restart(true);
+    rpc::RestartActorForLineageReconstructionReply reply;
+    gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+        request, &reply, [](auto, auto, auto) {});
+    drain_io_context();
+  }
+
+  // Now the actor should be scheduled.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(finished_actors.size(), 1);
@@ -581,8 +598,7 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   address.set_node_id(node_id2.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(finished_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetNodeID(), node_id2);
@@ -1504,13 +1520,27 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_EQ(created_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
-  // Remove node and then check that the actor is being restarted.
+  // Remove node. Non-detached actor goes RESTARTING with deferred scheduling.
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
   OnNodeDead(node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  // Actor is not yet scheduled (deferred for owner).
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  drain_io_context();
   fake_ray_event_recorder_->FlushBuffer();
 
-  // Add node and check that the actor is restarted.
+  // Simulate owner-driven scheduling.
+  {
+    rpc::RestartActorForLineageReconstructionRequest restart_request;
+    restart_request.set_actor_id(actor->GetActorID().Binary());
+    restart_request.set_is_owner_driven_restart(true);
+    rpc::RestartActorForLineageReconstructionReply restart_reply;
+    gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+        restart_request, &restart_reply, [](auto, auto, auto) {});
+    drain_io_context();
+  }
+
+  // Now the actor should be scheduled.
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   mock_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
@@ -1518,13 +1548,12 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   address.set_node_id(node_id2.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
-  io_service_.run_one();
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(created_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetNodeID(), node_id2);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
+  // Owner-driven scheduling does NOT increment lineage reconstruction counter.
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_lineage_reconstruction(), 0);
   ASSERT_EQ(actor->GetMutableTaskSpec()->attempt_number(), 1);
   gcs_table_storage_->ActorTable().Get(
@@ -1562,7 +1591,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   fake_ray_event_recorder_->FlushBuffer();
 
-  // Restart the actor due to linage reconstruction.
+  // Restart the actor due to lineage reconstruction.
   rpc::RestartActorForLineageReconstructionRequest request;
   request.set_actor_id(actor->GetActorID().Binary());
   request.set_num_restarts_due_to_lineage_reconstruction(
@@ -1570,8 +1599,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   rpc::RestartActorForLineageReconstructionReply reply;
   gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
       request, &reply, [](auto, auto, auto) {});
-  io_service_.run_one();
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   auto events = fake_ray_event_recorder_->FlushBuffer();
   bool found_lineage_restart_event = false;
@@ -1602,7 +1630,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   address.set_node_id(node_id3.Binary());
   actor->UpdateAddress(address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(created_actors.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetNodeID(), node_id3);
@@ -1978,11 +2006,28 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 0);
   ASSERT_FALSE(actor->GetActorTableData().preempted());
 
-  // First restart: actor is NOT preempted, so num_restarts should increment
+  // First restart: actor is NOT preempted, non-detached actor goes RESTARTING
+  // with deferred scheduling. Owner drives the scheduling.
   gcs_actor_manager_->OnWorkerDead(node_id, worker_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
-  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should increment
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);  // Deferred scheduling
   ASSERT_FALSE(actor->GetActorTableData().preempted());
+  drain_io_context();
+
+  // Owner-driven scheduling.
+  {
+    rpc::RestartActorForLineageReconstructionRequest restart_request;
+    restart_request.set_actor_id(actor->GetActorID().Binary());
+    restart_request.set_is_owner_driven_restart(true);
+    rpc::RestartActorForLineageReconstructionReply restart_reply;
+    gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+        restart_request, &restart_reply, [](auto, auto, auto) {});
+    drain_io_context();
+  }
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);  // Should increment
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  mock_actor_scheduler_->actors.pop_back();
 
   // Make the actor alive on a specific node again.
   auto new_address = RandomAddress();
@@ -1990,7 +2035,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   auto new_worker_id = WorkerID::FromBinary(new_address.worker_id());
   actor->UpdateAddress(new_address);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 1);
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 0);
@@ -2000,12 +2045,28 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   io_service_.run_one();
   ASSERT_TRUE(actor->GetActorTableData().preempted());
 
-  // Second restart: actor is preempted, so num_restarts and
-  // num_restarts_due_to_node_preemption should increment
+  // Second restart: actor is preempted, non-detached actor goes RESTARTING
+  // with deferred scheduling.
   gcs_actor_manager_->OnWorkerDead(new_node_id, new_worker_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);  // Deferred scheduling
+  drain_io_context();
+
+  // Owner-driven scheduling for preempted actor.
+  {
+    rpc::RestartActorForLineageReconstructionRequest restart_request;
+    restart_request.set_actor_id(actor->GetActorID().Binary());
+    restart_request.set_is_owner_driven_restart(true);
+    rpc::RestartActorForLineageReconstructionReply restart_reply;
+    gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+        restart_request, &restart_reply, [](auto, auto, auto) {});
+    drain_io_context();
+  }
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);  // Should increment
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);
+  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
+  mock_actor_scheduler_->actors.pop_back();
 
   // Make the actor alive on another node again
   auto new_address_2 = RandomAddress();
@@ -2013,7 +2074,7 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
   auto new_worker_id_2 = WorkerID::FromBinary(new_address_2.worker_id());
   actor->UpdateAddress(new_address_2);
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
-  io_service_.run_one();
+  drain_io_context();
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
   ASSERT_EQ(actor->GetActorTableData().num_restarts(), 2);
   ASSERT_EQ(actor->GetActorTableData().num_restarts_due_to_node_preemption(), 1);

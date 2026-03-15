@@ -163,15 +163,37 @@ std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_caus
 
 bool IsActorRestartable(const rpc::ActorTableData &actor) {
   RAY_CHECK_EQ(actor.state(), rpc::ActorTableData::DEAD);
-  return actor.death_cause().context_case() == ContextCase::kActorDiedErrorContext &&
-         actor.death_cause().actor_died_error_context().reason() ==
-             rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
-         ((actor.max_restarts() == -1) ||
-          (actor.max_restarts() > 0 && actor.preempted()) ||
-          // Restarts due to node preemption do not count towards max_restarts.
-          (static_cast<int64_t>(actor.num_restarts() -
-                                actor.num_restarts_due_to_node_preemption()) <
-           actor.max_restarts()));
+
+  bool has_remaining_restarts =
+      (actor.max_restarts() == -1) || (actor.max_restarts() > 0 && actor.preempted()) ||
+      // Restarts due to node preemption do not count towards max_restarts.
+      (static_cast<int64_t>(actor.num_restarts() -
+                            actor.num_restarts_due_to_node_preemption()) <
+       actor.max_restarts());
+
+  if (!has_remaining_restarts) {
+    return false;
+  }
+
+  if (actor.death_cause().context_case() != ContextCase::kActorDiedErrorContext) {
+    return false;
+  }
+
+  auto reason = actor.death_cause().actor_died_error_context().reason();
+
+  // Always restartable if out of scope (lineage reconstruction).
+  if (reason == rpc::ActorDiedErrorContext::OUT_OF_SCOPE) {
+    return true;
+  }
+
+  // Non-detached actors that died from worker/node death are restartable
+  // by their owner.
+  if (!actor.is_detached() && (reason == rpc::ActorDiedErrorContext::WORKER_DIED ||
+                               reason == rpc::ActorDiedErrorContext::NODE_DIED)) {
+    return true;
+  }
+
+  return false;
 }
 
 std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
