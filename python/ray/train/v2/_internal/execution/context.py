@@ -9,8 +9,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
+from ray._common.utils import env_float
 from ray.actor import ActorHandle
-from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
+from ray.train.v2._internal.constants import (
+    AWS_RETRYABLE_TOKENS,
+    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
+)
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
@@ -256,26 +261,33 @@ class TrainContext:
         if not checkpoint:
             return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
-        # Persist the checkpoint to the remote storage path.
         try:
+            # Persist the checkpoint to the remote storage path.
+
+            def slow_upload_warning(
+                stop_event: threading.Event, func_name: str
+            ) -> None:
+                elapsed = 0.0
+                interval = env_float(
+                    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+                    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
+                )
+                while not stop_event.wait(interval):
+                    elapsed += interval
+                    logger.warning(
+                        f"{func_name} for {checkpoint_dir_name} has been running for {elapsed}s. "
+                        f"If this is unexpected, check your upload function for issues."
+                    )
+
+            slow_upload_event = threading.Event()
+
             if checkpoint_upload_fn:
                 # Wraps the checkpoint_upload_fn such that a warning can be
-                #   logged every {interval} seconds.
-
-                def slow_upload_warning(
-                    stop_event: threading.Event, interval: int = 60
-                ) -> None:
-                    elapsed = 0
-                    while not stop_event.wait(interval):
-                        elapsed += interval
-                        logger.warning(
-                            f"checkpoint_upload_fn for {checkpoint_dir_name} has been running for {elapsed}s. "
-                            f"If this is unexpected, check your upload function for issues."
-                        )
-
-                slow_upload_event = threading.Event()
+                #   logged every {DEFAULT_COLLECTIVE_WARN_INTERVAL_S} seconds.
                 slow_upload_thread = threading.Thread(
-                    target=slow_upload_warning, args=(slow_upload_event,), daemon=True
+                    target=slow_upload_warning,
+                    args=(slow_upload_event, "checkpoint_upload_fn"),
+                    daemon=True,
                 )
                 slow_upload_thread.start()
 
@@ -286,6 +298,7 @@ class TrainContext:
                 finally:
                     slow_upload_event.set()
 
+                # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
                 if persisted_checkpoint is None or not isinstance(
                     persisted_checkpoint, ray.train.Checkpoint
                 ):
@@ -293,9 +306,24 @@ class TrainContext:
                         "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
                     )
             else:
-                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-                    checkpoint, checkpoint_dir_name
+                # Wraps the `storage_context.persist_current_checkpoint` such that
+                #  a warning can be logged every {DEFAULT_COLLECTIVE_WARN_INTERVAL_S} seconds.
+                slow_upload_thread = threading.Thread(
+                    target=slow_upload_warning,
+                    args=(slow_upload_event, "pyarrow.fs.copy_files"),
+                    daemon=True,
                 )
+                slow_upload_thread.start()
+
+                try:
+                    persisted_checkpoint = (
+                        self.storage_context.persist_current_checkpoint(
+                            checkpoint, checkpoint_dir_name
+                        )
+                    )
+                finally:
+                    slow_upload_event.set()
+
         except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
