@@ -26,9 +26,9 @@ class AutoscalerEventLogger:
     """
     Logs events related to the autoscaler.
 
-    When ONE-event is enabled (``RAY_enable_ray_event=true``), structured events
-    are published through the dashboard head and the legacy export-event logger
-    is skipped. Otherwise only the legacy export-event logger is used.
+    When ONE-event is enabled (``RAY_enable_python_ray_event=true``), structured
+    events are published through the dashboard head and the legacy export-event
+    logger is skipped. Otherwise only the legacy export-event logger is used.
 
     # TODO:
     - Add more logging for other events.

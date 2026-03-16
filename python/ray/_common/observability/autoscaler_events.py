@@ -16,8 +16,8 @@ from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
 
 
 def is_ray_event_enabled() -> bool:
-    """Check whether the ONE-event framework is active (``RAY_enable_ray_event``)."""
-    return ray_constants.RAY_ENABLE_RAY_EVENT
+    """Check whether Python-side ONE-event publishing is active."""
+    return ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT
 
 
 # ---------------------------------------------------------------------------
