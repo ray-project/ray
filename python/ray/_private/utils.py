@@ -1519,7 +1519,11 @@ def get_entrypoint_name():
         if hasattr(sys, "ps1"):
             prefix = "(interactive_shell) "
 
-        return prefix + list2cmdline(curr.cmdline())
+        # Mask any potential passwords in the command line arguments.
+        sanitized = [
+            re.sub(r"(--[\w-]*password=).*", r"\1****", arg) for arg in curr.cmdline()
+        ]
+        return prefix + list2cmdline(sanitized)
     except Exception:
         return "unknown"
 
