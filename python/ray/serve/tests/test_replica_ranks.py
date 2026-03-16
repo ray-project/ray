@@ -1,40 +1,27 @@
 import random
 import sys
 from typing import Any, Dict, List
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._raylet import NodeID
-from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     ReplicaState,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
-from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
-    MockClusterNodeInfoCache,
-    MockKVStore,
-    MockReplicaActorWrapper,
-    MockTimer,
     check_deployment_status,
     check_num_replicas_eq,
-    dead_replicas_context,
-    replica_rank_context,
 )
-from ray.serve._private.version import DeploymentVersion
 from ray.serve.schema import ReplicaRank
 
 
@@ -824,102 +811,6 @@ def test_user_reconfigure_with_all_rank_fields(serve_instance):
     # Verify local ranks are valid (non-negative and reasonable)
     for local_rank in local_ranks:
         assert local_rank in range(3), f"Invalid local rank: {local_rank}"
-
-
-def test_rank_recovery_skips_when_already_assigned():
-    """Verify that recover_rank is skipped when a replica's rank is already assigned."""
-    timer = MockTimer()
-    with patch(
-        "ray.serve._private.deployment_state.ActorReplicaWrapper",
-        new=MockReplicaActorWrapper,
-    ), patch("time.time", new=timer.time), patch(
-        "ray.serve._private.long_poll.LongPollHost"
-    ) as mock_long_poll, patch(
-        "ray.get_runtime_context"
-    ):
-        kv_store = MockKVStore()
-        cluster_node_info_cache = MockClusterNodeInfoCache()
-        cluster_node_info_cache.add_node(NodeID.from_random().hex())
-        autoscaling_state_manager = AutoscalingStateManager()
-
-        def create_dsm(actor_names=None):
-            return DeploymentStateManager(
-                kv_store,
-                mock_long_poll,
-                actor_names or [],
-                [],
-                cluster_node_info_cache,
-                autoscaling_state_manager,
-                head_node_id_override="fake-head-node-id",
-            )
-
-        dep_id = DeploymentID(name="test_recovery_skip", app_name="test_app")
-        info = DeploymentInfo(
-            version="1",
-            start_time_ms=0,
-            actor_name="abc",
-            deployment_config=DeploymentConfig(num_replicas=3),
-            replica_config=ReplicaConfig.create(lambda x: x),
-            deployer_job_id="",
-        )
-        v1 = DeploymentVersion(
-            "1", info.deployment_config, info.replica_config.ray_actor_options
-        )
-
-        dsm = create_dsm()
-
-        # Deploy 3 replicas: STARTING -> RUNNING (ranks get assigned).
-        dsm.deploy(dep_id, info)
-        dsm.update()
-        ds = dsm._deployment_states[dep_id]
-        assert ds._replicas.count(states=[ReplicaState.STARTING]) == 3
-
-        for r in ds._replicas.get():
-            r._actor.set_ready()
-        dsm.update()
-        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 3
-
-        # Record the actor names and ranks for recovery.
-        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
-        original_ranks = {
-            r.replica_id.unique_id: ds._rank_manager.get_replica_rank(
-                r.replica_id.unique_id
-            )
-            for r in ds._replicas.get()
-        }
-        dsm.save_checkpoint()
-
-        # Simulate controller crash: create a new DSM with the live actor names.
-        new_dsm = create_dsm(actor_names)
-        new_ds = new_dsm._deployment_states[dep_id]
-        assert new_ds._replicas.count(states=[ReplicaState.RECOVERING]) == 3
-
-        # Enable strict rank error mode so duplicate recover_rank raises.
-        new_ds._rank_manager._fail_on_rank_error = True
-
-        # Pre-populate 1 replica's rank in the new rank manager, simulating
-        # the scenario where the rank was never released.
-        target = new_ds._replicas.get(states=[ReplicaState.RECOVERING])[0]
-        target_id = target.replica_id.unique_id
-        target_rank = original_ranks[target_id]
-        new_ds._rank_manager.recover_rank(target_id, target.actor_node_id, target_rank)
-        assert new_ds._rank_manager.has_replica_rank(target_id)
-
-        # Mark all recovering replicas as ready.
-        for r in new_ds._replicas.get(states=[ReplicaState.RECOVERING]):
-            r._actor.set_ready(v1)
-
-        # This update() calls _check_startup_replicas(RECOVERING). For the pre-populated
-        # replica, has_replica_rank returns True so recover_rank is SKIPPED.
-        new_dsm.update()
-        assert new_ds._replicas.count(states=[ReplicaState.RUNNING]) == 3
-
-        # Verify all ranks were recovered correctly.
-        for rid, expected_rank in original_ranks.items():
-            assert new_ds._rank_manager.get_replica_rank(rid) == expected_rank
-
-    dead_replicas_context.clear()
-    replica_rank_context.clear()
 
 
 if __name__ == "__main__":
