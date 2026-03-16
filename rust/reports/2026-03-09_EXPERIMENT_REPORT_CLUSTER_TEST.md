@@ -1,5 +1,31 @@
 # Ray Rust Backend - Multi-Node Distributed Experiment Report
 
+## Repository Version
+
+**Branch:** `cc-to-rust-experimental`
+**Date:** March 9, 2026 (Run 2), earlier for Run 1
+
+To reproduce, check out the branch at the time of this experiment:
+
+```bash
+git clone --branch cc-to-rust-experimental https://github.com/istoica/ray.git
+cd ray/rust
+
+# Build all components
+cargo build --release -p ray-raylet -p ray-gcs
+cd ray-core-worker-pylib && maturin build --release --features python
+
+# Deploy: scp binaries + wheel to all nodes, pip install the wheel
+# Start GCS, raylets, workers, then driver (see Startup Sequence sections below)
+```
+
+Key files:
+- `rust/ray-gcs/` — Rust GCS server
+- `rust/ray-raylet/` — Rust Raylet
+- `rust/ray-core-worker-pylib/` — Rust CoreWorker (PyO3 bindings, `_raylet.so`)
+- `rust/examples/python/cluster-test/driver.py` — Driver script
+- `rust/examples/python/cluster-test/worker.py` — Worker script
+
 ## Overview
 
 This experiment demonstrates the Ray distributed computing framework running on a **100% Rust backend** across a 3-node AWS cluster. All core components — GCS server, Raylet, and CoreWorker — are implemented in Rust, with Python task functions executed via PyO3 bindings. No C++ files are used.

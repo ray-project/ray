@@ -2,8 +2,63 @@
 
 **Date:** March 15, 2026 (v4 — with borrow fix, all tests pass, 0 skipped)
 **Branch:** `cc-to-rust-experimental`
+**Commit:** `faa895b553` (borrow fix), `9dc8d513d9` (unit test fixes)
 **Instance:** `i-00ee0ba87b3e1d2ff` (Rust RDT), `i-06a3b97f68196b571` (Python RDT) — both terminated
 **Previous runs:** `i-001fb74c7c3d3ce4b`, `i-09c0b35d3d58c6fe7`, `i-04a9e16e0eb93099f` — all terminated
+
+## Repository Version
+
+To reproduce this report, check out the exact commit used:
+
+```bash
+git clone https://github.com/istoica/ray.git
+cd ray
+git checkout faa895b553  # cc-to-rust-experimental branch, March 15, 2026
+```
+
+Key files at this commit:
+- `rust/ray-core-worker-pylib/src/rdt/store.rs` — Rust PyRDTStore implementation
+- `python/ray/_private/serialization.py` — Borrow fix (wait_for_tensor_transport_metadata)
+- `python/ray/tests/rdt/test_rdt_nixl.py` — NIXL integration tests (0 skipped)
+
+### Full Reproduction Commands
+
+```bash
+# Launch g4dn.12xlarge instance (4x T4 GPUs)
+aws ec2 run-instances --image-id ami-0fb0010639c839abe --instance-type g4dn.12xlarge \
+  --key-name rdt-nixl-experiment --security-group-ids sg-069da16cfd254e014 --region us-west-2
+
+# === On instance: Install dependencies ===
+pip3 install -U 'ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl'
+pip3 install cupy-cuda12x nixl pytest pytest-timeout
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source ~/.cargo/env
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v28.3/protoc-28.3-linux-x86_64.zip
+sudo unzip -o protoc-28.3-linux-x86_64.zip -d /usr/local
+
+# === Clone and build Rust RDT ===
+git clone --branch cc-to-rust-experimental --depth 20 https://github.com/istoica/ray.git ~/ray
+cd ~/ray/rust
+cargo build --release -p ray-core-worker-pylib --features python
+mkdir -p ~/rust_rdt_lib
+cp target/release/lib_raylet.so ~/rust_rdt_lib/_raylet.so
+# Copy _ray_rust_rdt.py wrapper to ~/rust_rdt_lib/
+
+# === Patch rdt_store.py and run ===
+# See "Swap Mechanism Details" section below for patch instructions
+mkdir -p ~/rdt-tests
+cp ~/ray/python/ray/tests/rdt/test_rdt_nixl.py ~/rdt-tests/
+cp ~/ray/python/ray/tests/rdt/test_rdt_nccl.py ~/rdt-tests/
+cp ~/ray/python/ray/tests/conftest.py ~/rdt-tests/
+
+# Python RDT (baseline):
+cd ~/rdt-tests && pytest test_rdt_nixl.py test_rdt_nccl.py -v --timeout=300
+
+# Rust RDT:
+cd ~/rdt-tests && PYTHONPATH="$HOME/rust_rdt_lib:$PYTHONPATH" pytest test_rdt_nixl.py test_rdt_nccl.py -v --timeout=300
+
+# Unit tests:
+cd ~/ray/rust/ray/experimental/rdt && pytest test_rdt_unit.py -v
+```
 
 ## Objective
 

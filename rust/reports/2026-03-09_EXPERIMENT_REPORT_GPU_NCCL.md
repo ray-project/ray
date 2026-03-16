@@ -1,5 +1,33 @@
 # Ray Rust Backend — GPU NCCL Direct Transfer Experiment
 
+## Repository Version
+
+**Branch:** `cc-to-rust-experimental`
+**Date:** March 9, 2026
+
+To reproduce, check out the branch at the time of this experiment:
+
+```bash
+git clone --branch cc-to-rust-experimental https://github.com/istoica/ray.git
+cd ray/rust
+
+# Build on head node
+cargo build --release -p ray-raylet -p ray-gcs
+cd ray-core-worker-pylib && maturin build --release --features python
+
+# Deploy wheel to GPU node
+scp target/wheels/*.whl ubuntu@<GPU_NODE_IP>:~/
+# On GPU node: /opt/pytorch/bin/pip install ray_rust_raylet-*.whl --force-reinstall
+
+# Start GCS (head), raylets (both), GPU workers (GPU node), then driver (head)
+# See Startup Sequence section below for full commands
+```
+
+Key files:
+- `rust/examples/python/gpu-test/gpu_driver.py` — Driver script
+- `rust/examples/python/gpu-test/gpu_worker.py` — GPU worker with NCCL support
+- `rust/examples/python/gpu-test/start_gpu_workers.sh` — Worker launcher
+
 ## Overview
 
 This experiment demonstrates **direct GPU-to-GPU data transfers via NCCL** orchestrated by the Ray **100% Rust backend** across a 2-node AWS cluster. All core components — GCS server, Raylet, and CoreWorker — are implemented in Rust, with GPU actor workers executed via PyO3 bindings. No C++ code is used.

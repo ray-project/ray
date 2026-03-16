@@ -9,6 +9,20 @@
 **Instance Type**: g4dn.12xlarge (4x T4 GPUs, us-west-2)
 **AMI**: Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.7 (Ubuntu 22.04) — `ami-0fb0010639c839abe`
 
+## Repository Version
+
+To reproduce this report, check out the exact commit used:
+
+```bash
+git clone https://github.com/istoica/ray.git
+cd ray
+git checkout 63fe601fa8  # cc-to-rust-experimental branch, March 14, 2026
+```
+
+Key files at this commit:
+- `rust/ray-gcs/src/actor_manager.rs` — Rust GCS actor manager with RegisterActor/CreateActor fixes
+- `rust/ray-gcs/` — Full Rust GCS server implementation
+
 ## Test Configuration
 
 | Component       | C++ GCS Instance          | Rust GCS Instance          |

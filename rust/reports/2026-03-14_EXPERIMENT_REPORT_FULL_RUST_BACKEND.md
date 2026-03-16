@@ -4,6 +4,52 @@
 **Branch**: `cc-to-rust-experimental`
 **Commit**: `5e1aaf83e9`
 
+## Repository Version
+
+To reproduce this report, check out the exact commit used:
+
+```bash
+git clone https://github.com/istoica/ray.git
+cd ray
+git checkout 5e1aaf83e9  # cc-to-rust-experimental branch, March 14-15, 2026
+```
+
+Key files at this commit:
+- `rust/ray-core-worker-pylib/` — Full Rust backend (GCS + Raylet + Core Worker + Object Store)
+- `rust/ray/__init__.py` — Python module shim for the Rust backend
+- `rust/ray/rdt.py` — RDT adapter with NIXL retry fix
+
+### Full Reproduction Commands
+
+```bash
+# === C++ Backend Instance ===
+pip3 install -U 'ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl'
+pip3 install cupy-cuda12x nixl pytest pytest-timeout
+mkdir -p ~/rdt-tests
+# Copy test files from branch:
+git show 5e1aaf83e9:python/ray/tests/rdt/test_rdt_nixl.py > ~/rdt-tests/test_rdt_nixl.py
+git show 5e1aaf83e9:python/ray/tests/rdt/test_rdt_nccl.py > ~/rdt-tests/test_rdt_nccl.py
+git show 5e1aaf83e9:python/ray/tests/conftest.py > ~/rdt-tests/conftest.py
+cd ~/rdt-tests && pytest test_rdt_nixl.py test_rdt_nccl.py -v --timeout=300
+
+# === Rust Backend Instance ===
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source ~/.cargo/env
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v28.3/protoc-28.3-linux-x86_64.zip
+sudo unzip -o protoc-28.3-linux-x86_64.zip -d /usr/local
+pip3 install cupy-cuda12x nixl pytest pytest-timeout maturin torch cloudpickle
+git clone --depth=1 --branch cc-to-rust-experimental https://github.com/istoica/ray.git ~/ray
+cd ~/ray/rust
+cargo build --release -p ray-core-worker-pylib --features python
+cp target/release/lib_raylet.so target/release/_raylet.so
+mkdir -p ~/rdt-tests
+cp ~/ray/python/ray/tests/rdt/test_rdt_nixl.py ~/rdt-tests/
+cp ~/ray/python/ray/tests/rdt/test_rdt_nccl.py ~/rdt-tests/
+cp ~/ray/python/ray/tests/conftest.py ~/rdt-tests/
+cd ~/rdt-tests
+PYTHONPATH="$HOME/ray/rust:$HOME/ray/rust/target/release" pytest test_rdt_nixl.py test_rdt_nccl.py -v --timeout=300
+```
+
 ## Objective
 
 Verify that the **full Rust backend** (GCS + Raylet + Core Worker + Object Store all in Rust, via `_raylet.so` built from `ray-core-worker-pylib`) produces identical test results to the **full C++ backend** (standard Ray nightly) for the NIXL and NCCL RDT tests.

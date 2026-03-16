@@ -2,6 +2,22 @@
 
 ## Date: March 15–16, 2026
 ## Branch: `cc-to-rust-experimental`
+## Commit: `aec410bd90` (v3, latest)
+
+## Repository Version
+
+To reproduce this report, check out the exact commit used:
+
+```bash
+git clone https://github.com/istoica/ray.git
+cd ray
+git checkout aec410bd90  # cc-to-rust-experimental branch, March 16, 2026
+```
+
+Key files at this commit:
+- `rust/ray-gcs/src/` — Full Rust GCS server with all DashMap optimizations
+- `rust/ray-gcs-bench/` — Custom benchmark tool (5 scenarios)
+- `rust/ray-gcs/tests/stress_test.rs` — Stress tests (5 concurrent scenarios)
 
 ## 1. Executive Summary
 
