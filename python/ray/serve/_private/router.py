@@ -781,54 +781,11 @@ class AsyncioRouter:
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
 
-        if isinstance(result, ActorDiedError):
-            # Only mark the replica as dead if the ActorDiedError refers to this
-            # replica. When using chained DeploymentResponses, the error may come
-            # from an upstream dependency (e.g., Adder crashed) that was passed
-            # as an object ref to this replica (e.g., Multiplier). In that case,
-            # the Multiplier is still healthy and should not be marked dead.
-            error_actor_id = getattr(result, "actor_id", None)
-            replica_actor_id_hex = (
-                replica_actor_id.hex() if replica_actor_id is not None else None
+        actor_died_error = self._get_actor_died_error(result)
+        if actor_died_error is not None:
+            self._handle_actor_died_error(
+                replica_id, replica_actor_id, actor_died_error
             )
-            if error_actor_id == replica_actor_id_hex:
-                # Replica has died but controller hasn't notified the router yet.
-                if self.request_router:
-                    self.request_router.on_replica_actor_died(replica_id)
-                logger.warning(
-                    f"{replica_id} will not be considered for future "
-                    "requests because it has died."
-                )
-            else:
-                # Error from upstream dependency, not from this replica.
-                logger.debug(
-                    f"ActorDiedError from upstream (actor_id={error_actor_id}), "
-                    f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
-                    "Replica remains in rotation."
-                )
-        elif isinstance(result, RayTaskError) and isinstance(
-            getattr(result, "cause", None), ActorDiedError
-        ):
-            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
-            # resolution in chained deployment calls).
-            actor_died_error = result.cause
-            error_actor_id = getattr(actor_died_error, "actor_id", None)
-            replica_actor_id_hex = (
-                replica_actor_id.hex() if replica_actor_id is not None else None
-            )
-            if error_actor_id == replica_actor_id_hex:
-                if self.request_router:
-                    self.request_router.on_replica_actor_died(replica_id)
-                logger.warning(
-                    f"{replica_id} will not be considered for future "
-                    "requests because it has died."
-                )
-            else:
-                logger.debug(
-                    f"ActorDiedError from upstream (actor_id={error_actor_id}), "
-                    f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
-                    "Replica remains in rotation."
-                )
         elif isinstance(result, ActorUnavailableError):
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -839,6 +796,52 @@ class AsyncioRouter:
                 self.request_router.on_replica_actor_unavailable(replica_id)
             logger.warning(
                 f"Request failed because {replica_id} is temporarily unavailable."
+            )
+
+    def _get_actor_died_error(
+        self, result: Union[Any, RayError]
+    ) -> Optional[ActorDiedError]:
+        if isinstance(result, ActorDiedError):
+            return result
+
+        if isinstance(result, RayTaskError) and isinstance(
+            getattr(result, "cause", None), ActorDiedError
+        ):
+            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
+            # resolution in chained deployment calls).
+            return result.cause
+
+        return None
+
+    def _handle_actor_died_error(
+        self,
+        replica_id: ReplicaID,
+        replica_actor_id: Optional[ray.ActorID],
+        actor_died_error: ActorDiedError,
+    ) -> None:
+        # Only mark the replica as dead if the ActorDiedError refers to this
+        # replica. When using chained DeploymentResponses, the error may come
+        # from an upstream dependency (e.g., Adder crashed) that was passed
+        # as an object ref to this replica (e.g., Multiplier). In that case,
+        # the Multiplier is still healthy and should not be marked dead.
+        error_actor_id = getattr(actor_died_error, "actor_id", None)
+        replica_actor_id_hex = (
+            replica_actor_id.hex() if replica_actor_id is not None else None
+        )
+        if error_actor_id == replica_actor_id_hex:
+            # Replica has died but controller hasn't notified the router yet.
+            if self.request_router:
+                self.request_router.on_replica_actor_died(replica_id)
+            logger.warning(
+                f"{replica_id} will not be considered for future "
+                "requests because it has died."
+            )
+        else:
+            # Error from upstream dependency, not from this replica.
+            logger.debug(
+                f"ActorDiedError from upstream (actor_id={error_actor_id}), "
+                f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
+                "Replica remains in rotation."
             )
 
     async def _route_and_send_request_once(
@@ -910,19 +913,8 @@ class AsyncioRouter:
 
             raise
         except ActorDiedError as e:
-            # Only mark the replica as dead if the ActorDiedError refers to this
-            # replica (see _process_finished_request for full explanation).
             if replica is not None:
-                error_actor_id = getattr(e, "actor_id", None)
-                replica_actor_id_hex = (
-                    replica.actor_id.hex() if replica.actor_id is not None else None
-                )
-                if error_actor_id == replica_actor_id_hex:
-                    self.request_router.on_replica_actor_died(replica.replica_id)
-                    logger.warning(
-                        f"{replica.replica_id} will not be considered for future "
-                        "requests because it has died."
-                    )
+                self._handle_actor_died_error(replica.replica_id, replica.actor_id, e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
