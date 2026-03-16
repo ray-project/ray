@@ -8,9 +8,7 @@ from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
 )
-from ray._private.protobuf_compat import message_to_dict
-from ray._raylet import RayEvent, serialize_events_to_ray_events_data
-from ray.core.generated.events_event_aggregator_service_pb2 import RayEventsData
+from ray._raylet import RayEvent, serialize_events_to_ray_events_data_json
 
 _DEFAULT_TIMEOUT_S = 10
 _EXTERNAL_RAY_EVENTS_PATH = "/api/v0/external/ray_events"
@@ -53,21 +51,9 @@ class DashboardHeadRayEventPublisher:
         if not events:
             return
 
-        events_data = RayEventsData()
-        events_data.ParseFromString(serialize_events_to_ray_events_data(events))
-        payload = [
-            message_to_dict(
-                event,
-                always_print_fields_with_no_presence=True,
-                preserving_proto_field_name=False,
-                use_integers_for_enums=False,
-            )
-            for event in events_data.events
-        ]
-
         response = self._session.post(
             f"{self._get_dashboard_url()}{_EXTERNAL_RAY_EVENTS_PATH}",
-            json=payload,
+            data=serialize_events_to_ray_events_data_json(events),
             headers=self._build_headers(),
             timeout=self._timeout_s,
         )
@@ -81,6 +67,7 @@ class DashboardHeadRayEventPublisher:
 
     def _build_headers(self) -> Dict[str, str]:
         headers = dict(self._headers)
+        headers.setdefault("Content-Type", "application/json")
         auth_headers = get_auth_headers_if_auth_enabled(headers)
         headers.update(auth_headers)
         return headers

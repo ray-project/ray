@@ -108,6 +108,14 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
 std::string SerializeEventsToRayEventsData(
     std::vector<std::unique_ptr<RayEventInterface>> &&events);
 
+/// Serialize Python-emitted events directly to a JSON array string.
+///
+/// Each event is serialized through RayEventInterface::Serialize, then converted
+/// to JSON via protobuf's MessageToJsonString. Returns a JSON array string
+/// (e.g., "[{...}, {...}]")
+std::string SerializeEventsToRayEventsDataJson(
+    std::vector<std::unique_ptr<RayEventInterface>> &&events);
+
 /// Owns all infrastructure for the Python-side event recorder: io_context,
 /// background thread, gRPC client, metrics counter, and the recorder itself.
 ///
