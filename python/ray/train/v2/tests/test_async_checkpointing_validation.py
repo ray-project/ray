@@ -600,8 +600,22 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
                     checkpoint=cp1,
                     validation=True,
                 )
+
+            # Check with ConsistencyMode.COMMITTED
             reported_checkpoints = ray.train.get_all_reported_checkpoints(
                 consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert (
+                reported_checkpoints[0].status
+                == ReportedCheckpointStatus.PENDING_VALIDATION
+            )
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+
+            # Check with ConsistencyMode.VALIDATED with timeout to preventing hanging
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.VALIDATED,
+                timeout_s=2,
             )
             assert len(reported_checkpoints) == 1
             assert (

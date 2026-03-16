@@ -196,6 +196,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 @requires_train_worker()
 def get_all_reported_checkpoints(
     consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+    timeout_s: int = -1,
 ) -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
@@ -237,13 +238,15 @@ def get_all_reported_checkpoints(
         consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
             Defaults to CheckpointConsistencyMode.VALIDATED.
             See :class:`~ray.train.CheckpointConsistencyMode` for more details.
+        timeout_s: Timeout in seconds when using ``CheckpointConsistencyMode.VALIDATED``
+            and the validation function is slow. Defaults to -1 to wait indefinitely.
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
         corresponding metrics reported by the workers.
     """
     return get_train_fn_utils().get_all_reported_checkpoints(
-        consistency_mode=consistency_mode
+        consistency_mode=consistency_mode, timeout_s=timeout_s
     )
 
 
