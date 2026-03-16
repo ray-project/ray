@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
-from pyarrow.fs import FileSystem
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import FileReader
@@ -41,9 +40,8 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
     ratios (e.g. videos).
     """
 
-    def __init__(self, reader: "FileReader", *, filesystem: FileSystem):
+    def __init__(self, reader: "FileReader"):
         self._reader = reader
-        self._filesystem = filesystem
 
         self._encoding_ratio = None
 
