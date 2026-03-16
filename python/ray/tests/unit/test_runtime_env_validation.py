@@ -543,6 +543,99 @@ class TestValidatePip:
         assert "pip_install_options" in str(e) and "must be of type list[str]" in str(e)
 
 
+class TestGetPipHash:
+    def test_pip_hash_with_requirements_file(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict1 = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict1)
+
+        pip_dict2 = {"packages": ["requests==1.0.0", "pip-install-test"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_changes_with_file_content(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.21.0\n")
+        hash1 = _get_pip_hash(pip_dict)
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.22.0\n")
+        hash2 = _get_pip_hash(pip_dict)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_comments_and_empty_lines(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        with open(req_path, "w") as f:
+            f.write("# This is a comment\nnumpy==1.21.0\n\n# Another comment\npandas==1.3.0\n")
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_without_r(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        pip_dict = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_different_packages(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        pip_dict = {"packages": ["numpy==1.21.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_pip_install_options(self, test_directory):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--no-cache-dir"]
+        }
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--disable-pip-version-check"]
+        }
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+
 class TestValidateEnvVars:
     def test_type_validation(self):
         # Only strings allowed.
