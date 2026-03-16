@@ -134,7 +134,7 @@ Key responsibilities:
 width: 700px
 name: dp-flow
 ---
-Data parallel attention request flow from client to distribtued replicas.
+Data parallel attention request flow from client to distributed replicas.
 ```
 
 The following is the request flow through a data parallel attention deployment:
