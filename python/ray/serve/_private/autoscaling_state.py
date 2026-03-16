@@ -1,3 +1,4 @@
+import inspect
 import logging
 import math
 import time
@@ -38,6 +39,24 @@ from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
+    """Return a ready-to-call policy callable from an ``AutoscalingPolicy``.
+
+    If the deserialized policy is a class (rather than a plain function),
+    instantiate it once — forwarding any ``policy_kwargs`` — so that the
+    framework invokes ``instance.__call__(ctx)`` on every autoscaling tick
+    instead of ``Class(ctx)`` (which would create a new, stateless instance
+    each time).
+    """
+    raw = policy.get_policy()
+    if inspect.isclass(raw):
+        logger.info(
+            f"Instantiating class-callable autoscaling policy '{raw.__name__}' with kwargs: {policy.policy_kwargs}"
+        )
+        return raw(**policy.policy_kwargs)
+    return raw
 
 
 class DeploymentAutoscalingState:
@@ -125,7 +144,9 @@ class DeploymentAutoscalingState:
         self._deployment_info = info
         self._config = config
         # Apply default autoscaling config to the policy
-        self._policy = _apply_autoscaling_config(self._config.policy.get_policy())
+        self._policy = _apply_autoscaling_config(
+            _resolve_policy_callable(self._config.policy)
+        )
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -864,7 +885,7 @@ class ApplicationAutoscalingState:
         """
         # Apply default autoscaling config to the policy
         self._policy = _apply_app_level_autoscaling_config(
-            autoscaling_policy.get_policy()
+            _resolve_policy_callable(autoscaling_policy)
         )
         self._policy_state = {}
 

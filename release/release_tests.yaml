@@ -133,6 +133,26 @@
       cluster:
         ray_version: 2.50.0
 
+- name: hello_world_custom_runtime_env
+  python: "3.10"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    byod:
+      runtime_env:
+        - HELLO_WORLD_TEST=1
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world.py
+
+  variations:
+    - __suffix__: aws
+
 - name: hello_world_custom_byod_depset_only
   python: "3.10"
   team: reef
@@ -462,37 +482,6 @@
       frequency: manual
       cluster:
         cluster_compute: frequent_pausing/compute_config_gce.yaml
-
-  alert: default
-
-
-- name: tune_rllib_connect_test
-  python: "3.10"
-  group: Tune tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    byod:
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: tune_rllib/compute_tpl_aws.yaml
-
-  run:
-    timeout: 2000
-    script: RAY_TRAIN_V2_ENABLED=1 python tune_rllib/run_connect_tests.py
-    wait_for_nodes:
-      num_nodes: 9
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tune_rllib/compute_tpl_gce.yaml
 
   alert: default
 
@@ -838,42 +827,6 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: long_running_impala
-  python: "3.10"
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: rllib
-
-  cluster:
-    cluster_compute: tpl_cpu_1_large.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/impala.py
-    long_running: true
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: tpl_cpu_1_large_gce.yaml
-
 - name: long_running_many_actor_tasks
   python: "3.10"
   group: Long running tests
@@ -953,48 +906,6 @@
           timeout: 3600
       cluster:
         cluster_compute: tpl_cpu_4_gce.yaml
-
-- name: long_running_many_ppo
-  python: "3.10"
-  group: Long running tests
-  working_dir: long_running_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    byod:
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_compute: many_ppo.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/many_ppo.py
-    long_running: true
-    wait_for_nodes:
-      num_nodes: 1
-
-
-  smoke_test:
-    frequency: nightly
-
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
   python: "3.10"
@@ -2064,14 +1975,13 @@
 
   alert: default
 
+###############
+# RLlib tests #
+###############
 
-########################
-# RLlib tests
-########################
-
-# --------------------------
-# APPO
-# --------------------------
+# -----------------
+# RLlib - APPO test
+# -----------------
 - name: rllib_learning_tests_pong_appo_torch
   python: "3.10"
   group: RLlib tests
@@ -4596,6 +4506,31 @@
   group: ray-examples
   team: ml
   working_dir: //doc/source/train/examples/pytorch/pytorch-fsdp
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: tensor_parallel_dtensor  # do not use dashes (regex sensitive)
+  python: "3.10"
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/tensor_parallel_dtensor
 
   cluster:
     byod:

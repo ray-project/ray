@@ -120,6 +120,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor",
         "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/util:process",
         "@boost//:filesystem",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",

@@ -702,11 +702,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks.clear()
 
     @abstractmethod
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
@@ -753,44 +753,44 @@ def _map_task(
         ctx.op_name,
         ctx.task_idx,
     )
-    DataContext._set_current(data_context)
+
     ctx.kwargs.update(kwargs)
 
-    TaskContext.set_current(ctx)
+    with (DataContext.current(data_context), TaskContext.current(ctx)):
+        stats = BlockExecStats.builder()
+        map_transformer.override_target_max_block_size(
+            ctx.target_max_block_size_override
+        )
+        block_iter: Iterable[Block]
+        if slices:
+            block_iter = _iter_sliced_blocks(blocks, slices)
+        else:
+            block_iter = iter(blocks)
 
-    stats = BlockExecStats.builder()
-    map_transformer.override_target_max_block_size(ctx.target_max_block_size_override)
-    block_iter: Iterable[Block]
-    if slices:
-        block_iter = _iter_sliced_blocks(blocks, slices)
-    else:
-        block_iter = iter(blocks)
+        with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
+            for block in map_transformer.apply_transform(block_iter, ctx):
+                block_meta = BlockAccessor.for_block(block).get_metadata()
+                block_schema = BlockAccessor.for_block(block).schema()
 
-    with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
-        for block in map_transformer.apply_transform(block_iter, ctx):
-            block_meta = BlockAccessor.for_block(block).get_metadata()
-            block_schema = BlockAccessor.for_block(block).schema()
+                # Derive block execution stats
+                exec_stats = stats.build()
+                # Yield block and retrieve its Ray object serialization timing
+                stats: StreamingGeneratorStats = yield block
+                if stats:
+                    exec_stats.block_ser_time_s = stats.object_creation_dur_s
 
-            # Derive block execution stats
-            exec_stats = stats.build()
-            # Yield block and retrieve its Ray object serialization timing
-            stats: StreamingGeneratorStats = yield block
-            if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+                exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
+                exec_stats.task_idx = ctx.task_idx
+                exec_stats.max_uss_bytes = profiler.estimate_max_uss()
 
-            exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
-            exec_stats.task_idx = ctx.task_idx
-            exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+                yield BlockMetadataWithSchema(
+                    metadata=replace(block_meta, exec_stats=exec_stats),
+                    schema=block_schema,
+                )
 
-            yield BlockMetadataWithSchema(
-                metadata=replace(block_meta, exec_stats=exec_stats), schema=block_schema
-            )
-
-            # Reset trackers
-            stats = BlockExecStats.builder()
-            profiler.reset()
-
-    TaskContext.reset_current()
+                # Reset trackers
+                stats = BlockExecStats.builder()
+                profiler.reset()
 
 
 class BlockRefBundler(BaseRefBundler):

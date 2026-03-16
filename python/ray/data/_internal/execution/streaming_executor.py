@@ -5,7 +5,6 @@ import time
 import typing
 from typing import Dict, List, Optional, Tuple
 
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
@@ -518,9 +517,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
             # Log metrics of newly completed operators.
             if op.has_completed() and not self._has_op_completed[op]:
-                metrics_dict = op._metrics.as_dict(skip_internal_metrics=True)
-                metrics_table = _format_metrics_table(metrics_dict)
-                log_str = f"Operator {op} completed. Operator Metrics:\n{metrics_table}"
+                log_str = (
+                    f"Operator {op} completed. "
+                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
+                )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
@@ -739,141 +739,6 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
         )
 
 
-def _format_metrics_table(metrics_dict: dict) -> str:
-    """Format metrics dict as a pivot table, organized by category."""
-    if not metrics_dict:
-        return "(no metrics)"
-
-    # Define metric categories and their patterns
-    categories = [
-        (
-            "Inputs",
-            [
-                "num_inputs_received",
-                "num_row_inputs_received",
-                "bytes_inputs_received",
-                "num_task_inputs_processed",
-                "bytes_task_inputs_processed",
-                "bytes_inputs_of_submitted_tasks",
-                "rows_inputs_of_submitted_tasks",
-            ],
-        ),
-        (
-            "Outputs",
-            [
-                "num_outputs_taken",
-                "bytes_outputs_taken",
-                "row_outputs_taken",
-                "block_outputs_taken",
-                "num_task_outputs_generated",
-                "bytes_task_outputs_generated",
-                "rows_task_outputs_generated",
-                "num_outputs_of_finished_tasks",
-                "bytes_outputs_of_finished_tasks",
-                "rows_outputs_of_finished_tasks",
-            ],
-        ),
-        (
-            "Tasks",
-            [
-                "num_tasks_submitted",
-                "num_tasks_running",
-                "num_tasks_have_outputs",
-                "num_tasks_finished",
-                "num_tasks_failed",
-            ],
-        ),
-        (
-            "Timing",
-            [
-                "block_generation_time",
-                "task_submission_backpressure_time",
-                "task_output_backpressure_time",
-                "task_completion_time_total_s",
-                "task_completion_time",
-                "block_completion_time",
-                "task_completion_time_excl_backpressure_s",
-            ],
-        ),
-        (
-            "Block Stats",
-            ["num_output_blocks_per_task_s", "block_size_bytes", "block_size_rows"],
-        ),
-        (
-            "Object Store",
-            [
-                "obj_store_mem_internal_inqueue",
-                "obj_store_mem_internal_outqueue",
-                "obj_store_mem_pending_task_inputs",
-                "obj_store_mem_internal_inqueue_blocks",
-                "obj_store_mem_internal_outqueue_blocks",
-                "obj_store_mem_freed",
-                "obj_store_mem_spilled",
-                "obj_store_mem_used",
-                "num_external_inqueue_blocks",
-                "num_external_inqueue_bytes",
-                "num_external_outqueue_blocks",
-                "num_external_outqueue_bytes",
-            ],
-        ),
-        ("Actors", ["num_alive_actors", "num_restarting_actors", "num_pending_actors"]),
-        ("Resources", ["cpu_usage", "gpu_usage"]),
-        (
-            "Averages",
-            [
-                "average_num_outputs_per_task",
-                "average_num_inputs_per_task",
-                "average_total_task_completion_time_s",
-                "average_task_completion_excl_backpressure_time_s",
-                "average_bytes_per_output",
-                "average_bytes_inputs_per_task",
-                "average_rows_inputs_per_task",
-                "average_bytes_outputs_per_task",
-                "average_rows_outputs_per_task",
-                "average_max_uss_per_task",
-            ],
-        ),
-    ]
-
-    # Build categorized dict, sorting metrics alphabetically within each category
-    categorized = {}
-    categorized_keys = set()
-    for category, keys in categories:
-        category_metrics = {}
-        for key in keys:
-            if key in metrics_dict:
-                category_metrics[key] = metrics_dict[key]
-                categorized_keys.add(key)
-        if category_metrics:
-            # Sort metrics alphabetically within each category
-            categorized[category] = dict(sorted(category_metrics.items()))
-
-    # Add uncategorized metrics under "Other" (also sorted)
-    other_metrics = {k: v for k, v in metrics_dict.items() if k not in categorized_keys}
-    if other_metrics:
-        categorized["Other"] = dict(sorted(other_metrics.items()))
-
-    # Sort categories alphabetically, keeping "Other" at the end
-    sorted_categories = sorted(categorized.keys(), key=lambda c: (c == "Other", c))
-
-    # Build table data
-    table_data = []
-    for category in sorted_categories:
-        cat_metrics = categorized[category]
-        first_in_cat = True
-        for k, v in cat_metrics.items():
-            cat_display = category if first_in_cat else ""
-            # Convert None to string "None" since tabulate renders None as empty
-            table_data.append([cat_display, k, v if v is not None else "None"])
-            first_in_cat = False
-
-    return tabulate(
-        table_data,
-        headers=["category", "metric", "value"],
-        tablefmt="plain",
-    )
-
-
 def _log_op_metrics(topology: Topology) -> None:
     """Logs the metrics of each operator.
 
@@ -883,7 +748,7 @@ def _log_op_metrics(topology: Topology) -> None:
     log_str = "Operator Metrics:\n"
     for op in topology:
         metrics_dict = op.metrics.as_dict(skip_internal_metrics=True)
-        log_str += f"{op.name}:\n{_format_metrics_table(metrics_dict)}\n"
+        log_str += f"{op.name}: {metrics_dict}\n"
     logger.debug(log_str)
 
 

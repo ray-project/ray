@@ -5,7 +5,6 @@ It should be deleted once we fully move to the new executor backend.
 import logging
 from typing import Iterator, Optional, Tuple
 
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
@@ -19,7 +18,6 @@ from ray.data._internal.stats import DatasetStats
 from ray.data.block import (
     BlockMetadata,
     BlockMetadataWithSchema,
-    _take_first_non_empty_schema,
 )
 
 # Warn about tasks larger than this.
@@ -101,13 +99,13 @@ def execute_to_legacy_bundle_iterator(
     return CacheMetadataIterator(bundle_iter)
 
 
-def execute_to_legacy_block_list(
+def execute_to_ref_bundle(
     executor: Executor,
     plan: ExecutionPlan,
     dataset_uuid: str,
     preserve_order: bool,
-) -> BlockList:
-    """Execute a plan with the new executor and translate it into a legacy block list.
+) -> RefBundle:
+    """Execute a plan with the new executor and return the output as a RefBundle.
 
     Args:
         executor: The executor to use.
@@ -116,7 +114,7 @@ def execute_to_legacy_block_list(
         preserve_order: Whether to preserve order in execution.
 
     Returns:
-        The output as a legacy block list.
+        The output as a RefBundle.
     """
     dag, stats = _get_execution_dag(
         executor,
@@ -124,10 +122,10 @@ def execute_to_legacy_block_list(
         preserve_order,
     )
     bundles = executor.execute(dag, initial_stats=stats)
-    block_list = _bundles_to_block_list(bundles)
+    ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
     _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return block_list
+    return ref_bundle
 
 
 def _get_execution_dag(
@@ -167,23 +165,6 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
-
-
-def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
-    blocks, metadata = [], []
-    owns_blocks = True
-    bundle_list = list(bundles)
-    schema = _take_first_non_empty_schema(
-        ref_bundle.schema for ref_bundle in bundle_list
-    )
-
-    for ref_bundle in bundle_list:
-        if not ref_bundle.owns_blocks:
-            owns_blocks = False
-        blocks.extend(ref_bundle.block_refs)
-        metadata.extend(ref_bundle.metadata)
-
-    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks, schema=schema)
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

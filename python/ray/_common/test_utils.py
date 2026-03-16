@@ -115,9 +115,9 @@ def wait_for_condition(
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
     """
-    start = time.time()
+    start = time.monotonic()
     last_ex = None
-    while time.time() - start <= timeout:
+    while time.monotonic() - start <= timeout:
         try:
             if condition_predictor(**kwargs):
                 return
@@ -152,9 +152,9 @@ async def async_wait_for_condition(
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
     """
-    start = time.time()
+    start = time.monotonic()
     last_ex = None
-    while time.time() - start <= timeout:
+    while time.monotonic() - start <= timeout:
         try:
             if inspect.iscoroutinefunction(condition_predictor):
                 if await condition_predictor(**kwargs):

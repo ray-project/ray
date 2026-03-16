@@ -22,7 +22,7 @@ ARG RAY_VERSION=3.0.0.dev0
 LABEL io.ray.ray-commit="${RAY_COMMIT}"
 LABEL io.ray.ray-version="${RAY_VERSION}"
 
-COPY --from=wheel-source /*.whl /home/ray/
+COPY --from=wheel-source /opt/artifacts/*.whl /home/ray/
 
 # Install Ray wheel with all extras
 # Uses requirements_compiled.txt from base image (already at /home/ray/)

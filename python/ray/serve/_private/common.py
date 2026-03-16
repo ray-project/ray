@@ -17,6 +17,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
 
@@ -872,6 +873,30 @@ class CreatePlacementGroupRequest:
     runtime_env: Optional[str] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
+
+
+@dataclass
+class GangPlacementGroupRequest:
+    """Request to reserve gang placement groups for a deployment."""
+
+    deployment_id: DeploymentID
+    gang_size: int
+    gang_placement_strategy: str
+    num_replicas_to_add: int
+    replica_resource_dict: Dict[str, float]
+    """Resource requirements for a single replica, used as the bundle
+    template for every bundle in the gang placement group.
+    Example: ``{"CPU": 4, "GPU": 1}``."""
+
+
+@dataclass
+class GangReservationResult:
+    """Result of gang placement group reservation."""
+
+    success: bool
+    """True when all gang PGs were created successfully."""
+    error_message: Optional[str] = None
+    gang_pgs: Optional[List[PlacementGroup]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an

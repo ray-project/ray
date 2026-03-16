@@ -373,7 +373,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
     actor_delta.set_end_time(actor.end_time());
     actor_delta.set_repr_name(actor.repr_name());
     actor_delta.set_preempted(actor.preempted());
-    // Acotr's namespace and name are used for removing cached name when it's dead.
+    // Actor's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta.set_ray_namespace(actor.ray_namespace());
     }
@@ -510,7 +510,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
 
   /// Total number of successfully created actors in the cluster lifetime.
-  int64_t liftime_num_created_actors_ = 0;
+  int64_t lifetime_num_created_actors_ = 0;
 
   // Make sure our unprotected maps are accessed from the same thread.
   // Currently protects actor_to_register_callbacks_.
@@ -570,6 +570,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestRestartPreemptedActor);
   FRIEND_TEST(GcsActorManagerTest, TestGetAllActorInfoLimit);
   FRIEND_TEST(GcsActorManagerTest, TestDestroyWhileRegistering);
+  FRIEND_TEST(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors);
 
   friend class GcsActorManagerTest;
 };
