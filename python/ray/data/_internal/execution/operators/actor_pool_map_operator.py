@@ -204,6 +204,7 @@ class ActorPoolMapOperator(MapOperator):
         use_core_pool = (
             data_context.use_core_actor_pool and not self._ray_remote_args_fn
         )
+        self._use_core_pool = use_core_pool
         if use_core_pool:
             Adapter = _get_class_based_actor_pool_adapter()
             self._actor_pool = Adapter(
@@ -237,6 +238,7 @@ class ActorPoolMapOperator(MapOperator):
                 initial_size=compute_strategy.initial_size,
                 max_actor_concurrency=max_actor_concurrency,
                 max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+                map_worker_cls_name=map_worker_cls_name,
                 _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
             )
         # The task selector manages Python-side actor selection (legacy path).
@@ -316,7 +318,7 @@ class ActorPoolMapOperator(MapOperator):
 
         # For ClassBasedActorPoolAdapter, register callbacks for pending refs
         # to transition actors from pending to running when ready
-        if self.data_context.use_core_actor_pool:
+        if self._use_core_pool:
             self._register_pending_actor_callbacks()
 
         # If `wait_for_min_actors_s` is specified and is positive, then

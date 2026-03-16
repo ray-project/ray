@@ -2,11 +2,11 @@
 
 This module provides ClassBasedActorPoolAdapter, which implements the
 AutoscalingActorPool interface expected by Ray Data's ActorPoolMapOperator,
-using the C++-backed ActorPool with actor_cls directly.
+using the Core-backed ActorPool with actor_cls directly.
 
 The class-based adapter enables Ray Data to benefit from:
-- C++-backed pool management
-- Cross-actor retry on failures
+- Core-backed pool management
+- Cross-actor retry on failures and reconstruction
 - Unified ActorPool API across Ray
 
 Note: This class is NOT thread-safe. All methods should be called from the
@@ -509,9 +509,19 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         """Try to remove a pending actor."""
         if self._pending_actors:
             ready_ref = next(iter(self._pending_actors.keys()))
-            self._pending_actors.pop(ready_ref)
-            # Scale down the underlying pool
-            self._pool.scale(-1)
+            actor = self._pending_actors.pop(ready_ref)
+            # Remove this specific actor from the underlying pool and C++ state.
+            if actor in self._pool._actor_handles:
+                self._pool._actor_handles.remove(actor)
+                self._pool._actor_to_logical_id.pop(actor, None)
+            try:
+                worker = self._get_worker()
+                worker.core_worker.remove_actor_from_pool(
+                    self._pool.pool_id, actor._actor_id
+                )
+            except Exception:
+                pass
+            ray.kill(actor)
             return True
         return False
 
@@ -547,6 +557,15 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         if on_exit_refs:
             ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
 
+        # Kill actors after on_exit hooks have completed/timed out.
+        # _release_running_actor removes actors from _pool._actor_handles,
+        # so _pool.shutdown() won't find them — we must kill them here.
+        for actor in running:
+            try:
+                ray.kill(actor)
+            except Exception:
+                pass
+
     def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
         """Release a single running actor."""
         if actor not in self._running_actors:
@@ -556,6 +575,11 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
 
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
+
+        # Remove from underlying ActorPool's tracking lists.
+        if actor in self._pool._actor_handles:
+            self._pool._actor_handles.remove(actor)
+            self._pool._actor_to_logical_id.pop(actor, None)
 
         # Sync C++ pool state: remove actor so C++ doesn't hold stale state.
         try:

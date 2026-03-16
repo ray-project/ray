@@ -59,24 +59,19 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
                                            const std::vector<ActorID> &initial_actors) {
   absl::MutexLock lock(&mu_);
 
-  // Generate a new pool ID
   ActorPoolID pool_id = ActorPoolID::FromRandom();
 
-  // Create pool info
   ActorPoolInfo pool_info;
   pool_info.config = config;
 
-  // Create work queue (unordered FIFO).
   auto work_queue = std::make_unique<UnorderedPoolWorkQueue>();
 
-  // Add initial actors
   for (const auto &actor_id : initial_actors) {
     pool_info.actor_ids.push_back(actor_id);
     pool_info.actor_states[actor_id] = ActorPoolActorState{};
     actor_to_pool_[actor_id] = pool_id;
   }
 
-  // Register the pool
   pools_[pool_id] = std::move(pool_info);
   work_queues_[pool_id] = std::move(work_queue);
 
@@ -95,7 +90,6 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
     return;
   }
 
-  // Remove actor-to-pool mappings
   for (const auto &actor_id : it->second.actor_ids) {
     actor_to_pool_.erase(actor_id);
   }
@@ -104,7 +98,6 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
   // for unregistered pools leak (TaskArg objects held). Need to add pool_id field
   // to PoolWorkItem or maintain a reverse index for efficient cleanup.
 
-  // Remove pool
   work_queues_.erase(pool_id);
   pools_.erase(it);
 
@@ -121,7 +114,7 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
 
   auto &pool_info = pool_it->second;
 
-  // If actor already in pool, update location if provided.
+  // If actor already in pool, just update location.
   auto state_it = pool_info.actor_states.find(actor_id);
   if (state_it != pool_info.actor_states.end()) {
     if (!location.IsNil()) {
@@ -130,7 +123,6 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
     return;
   }
 
-  // Add actor
   pool_info.actor_ids.push_back(actor_id);
   pool_info.actor_states[actor_id] = ActorPoolActorState{
       .num_tasks_in_flight = 0, .location = location, .is_alive = true};
@@ -138,7 +130,6 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
 
   RAY_LOG(DEBUG) << "Added actor " << actor_id << " to pool " << pool_id;
 
-  // New actor has capacity — drain any queued work.
   DrainWorkQueue(pool_id);
 }
 
@@ -154,12 +145,10 @@ void ActorPoolManager::RemoveActorFromPool(const ActorPoolID &pool_id,
 
   auto &pool_info = pool_it->second;
 
-  // Remove from actor list
   auto &actor_ids = pool_info.actor_ids;
   actor_ids.erase(std::remove(actor_ids.begin(), actor_ids.end(), actor_id),
                   actor_ids.end());
 
-  // Remove state
   pool_info.actor_states.erase(actor_id);
   actor_to_pool_.erase(actor_id);
 
@@ -181,10 +170,8 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
 
   auto &work_queue = work_queues_[pool_id];
 
-  // Extract argument object IDs for locality-aware scheduling
   std::vector<ObjectID> arg_ids;
   for (const auto &arg : args) {
-    // Check if this is a by-reference argument
     rpc::TaskArg arg_proto;
     arg->ToProto(&arg_proto);
     if (arg_proto.has_object_ref()) {
@@ -192,8 +179,9 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     }
   }
 
-  // Create unique work item ID
-  // Note: Using empty JobID since this is just an internal tracking ID
+  // Work item ID is an opaque unique key for retry tracking — it is NOT the
+  // actual TaskID used for submission (SubmitActorTaskForPool creates that).
+  // The nil JobID is fine because this ID never enters the task lineage.
   TaskID work_item_id = TaskID::FromRandom(JobID());
   PoolWorkItem work_item;
   work_item.work_item_id = work_item_id;
@@ -203,18 +191,15 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   work_item.attempt_number = 0;
   work_item.enqueued_at_ms = current_time_ms();
 
-  // Select actor from pool
   ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
 
   if (selected_actor.IsNil()) {
-    // No actors available, enqueue work
     RAY_LOG(DEBUG) << "No actors available in pool " << pool_id
                    << ", enqueueing work item " << work_item_id;
     work_queue->Push(std::move(work_item));
-    return {};  // Return empty refs; work will be submitted when actor becomes available
+    return {};
   }
 
-  // Submit to selected actor
   return SubmitToActor(pool_id, selected_actor, std::move(work_item));
 }
 
@@ -251,7 +236,6 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
   stats.num_actors = static_cast<int32_t>(pool_info.actor_ids.size());
   stats.backlog_size = work_queue->Size();
 
-  // Calculate total in-flight
   int32_t total_in_flight = 0;
   for (const auto &[actor_id, state] : pool_info.actor_states) {
     total_in_flight += state.num_tasks_in_flight;
@@ -321,7 +305,6 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
 
   absl::MutexLock lock(&mu_);
 
-  // Check if pool still exists
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
     RAY_LOG(DEBUG) << "Pool " << pool_id << " no longer exists, ignoring task completion";
@@ -330,13 +313,11 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
 
   if (status.ok()) {
     OnTaskSucceeded(pool_id, actor_id);
-    // Remove the work item from tracking
     work_items_.erase(work_item_id);
   } else {
     if (error_info != nullptr) {
       OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
     } else {
-      // Create a generic error info if none provided
       rpc::RayErrorInfo generic_error;
       generic_error.set_error_type(rpc::ErrorType::ACTOR_DIED);
       generic_error.set_error_message("Task failed with unknown error: " +
@@ -391,10 +372,8 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     return ActorID::Nil();
   }
 
-  // Compute locality map once for all candidates
   auto node_bytes = ComputeNodeLocalityMap(arg_ids);
 
-  // Select the actor with the lowest rank (best choice)
   auto best_actor = *std::min_element(
       candidates.begin(), candidates.end(), [&](const ActorID &a, const ActorID &b) {
         return RankActor(a, node_bytes, pool_info) < RankActor(b, node_bytes, pool_info);
@@ -410,25 +389,22 @@ std::pair<int64_t, int32_t> ActorPoolManager::RankActor(
     const ActorPoolInfo &pool_info) const {
   auto state_it = pool_info.actor_states.find(actor_id);
   if (state_it == pool_info.actor_states.end()) {
-    return {INT64_MAX, INT32_MAX};  // Worst rank
+    return {INT64_MAX, INT32_MAX};
   }
 
   const auto &state = state_it->second;
   int32_t load = state.num_tasks_in_flight;
 
   if (node_bytes.empty()) {
-    // No locality data — rank by load only.
     return {0, load};
   }
 
-  // Locality-aware ranking: prefer actors on nodes that hold task data.
+  // Rank by (-local_bytes, load): actors on nodes holding more task data rank higher.
   auto bytes_it = node_bytes.find(state.location);
   if (bytes_it != node_bytes.end()) {
-    // Actor is on a node with data — rank by -total_bytes (more data = better).
     return {-static_cast<int64_t>(bytes_it->second), load};
   }
 
-  // Actor is on a remote node with no data.
   return {INT64_MAX, load};
 }
 
@@ -462,7 +438,6 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   auto &pool_info = pool_it->second;
 
-  // Update actor state
   auto &actor_state = pool_info.actor_states[actor_id];
   actor_state.num_tasks_in_flight++;
   pool_info.total_tasks_submitted++;
@@ -473,28 +448,22 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   RAY_LOG(DEBUG) << "Submitting work item " << work_item_id << " to actor " << actor_id
                  << " in pool " << pool_id << " (attempt " << attempt_number << ")";
 
-  // Check if we have the submit callback (full CoreWorker integration)
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
-    // Store work item for potential retry tracking even in minimal mode
     work_items_[work_item_id] = std::move(work_item);
     return {};
   }
 
-  // Clone args before moving work_item into work_items_ (we need args for submission)
+  // Clone args before moving work_item into work_items_ (we need args for submission).
   auto args_for_submit = CloneArgs(work_item.args);
   RayFunction function = work_item.function;
   TaskOptions options = work_item.options;
 
-  // Store work item for retry tracking
   work_items_[work_item_id] = std::move(work_item);
 
-  // Note: We don't pass a completion callback here because task completion is now
-  // handled via ActorTaskSubmitter::HandlePushTaskReply() → MaybeNotifyPoolTaskComplete()
-  // → CoreWorker callback → ActorPoolManager::OnPoolTaskComplete().
-  // This avoids duplicate completion handling.
-
-  // Submit via CoreWorker callback (which builds TaskSpec properly)
+  // Completion is NOT handled via this callback — it flows through
+  // ActorTaskSubmitter::HandlePushTaskReply() → SetPoolTaskCompletionCallback()
+  // → OnPoolTaskComplete(). We pass nullptr to avoid duplicate handling.
   return submit_actor_task_fn_(actor_id,
                                function,
                                std::move(args_for_submit),
@@ -516,7 +485,6 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
 
   auto &pool_info = pool_it->second;
 
-  // Update actor state
   auto actor_state_it = pool_info.actor_states.find(failed_actor_id);
   if (actor_state_it != pool_info.actor_states.end()) {
     auto &actor_state = actor_state_it->second;
@@ -528,7 +496,6 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
 
   pool_info.total_tasks_failed++;
 
-  // Classify error to determine if we should retry
   bool should_retry = ShouldRetryTask(pool_info.config, error_info);
 
   if (!should_retry) {
@@ -538,7 +505,6 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
     return;
   }
 
-  // Get work item
   auto work_item_it = work_items_.find(work_item_id);
   if (work_item_it == work_items_.end()) {
     RAY_LOG(WARNING) << "Work item " << work_item_id << " not found for retry";
@@ -548,10 +514,8 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
   auto work_item = std::move(work_item_it->second);
   work_items_.erase(work_item_it);
 
-  // Increment attempt number
   work_item.attempt_number++;
 
-  // Check if we've exceeded max retries
   if (pool_info.config.max_retry_attempts >= 0 &&
       work_item.attempt_number > pool_info.config.max_retry_attempts) {
     RAY_LOG(INFO) << "Work item " << work_item_id << " exceeded max retry attempts ("
@@ -562,7 +526,6 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
 
   pool_info.total_tasks_retried++;
 
-  // Calculate backoff for retry
   int64_t backoff_ms = CalculateBackoff(work_item.attempt_number,
                                         pool_info.config.retry_backoff_ms,
                                         pool_info.config.retry_backoff_multiplier,
@@ -572,25 +535,27 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
                 << ", retrying (attempt " << work_item.attempt_number << ") after "
                 << backoff_ms << "ms on different actor in pool " << pool_id;
 
-  // Schedule retry with backoff
   ScheduleRetry(pool_id, std::move(work_item), backoff_ms);
 }
 
 void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
                                        const ActorID &actor_id) {
-  // Decrement in-flight count
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
     return;
   }
 
-  auto &actor_state = pool_it->second.actor_states[actor_id];
+  auto state_it = pool_it->second.actor_states.find(actor_id);
+  if (state_it == pool_it->second.actor_states.end()) {
+    // Actor was removed from pool; ignore late-arriving success callback.
+    return;
+  }
+  auto &actor_state = state_it->second;
   if (actor_state.num_tasks_in_flight > 0) {
     actor_state.num_tasks_in_flight--;
-    actor_state.consecutive_failures = 0;  // Reset on success
+    actor_state.consecutive_failures = 0;
   }
 
-  // Now that an actor has capacity, drain any queued work.
   DrainWorkQueue(pool_id);
 }
 
@@ -598,12 +563,10 @@ void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
                                      PoolWorkItem work_item,
                                      int64_t backoff_ms) {
   if (backoff_ms <= 0) {
-    // Immediate retry
     RetryWorkItem(pool_id, std::move(work_item));
     return;
   }
 
-  // Check if we have io_service for delayed scheduling
   if (!io_service_) {
     RAY_LOG(DEBUG) << "No io_service available, performing immediate retry for work item "
                    << work_item.work_item_id;
@@ -614,13 +577,11 @@ void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
   RAY_LOG(DEBUG) << "Scheduling retry for work item " << work_item.work_item_id
                  << " with backoff " << backoff_ms << "ms";
 
-  // Create a shared_ptr to the timer so it stays alive until the callback fires
+  // shared_ptr so the timer outlives this scope until the callback fires.
   auto timer = std::make_shared<boost::asio::steady_timer>(
       *io_service_, std::chrono::milliseconds(backoff_ms));
 
-  // Schedule the delayed retry
-  // Note: We capture 'this' and rely on ActorPoolManager outliving the timer
-  // In practice, ActorPoolManager lives as long as CoreWorker
+  // Captures `this` — safe because ActorPoolManager outlives CoreWorker's io_service.
   timer->async_wait([this, pool_id, work_item = std::move(work_item), timer](
                         const boost::system::error_code &ec) mutable {
     if (ec) {
@@ -641,7 +602,6 @@ void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem wo
 
   auto &work_queue = work_queues_[pool_id];
 
-  // Extract arg IDs for locality-aware scheduling
   std::vector<ObjectID> arg_ids;
   for (const auto &arg : work_item.args) {
     rpc::TaskArg arg_proto;
@@ -651,11 +611,9 @@ void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem wo
     }
   }
 
-  // Select DIFFERENT actor (likely, due to load balancing)
   ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
 
   if (selected_actor.IsNil()) {
-    // No actors available, re-enqueue to wait for capacity
     RAY_LOG(DEBUG) << "No actors available for retry of work item "
                    << work_item.work_item_id << ", re-enqueueing";
     work_queue->Push(std::move(work_item));
@@ -665,7 +623,6 @@ void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem wo
   RAY_LOG(INFO) << "Retrying work item " << work_item.work_item_id << " on actor "
                 << selected_actor << " (attempt " << work_item.attempt_number << ")";
 
-  // Submit to (likely different) actor
   SubmitToActor(pool_id, selected_actor, std::move(work_item));
 }
 
@@ -675,28 +632,23 @@ bool ActorPoolManager::ShouldRetryTask(const ActorPoolConfig &config,
     return false;
   }
 
-  // Classify error types
   switch (error_info.error_type()) {
   case rpc::ErrorType::ACTOR_DIED:
   case rpc::ErrorType::ACTOR_UNAVAILABLE:
   case rpc::ErrorType::NODE_DIED:
   case rpc::ErrorType::WORKER_DIED:
-    // System errors - should retry on a different actor
     return true;
 
   case rpc::ErrorType::TASK_CANCELLED:
-    // Don't retry cancelled tasks
     return false;
 
   case rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
   case rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED:
   case rpc::ErrorType::OUT_OF_MEMORY:
-    // User/resource errors - don't retry (retrying OOM on a different actor
-    // is unlikely to help since the task will likely OOM again).
+    // Retrying OOM on a different actor is unlikely to help.
     return false;
 
   default:
-    // Unknown error - be conservative, don't retry
     RAY_LOG(WARNING) << "Unknown error type: " << error_info.error_type()
                      << ", not retrying";
     return false;
@@ -726,14 +678,13 @@ int64_t ActorPoolManager::CalculateBackoff(int32_t attempt_number,
 
 void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
                                     const rpc::RayErrorInfo &error_info) {
-  // Remove work item from tracking
   work_items_.erase(work_item_id);
 
   RAY_LOG(INFO) << "Work item " << work_item_id
                 << " failed permanently. Error: " << error_info.error_message();
 
-  // Note: The actual task failure is handled by the TaskManager via the completion
-  // callback. We just need to clean up our tracking state here.
+  // The actual task failure is surfaced by TaskManager via the reply callback.
+  // We only clean up pool-level tracking state here.
 }
 
 std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
@@ -742,20 +693,16 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
   cloned_args.reserve(args.size());
 
   for (const auto &arg : args) {
-    // Serialize to proto and create a new TaskArg from it
     rpc::TaskArg arg_proto;
     arg->ToProto(&arg_proto);
 
     if (arg_proto.has_object_ref()) {
-      // By-reference argument
       cloned_args.push_back(std::make_unique<TaskArgByReference>(
           ObjectID::FromBinary(arg_proto.object_ref().object_id()),
           rpc::Address(arg_proto.object_ref().owner_address()),
           arg_proto.object_ref().call_site()));
     } else if (!arg_proto.data().empty() || !arg_proto.metadata().empty()) {
-      // By-value argument (has data or metadata)
-      // Note: const_cast is safe here because copy_data=true causes
-      // LocalMemoryBuffer to make a deep copy of the data immediately.
+      // const_cast is safe: copy_data=true makes LocalMemoryBuffer deep-copy immediately.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (!arg_proto.data().empty()) {
         data = std::make_shared<LocalMemoryBuffer>(
@@ -772,7 +719,6 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
             /*copy_data=*/true);
       }
 
-      // Extract nested refs (as ObjectReference, not ObjectID)
       std::vector<rpc::ObjectReference> nested_refs;
       nested_refs.reserve(arg_proto.nested_inlined_refs_size());
       for (const auto &nested_ref : arg_proto.nested_inlined_refs()) {
@@ -795,10 +741,8 @@ void ActorPoolManager::DrainWorkQueue(const ActorPoolID &pool_id) {
 
   auto &work_queue = wq_it->second;
   while (work_queue->HasWork()) {
-    // Try to find an available actor with capacity.
     ActorID actor = SelectActorFromPool(pool_id, /*arg_ids=*/{});
     if (actor.IsNil()) {
-      // No actors with capacity — stop draining.
       break;
     }
 
