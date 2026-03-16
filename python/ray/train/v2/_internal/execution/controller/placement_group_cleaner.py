@@ -108,8 +108,12 @@ class PlacementGroupCleaner:
         self._exit()
         self._monitor_thread = None
 
-    def _cleanup_placement_group(self, placement_group: PlacementGroup):
+    def _cleanup_placement_group(self, placement_group: Optional[PlacementGroup]):
         """Clean up the current placement group if it hasn't been removed."""
+        if placement_group is None:
+            logger.debug("No placement group registered; skipping cleanup.")
+            return
+
         if self._is_placement_group_removed(placement_group):
             logger.debug(
                 "Controller actor died but placement group already removed; "
