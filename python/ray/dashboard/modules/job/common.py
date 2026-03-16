@@ -283,7 +283,7 @@ class JobInfoStorageClient:
             timeout=timeout,
         )
         if added_num == 1 or overwrite:
-            if ray_constants.RAY_ENABLE_RAY_EVENT:
+            if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
                 try:
                     self._emit_submission_job_events(
                         job_id, job_info, is_new=(added_num == 1)
