@@ -79,7 +79,10 @@ class PlacementGroupCleaner:
 
             # Skip monitoring if no placement group registered and liveness check not due
             now = time.monotonic()
-            if not curr_placement_group and now - last_liveness_check_time < self._liveness_check_interval_s:
+            if (
+                not curr_placement_group
+                and now - last_liveness_check_time < self._liveness_check_interval_s
+            ):
                 continue
             last_liveness_check_time = now
 

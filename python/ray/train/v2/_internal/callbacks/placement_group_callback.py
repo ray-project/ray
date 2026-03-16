@@ -80,9 +80,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
         placement_group = worker_group_state.placement_group_handle.placement_group
 
         try:
-            ray.get(
-                self._cleaner.register_placement_group.remote(placement_group)
-            )
+            ray.get(self._cleaner.register_placement_group.remote(placement_group))
         except Exception as e:
             logger.warning(
                 f"Failed to register placement group with cleaner: {e}. "
