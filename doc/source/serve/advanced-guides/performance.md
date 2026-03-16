@@ -198,6 +198,17 @@ You can also configure each option individually. The following table details the
 
 You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
+:::{warning} Caveats and limitations
+Throughput-optimized serving does not support the following:
+
+- [Model multiplexing](serve-model-multiplexing) on ingress deployments. Downstream deployments can still use multiplexing.
+- gRPC ingress endpoints (`grpc_options`).
+- Scale-to-zero on ingress deployments. Set `min_replicas` >= 1 for ingress autoscaling configs.
+- WebSocket connections. Use [streaming responses](serve-http-streaming-response) instead.
+
+See also the [gRPC interdeployment caveats](serve-interdeployment-grpc) for large payloads and chained `DeploymentResponse` objects.
+:::
+
 (serve-haproxy)=
 ### Use HAProxy load balancing
 
