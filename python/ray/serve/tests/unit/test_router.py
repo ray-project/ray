@@ -155,6 +155,7 @@ class FakeRequestRouter(RequestRouter):
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
         self._dropped_replicas: Set[ReplicaID] = set()
         self._use_queue_len_cache = use_queue_len_cache
+        self._use_replica_queue_len_cache = use_queue_len_cache
         self.on_request_routed_called = False
         self.completed_requests: List[Tuple[ReplicaID, str]] = []
 

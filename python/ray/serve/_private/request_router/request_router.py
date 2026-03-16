@@ -830,6 +830,24 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
+    def decrement_queue_len_cache(self, replica_id: ReplicaID):
+        """Decrement the queue length cache for a replica.
+
+        Called when a request completes on a replica. This is the counterpart
+        to on_send_request which increments the cache. Without this decrement,
+        with max_ongoing_requests=1 the cache gets stuck at 1 after routing,
+        causing every subsequent routing decision to require a blocking probe RPC.
+
+        Should NOT be called for rejected requests — on_new_queue_len_info
+        already corrects the cache with the replica's actual queue length.
+        """
+        if self._use_replica_queue_len_cache:
+            current = self._replica_queue_len_cache.get(replica_id)
+            if current is not None:
+                new_queue_len = max(0, current - 1)
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
+                self._update_router_queue_len_gauge(replica_id, new_queue_len)
+
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
@@ -1303,7 +1321,9 @@ class RequestRouter(ABC):
             # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
             # calls on every update (e.g. during scaling storms).
             if r.replica_id in self._replicas:
-                replica_wrappers.append(self._replicas[r.replica_id])
+                wrapper = self._replicas[r.replica_id]
+                wrapper.update_replica_info(r)
+                replica_wrappers.append(wrapper)
             else:
                 try:
                     replica_wrappers.append(self.create_replica_wrapper(r))
@@ -1397,12 +1417,4 @@ class RequestRouter(ABC):
             internal_request_id: The internal unique identifier for the request
                 (from RequestMetadata.internal_request_id).
         """
-        # Decrement the queue length cache when a request completes. Without this,
-        # with max_ongoing_requests=1 the cache gets stuck at 1 after routing,
-        # causing every subsequent pick to require blocking probe RPCs.
-        if self._use_replica_queue_len_cache:
-            current = self._replica_queue_len_cache.get(replica_id)
-            if current is not None:
-                new_queue_len = max(0, current - 1)
-                self._replica_queue_len_cache.update(replica_id, new_queue_len)
-                self._update_router_queue_len_gauge(replica_id, new_queue_len)
+        pass

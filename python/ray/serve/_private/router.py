@@ -843,12 +843,22 @@ class AsyncioRouter:
             callback_registered = True
 
             if not with_rejection:
+                result.add_done_callback(
+                    lambda _: self.request_router.decrement_queue_len_cache(
+                        replica.replica_id
+                    )
+                )
                 return result
 
             queue_info = await result.get_rejection_response()
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
+                result.add_done_callback(
+                    lambda _: self.request_router.decrement_queue_len_cache(
+                        replica.replica_id
+                    )
+                )
                 return result
 
         except asyncio.CancelledError:

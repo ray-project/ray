@@ -201,6 +201,18 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        """Update mutable fields from a new RunningReplicaInfo.
+
+        Called when reusing an existing wrapper in _update_running_replicas.
+        Replicas dynamically load/unload models via record_multiplexed_model_ids,
+        which triggers a broadcast with updated RunningReplicaInfo. Without this
+        update, the router would use stale multiplexed_model_ids and break
+        multiplexed model routing.
+        """
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+
     @property
     def replica_id(self) -> ReplicaID:
         """ID of this replica."""
