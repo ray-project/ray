@@ -10,12 +10,12 @@ The shuffle has up to four stages:
 2. **Driver Buffering**: The driver collects ObjectRefs into per-partition buffer
    lists. This is pure bookkeeping with no data movement.
 
-3. **Compact** (optional): When a partition's uncompacted buffer reaches a
+3. **Compact**: When a partition's uncompacted buffer reaches a
    threshold, a stateless compactor task merges the small shards into one larger
    block, reducing object-store pressure. Runs concurrently with map tasks.
 
 4. **Reduce**: After all map and compact tasks complete, the driver launches M
-   reducer tasks. Each reducer ``ray.get()``s all shard refs for its partition,
+   reducer tasks. Each reducer dereferences all shard refs for its partition,
    concatenates them, and yields output blocks via a streaming generator.
 """
 
@@ -137,17 +137,16 @@ def _shuffle_map(
 
 @ray.remote
 def _shuffle_compact(
-    shard_refs: List[ObjectRef],
+    *blocks: Block,
 ) -> Block:
     """Compact multiple small shards into a single larger block.
 
     Args:
-        shard_refs: Object references to small partition shards.
+        *blocks: Partition shards to concatenate.
 
     Returns:
         The concatenated block.
     """
-    blocks = ray.get(shard_refs)
     builder = ArrowBlockBuilder()
     for block in blocks:
         builder.add_block(block)
@@ -156,7 +155,7 @@ def _shuffle_compact(
 
 @ray.remote
 def _shuffle_reduce(
-    shard_refs: List[ObjectRef],
+    *blocks: Block,
     target_max_block_size: Optional[int] = None,
     should_sort: bool = False,
     key_columns: Optional[List[str]] = None,
@@ -167,7 +166,7 @@ def _shuffle_reduce(
     compatible with :class:`DataOpTask`.
 
     Args:
-        shard_refs: Object references to the partition shards.
+        *blocks: Partition shards.
         target_max_block_size: If set, output blocks are reshaped to this
             target size.
         should_sort: Whether to sort the output by ``key_columns``.
@@ -176,15 +175,12 @@ def _shuffle_reduce(
     start_time_s = time.perf_counter()
     exec_stats_builder = BlockExecStats.builder()
 
-    if not shard_refs:
+    if not blocks:
         return
-
-    # Fetch all shard blocks from the object store.
-    shard_blocks: List[Block] = ray.get(shard_refs)
 
     # Concatenate into a single block.
     builder = ArrowBlockBuilder()
-    for block in shard_blocks:
+    for block in blocks:
         builder.add_block(block)
     result = builder.build()
 
@@ -374,6 +370,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                     self._partition_buffers[pid].append(shard_refs[pid])
                     self._maybe_compact_partition(pid)
 
+                # Drop local list so empty-partition refs (with no other
+                # references) are reclaimed by Ray's reference counting.
+                del shard_refs
+
                 self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
                 # Update shuffle metrics.
@@ -451,10 +451,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         compact_ref = _shuffle_compact.options(
             **compact_resources,
             num_returns=1,
-        ).remote(shard_refs)
+        ).remote(*shard_refs)
 
-        # The ObjectRef from .remote() IS the ref to the compacted block.
-        # Put it into the buffer immediately — reduce will ray.get() it later.
         self._compacted_partition_buffers[partition_id].append(compact_ref)
 
         def _on_compact_done(task_idx: int):
@@ -576,7 +574,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 num_cpus=1,
                 num_returns="streaming",
             ).remote(
-                shard_refs,
+                *shard_refs,
                 target_max_block_size=target_max_block_size,
                 should_sort=self._should_sort,
                 key_columns=self._key_columns if self._should_sort else None,
