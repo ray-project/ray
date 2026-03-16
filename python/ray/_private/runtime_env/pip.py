@@ -34,15 +34,24 @@ def _parse_requirements_file(file_path: str) -> List[str]:
 
 def _get_pip_hash(pip_dict: Dict) -> str:
     pip_dict_copy = pip_dict.copy()
-    packages = pip_dict_copy.get("packages", [])
+    # Using a list as a stack for iterative processing to handle nested requirements.
+    packages_to_process = list(reversed(pip_dict_copy.get("packages", [])))
     expanded_packages = []
-    for pkg in packages:
-        if pkg.startswith("-r "):
-            file_path = pkg[3:].strip()
-            expanded_packages.extend(_parse_requirements_file(file_path))
-        elif pkg.startswith("-r"):
-            file_path = pkg[2:].strip()
-            expanded_packages.extend(_parse_requirements_file(file_path))
+    # Track visited files to prevent circular references
+    visited_files = set()
+    
+    while packages_to_process:
+        pkg = packages_to_process.pop()
+        if pkg.startswith("-r"):
+            # This handles both "-r <file>" and "-r<file>"
+            file_path = pkg[2:].lstrip()
+            if file_path in visited_files:
+                default_logger.warning(f"Skipping circular reference to {file_path}")
+                continue
+            visited_files.add(file_path)
+            # Extend the stack with packages from the file, reversed to maintain order.
+            packages_from_file = _parse_requirements_file(file_path)
+            packages_to_process.extend(reversed(packages_from_file))
         else:
             expanded_packages.append(pkg)
     pip_dict_copy["packages"] = expanded_packages
