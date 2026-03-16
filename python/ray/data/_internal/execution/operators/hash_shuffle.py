@@ -53,7 +53,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.shuffle_engine import (
-    PhaseHooks,
     ProgressEstimate,
     ReducePhaseHooks,
     ShuffleEngine,
@@ -90,18 +89,16 @@ logger = logging.getLogger(__name__)
 StatsDict = Dict[str, List[BlockStats]]
 
 
-class _BoundPhaseHooks(PhaseHooks):
-    """Concrete implementation of the shared task-lifecycle hooks.
+class _PhaseMetrics:
+    """Shared metrics and progress-bar wiring for shuffle and reduce phases.
 
-    Wires ``on_task_submitted``, ``on_task_finished``, ``on_progress``,
-    ``set_progress_bar``, ``metrics_as_dict``, and ``estimate_progress``
-    to an ``OpRuntimeMetrics`` instance and a progress bar.
-    Subclassed by the shuffle- and reduce-specific bound hooks.
+    Composed into the concrete phase-hooks classes via has-a, keeping the
+    hooks hierarchy flat (single inheritance from the abstract interface).
     """
 
     def __init__(self, metrics: OpRuntimeMetrics):
-        self._metrics = metrics
-        self._bar: Optional["BaseProgressBar"] = None
+        self.metrics = metrics
+        self.bar: Optional["BaseProgressBar"] = None
 
     def on_task_submitted(
         self,
@@ -109,7 +106,7 @@ class _BoundPhaseHooks(PhaseHooks):
         input_bundle: RefBundle,
         task_id: str,
     ) -> None:
-        self._metrics.on_task_submitted(task_index, input_bundle, task_id=task_id)
+        self.metrics.on_task_submitted(task_index, input_bundle, task_id=task_id)
 
     def on_task_finished(
         self,
@@ -118,7 +115,7 @@ class _BoundPhaseHooks(PhaseHooks):
         task_exec_stats: Optional["TaskExecWorkerStats"],
         task_exec_driver_stats: Optional["TaskExecDriverStats"],
     ) -> None:
-        self._metrics.on_task_finished(
+        self.metrics.on_task_finished(
             task_index,
             exception,
             task_exec_stats=task_exec_stats,
@@ -130,14 +127,11 @@ class _BoundPhaseHooks(PhaseHooks):
         increment: Optional[int] = None,
         total: Optional[int] = None,
     ) -> None:
-        if self._bar is not None:
-            self._bar.update(increment=increment or 0, total=total)
-
-    def set_progress_bar(self, bar: "BaseProgressBar") -> None:
-        self._bar = bar
+        if self.bar is not None:
+            self.bar.update(increment=increment or 0, total=total)
 
     def metrics_as_dict(self) -> Dict[str, Any]:
-        return self._metrics.as_dict()
+        return self.metrics.as_dict()
 
     def estimate_progress(
         self,
@@ -148,7 +142,7 @@ class _BoundPhaseHooks(PhaseHooks):
         num_blocks, num_bundles, num_rows = estimate_total_num_of_blocks(
             num_tasks_submitted,
             upstream_op_num_outputs,
-            self._metrics,
+            self.metrics,
             total_num_tasks=total_num_tasks,
         )
         return ProgressEstimate(
@@ -158,38 +152,65 @@ class _BoundPhaseHooks(PhaseHooks):
         )
 
 
-class _BoundShufflePhaseHooks(_BoundPhaseHooks, ShufflePhaseHooks):
-    """Concrete shuffle-phase hooks adding block-stats tracking and
-    intermediate output reporting."""
+class _BoundShufflePhaseHooks(ShufflePhaseHooks):
+    """Concrete shuffle-phase hooks with metrics wiring via composition."""
 
     def __init__(
         self,
         metrics: OpRuntimeMetrics,
         block_stats: List[BlockStats],
     ):
-        super().__init__(metrics)
+        self._phase_metrics = _PhaseMetrics(metrics)
         self._block_stats = block_stats
 
+    def on_task_submitted(self, task_index, input_bundle, task_id):
+        self._phase_metrics.on_task_submitted(task_index, input_bundle, task_id)
+
+    def on_task_finished(
+        self, task_index, exception, task_exec_stats, task_exec_driver_stats
+    ):
+        self._phase_metrics.on_task_finished(
+            task_index,
+            exception,
+            task_exec_stats=task_exec_stats,
+            task_exec_driver_stats=task_exec_driver_stats,
+        )
+
+    def on_progress(self, increment=None, total=None):
+        self._phase_metrics.on_progress(increment=increment, total=total)
+
+    def set_progress_bar(self, bar: "BaseProgressBar") -> None:
+        self._phase_metrics.bar = bar
+
+    def metrics_as_dict(self) -> Dict[str, Any]:
+        return self._phase_metrics.metrics_as_dict()
+
+    def estimate_progress(
+        self, num_tasks_submitted, upstream_op_num_outputs, total_num_tasks=None
+    ):
+        return self._phase_metrics.estimate_progress(
+            num_tasks_submitted, upstream_op_num_outputs, total_num_tasks
+        )
+
     def on_input_received(self, bundle: RefBundle) -> None:
-        self._metrics.on_input_received(bundle)
+        self._phase_metrics.metrics.on_input_received(bundle)
 
     def on_output_taken(self, bundle: RefBundle) -> None:
-        self._metrics.on_output_taken(bundle)
+        self._phase_metrics.metrics.on_output_taken(bundle)
 
     def on_task_output(
         self,
         task_index: int,
         output_bundle: RefBundle,
     ) -> None:
-        self._metrics.on_task_output_generated(task_index, output_bundle)
+        self._phase_metrics.metrics.on_task_output_generated(task_index, output_bundle)
 
     def on_block_shuffled(self, block_stats: BlockStats) -> None:
         self._block_stats.append(block_stats)
 
 
-class _BoundReducePhaseHooks(_BoundPhaseHooks, ReducePhaseHooks):
-    """Concrete reduce-phase hooks adding output-queue management and
-    output estimation."""
+class _BoundReducePhaseHooks(ReducePhaseHooks):
+    """Concrete reduce-phase hooks with metrics wiring via composition."""
 
     def __init__(
         self,
@@ -197,9 +218,38 @@ class _BoundReducePhaseHooks(_BoundPhaseHooks, ReducePhaseHooks):
         output_queue: Deque[RefBundle],
         on_output_estimated: Callable[[Optional[int], Optional[int]], None],
     ):
-        super().__init__(metrics)
+        self._phase_metrics = _PhaseMetrics(metrics)
         self._output_queue = output_queue
         self._on_output_estimated = on_output_estimated
+
+    def on_task_submitted(self, task_index, input_bundle, task_id):
+        self._phase_metrics.on_task_submitted(task_index, input_bundle, task_id)
+
+    def on_task_finished(
+        self, task_index, exception, task_exec_stats, task_exec_driver_stats
+    ):
+        self._phase_metrics.on_task_finished(
+            task_index,
+            exception,
+            task_exec_stats=task_exec_stats,
+            task_exec_driver_stats=task_exec_driver_stats,
+        )
+
+    def on_progress(self, increment=None, total=None):
+        self._phase_metrics.on_progress(increment=increment, total=total)
+
+    def set_progress_bar(self, bar: "BaseProgressBar") -> None:
+        self._phase_metrics.bar = bar
+
+    def metrics_as_dict(self) -> Dict[str, Any]:
+        return self._phase_metrics.metrics_as_dict()
+
+    def estimate_progress(
+        self, num_tasks_submitted, upstream_op_num_outputs, total_num_tasks=None
+    ):
+        return self._phase_metrics.estimate_progress(
+            num_tasks_submitted, upstream_op_num_outputs, total_num_tasks
+        )
 
     def on_output_ready(
         self,
@@ -207,14 +257,16 @@ class _BoundReducePhaseHooks(_BoundPhaseHooks, ReducePhaseHooks):
         task_index: int,
     ) -> None:
         self._output_queue.append(bundle)
-        self._metrics.on_output_queued(bundle)
-        self._metrics.on_task_output_generated(task_index=task_index, output=bundle)
+        self._phase_metrics.metrics.on_output_queued(bundle)
+        self._phase_metrics.metrics.on_task_output_generated(
+            task_index=task_index, output=bundle
+        )
 
     def on_output_dequeued(self, bundle: RefBundle) -> None:
-        self._metrics.on_output_dequeued(bundle)
+        self._phase_metrics.metrics.on_output_dequeued(bundle)
 
     def on_output_taken(self, bundle: RefBundle) -> None:
-        self._metrics.on_output_taken(bundle)
+        self._phase_metrics.metrics.on_output_taken(bundle)
 
     def on_output_estimated(
         self,
@@ -807,7 +859,7 @@ class CpuShuffleEngine(ShuffleEngine):
         key_columns: List[Tuple[str]],
         partition_aggregation_factory: ShuffleAggregationFactory,
         num_input_seqs: int,
-        num_partitions: Optional[int] = None,
+        num_partitions: int,
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
@@ -818,15 +870,7 @@ class CpuShuffleEngine(ShuffleEngine):
         estimate_aggregator_memory: Optional[Callable[..., int]] = None,
         min_max_shards_compaction_thresholds: Optional[Tuple[int, int]] = None,
     ):
-        # Derive target num partitions as either of:
-        #   - Requested target number of partitions
-        #   - Max estimated target number of blocks generated by the input op(s)
-        #   - Default configured hash-shuffle parallelism (200)
-        self._num_partitions: int = (
-            num_partitions
-            if num_partitions is not None
-            else _derive_num_partitions(input_ops, data_context)
-        )
+        self._num_partitions: int = num_partitions
 
         self._input_logical_ops = [
             input_physical_op._logical_operators[0] for input_physical_op in input_ops
