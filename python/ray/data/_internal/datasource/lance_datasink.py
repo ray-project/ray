@@ -22,7 +22,7 @@ from ray.data._internal.datasource.lance_utils import (
 )
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import _check_import, unify_schemas_with_validation
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
 
@@ -54,18 +54,15 @@ def _declare_table_with_fallback(
 
 
 def _make_stream_factory(
-    stream: Iterable[Union["pa.Table", "pd.DataFrame"]], replayable: bool
-) -> Tuple[
-    Optional[Callable[[], Iterator[Union["pa.Table", "pd.DataFrame"]]]],
-    Optional[Union["pa.Table", "pd.DataFrame"]],
-]:
+    stream: Iterable[Block], replayable: bool
+) -> Tuple[Optional[Callable[[], Iterator[Block]]], Optional[Block]]:
     """Return a reusable stream factory and the first block, or (None, None)."""
     if replayable:
         blocks = list(stream)
         if not blocks:
             return None, None
 
-        def stream_factory() -> Iterator[Union["pa.Table", "pd.DataFrame"]]:
+        def stream_factory() -> Iterator[Block]:
             return iter(blocks)
 
         return stream_factory, blocks[0]
@@ -75,14 +72,14 @@ def _make_stream_factory(
     if first is None:
         return None, None
 
-    def stream_factory() -> Iterator[Union["pa.Table", "pd.DataFrame"]]:
+    def stream_factory() -> Iterator[Block]:
         return chain([first], stream_iter)
 
     return stream_factory, first
 
 
 def _write_fragment(
-    stream: Iterable[Union["pa.Table", "pd.DataFrame"]],
+    stream: Iterable[Block],
     uri: str,
     *,
     schema: Optional["pa.Schema"] = None,
