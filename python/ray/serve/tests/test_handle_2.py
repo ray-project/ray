@@ -325,6 +325,9 @@ def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation
         def __call__(self, val: int) -> int:
             return val * self._multiple
 
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
     @serve.deployment
     class Ingress:
         def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
@@ -347,6 +350,9 @@ def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation
     # Warmup: (5 + 1) * 2 = 12
     assert handle.remote(5).result(timeout_s=10) == 12
 
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
     # Trigger Adder crash with os._exit(0)
     crash_response = handle.remote(0)
     with pytest.raises((RayActorError, Exception)):
@@ -364,6 +370,13 @@ def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation
     # from upstream). A new request should succeed. (2 + 1) * 2 = 6
     result = handle.remote(2).result(timeout_s=30)
     assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must not have been restarted (same actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before == multiplier_actor_id_after, (
+        f"Multiplier was incorrectly marked dead and restarted: "
+        f"actor_id {multiplier_actor_id_before} -> {multiplier_actor_id_after}"
+    )
 
 
 @pytest.mark.skipif(
@@ -407,6 +420,9 @@ def test_chained_deployment_response_downstream_crash_replica_marked_dead(
                 os._exit(0)
             return val * self._multiple
 
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
     @serve.deployment
     class Ingress:
         def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
@@ -429,6 +445,9 @@ def test_chained_deployment_response_downstream_crash_replica_marked_dead(
     # Warmup: (-1 + 1) * 2 = 0, but Multiplier crashes on 0. Use val=5: (5+1)*2=12
     assert handle.remote(5).result(timeout_s=10) == 12
 
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
     # Trigger Multiplier crash: Adder returns 0, Multiplier gets 0 and os._exit(0)
     crash_response = handle.remote(-1)
     with pytest.raises((RayActorError, Exception)):
@@ -445,6 +464,13 @@ def test_chained_deployment_response_downstream_crash_replica_marked_dead(
     # New request should succeed with restarted Multiplier. (2 + 1) * 2 = 6
     result = handle.remote(2).result(timeout_s=30)
     assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must have been restarted (different actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before != multiplier_actor_id_after, (
+        f"Multiplier was not correctly marked dead and restarted: "
+        f"actor_id unchanged at {multiplier_actor_id_before}"
+    )
 
 
 @pytest.mark.skipif(

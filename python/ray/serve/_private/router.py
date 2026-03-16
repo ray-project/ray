@@ -820,10 +820,9 @@ class AsyncioRouter:
         actor_died_error: ActorDiedError,
     ) -> None:
         # Only mark the replica as dead if the ActorDiedError refers to this
-        # replica. When using chained DeploymentResponses, the error may come
-        # from an upstream dependency (e.g., Adder crashed) that was passed
-        # as an object ref to this replica (e.g., Multiplier). In that case,
-        # the Multiplier is still healthy and should not be marked dead.
+        # replica. With chained DeploymentResponses, the error may come from
+        # an upstream deployment that was passed as an object ref to this
+        # replica. In that case, this replica is still healthy.
         error_actor_id = getattr(actor_died_error, "actor_id", None)
         replica_actor_id_hex = (
             replica_actor_id.hex() if replica_actor_id is not None else None
