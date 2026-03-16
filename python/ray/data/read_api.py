@@ -4307,8 +4307,8 @@ def _infer_partition_types_from_delta_table(
 @PublicAPI(stability="alpha")
 def read_delta(
     path: str,
-    *,
     version: Optional[Union[int, str]] = None,
+    *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     partition_filters: Optional[List[tuple]] = None,
@@ -4336,9 +4336,8 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
-        version: The version of the Delta Lake table to read. Pass an integer to read
-            a specific version number, or an ISO 8601 timestamp string to read the
-            version at that point in time. If not specified, the latest version is read.
+        version: The version of the Delta Lake table to read (int) or ISO 8601
+            timestamp string. If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4394,13 +4393,7 @@ def read_delta(
 
         Reads are consistent with Delta Lake's ACID transaction model.
 
-        Use the ``version`` parameter to read a specific historical version of the
-        table (time travel). Pass an integer for a version number or an ISO 8601
-        timestamp string for a point-in-time read.
-
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
     import importlib
 
     package = "deltalake"
@@ -4422,7 +4415,6 @@ def read_delta(
     if storage_options:
         dt_kwargs["storage_options"] = storage_options
 
-    # Validate version type
     if version is not None and not isinstance(version, (int, str)):
         raise TypeError(
             f"version must be int or str, got {type(version).__name__}. "
@@ -4434,7 +4426,6 @@ def read_delta(
 
     dt = DeltaTable(path, **dt_kwargs)
 
-    # Handle timestamp string versions using load_as_version()
     if version is not None and isinstance(version, str):
         dt.load_as_version(version)
 

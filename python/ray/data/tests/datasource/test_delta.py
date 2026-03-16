@@ -212,22 +212,6 @@ def test_read_delta_column_projection(ray_start_regular_shared, temp_delta_path)
 
 
 # =============================================================================
-# Time Travel Tests
-# =============================================================================
-
-
-def test_read_delta_time_travel_version(ray_start_regular_shared, temp_delta_path):
-    ray.data.range(50).write_delta(temp_delta_path)
-    ray.data.range(30).write_delta(temp_delta_path, mode="append")
-
-    # Read latest version (should have 80 rows)
-    assert ray.data.read_delta(temp_delta_path).count() == 80
-
-    # Read version 0 (first write, 50 rows)
-    assert ray.data.read_delta(temp_delta_path, version=0).count() == 50
-
-
-# =============================================================================
 # Write Mode Validation Tests
 # =============================================================================
 
@@ -262,6 +246,22 @@ def test_write_delta_invalid_schema_mode(ray_start_regular_shared, temp_delta_pa
         ray.data.from_items(data2).write_delta(
             temp_delta_path, schema_mode="errror"  # typo
         )
+
+
+# =============================================================================
+# Time Travel Tests
+# =============================================================================
+
+
+def test_read_delta_time_travel_version(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(50).write_delta(temp_delta_path)
+    ray.data.range(30).write_delta(temp_delta_path, mode="append")
+
+    # Read latest version (should have 80 rows)
+    assert ray.data.read_delta(temp_delta_path).count() == 80
+
+    # Read version 0 (first write, 50 rows)
+    assert ray.data.read_delta(temp_delta_path, version=0).count() == 50
 
 
 # =============================================================================

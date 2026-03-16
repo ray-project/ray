@@ -8,7 +8,7 @@ PyArrow: https://arrow.apache.org/docs/python/
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.data._internal.datasource.delta.utils import (
     create_filesystem_from_storage_options,
@@ -34,6 +34,7 @@ class DeltaDatasource(Datasource):
         self,
         path: str,
         *,
+        version: Optional[Union[int, str]] = None,
         storage_options: Optional[Dict[str, str]] = None,
         partition_filters: Optional[List[tuple]] = None,
         filesystem: Optional[Any] = None,
@@ -49,6 +50,7 @@ class DeltaDatasource(Datasource):
 
         Args:
             path: Path to Delta Lake table.
+            version: Version to read for time travel (integer or ISO 8601 timestamp).
             storage_options: Cloud storage authentication credentials.
             partition_filters: Delta Lake partition filters as list of tuples.
                 Format: [(column, op, value), ...] where op is "=", "!=",
@@ -72,7 +74,13 @@ class DeltaDatasource(Datasource):
         if not path or not path.strip():
             raise ValueError("Delta table path cannot be empty")
 
+        if version is not None and not isinstance(version, (int, str)):
+            raise TypeError(
+                f"version must be int or str (ISO 8601 timestamp), got {type(version).__name__}"
+            )
+
         self.path = path
+        self.version = version
         self.storage_options = storage_options or {}
         self.partition_filters = normalize_partition_filters(partition_filters)
         self.filesystem = filesystem
@@ -84,6 +92,7 @@ class DeltaDatasource(Datasource):
         self.include_paths = include_paths
         self.arrow_parquet_args = arrow_parquet_args
         self._delta_table = None
+        self._delta_table_version: Optional[Union[int, str]] = None
         self._delta_table_storage_options: Dict[str, str] = dict(self.storage_options)
 
     @property
@@ -98,7 +107,12 @@ class DeltaDatasource(Datasource):
             dt_kwargs = {}
             if self.storage_options:
                 dt_kwargs["storage_options"] = self.storage_options
+            if self.version is not None and isinstance(self.version, int):
+                dt_kwargs["version"] = self.version
             self._delta_table = DeltaTable(self.path, **dt_kwargs)
+            if self.version is not None and isinstance(self.version, str):
+                self._delta_table.load_as_version(self.version)
+            self._delta_table_version = self.version
             self._delta_table_storage_options = dict(self.storage_options)
         return self._delta_table
 
@@ -183,6 +197,8 @@ class DeltaDatasource(Datasource):
     def __repr__(self) -> str:
         """String representation for debugging."""
         parts = [f"path={self.path!r}"]
+        if self.version is not None:
+            parts.append(f"version={self.version!r}")
         if self.columns:
             parts.append(f"columns={self.columns}")
         if self.partition_filters:
@@ -191,6 +207,8 @@ class DeltaDatasource(Datasource):
 
     def _needs_new_table(self) -> bool:
         """Return True if cached DeltaTable is stale for current settings."""
+        if self._delta_table_version != self.version:
+            return True
         current_opts = dict(self.storage_options) if self.storage_options else {}
         cached_opts = self._delta_table_storage_options or {}
         if current_opts != cached_opts:

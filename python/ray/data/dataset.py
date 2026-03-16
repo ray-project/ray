@@ -4405,7 +4405,8 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode for handling existing tables.
+            mode: Write mode for handling existing tables. Supports append,
+                overwrite, ignore, error.
 
                 * "append": Add data to existing table (default)
                 * "overwrite": Replace all data in the table
@@ -4440,10 +4441,20 @@ class Dataset:
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
-            ValueError: If mode is invalid or schema validation fails.
+            ValueError: If mode is not supported, or if unsupported write_kwargs
+                are provided.
 
         Note:
-            This method uses a two-phase commit protocol for ACID guarantees:
+            Features:
+
+            * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
+              Either all files become visible or none do.
+            * **Schema evolution**: Automatically add new columns when writing to existing
+              tables (controlled by ``schema_mode`` parameter).
+            * **Partitioning**: Hive-style partitioning support.
+            * **Write modes**: Append, overwrite, ignore, and error modes.
+
+            The two-phase commit protocol:
 
             1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
                Parquet files and returns AddAction metadata (files not yet visible).
@@ -4465,6 +4476,7 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
+        # Validate mode is one of the supported modes
         valid_modes = {"append", "overwrite", "ignore", "error"}
         if mode not in valid_modes:
             raise ValueError(
@@ -4486,13 +4498,19 @@ class Dataset:
             )
 
         if "upsert_kwargs" in write_kwargs:
-            raise ValueError("upsert_kwargs is not supported.")
+            raise ValueError(
+                "upsert_kwargs is not supported."
+            )
 
         if "partition_overwrite_mode" in write_kwargs:
-            raise ValueError("partition_overwrite_mode is not supported.")
+            raise ValueError(
+                "partition_overwrite_mode is not supported."
+            )
 
         if "target_file_size_bytes" in write_kwargs:
-            raise ValueError("target_file_size_bytes is not supported.")
+            raise ValueError(
+                "target_file_size_bytes is not supported."
+            )
 
         datasink = DeltaDatasink(
             path,
