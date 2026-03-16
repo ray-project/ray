@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, DefaultDict, Dict, List
+from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional, Union
 
 import requests
 
@@ -68,7 +68,7 @@ class HangingExecutionState:
     operator_id: OpId
     task_idx: TaskIdx
     task_id: ray.TaskID
-    task_metadata: TaskMetadata | None
+    task_metadata: Optional[TaskMetadata]
     bytes_output: int
     # from time.time()
     start_time_hanging: float
@@ -135,15 +135,15 @@ class HangingExecutionIssueDetector(IssueDetector):
         stdev = op_task_stats.stddev()
 
         meta = hes.task_metadata
-        metadata_info = ""
+        task_info = ""
         if meta is not None:
-            metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
+            task_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
         hanging_since = _format_timestamp(hes.start_time_hanging)
 
         message = (
             f"A task (task_id={hes.task_id}) of operator "
-            f"{operator.name} {metadata_info}has been running or stuck in scheduling for "
+            f"{operator.name} {task_info}has been running or stuck in scheduling for "
             f"{hes.hanging_time():.2f}s, which is longer than the average task "
             f"duration + z-score * stddev of this operator "
             f"({avg_duration:.2f} + "
@@ -169,7 +169,7 @@ class HangingExecutionIssueDetector(IssueDetector):
         self,
         operator: "PhysicalOperator",
         task_idx: TaskIdx,
-        old_state: HangingExecutionState | None,
+        old_state: Optional[HangingExecutionState],
         task_info: RunningTaskInfo,
     ) -> HangingExecutionState:
         """Build a HangingExecutionState, fetching task metadata lazily.
@@ -178,16 +178,14 @@ class HangingExecutionIssueDetector(IssueDetector):
         State API only when unknown or potentially stale (e.g. after the
         task made progress then stalled again).
         """
-        task_metadata: TaskMetadata | None = None
-        bytes_output: int | None = None
+        task_metadata: Optional[TaskMetadata] = None
+        bytes_output: Optional[int] = None
         if old_state is not None:
             task_metadata = old_state.task_metadata
             bytes_output = old_state.bytes_output
 
-        if old_state is None or bytes_output != task_info.bytes_output:
-            task_state = get_latest_state_for_task(task_info.task_id)
-            if task_state is not None:
-                task_metadata = TaskMetadata.from_task_state(task_state)
+        elif bytes_output != task_info.bytes_output:
+            task_metadata = get_latest_state_for_task(task_info.task_id)
 
         return HangingExecutionState(
             operator_id=operator.id,
@@ -253,16 +251,16 @@ class HangingExecutionIssueDetector(IssueDetector):
         return self._detector_cfg.detection_time_interval_s
 
 
-def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
+def get_latest_state_for_task(task_id: ray.TaskID) -> Optional[TaskMetadata]:
     """Query the Ray State API for the latest attempt of a task.
 
-    Returns the TaskState with the highest attempt_number when multiple
+    Returns a TaskMetadata with the highest attempt_number when multiple
     attempts exist, or None if the task is not found (can happen when
     get_task() is called shortly after submission, before the state API
     has indexed it) or the API is unreachable.
     """
     try:
-        task_state: TaskState | List[TaskState] | None = get_task(
+        task_state: Union[TaskState, List[TaskState], None] = get_task(
             task_id.hex(),
             timeout=0,
             _explain=True,
@@ -279,4 +277,6 @@ def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
     if isinstance(task_state, list):
         # get the latest task
         task_state = max(task_state, key=lambda ts: ts.attempt_number, default=None)
-    return task_state
+    if task_state is None:
+        return None
+    return TaskMetadata.from_task_state(task_state)

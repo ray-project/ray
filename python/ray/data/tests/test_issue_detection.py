@@ -138,9 +138,7 @@ class TestHangingExecutionIssueDetector:
         assert re.search(warn_msg, log_output) is not None, log_output
 
     @patch("time.time")
-    def test_hanging_detector_detects_issues(
-        self, mock_time, ray_start_regular_shared
-    ):
+    def test_hanging_detector_detects_issues(self, mock_time, ray_start_regular_shared):
         """Test that the hanging detector correctly identifies tasks that exceed the adaptive threshold."""
 
         # Configure hanging detector with extreme std_factor values
