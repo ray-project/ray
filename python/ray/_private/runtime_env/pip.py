@@ -18,8 +18,35 @@ from ray._private.utils import get_directory_size_bytes
 default_logger = logging.getLogger(__name__)
 
 
+def _parse_requirements_file(file_path: str) -> List[str]:
+    packages = []
+    try:
+        with open(file_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                packages.append(line)
+    except FileNotFoundError:
+        default_logger.warning(f"Requirements file not found: {file_path}")
+    return packages
+
+
 def _get_pip_hash(pip_dict: Dict) -> str:
-    serialized_pip_spec = json.dumps(pip_dict, sort_keys=True)
+    pip_dict_copy = pip_dict.copy()
+    packages = pip_dict_copy.get("packages", [])
+    expanded_packages = []
+    for pkg in packages:
+        if pkg.startswith("-r "):
+            file_path = pkg[3:].strip()
+            expanded_packages.extend(_parse_requirements_file(file_path))
+        elif pkg.startswith("-r"):
+            file_path = pkg[2:].strip()
+            expanded_packages.extend(_parse_requirements_file(file_path))
+        else:
+            expanded_packages.append(pkg)
+    pip_dict_copy["packages"] = expanded_packages
+    serialized_pip_spec = json.dumps(pip_dict_copy, sort_keys=True)
     hash_val = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
     return hash_val
 
