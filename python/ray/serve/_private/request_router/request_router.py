@@ -632,6 +632,23 @@ class RequestRouter(ABC):
             self.max_backoff_s,
         )
 
+    def update_backoff_params(
+        self,
+        initial_backoff_s: float,
+        backoff_multiplier: float,
+        max_backoff_s: float,
+    ) -> None:
+        """Update the backoff parameters at runtime.
+
+        Args:
+            initial_backoff_s: Initial backoff time in seconds.
+            backoff_multiplier: Multiplier applied after each retry.
+            max_backoff_s: Maximum backoff time in seconds.
+        """
+        self.initial_backoff_s = initial_backoff_s
+        self.backoff_multiplier = backoff_multiplier
+        self.max_backoff_s = max_backoff_s
+
     async def _backoff(self, attempt: int) -> None:
         """Sleep for the appropriate backoff time for a given retry attempt.
 

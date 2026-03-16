@@ -15,6 +15,9 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
 )
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
@@ -254,6 +257,61 @@ class TestDeploymentConfig:
             deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
+
+    def test_backoff_params_imperative(self):
+        """Check that custom backoff params are set via the imperative path."""
+        custom_initial = 0.1
+        custom_multiplier = 3.0
+        custom_max = 2.0
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=custom_initial,
+                backoff_multiplier=custom_multiplier,
+                max_backoff_s=custom_max,
+            )
+        )
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s == custom_initial
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == custom_multiplier
+        )
+        assert deployment_config.request_router_config.max_backoff_s == custom_max
+
+    def test_backoff_params_defaults_imperative(self):
+        """Check that backoff params use defaults when not specified."""
+        deployment_config = DeploymentConfig.from_default()
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+        )
+        assert (
+            deployment_config.request_router_config.max_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+        )
+
+    def test_backoff_params_declarative_schema(self):
+        """Check that backoff params can be set via the declarative schema."""
+        schema = DeploymentSchema(
+            name="test-deployment",
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=0.1,
+                backoff_multiplier=3.0,
+                max_backoff_s=2.0,
+            ),
+        )
+
+        assert schema.request_router_config.initial_backoff_s == 0.1
+        assert schema.request_router_config.backoff_multiplier == 3.0
+        assert schema.request_router_config.max_backoff_s == 2.0
 
 
 class TestReplicaConfig:

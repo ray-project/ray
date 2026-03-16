@@ -1291,6 +1291,62 @@ def test_custom_request_router_kwargs(serve_instance):
     assert handle.remote().result() == "Hello, world!"
 
 
+def test_backoff_params_imperative(serve_instance):
+    """Check that custom initial_backoff_s is actually applied during retries.
+
+    Deploys with max_ongoing_requests=1 and a large initial_backoff_s. Sends a
+    blocking request to fill the replica, then sends a second request that enters
+    backoff. Verifies the second request takes at least initial_backoff_s to
+    complete (proving the backoff sleep was applied).
+    """
+    import time
+
+    custom_initial_backoff_s = 3.0
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_ongoing_requests=1,
+        request_router_config=RequestRouterConfig(
+            initial_backoff_s=custom_initial_backoff_s,
+        ),
+    )
+    class SlowApp:
+        async def __call__(self, block: bool = False) -> str:
+            if block:
+                await signal.wait.remote()
+            return "ok"
+
+    handle = serve.run(SlowApp.bind())
+
+    # Send a blocking request to fill the single slot.
+    blocking_ref = handle.remote(block=True)
+
+    # Wait for the blocking request to be processing.
+    time.sleep(0.5)
+
+    # Send a second request — this will be rejected by the replica and enter
+    # the backoff loop, sleeping for initial_backoff_s before retrying.
+    start = time.monotonic()
+    second_ref = handle.remote(block=False)
+
+    # Unblock the first request after a short delay, so the second request
+    # can succeed on retry after the backoff sleep.
+    time.sleep(0.3)
+    ray.get(signal.send.remote())
+
+    # Wait for both requests to complete.
+    blocking_ref.result()
+    second_ref.result()
+    elapsed = time.monotonic() - start
+
+    # The second request should have waited at least initial_backoff_s
+    # before retrying (the backoff sleep dominates the elapsed time).
+    assert elapsed >= custom_initial_backoff_s, (
+        f"Expected at least {custom_initial_backoff_s}s due to backoff, "
+        f"but request completed in {elapsed:.2f}s"
+    )
+
+
 def test_overloaded_app_builder_signatures():
     """Test that call_user_app_builder_with_args_if_necessary validates the base
     function signature with a pydantic basemodel, rather than the overload that

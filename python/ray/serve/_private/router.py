@@ -739,9 +739,11 @@ class AsyncioRouter:
         self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
 
         if self._request_router:
-            self._request_router.initial_backoff_s = self._initial_backoff_s
-            self._request_router.backoff_multiplier = self._backoff_multiplier
-            self._request_router.max_backoff_s = self._max_backoff_s
+            self._request_router.update_backoff_params(
+                initial_backoff_s=self._initial_backoff_s,
+                backoff_multiplier=self._backoff_multiplier,
+                max_backoff_s=self._max_backoff_s,
+            )
 
         self._metrics_manager.update_deployment_config(
             deployment_config,

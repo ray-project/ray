@@ -41,7 +41,7 @@ from ray.serve._private.router import (
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import decompress_metric_report, get_random_string
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import BackPressureError
 
 
@@ -1370,8 +1370,6 @@ class TestAsyncioRouterBackoffConfig:
 
     async def test_update_deployment_config_sets_backoff_params(self):
         """Test that update_deployment_config extracts backoff params from config."""
-        from ray.serve.config import RequestRouterConfig
-
         fake_request_router = FakeRequestRouter(use_queue_len_cache=False)
         router = AsyncioRouter(
             controller_handle=Mock(),
@@ -1408,6 +1406,11 @@ class TestAsyncioRouterBackoffConfig:
         assert router._initial_backoff_s == custom_initial_backoff
         assert router._backoff_multiplier == custom_multiplier
         assert router._max_backoff_s == custom_max_backoff
+
+        # Verify the backoff params were propagated to the request router
+        assert fake_request_router.initial_backoff_s == custom_initial_backoff
+        assert fake_request_router.backoff_multiplier == custom_multiplier
+        assert fake_request_router.max_backoff_s == custom_max_backoff
 
 
 class TestOnRequestCompleted:
