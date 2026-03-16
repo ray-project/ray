@@ -5970,10 +5970,12 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        synchronize_batches: bool = True,
     ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
         """Return an iterable over batches of data represented as JAX arrays.
 
         This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
+        Data types are inferred from the underlying NumPy arrays.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to JAX arrays.
 
@@ -6010,6 +6012,9 @@ class Dataset:
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            synchronize_batches: Whether to synchronize batch shapes across all hosts.
+                Setting this to False can improve performance if you guarantee that all
+                hosts produce identical batch shapes and counts beforehand.
 
         Returns:
             An iterable over JAX Array batches.
@@ -6022,6 +6027,7 @@ class Dataset:
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            synchronize_batches=synchronize_batches,
         )
 
     @ConsumptionAPI

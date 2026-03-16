@@ -627,12 +627,13 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
+        synchronize_batches: bool = True,
     ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
         """Return a batched iterable of JAX Arrays over the dataset.
 
         This iterator fetches data blocks, converts them to NumPy arrays, and
         loads them directly onto JAX-addressable devices using Global SPMD
-        sharding. dtypes are inferred from the underlying NumPy arrays.
+        sharding. Data types are inferred from the underlying NumPy arrays.
 
         This iterable will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -648,6 +649,9 @@ class DataIterator(abc.ABC):
             drop_last: Whether to drop the last batch if incomplete.
             local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
             local_shuffle_seed: Seed for local random shuffle.
+            synchronize_batches: Whether to synchronize batch shapes across all hosts.
+                Setting this to False can improve performance if you guarantee that all
+                hosts produce identical batch shapes and counts beforehand.
 
         Returns:
             An iterable over JAX Array batches.
@@ -676,10 +680,13 @@ class DataIterator(abc.ABC):
 
         from ray.data.util.jax_util import jax_sync_generator
 
+        # Use prefetch_batches as the lookahead size for synchronization.
         return jax_sync_generator(
             batch_iterable,
             drop_last,
             named_sharding,
+            synchronize_batches=synchronize_batches,
+            synchronize_lookahead=max(prefetch_batches, 1),
         )
 
     def to_torch(
