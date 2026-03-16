@@ -1236,5 +1236,65 @@ class TestGangSchedulingAutoscalingPolicy:
         assert decision == 4
 
 
+class TestWarmupScalingFeedbackLoop:
+    """Regression tests for a feedback loop that causes deployments to scale
+    to max_replicas during warmup when upscaling_factor > 1.
+
+    When current_num_replicas == 0 (replicas scheduled but not yet RUNNING)
+    and there is no traffic, the policy should hold the target steady.
+    """
+
+    @pytest.mark.parametrize("upscaling_factor", [0.5, 1.0, 1.5, 2.0, 10.0])
+    def test_no_runaway_scaling_during_warmup(self, upscaling_factor):
+        min_replicas = 2
+        max_replicas = 10
+        config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_ongoing_requests=0.2,
+            upscaling_factor=upscaling_factor,
+            upscale_delay_s=5.0,
+            downscale_delay_s=30.0,
+        )
+
+        target = min_replicas
+        policy_state = {}
+
+        for tick in range(100):
+            ctx = AutoscalingContext(
+                config=config,
+                current_num_replicas=0,
+                target_num_replicas=target,
+                total_num_requests=0,
+                total_queued_requests=0,
+                capacity_adjusted_min_replicas=min_replicas,
+                capacity_adjusted_max_replicas=max_replicas,
+                policy_state=policy_state,
+                deployment_id=None,
+                deployment_name=None,
+                app_name=None,
+                running_replicas=[],
+                current_time=None,
+                aggregated_metrics=None,
+                raw_metrics=None,
+                last_scale_up_time=None,
+                last_scale_down_time=None,
+                total_pending_async_requests=0,
+            )
+
+            new_target, policy_state = wrapped_replica_queue_length_autoscaling_policy(
+                ctx=ctx
+            )
+            assert new_target == target, (
+                f"Tick {tick}: target changed from {target} to {new_target} "
+                f"with upscaling_factor={upscaling_factor}, "
+                f"current_num_replicas=0, total_num_requests=0. "
+                f"This indicates a feedback loop bug."
+            )
+            target = new_target
+
+        assert target == min_replicas
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

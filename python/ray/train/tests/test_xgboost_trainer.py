@@ -62,7 +62,7 @@ class ScalingConfigAssertingXGBoostTrainer(XGBoostTrainer):
         return super().training_loop()
 
 
-def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
+def test_fit_with_advanced_scaling_config(ray_start_8_cpus):
     """Ensure that extra ScalingConfig arguments are respected."""
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
@@ -78,7 +78,7 @@ def test_fit_with_advanced_scaling_config(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
+def test_resume_from_checkpoint(ray_start_8_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
@@ -117,7 +117,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         (0, False, 0),
     ],
 )
-def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
+def test_checkpoint_freq(ray_start_8_cpus, freq_end_expected):
     freq, end, expected = freq_end_expected
 
     train_dataset = ray.data.from_pandas(train_df)

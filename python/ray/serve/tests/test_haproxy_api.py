@@ -222,6 +222,9 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                     ServerConfig(name="api_server1", host="127.0.0.1", port=8001),
                     ServerConfig(name="api_server2", host="127.0.0.1", port=8002),
                 ],
+                fallback_server=ServerConfig(
+                    name="api_fallback_server", host="127.0.0.1", port=8500
+                ),
             ),
             "web_backend": BackendConfig(
                 name="web_backend",
@@ -335,6 +338,8 @@ backend api_backend
     # Servers in this backend
     server api_server1 127.0.0.1:8001 check
     server api_server2 127.0.0.1:8002 check
+    # Fallback to head node's Serve proxy when no ingress replicas are available
+    server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
     log global
     balance leastconn
