@@ -148,17 +148,18 @@ def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
 
     try:
         human_readable_json = to_human_readable(d, max_depth)
+
+        json_str = json.dumps(
+            human_readable_json,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+
+        human_readable_dict = json.loads(json_str)
     except Exception as e:
-        logger.warning(f"Failed to convert value to JSON for export: {e}")
-        human_readable_json = {}
+        logger.warning(f"Failed to convert value to protobuf Struct for export: {e}")
+        human_readable_dict = {}
 
-    json_str = json.dumps(
-        human_readable_json,
-        sort_keys=True,
-        ensure_ascii=False,
-    )
-
-    human_readable_dict = json.loads(json_str)
     proto_struct = Struct()
     proto_struct.update(human_readable_dict)
     return proto_struct
