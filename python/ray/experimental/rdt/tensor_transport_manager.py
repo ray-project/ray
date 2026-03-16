@@ -48,6 +48,23 @@ class TransferMetadata:
     tensors: List[Any]
 
 
+@dataclass
+class FetchRequest:
+    """Represents a pending or completed tensor fetch operation.
+
+    The default fetch/wait implementation stores the tensors here directly
+    after a synchronous recv. Transports with true async capability may
+    subclass this to carry additional state needed by wait_fetch_complete.
+
+    Args:
+        obj_id: The object ID for the fetch operation.
+        tensors: The fetched tensors.
+    """
+
+    obj_id: str
+    tensors: List[Any]
+
+
 class TensorTransportManager(ABC):
     """
     Interface with which to implement custom tensor transports.
@@ -149,6 +166,49 @@ class TensorTransportManager(ABC):
         Returns:
             List[Any]: The received tensors.
         """
+
+    def fetch_multiple_tensors(
+        self,
+        obj_id: str,
+        tensor_transport_metadata: TensorTransportMetadata,
+        communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List[Any]] = None,
+    ) -> FetchRequest:
+        """Initiate a fetch for multiple tensors without waiting for completion.
+
+        The default implementation calls recv_multiple_tensors synchronously and
+        stores the result in a FetchRequest. Transports with true async capability
+        should override both this method and wait_fetch_complete.
+
+        Call wait_fetch_complete(fetch_request) afterward to retrieve the tensors.
+
+        Args:
+            obj_id: The object ID for the related GPU object.
+            tensor_transport_metadata: The tensor transport metadata for the GPU object.
+            communicator_metadata: The communicator metadata for the send/recv operation.
+            target_buffers: Pre-allocated buffers to receive the tensors into if possible.
+
+        Returns:
+            A FetchRequest whose tensors field is already populated.
+        """
+        tensors = self.recv_multiple_tensors(
+            obj_id, tensor_transport_metadata, communicator_metadata, target_buffers
+        )
+        return FetchRequest(obj_id=obj_id, tensors=tensors)
+
+    def wait_fetch_complete(self, fetch_request: FetchRequest) -> List[Any]:
+        """Wait for a previously initiated fetch to complete and return the tensors.
+
+        The default implementation returns the tensors stored in the FetchRequest
+        directly, since the default fetch_multiple_tensors is synchronous.
+
+        Args:
+            fetch_request: The FetchRequest returned by fetch_multiple_tensors.
+
+        Returns:
+            The received tensors.
+        """
+        return fetch_request.tensors
 
     @abstractmethod
     def send_multiple_tensors(
