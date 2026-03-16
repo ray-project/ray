@@ -102,10 +102,10 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   }
 
   // Group workers by owner id
-  RAY_LOG(INFO) << "No workers found that don't have any lease granted and occupies "
-                   "large amount of memory. "
-                << "Grouping the workers by owner id, sorting the groups by the "
-                << "policy, and picking a worker to kill from the top group.";
+  RAY_LOG(DEBUG) << "No workers found that don't have any lease granted and occupies "
+                    "large amount of memory. "
+                 << "Grouping the workers by owner id, sorting the groups by the "
+                 << "policy, and picking a worker to kill from the top group.";
   TaskID non_retriable_owner_id = TaskID::Nil();
   std::unordered_map<TaskID, Group> group_map;
   for (std::shared_ptr<WorkerInterface> worker : workers) {

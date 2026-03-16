@@ -224,7 +224,8 @@ TEST_F(WorkerKillingGroupByOwnerTest,
   }
 }
 
-TEST_F(WorkerKillingGroupByOwnerTest, TestBelowMemoryThresholdWorkerWithoutLeaseAreNotKilled) {
+TEST_F(WorkerKillingGroupByOwnerTest,
+       TestBelowMemoryThresholdWorkerWithoutLeaseAreNotKilled) {
   pid_t current_pid = 1000;
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   std::shared_ptr<WorkerInterface> worker_with_lease =
