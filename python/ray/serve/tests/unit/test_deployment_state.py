@@ -30,7 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -1707,7 +1707,7 @@ def test_health_gauge_caching(mock_deployment_state_manager):
 
     # After the TTL expires, the gauge should be re-reported even though
     # the value hasn't changed.
-    timer.advance(RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S + 1)
+    timer.advance(RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S + 1)
     dsm.update()
     assert call_count == len(replica_ids), (
         f"Gauge.set was called {call_count} times after TTL expired; "
@@ -2730,13 +2730,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -2924,12 +2924,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 2 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 2
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 2)
                         ]
                         for replica in replicas
@@ -3022,12 +3023,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3133,12 +3135,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3449,11 +3452,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds._replicas.get()[0]._actor.replica_id: [
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3562,11 +3567,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds1._replicas.get()[0]._actor.replica_id: [
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3692,13 +3699,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -3758,13 +3765,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -5635,6 +5642,64 @@ class TestDeploymentRankManagerIntegrationE2E:
             1,
             2,
         }, f"Expected ranks [0, 1, 2], got {[r.rank for r in ranks_mapping.values()]}"
+
+    def test_rank_recovery_skips_when_already_assigned(
+        self, mock_deployment_state_manager
+    ):
+        """Verify that recover_rank is skipped when a replica's rank is already assigned."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy 3 replicas: STARTING -> RUNNING (ranks get assigned).
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Record the actor names and ranks for recovery.
+        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        original_ranks = {
+            r.replica_id.unique_id: ds._rank_manager.get_replica_rank(
+                r.replica_id.unique_id
+            )
+            for r in ds._replicas.get()
+        }
+        dsm.save_checkpoint()
+
+        # Simulate controller crash: create a new DSM with the live actor names.
+        new_dsm: DeploymentStateManager = create_dsm(actor_names)
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+        # Enable strict rank error mode so duplicate recover_rank raises.
+        new_ds._rank_manager._fail_on_rank_error = True
+
+        # Pre-populate 1 replica's rank in the new rank manager, simulating
+        # the scenario where the rank was never released.
+        target = new_ds._replicas.get(states=[ReplicaState.RECOVERING])[0]
+        target_id = target.replica_id.unique_id
+        target_rank = original_ranks[target_id]
+        new_ds._rank_manager.recover_rank(target_id, target.actor_node_id, target_rank)
+        assert new_ds._rank_manager.has_replica_rank(target_id)
+
+        # Mark all recovering replicas as ready.
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+
+        # This update() calls _check_startup_replicas(RECOVERING). For the
+        # pre-populated replica, has_replica_rank returns True so recover_rank
+        # is SKIPPED.
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Verify all ranks were recovered correctly.
+        for rid, expected_rank in original_ranks.items():
+            assert new_ds._rank_manager.get_replica_rank(rid) == expected_rank
 
 
 class TestGetOutboundDeployments:

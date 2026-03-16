@@ -776,6 +776,9 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # The client address in "host:port" format, if available.
+    _client: str = ""
+
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
@@ -953,10 +956,11 @@ class HandleMetricReport:
             handle over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
         aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the handle for each replica.
+            look_back_period_s seconds at the handle for each replica. Replica keys
+            use ReplicaID.to_full_id_str() for efficient controller-side lookups.
         metrics: A map of metric name to the list of values running at that handle for each replica
-            over the past look_back_period_s seconds. This is a list because
-            we take multiple measurements over time.
+            over the past look_back_period_s seconds. Replica keys use to_full_id_str().
+            This is a list because we take multiple measurements over time.
         timestamp: The time at which this report was created.
     """
 
@@ -966,8 +970,12 @@ class HandleMetricReport:
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
     queued_requests: TimeSeries
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
+    aggregated_metrics: Dict[
+        str, Dict[str, float]
+    ]  # replica key = ReplicaID.to_full_id_str()
+    metrics: Dict[
+        str, Dict[str, TimeSeries]
+    ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
 
     @property

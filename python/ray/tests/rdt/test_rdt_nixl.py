@@ -234,6 +234,27 @@ def test_send_duplicate_tensor(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_abort_sender_dies_before_creating(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+
+    # Trigger transfer and kill sender before the receiver starts receiving
+    signal_actor = SignalActor.remote()
+    actors[0].block_main_thread.remote(signal_actor)
+    ref = actors[0].echo.remote(torch.randn((100, 100)), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    ray.kill(actors[0])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result)
+
+    # Try a transfer with actor[1] receiving again
+    new_actor = GPUTestActor.remote()
+    ref = new_actor.echo.remote(torch.tensor([4, 5, 6]), "cuda")
+    result = actors[1].sum.remote(ref, "cuda")
+    assert ray.get(result) == 15
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_nixl_abort_sender_dies_before_sending(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
 
@@ -286,6 +307,39 @@ def test_nixl_del_before_creating(ray_start_regular):
     wait_for_condition(
         lambda: ray.get(actor.get_num_rdt_objects.remote()) == 0,
     )
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_owner_gets_from_launched_task(ray_start_regular):
+    actor = GPUTestActor.remote()
+    tensor = torch.randn((100, 100))
+
+    ref = actor.echo.remote(tensor, "cuda")
+    assert torch.equal(ray.get(ref), tensor.to("cuda"))
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_out_of_order_actors(ray_start_regular):
+    @ray.remote(num_cpus=0, num_gpus=1, max_concurrency=10)
+    class GPUTestActor:
+        def __init__(self):
+            self.tensor = torch.tensor([4, 5, 6], device="cuda")
+
+        @ray.method(tensor_transport="nixl")
+        async def get_tensor(self):
+            return self.tensor
+
+        async def sum(self, data):
+            return data.sum().item()
+
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    results = []
+    for _ in range(100):
+        ref = actors[0].get_tensor.remote()
+        result = actors[1].sum.remote(ref)
+        results.append(result)
+    results = ray.get(results)
+    assert sum(results) == 1500
 
 
 @pytest.mark.skip(
