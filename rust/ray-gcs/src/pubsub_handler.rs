@@ -51,6 +51,8 @@ struct SubscriberState {
     next_sequence_id: i64,
     /// Subscribed channels: channel_type → set of key_ids (empty = all keys).
     subscriptions: HashMap<i32, Vec<Vec<u8>>>,
+    /// Per-subscriber notification — only this subscriber is woken on publish.
+    notify: Arc<Notify>,
 }
 
 /// The internal pub/sub handler for GCS.
@@ -61,8 +63,9 @@ pub struct InternalPubSubHandler {
     /// Uses DashMap for per-subscriber locking instead of a global Mutex,
     /// allowing concurrent publish to different subscribers.
     subscribers: DashMap<Vec<u8>, SubscriberState>,
-    /// Notification for waking up long-polling subscribers.
-    notify: Notify,
+    /// Per-channel subscriber index: channel_type → list of subscriber IDs.
+    /// On publish, only iterate interested subscribers instead of all.
+    channel_subscribers: DashMap<i32, Vec<Vec<u8>>>,
     /// Global sequence counter.
     sequence_counter: AtomicI64,
 }
@@ -79,7 +82,7 @@ impl InternalPubSubHandler {
         Self {
             channels,
             subscribers: DashMap::new(),
-            notify: Notify::new(),
+            channel_subscribers: DashMap::new(),
             sequence_counter: AtomicI64::new(1),
         }
     }
@@ -110,22 +113,25 @@ impl InternalPubSubHandler {
         // Wrap in Arc once — subscribers share this single allocation
         let arc_msg = Arc::new(pub_message);
 
-        // Deliver to long-poll subscribers (DashMap provides per-entry locking)
-        for mut entry in self.subscribers.iter_mut() {
-            let state = entry.value_mut();
-            // Check if this subscriber is interested in this channel
-            if let Some(keys) = state.subscriptions.get(&channel_type) {
-                // Empty keys list means "subscribe to all keys in this channel"
-                if keys.is_empty() || keys.contains(&key_id) {
-                    let seq_id = state.next_sequence_id;
-                    state.next_sequence_id += 1;
-                    state.pending_messages.push((Arc::clone(&arc_msg), seq_id));
+        // Only visit subscribers interested in this channel (O(interested) not O(all))
+        if let Some(sub_ids) = self.channel_subscribers.get(&channel_type) {
+            for sub_id in sub_ids.iter() {
+                if let Some(mut state) = self.subscribers.get_mut(sub_id) {
+                    // Check key filter
+                    if let Some(keys) = state.subscriptions.get(&channel_type) {
+                        if keys.is_empty() || keys.contains(&key_id) {
+                            let seq_id = state.next_sequence_id;
+                            state.next_sequence_id += 1;
+                            state.pending_messages.push((Arc::clone(&arc_msg), seq_id));
+                            // Wake this subscriber's poller. notify_one() stores a
+                            // permit, so even if the poller hasn't started awaiting
+                            // yet, it will resolve immediately when it does.
+                            state.notify.notify_one();
+                        }
+                    }
                 }
             }
         }
-
-        // Wake up any long-polling subscribers
-        self.notify.notify_waiters();
     }
 
     /// Subscribe to a channel (returns a broadcast receiver — for internal Rust use).
@@ -166,17 +172,28 @@ impl InternalPubSubHandler {
         subscriber_id: &[u8],
         max_processed_sequence_id: i64,
     ) -> Vec<ray_proto::ray::rpc::PubMessage> {
-        // Drain any messages with sequence_id > max_processed_sequence_id
-        if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
-            let messages =
-                Self::drain_pending(&mut state.pending_messages, max_processed_sequence_id);
-            if !messages.is_empty() {
-                return messages;
+        // Get the subscriber's Notify handle and drain any pending messages.
+        // We clone the Arc<Notify> and drop the DashMap ref before awaiting
+        // to avoid holding a DashMap write lock across an await point.
+        // publish_pubmessage uses notify_one() which stores a permit, so
+        // even if it fires between our drop and await, the notification
+        // is captured and the await resolves immediately.
+        let notify = {
+            if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
+                let messages =
+                    Self::drain_pending(&mut state.pending_messages, max_processed_sequence_id);
+                if !messages.is_empty() {
+                    return messages;
+                }
+                Arc::clone(&state.notify)
+            } else {
+                return Vec::new();
             }
-        }
+        };
+        // DashMap ref is dropped here
 
-        // Wait for new messages (with a timeout handled by the caller)
-        self.notify.notified().await;
+        // Wait for this subscriber's notification
+        notify.notified().await;
 
         // After notification, drain messages
         if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
@@ -192,23 +209,44 @@ impl InternalPubSubHandler {
         channel_type: i32,
         key_id: Vec<u8>,
     ) {
-        let mut state = self
-            .subscribers
-            .entry(subscriber_id)
-            .or_insert_with(|| SubscriberState {
-                pending_messages: Vec::new(),
-                next_sequence_id: self.sequence_counter.fetch_add(1, Ordering::Relaxed),
-                subscriptions: HashMap::new(),
-            });
-        let keys = state.subscriptions.entry(channel_type).or_default();
-        if !key_id.is_empty() && !keys.contains(&key_id) {
-            keys.push(key_id);
+        // Update subscriber state first, then drop the DashMap ref before
+        // touching channel_subscribers. This avoids ABBA deadlock with
+        // publish_pubmessage which locks channel_subscribers → subscribers.
+        {
+            let mut state = self
+                .subscribers
+                .entry(subscriber_id.clone())
+                .or_insert_with(|| SubscriberState {
+                    pending_messages: Vec::new(),
+                    next_sequence_id: self.sequence_counter.fetch_add(1, Ordering::Relaxed),
+                    subscriptions: HashMap::new(),
+                    notify: Arc::new(Notify::new()),
+                });
+            let keys = state.subscriptions.entry(channel_type).or_default();
+            if !key_id.is_empty() && !keys.contains(&key_id) {
+                keys.push(key_id);
+            }
+        }
+        // subscribers ref dropped — safe to access channel_subscribers now
+
+        // Update channel subscriber index
+        let mut channel_subs = self.channel_subscribers.entry(channel_type).or_default();
+        if !channel_subs.contains(&subscriber_id) {
+            channel_subs.push(subscriber_id);
         }
     }
 
     /// Handle unsubscribe command for a specific channel.
     pub fn handle_unsubscribe_command(&self, subscriber_id: &[u8]) {
-        self.subscribers.remove(subscriber_id);
+        // Remove from subscriber state and get subscriptions to clean up index
+        if let Some((_, state)) = self.subscribers.remove(subscriber_id) {
+            // Clean up channel subscriber index
+            for channel_type in state.subscriptions.keys() {
+                if let Some(mut subs) = self.channel_subscribers.get_mut(channel_type) {
+                    subs.retain(|id| id != subscriber_id);
+                }
+            }
+        }
     }
 }
 
@@ -409,8 +447,7 @@ mod tests {
     #[tokio::test]
     async fn test_poll_unknown_subscriber_returns_empty() {
         let handler = InternalPubSubHandler::new();
-        // Publish something first to avoid waiting
-        handler.notify.notify_waiters();
+        // Unknown subscriber — should return empty quickly
         let messages = tokio::time::timeout(
             std::time::Duration::from_millis(50),
             handler.handle_subscriber_poll(b"unknown", 0),

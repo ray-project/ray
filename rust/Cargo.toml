@@ -60,6 +60,7 @@ hyper = { version = "1", features = ["full"] }
 tower = { version = "0.4", features = ["full"] }
 
 # Data structures
+arc-swap = "1"
 dashmap = "6"
 parking_lot = "0.12"
 lru = "0.12"

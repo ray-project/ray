@@ -11,9 +11,10 @@
 //! Replaces `src/ray/gcs/gcs_placement_group_manager.h/cc`.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use dashmap::DashMap;
 use ray_common::id::{NodeID, PlacementGroupID};
 
 use crate::table_storage::GcsTableStorage;
@@ -40,15 +41,22 @@ impl From<i32> for PlacementGroupState {
     }
 }
 
+impl PlacementGroupState {
+    /// Map state to index for atomic counters (only 4 variants).
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
 /// The GCS placement group manager.
 pub struct GcsPlacementGroupManager {
     /// All registered placement groups.
     placement_groups:
-        RwLock<HashMap<PlacementGroupID, ray_proto::ray::rpc::PlacementGroupTableData>>,
+        DashMap<PlacementGroupID, ray_proto::ray::rpc::PlacementGroupTableData>,
     /// Named placement groups: (namespace, name) → PlacementGroupID.
-    named_placement_groups: RwLock<HashMap<(String, String), PlacementGroupID>>,
-    /// State counts for metrics.
-    state_counts: RwLock<HashMap<PlacementGroupState, usize>>,
+    named_placement_groups: DashMap<(String, String), PlacementGroupID>,
+    /// State counts for metrics — indexed by PlacementGroupState (4 variants).
+    state_counts: [AtomicUsize; 4],
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
 }
@@ -56,9 +64,14 @@ pub struct GcsPlacementGroupManager {
 impl GcsPlacementGroupManager {
     pub fn new(table_storage: Arc<GcsTableStorage>) -> Self {
         Self {
-            placement_groups: RwLock::new(HashMap::new()),
-            named_placement_groups: RwLock::new(HashMap::new()),
-            state_counts: RwLock::new(HashMap::new()),
+            placement_groups: DashMap::new(),
+            named_placement_groups: DashMap::new(),
+            state_counts: [
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+                AtomicUsize::new(0),
+            ],
             table_storage,
         }
     }
@@ -72,20 +85,16 @@ impl GcsPlacementGroupManager {
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        let mut pgs = self.placement_groups.write();
-        let mut named = self.named_placement_groups.write();
-        let mut counts = self.state_counts.write();
-
         for (key, pg) in all_pgs {
             let pg_id = PlacementGroupID::from_hex(&key);
             let state = PlacementGroupState::from(pg.state);
-            *counts.entry(state).or_insert(0) += 1;
+            self.state_counts[state.index()].fetch_add(1, Ordering::Relaxed);
 
             if !pg.name.is_empty() {
                 let ns = pg.ray_namespace.clone();
-                named.insert((ns, pg.name.clone()), pg_id);
+                self.named_placement_groups.insert((ns, pg.name.clone()), pg_id);
             }
-            pgs.insert(pg_id, pg);
+            self.placement_groups.insert(pg_id, pg);
         }
         Ok(())
     }
@@ -107,8 +116,7 @@ impl GcsPlacementGroupManager {
         // Check name conflict
         if !pg_data.name.is_empty() {
             let ns = pg_data.ray_namespace.clone();
-            let named = self.named_placement_groups.read();
-            if named.contains_key(&(ns.clone(), pg_data.name.clone())) {
+            if self.named_placement_groups.contains_key(&(ns.clone(), pg_data.name.clone())) {
                 return Err(tonic::Status::already_exists(format!(
                     "placement group '{}' already exists in namespace '{}'",
                     pg_data.name, ns
@@ -127,13 +135,12 @@ impl GcsPlacementGroupManager {
         if !pg_data.name.is_empty() {
             let ns = pg_data.ray_namespace.clone();
             self.named_placement_groups
-                .write()
                 .insert((ns, pg_data.name.clone()), pg_id);
         }
 
         let state = PlacementGroupState::from(pg_data.state);
-        *self.state_counts.write().entry(state).or_insert(0) += 1;
-        self.placement_groups.write().insert(pg_id, pg_data);
+        self.state_counts[state.index()].fetch_add(1, Ordering::Relaxed);
+        self.placement_groups.insert(pg_id, pg_data);
 
         tracing::info!(?pg_id, "Placement group created");
         Ok(())
@@ -146,22 +153,17 @@ impl GcsPlacementGroupManager {
     ) -> Result<(), tonic::Status> {
         let pg_id = PlacementGroupID::from_binary(pg_id_bytes.try_into().unwrap_or(&[0u8; 18]));
 
-        // Remove from in-memory state (drop lock before await)
-        let removed = {
-            let pg = self.placement_groups.write().remove(&pg_id);
-            if let Some(ref pg) = pg {
-                if !pg.name.is_empty() {
-                    self.named_placement_groups
-                        .write()
-                        .remove(&(pg.ray_namespace.clone(), pg.name.clone()));
-                }
-
-                let old_state = PlacementGroupState::from(pg.state);
-                if let Some(c) = self.state_counts.write().get_mut(&old_state) {
-                    *c = c.saturating_sub(1);
-                }
+        // Remove from in-memory state
+        let removed = if let Some((_, pg)) = self.placement_groups.remove(&pg_id) {
+            if !pg.name.is_empty() {
+                self.named_placement_groups
+                    .remove(&(pg.ray_namespace.clone(), pg.name.clone()));
             }
-            pg.is_some()
+            let old_state = PlacementGroupState::from(pg.state);
+            self.state_counts[old_state.index()].fetch_sub(1, Ordering::Relaxed);
+            true
+        } else {
+            false
         };
 
         if removed {
@@ -183,7 +185,7 @@ impl GcsPlacementGroupManager {
         pg_id_bytes: &[u8],
     ) -> Option<ray_proto::ray::rpc::PlacementGroupTableData> {
         let pg_id = PlacementGroupID::from_binary(pg_id_bytes.try_into().unwrap_or(&[0u8; 18]));
-        self.placement_groups.read().get(&pg_id).cloned()
+        self.placement_groups.get(&pg_id).map(|r| r.value().clone())
     }
 
     /// Handle GetNamedPlacementGroup RPC.
@@ -192,9 +194,11 @@ impl GcsPlacementGroupManager {
         name: &str,
         namespace: &str,
     ) -> Option<ray_proto::ray::rpc::PlacementGroupTableData> {
-        let named = self.named_placement_groups.read();
-        let pg_id = named.get(&(namespace.to_string(), name.to_string()))?;
-        self.placement_groups.read().get(pg_id).cloned()
+        let pg_id = self
+            .named_placement_groups
+            .get(&(namespace.to_string(), name.to_string()))
+            .map(|r| *r.value())?;
+        self.placement_groups.get(&pg_id).map(|r| r.value().clone())
     }
 
     /// Handle GetAllPlacementGroup RPC.
@@ -202,11 +206,17 @@ impl GcsPlacementGroupManager {
         &self,
         limit: Option<usize>,
     ) -> Vec<ray_proto::ray::rpc::PlacementGroupTableData> {
-        let pgs = self.placement_groups.read();
         if let Some(limit) = limit {
-            pgs.values().take(limit).cloned().collect()
+            self.placement_groups
+                .iter()
+                .take(limit)
+                .map(|entry| entry.value().clone())
+                .collect()
         } else {
-            pgs.values().cloned().collect()
+            self.placement_groups
+                .iter()
+                .map(|entry| entry.value().clone())
+                .collect()
         }
     }
 
@@ -214,10 +224,9 @@ impl GcsPlacementGroupManager {
     /// as needing rescheduling.
     pub fn on_node_dead(&self, node_id: &NodeID) {
         let node_id_bytes = node_id.binary().to_vec();
-        let mut pgs = self.placement_groups.write();
-        let mut counts = self.state_counts.write();
 
-        for pg in pgs.values_mut() {
+        for mut entry in self.placement_groups.iter_mut() {
+            let pg = entry.value_mut();
             let state = PlacementGroupState::from(pg.state);
             if state == PlacementGroupState::Removed {
                 continue;
@@ -236,10 +245,9 @@ impl GcsPlacementGroupManager {
                     }
                 }
 
-                if let Some(c) = counts.get_mut(&old_state) {
-                    *c = c.saturating_sub(1);
-                }
-                *counts.entry(PlacementGroupState::Rescheduling).or_insert(0) += 1;
+                self.state_counts[old_state.index()].fetch_sub(1, Ordering::Relaxed);
+                self.state_counts[PlacementGroupState::Rescheduling.index()]
+                    .fetch_add(1, Ordering::Relaxed);
 
                 tracing::info!(
                     pg_name = %pg.name,
@@ -250,11 +258,26 @@ impl GcsPlacementGroupManager {
     }
 
     pub fn num_placement_groups(&self) -> usize {
-        self.placement_groups.read().len()
+        self.placement_groups.len()
     }
 
     pub fn state_counts(&self) -> HashMap<PlacementGroupState, usize> {
-        self.state_counts.read().clone()
+        let mut map = HashMap::new();
+        for (i, state) in [
+            PlacementGroupState::Pending,
+            PlacementGroupState::Created,
+            PlacementGroupState::Removed,
+            PlacementGroupState::Rescheduling,
+        ]
+        .iter()
+        .enumerate()
+        {
+            let count = self.state_counts[i].load(Ordering::Relaxed);
+            if count > 0 {
+                map.insert(*state, count);
+            }
+        }
+        map
     }
 }
 

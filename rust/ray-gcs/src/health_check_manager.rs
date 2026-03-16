@@ -12,11 +12,10 @@
 //!
 //! Uses gRPC health checks to detect dead nodes.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use parking_lot::Mutex;
+use dashmap::DashMap;
 use ray_common::id::NodeID;
 use tokio::sync::mpsc;
 
@@ -62,8 +61,8 @@ struct HealthCheckContext {
 pub struct GcsHealthCheckManager {
     /// Health check configuration.
     config: HealthCheckConfig,
-    /// Per-node health check contexts.
-    contexts: Mutex<HashMap<NodeID, HealthCheckContext>>,
+    /// Per-node health check contexts — DashMap for per-node locking.
+    contexts: DashMap<NodeID, HealthCheckContext>,
     /// Callback when a node is declared dead.
     on_node_death: NodeDeathCallback,
 }
@@ -72,7 +71,7 @@ impl GcsHealthCheckManager {
     pub fn new(config: HealthCheckConfig, on_node_death: NodeDeathCallback) -> Arc<Self> {
         Arc::new(Self {
             config,
-            contexts: Mutex::new(HashMap::new()),
+            contexts: DashMap::new(),
             on_node_death,
         })
     }
@@ -87,7 +86,7 @@ impl GcsHealthCheckManager {
             cancel_tx,
         };
 
-        self.contexts.lock().insert(node_id, context);
+        self.contexts.insert(node_id, context);
 
         // Spawn health check loop
         let this = Arc::clone(self);
@@ -104,17 +103,16 @@ impl GcsHealthCheckManager {
                     }
                     _ = tokio::time::sleep(Duration::from_millis(config.period_ms)) => {
                         let alive = this.check_node_health(&address, &config).await;
-                        let mut contexts = this.contexts.lock();
-                        if let Some(ctx) = contexts.get_mut(&node_id) {
+                        if let Some(mut ctx) = this.contexts.get_mut(&node_id) {
                             if alive {
                                 ctx.health_check_remaining = config.failure_threshold;
                             } else {
                                 ctx.health_check_remaining =
                                     ctx.health_check_remaining.saturating_sub(1);
                                 if ctx.health_check_remaining == 0 {
-                                    // Node is dead
-                                    contexts.remove(&node_id);
-                                    drop(contexts);
+                                    // Node is dead — drop the ref before removing
+                                    drop(ctx);
+                                    this.contexts.remove(&node_id);
                                     tracing::warn!(?node_id, "Node declared dead by health check");
                                     (this.on_node_death)(node_id);
                                     break;
@@ -132,19 +130,19 @@ impl GcsHealthCheckManager {
 
     /// Stop monitoring a node.
     pub fn remove_node(&self, node_id: &NodeID) {
-        if let Some(ctx) = self.contexts.lock().remove(node_id) {
+        if let Some((_, ctx)) = self.contexts.remove(node_id) {
             let _ = ctx.cancel_tx.try_send(());
         }
     }
 
     /// Get all monitored nodes.
     pub fn get_all_nodes(&self) -> Vec<NodeID> {
-        self.contexts.lock().keys().copied().collect()
+        self.contexts.iter().map(|entry| *entry.key()).collect()
     }
 
     /// Mark a node as healthy (reset failure counter).
     pub fn mark_node_healthy(&self, node_id: &NodeID) {
-        if let Some(ctx) = self.contexts.lock().get_mut(node_id) {
+        if let Some(mut ctx) = self.contexts.get_mut(node_id) {
             ctx.health_check_remaining = self.config.failure_threshold;
         }
     }
@@ -168,7 +166,7 @@ impl GcsHealthCheckManager {
     }
 
     pub fn num_monitored_nodes(&self) -> usize {
-        self.contexts.lock().len()
+        self.contexts.len()
     }
 }
 

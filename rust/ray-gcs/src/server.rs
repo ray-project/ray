@@ -423,6 +423,10 @@ impl GcsServer {
             NodelaySetter(stream)
         };
         tonic::transport::Server::builder()
+            .initial_connection_window_size(2 * 1024 * 1024) // 2MB (default 64KB)
+            .initial_stream_window_size(1024 * 1024) // 1MB (default 64KB)
+            .http2_keepalive_interval(Some(std::time::Duration::from_secs(10)))
+            .http2_keepalive_timeout(Some(std::time::Duration::from_secs(20)))
             .add_service(rpc::job_info_gcs_service_server::JobInfoGcsServiceServer::with_interceptor(job_svc, auth.clone()))
             .add_service(rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer::with_interceptor(node_svc, auth.clone()))
             .add_service(rpc::actor_info_gcs_service_server::ActorInfoGcsServiceServer::with_interceptor(actor_svc, auth.clone()))

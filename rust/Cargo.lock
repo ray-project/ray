@@ -1634,6 +1634,7 @@ name = "ray-gcs"
 version = "3.0.0-dev"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "async-trait",
  "base64 0.22.1",
  "clap",

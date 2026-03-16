@@ -13,6 +13,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
+use arc_swap::ArcSwap;
+use dashmap::DashMap;
 use parking_lot::RwLock;
 use ray_common::id::NodeID;
 
@@ -27,13 +29,14 @@ pub type NodeRemovedCallback = Box<dyn Fn(&ray_proto::ray::rpc::GcsNodeInfo) + S
 /// The GCS node manager tracks all nodes in the cluster.
 pub struct GcsNodeManager {
     /// Currently alive nodes.
-    alive_nodes: RwLock<HashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>>,
+    alive_nodes: DashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>,
     /// Dead nodes (cached for queries).
-    dead_nodes: RwLock<HashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>>,
+    dead_nodes: DashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>,
     /// Nodes being drained.
-    draining_nodes: RwLock<HashMap<NodeID, i64>>, // node_id → deadline_ms
+    draining_nodes: DashMap<NodeID, i64>, // node_id → deadline_ms
     /// Cluster ID (raw 28-byte binary, matching C++ ClusterID::Binary()).
-    cluster_id: RwLock<Vec<u8>>,
+    /// Write-once, read on every client connect — ArcSwap for lock-free reads.
+    cluster_id: ArcSwap<Vec<u8>>,
     /// Listeners.
     node_added_listeners: RwLock<Vec<NodeAddedCallback>>,
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
@@ -46,10 +49,10 @@ pub struct GcsNodeManager {
 impl GcsNodeManager {
     pub fn new(table_storage: Arc<GcsTableStorage>) -> Self {
         Self {
-            alive_nodes: RwLock::new(HashMap::new()),
-            dead_nodes: RwLock::new(HashMap::new()),
-            draining_nodes: RwLock::new(HashMap::new()),
-            cluster_id: RwLock::new(Vec::new()),
+            alive_nodes: DashMap::new(),
+            dead_nodes: DashMap::new(),
+            draining_nodes: DashMap::new(),
+            cluster_id: ArcSwap::from_pointee(Vec::new()),
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
             table_storage,
@@ -88,17 +91,14 @@ impl GcsNodeManager {
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        let mut alive = self.alive_nodes.write();
-        let mut dead = self.dead_nodes.write();
-
         for (key, node) in all_nodes {
             let node_id = NodeID::from_hex(&key);
             let node = Arc::new(node);
             // GcsNodeInfo.state: 0 = ALIVE, 1 = DEAD
             if node.state == 1 {
-                dead.insert(node_id, node);
+                self.dead_nodes.insert(node_id, node);
             } else {
-                alive.insert(node_id, node);
+                self.alive_nodes.insert(node_id, node);
             }
         }
         Ok(())
@@ -106,12 +106,12 @@ impl GcsNodeManager {
 
     /// Set the cluster ID (raw 28-byte binary).
     pub fn set_cluster_id(&self, cluster_id: Vec<u8>) {
-        *self.cluster_id.write() = cluster_id;
+        self.cluster_id.store(Arc::new(cluster_id));
     }
 
     /// Get the cluster ID (raw 28-byte binary).
     pub fn cluster_id(&self) -> Vec<u8> {
-        self.cluster_id.read().clone()
+        (**self.cluster_id.load()).clone()
     }
 
     /// Handle RegisterNode RPC.
@@ -138,7 +138,7 @@ impl GcsNodeManager {
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
         // Add to alive nodes
-        self.alive_nodes.write().insert(node_id, node.clone());
+        self.alive_nodes.insert(node_id, node.clone());
 
         // Publish via pubsub
         self.publish_node_state(&node);
@@ -166,10 +166,7 @@ impl GcsNodeManager {
 
     /// Remove a node from the alive set.
     async fn remove_node(&self, node_id: &NodeID) -> Result<(), tonic::Status> {
-        let node = {
-            let mut alive = self.alive_nodes.write();
-            alive.remove(node_id)
-        };
+        let node = self.alive_nodes.remove(node_id).map(|(_, v)| v);
 
         if let Some(node) = node {
             // Update state to DEAD
@@ -181,8 +178,8 @@ impl GcsNodeManager {
             let _ = self.table_storage.node_table().put(&key, &dead_node).await;
 
             let dead_node = Arc::new(dead_node);
-            self.dead_nodes.write().insert(*node_id, dead_node.clone());
-            self.draining_nodes.write().remove(node_id);
+            self.dead_nodes.insert(*node_id, dead_node.clone());
+            self.draining_nodes.remove(node_id);
 
             // Publish via pubsub
             self.publish_node_state(&dead_node);
@@ -200,36 +197,37 @@ impl GcsNodeManager {
 
     /// Handle DrainNode RPC.
     pub fn handle_drain_node(&self, node_id: &NodeID, deadline_ms: i64) {
-        if self.alive_nodes.read().contains_key(node_id) {
-            self.draining_nodes.write().insert(*node_id, deadline_ms);
+        if self.alive_nodes.contains_key(node_id) {
+            self.draining_nodes.insert(*node_id, deadline_ms);
             tracing::info!(?node_id, deadline_ms, "Node draining");
         }
     }
 
     /// Handle GetAllNodeInfo RPC.
     pub fn handle_get_all_node_info(&self) -> Vec<ray_proto::ray::rpc::GcsNodeInfo> {
-        let alive = self.alive_nodes.read();
-        let dead = self.dead_nodes.read();
-        alive
-            .values()
-            .chain(dead.values())
-            .map(|n| (**n).clone())
-            .collect()
+        let mut result = Vec::with_capacity(self.alive_nodes.len() + self.dead_nodes.len());
+        for entry in self.alive_nodes.iter() {
+            result.push((**entry.value()).clone());
+        }
+        for entry in self.dead_nodes.iter() {
+            result.push((**entry.value()).clone());
+        }
+        result
     }
 
     /// Handle GetClusterId RPC — returns raw 28-byte cluster ID.
     pub fn handle_get_cluster_id(&self) -> Vec<u8> {
-        self.cluster_id.read().clone()
+        (**self.cluster_id.load()).clone()
     }
 
     /// Check if a node is alive.
     pub fn is_node_alive(&self, node_id: &NodeID) -> bool {
-        self.alive_nodes.read().contains_key(node_id)
+        self.alive_nodes.contains_key(node_id)
     }
 
     /// Check if a node is dead.
     pub fn is_node_dead(&self, node_id: &NodeID) -> bool {
-        self.dead_nodes.read().contains_key(node_id)
+        self.dead_nodes.contains_key(node_id)
     }
 
     /// Get an alive node.
@@ -237,22 +235,28 @@ impl GcsNodeManager {
         &self,
         node_id: &NodeID,
     ) -> Option<Arc<ray_proto::ray::rpc::GcsNodeInfo>> {
-        self.alive_nodes.read().get(node_id).cloned()
+        self.alive_nodes.get(node_id).map(|r| Arc::clone(r.value()))
     }
 
     /// Get all alive nodes.
     pub fn get_all_alive_nodes(&self) -> HashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>> {
-        self.alive_nodes.read().clone()
+        self.alive_nodes
+            .iter()
+            .map(|entry| (*entry.key(), Arc::clone(entry.value())))
+            .collect()
     }
 
     /// Get all draining node IDs with their deadlines.
     pub fn get_draining_nodes(&self) -> HashMap<NodeID, i64> {
-        self.draining_nodes.read().clone()
+        self.draining_nodes
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect()
     }
 
     /// Number of alive nodes.
     pub fn num_alive_nodes(&self) -> usize {
-        self.alive_nodes.read().len()
+        self.alive_nodes.len()
     }
 
     /// Register a node-added listener.

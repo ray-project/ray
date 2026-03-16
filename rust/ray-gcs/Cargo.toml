@@ -19,6 +19,7 @@ ray-observability = { workspace = true }
 ray-pubsub = { workspace = true }
 ray-gcs-rpc-client = { workspace = true }
 ray-syncer = { workspace = true }
+arc-swap = { workspace = true }
 tonic = { workspace = true }
 tonic-health = { workspace = true }
 tokio = { workspace = true }
