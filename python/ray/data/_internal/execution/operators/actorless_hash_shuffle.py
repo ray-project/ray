@@ -4,8 +4,8 @@ This module implements a hash shuffle using only stateless Ray tasks (no actors)
 The shuffle has up to four stages:
 
 1. **Map & Scatter**: Each mapper task hash-partitions an input block into M
-   partitions, puts each partition shard into the object store via ``ray.put()``,
-   and returns a mapping of partition_id -> ObjectRef back to the driver.
+   partitions and returns each shard as a separate task output.
+   The driver receives one ``ObjectRef`` per partition.
 
 2. **Driver Buffering**: The driver collects ObjectRefs into per-partition buffer
    lists. This is pure bookkeeping with no data movement.
@@ -63,7 +63,6 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockExecStats,
-    BlockMetadata,
     BlockMetadataWithSchema,
     BlockStats,
     BlockType,
@@ -86,8 +85,16 @@ def _shuffle_map(
     key_columns: List[str],
     num_partitions: int,
     block_transformer: Optional[BlockTransformer] = None,
-) -> Tuple[BlockMetadata, Dict[int, Tuple[ObjectRef, int, int]]]:
-    """Map stage: hash-partition a block and scatter shards to the object store.
+):
+    """Map stage: hash-partition a block and return shards as task outputs.
+
+    Must be called with ``num_returns=num_partitions + 1``. Returns
+    ``num_partitions + 1`` objects:
+
+    - Index 0: ``(BlockMetadata, List[int])`` — input block metadata and the
+      list of non-empty partition IDs.
+    - Index 1..N: the partition shard (``pa.Table``) or ``None`` for empty
+      partitions.
 
     Args:
         block: Input block to shuffle.
@@ -96,10 +103,7 @@ def _shuffle_map(
         block_transformer: Optional transform applied before partitioning.
 
     Returns:
-        A tuple of:
-        - ``BlockMetadata`` for the original input block.
-        - Dict mapping ``partition_id`` to
-          ``(ObjectRef[shard], num_rows, size_bytes)``.
+        A tuple of ``(BlockMetadata, List[int])`` and the partition shards (``pa.Table``) or ``None`` for empty partitions.
     """
     stats = BlockExecStats.builder()
 
@@ -108,11 +112,12 @@ def _shuffle_map(
 
     block = TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
 
+    input_block_metadata = BlockAccessor.for_block(block).get_metadata(
+        block_exec_stats=stats.build(block_ser_time_s=0),
+    )
+
     if block.num_rows == 0:
-        metadata = BlockAccessor.for_block(block).get_metadata(
-            block_exec_stats=stats.build(block_ser_time_s=0),
-        )
-        return (metadata, {})
+        return (input_block_metadata, []), *([None] * num_partitions)
 
     assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
 
@@ -120,21 +125,14 @@ def _shuffle_map(
         block, hash_cols=key_columns, num_partitions=num_partitions
     )
 
-    partition_refs: Dict[int, Tuple[ObjectRef, int, int]] = {}
-    for partition_id, partition_shard in block_partitions.items():
-        if partition_shard.num_rows > 0:
-            shard_ref = ray.put(partition_shard)
-            partition_refs[partition_id] = (
-                shard_ref,
-                partition_shard.num_rows,
-                partition_shard.nbytes,
-            )
+    shards = [None] * num_partitions
+    non_empty_pids = []
+    for pid, shard in block_partitions.items():
+        if shard.num_rows > 0:
+            shards[pid] = shard
+            non_empty_pids.append(pid)
 
-    input_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        block_exec_stats=stats.build(block_ser_time_s=0),
-    )
-
-    return (input_block_metadata, partition_refs)
+    return (input_block_metadata, non_empty_pids), *shards
 
 
 @ray.remote
@@ -151,8 +149,8 @@ def _shuffle_compact(
     """
     blocks = ray.get(shard_refs)
     builder = ArrowBlockBuilder()
-    for blk in blocks:
-        builder.add_block(blk)
+    for block in blocks:
+        builder.add_block(block)
     return builder.build()
 
 
@@ -186,8 +184,8 @@ def _shuffle_reduce(
 
     # Concatenate into a single block.
     builder = ArrowBlockBuilder()
-    for blk in shard_blocks:
-        builder.add_block(blk)
+    for block in shard_blocks:
+        builder.add_block(block)
     result = builder.build()
 
     if result.num_rows == 0:
@@ -250,8 +248,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     Lifecycle
     ---------
     1. As upstream bundles arrive via :meth:`add_input`, a stateless map task is
-       submitted per block.  Each map task hash-partitions the block and
-       ``ray.put()``s each shard, returning shard refs to the driver.
+       submitted per block.  Each map task hash-partitions the block and returns
+       each shard as a separate task output.
     2. The driver accumulates shard ``ObjectRef``s per partition (pure
        bookkeeping).  When a partition's buffer reaches the compaction threshold,
        a compactor task merges the small shards into one larger block.
@@ -350,29 +348,31 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 "num_cpus": self._DEFAULT_MAP_TASK_NUM_CPUS,
             }
 
-            map_result_ref = _shuffle_map.options(
+            map_refs = _shuffle_map.options(
                 **shuffle_task_resources,
-                num_returns=1,
+                num_returns=self._num_partitions + 1,
             ).remote(
                 block_ref,
                 self._key_columns,
                 self._num_partitions,
             )
+            metadata_ref = map_refs[0]
+            shard_refs = map_refs[1:]
 
-            def _on_map_done(task_idx: int):
+            def _on_map_done(task_idx: int, shard_refs: List[ObjectRef]):
                 task = self._map_tasks.pop(task_idx)
                 self._map_resource_usage = self._map_resource_usage.subtract(
                     task.get_requested_resource_bundle()
                 )
 
-                input_block_metadata, partition_refs = ray.get(
+                input_block_metadata, non_empty_pids = ray.get(
                     task.get_waitable(), timeout=60
                 )
 
-                # Accumulate shard refs per partition.
-                for partition_id, (shard_ref, _, _) in partition_refs.items():
-                    self._partition_buffers[partition_id].append(shard_ref)
-                    self._maybe_compact_partition(partition_id)
+                # Only add refs for non-empty partitions.
+                for pid in non_empty_pids:
+                    self._partition_buffers[pid].append(shard_refs[pid])
+                    self._maybe_compact_partition(pid)
 
                 self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
@@ -400,8 +400,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             task = MetadataOpTask(
                 task_index=cur_task_idx,
-                object_ref=map_result_ref,
-                task_done_callback=functools.partial(_on_map_done, cur_task_idx),
+                object_ref=metadata_ref,
+                task_done_callback=functools.partial(
+                    _on_map_done, cur_task_idx, shard_refs
+                ),
                 task_resource_bundle=ExecutionResources.from_resource_dict(
                     shuffle_task_resources
                 ),
