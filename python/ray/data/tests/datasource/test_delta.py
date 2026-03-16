@@ -30,12 +30,13 @@ def test_delta_read_basic(tmp_path, batch_size, write_mode):
     df = pd.DataFrame(
         {"x": [42] * batch_size, "y": ["a"] * batch_size, "z": [3.14] * batch_size}
     )
+    table = pa.Table.from_pandas(df)
     if write_mode == "append":
-        write_deltalake(path, df, mode=write_mode)
-        write_deltalake(path, df, mode=write_mode)
+        write_deltalake(path, table, mode=write_mode)
+        write_deltalake(path, table, mode=write_mode)
         expected = pd.concat([df, df], ignore_index=True)
     elif write_mode == "overwrite":
-        write_deltalake(path, df, mode=write_mode)
+        write_deltalake(path, table, mode=write_mode)
         expected = df
 
     # Read the Delta Lake table
@@ -66,7 +67,7 @@ def test_delta_read_column_selection(tmp_path, columns, expected_columns):
 
     path = os.path.join(tmp_path, "tmp_test_delta_cols")
     df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [1.0, 2.0, 3.0]})
-    write_deltalake(path, df)
+    write_deltalake(path, pa.Table.from_pandas(df))
 
     ds = ray.data.read_delta(path, columns=columns)
     expected = df[expected_columns]
@@ -87,8 +88,8 @@ def test_delta_read_version(tmp_path, version, expected_data):
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_version")
-    write_deltalake(path, pd.DataFrame({"x": [1, 2]}))
-    write_deltalake(path, pd.DataFrame({"x": [3, 4, 5]}), mode="overwrite")
+    write_deltalake(path, pa.table({"x": [1, 2]}))
+    write_deltalake(path, pa.table({"x": [3, 4, 5]}), mode="overwrite")
 
     ds = ray.data.read_delta(path, version=version)
     expected = pd.DataFrame(expected_data)
@@ -102,10 +103,10 @@ def test_delta_read_schema_evolution(tmp_path):
 
     path = os.path.join(tmp_path, "tmp_test_delta_schema_evo")
 
-    write_deltalake(path, pd.DataFrame({"x": [1, 2]}))
+    write_deltalake(path, pa.table({"x": [1, 2]}))
     write_deltalake(
         path,
-        pd.DataFrame({"x": [3, 4], "y": ["a", "b"]}),
+        pa.table({"x": [3, 4], "y": ["a", "b"]}),
         mode="append",
         schema_mode="merge",
     )
@@ -128,7 +129,7 @@ def test_delta_read_storage_options(tmp_path, storage_options):
 
     path = os.path.join(tmp_path, "tmp_test_delta_storage_opts")
     df = pd.DataFrame({"x": [1, 2, 3]})
-    write_deltalake(path, df)
+    write_deltalake(path, pa.Table.from_pandas(df))
 
     ds = ray.data.read_delta(path, storage_options=storage_options)
     assert rows_same(ds.to_pandas(), df)
@@ -138,7 +139,7 @@ def test_delta_read_empty_table(tmp_path):
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_empty")
-    write_deltalake(path, pd.DataFrame({"x": pd.array([], dtype="int64")}))
+    write_deltalake(path, pa.table({"x": pa.array([], type=pa.int64())}))
 
     ds = ray.data.read_delta(path)
     assert ds.count() == 0
