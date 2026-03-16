@@ -73,18 +73,19 @@ class DataSourceV2(ABC, Generic[InputBucket]):
     Subclasses should implement the abstract methods and can optionally
     override _get_file_indexer() and get_size_estimator() for file-based sources.
 
-    Example:
-        >>> datasource = ParquetDatasourceV2()
-        >>> indexer = datasource._get_file_indexer()
-        >>> # List files with optional sampling
-        >>> for manifest in indexer.list_files(paths, filesystem=fs):
-        ...     schema = datasource.infer_schema(manifest)
-        ...     break  # Just need first manifest for schema
-        >>> scanner = datasource.create_scanner(schema)
-        >>> scanner = scanner.prune_columns(["col1", "col2"])
-        >>> reader = scanner.create_reader()
-        >>> for table in reader.read(manifest):
-        ...     process(table)
+    Example::
+
+        datasource = ParquetDatasourceV2()
+        indexer = datasource._get_file_indexer()
+        # List files with optional sampling
+        for manifest in indexer.list_files(paths, filesystem=fs):
+            schema = datasource.infer_schema(manifest)
+            break  # Just need first manifest for schema
+        scanner = datasource.create_scanner(schema)
+        scanner = scanner.prune_columns(["col1", "col2"])
+        reader = scanner.create_reader()
+        for table in reader.read(manifest):
+            process(table)
     """
 
     def __init__(self, name: str, category: DatasourceCategory):
