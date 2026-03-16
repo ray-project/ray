@@ -129,7 +129,7 @@ def autoscaling_cluster(httpserver):
 
     cluster.start(
         override_env={
-            "RAY_enable_ray_event": "true",
+            "RAY_enable_python_ray_event": "true",
             "RAY_external_ray_event_allowlist": _AUTOSCALER_EVENT_TYPES,
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": (
                 f"http://127.0.0.1:{_RAY_EVENT_PORT}"
