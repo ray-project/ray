@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Tuple
+from typing import List, Tuple
 
 from ray import serve
 from ray.experimental.internal_kv import (
@@ -13,6 +13,7 @@ from ray.experimental.internal_kv import (
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.utils.pg_utils import get_bundle_indices_sorted_by_node
 from ray.serve.config import (
     AutoscalingConfig,
     GangPlacementStrategy,
@@ -20,6 +21,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
 )
 from ray.util.collective.collective import get_address_and_port
+from ray.util.placement_group import get_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -153,24 +155,52 @@ class DPServer(LLMServer):
         # rank i owns bundles [i*B, i*B+1, ..., i*B+B-1] where B is the number of
         # bundles per DP replica.
         #
-        # Example: dp_size=2, tp_size=2
+        # However, adjacent bundle indices in a placement group don't necessarily
+        # map to adjacent physical ranks. We use get_bundle_indices_sorted_by_node
+        # to reorder bundle indices so that same-node bundles are adjacent and the
+        # driver node's bundles come first. This prevents us from scattering adjacent
+        # TP ranks in the same DP rank across nodes.
+        #
+        # Example: dp_size=2, tp_size=2, 2 GPUs per node for simplicity
         #   Gang placement group = [{GPU: 1}, {GPU: 1}, {GPU: 1}, {GPU: 1}]
-        #                           ^^^ DP rank 0 ^^^   ^^^ DP rank 1 ^^^
+        #   Physical rank location: ^^N0R0^^  ^^N1R1^^  ^^N0R1^^  ^^N1R0^^
+        #   DP placement:           ^^DP0^^^  ^^DP1^^^  ^^DP0^^^  ^^DP1^^^
         #
         # placement_bundles below is the gang placement group, and therefore
         # get_current_placement_group from the actor yields the gang placement group,
         # not the per-replica placement group.
         bundles_per_replica = len(engine_config.placement_bundles)
+        pg = get_placement_group(gang_context.pg_name)
+        sorted_indices = get_bundle_indices_sorted_by_node(pg)
         os.environ["VLLM_RAY_BUNDLE_INDICES"] = self._compute_bundle_indices(
-            self.dp_rank, bundles_per_replica
+            self.dp_rank, bundles_per_replica, sorted_indices
         )
 
         await super().__init__(llm_config)
 
     @staticmethod
-    def _compute_bundle_indices(dp_rank: int, bundles_per_replica: int) -> str:
+    def _compute_bundle_indices(
+        dp_rank: int, bundles_per_replica: int, sorted_indices: List[int]
+    ) -> str:
+        """Return the VLLM_RAY_BUNDLE_INDICES value for a given DP rank.
+
+        Slices into sorted_indices (bundle indices reordered so that
+        same-node bundles are adjacent) to pick the bundles that belong to
+        this DP rank.
+
+        Args:
+            dp_rank: This replica's data-parallel rank.
+            bundles_per_replica: Number of placement-group bundles each DP
+                replica owns.
+            sorted_indices: Bundle indices sorted by node.
+
+        Returns:
+            Comma-separated bundle indices, e.g. "0,2".
+        """
         start = dp_rank * bundles_per_replica
-        return ",".join(str(start + i) for i in range(bundles_per_replica))
+        return ",".join(
+            str(sorted_indices[start + i]) for i in range(bundles_per_replica)
+        )
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):

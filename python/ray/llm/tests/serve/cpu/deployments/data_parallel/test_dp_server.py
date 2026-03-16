@@ -133,39 +133,50 @@ class TestGangMasterInfoRegistry:
 
 class TestBundleIndices:
     @pytest.mark.parametrize(
-        "engine_kwargs,placement_group_config,dp_rank,expected",
+        "engine_kwargs,placement_group_config,dp_rank,sorted_indices,expected",
         [
-            # TP=1: 1 bundle per replica
-            ({"tensor_parallel_size": 1}, None, 0, "0"),
-            ({"tensor_parallel_size": 1}, None, 3, "3"),
-            ({"tensor_parallel_size": 1}, {"bundles": [{"GPU": 1, "CPU": 1}]}, 2, "2"),
-            # TP=2: 2 bundles per replica
-            ({"tensor_parallel_size": 2}, None, 0, "0,1"),
-            ({"tensor_parallel_size": 2}, None, 1, "2,3"),
-            ({"tensor_parallel_size": 2}, None, 3, "6,7"),
+            # TP=1: 1 bundle per replica, identity ordering
+            ({"tensor_parallel_size": 1}, None, 0, list(range(4)), "0"),
+            ({"tensor_parallel_size": 1}, None, 3, list(range(4)), "3"),
+            (
+                {"tensor_parallel_size": 1},
+                {"bundles": [{"GPU": 1, "CPU": 1}]},
+                2,
+                list(range(4)),
+                "2",
+            ),
+            # TP=2: 2 bundles per replica, identity ordering
+            ({"tensor_parallel_size": 2}, None, 0, list(range(8)), "0,1"),
+            ({"tensor_parallel_size": 2}, None, 2, list(range(8)), "4,5"),
             (
                 {"tensor_parallel_size": 2},
                 {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]},
                 1,
+                list(range(4)),
                 "2,3",
             ),
-            # TP=2, PP=2: 4 bundles per replica
+            # TP=2, PP=2: 4 bundles per replica, identity ordering
             (
                 {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
                 None,
                 0,
+                list(range(8)),
                 "0,1,2,3",
             ),
             (
                 {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
                 None,
                 1,
+                list(range(8)),
                 "4,5,6,7",
             ),
+            # Out-of-order sorted_indices: bundles reordered by node
+            ({"tensor_parallel_size": 2}, None, 1, [0, 2, 1, 3], "1,3"),
+            ({"tensor_parallel_size": 1}, None, 0, [2, 0, 3, 1], "2"),
         ],
     )
     def test_bundle_indices(
-        self, engine_kwargs, placement_group_config, dp_rank, expected
+        self, engine_kwargs, placement_group_config, dp_rank, sorted_indices, expected
     ):
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
@@ -175,7 +186,9 @@ class TestBundleIndices:
         engine_config = llm_config.get_engine_config()
         bundles_per_replica = len(engine_config.placement_bundles)
 
-        result = DPServer._compute_bundle_indices(dp_rank, bundles_per_replica)
+        result = DPServer._compute_bundle_indices(
+            dp_rank, bundles_per_replica, sorted_indices
+        )
         assert result == expected
 
 
