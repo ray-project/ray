@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    register_collective_backend("NCCL", NCCLGroup)
+    types.Backend.NCCL = register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
     pass
 
@@ -33,7 +33,7 @@ try:
         get_master_address_metadata_key as _get_master_addr_key,
     )
 
-    register_collective_backend("GLOO", TorchGLOOGroup)
+    types.Backend.GLOO = register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
     pass
 
@@ -171,7 +171,7 @@ def is_group_initialized(group_name):
 def init_collective_group(
     world_size: int,
     rank: int,
-    backend: str = "NCCL",
+    backend: types.Backend = types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -197,7 +197,7 @@ def init_collective_group(
 
     with _group_mgr_lock:
         if _group_mgr.is_group_exist(group_name):
-            raise RuntimeError("Trying to initialize a group twice.")
+            raise RuntimeError("Trying to initialize a group a second time.")
 
         assert world_size > 0
         assert rank >= 0
@@ -211,7 +211,7 @@ def create_collective_group(
     actors,
     world_size: int,
     ranks: List[int],
-    backend: str = "NCCL",
+    backend=types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):

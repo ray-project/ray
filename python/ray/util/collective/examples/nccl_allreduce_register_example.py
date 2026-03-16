@@ -7,13 +7,13 @@ from ray.util.collective import (
     init_collective_group,
     is_backend_available,
 )
-from ray.util.collective.types import ReduceOp
+from ray.util.collective.types import Backend, ReduceOp
 
 
 def test_nccl_via_registry():
     ray.init(num_gpus=8)
 
-    assert is_backend_available("NCCL")
+    assert is_backend_available(Backend.NCCL)
 
     @ray.remote(num_gpus=1)
     class Worker:
@@ -25,7 +25,7 @@ def test_nccl_via_registry():
             init_collective_group(
                 world_size=world_size,
                 rank=self.rank,
-                backend="NCCL",
+                backend=Backend.NCCL,
                 group_name="default",
             )
 
@@ -40,7 +40,7 @@ def test_nccl_via_registry():
         actors=actors,
         world_size=2,
         ranks=[0, 1],
-        backend="NCCL",
+        backend=Backend.NCCL,
         group_name="default",
     )
 

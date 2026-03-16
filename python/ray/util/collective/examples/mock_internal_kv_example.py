@@ -9,20 +9,20 @@ from ray.util.collective import (
 )
 from ray.util.collective.backend_registry import register_collective_backend
 
-# Import the mock backend
+# Import mock backend
 from ray.util.collective.examples.mock_internal_kv_collective_group import (
     MockInternalKVGroup,
 )
-from ray.util.collective.types import ReduceOp
+from ray.util.collective.types import Backend, ReduceOp
 
 
 def test_mock_backend():
-    """Test the mock backend with Ray actors."""
+    """Test with Ray actors."""
 
     # Initialize Ray
     ray.init()
-    # Register the mock backend
-    register_collective_backend("MOCK", MockInternalKVGroup)
+    # Register mock backend
+    Backend.MOCK = register_collective_backend("MOCK", MockInternalKVGroup)
 
     @ray.remote
     class Worker:
@@ -30,19 +30,20 @@ def test_mock_backend():
             self.rank = rank
 
         def setup(self, world_size):
-            """Initialize the collective group for this worker."""
+            """Initialize collective group for this worker."""
             from ray.util.collective.backend_registry import register_collective_backend
             from ray.util.collective.examples.mock_internal_kv_collective_group import (
                 MockInternalKVGroup,
             )
+            from ray.util.collective.types import Backend
 
             # Register backend in each worker process
-            register_collective_backend("MOCK", MockInternalKVGroup)
+            Backend.MOCK = register_collective_backend("MOCK", MockInternalKVGroup)
 
             init_collective_group(
                 world_size=world_size,
                 rank=self.rank,
-                backend="MOCK",
+                backend=Backend.MOCK,
                 group_name="default",
             )
 
@@ -70,7 +71,7 @@ def test_mock_backend():
         actors=actors,
         world_size=3,
         ranks=[0, 1, 2],
-        backend="MOCK",
+        backend=Backend.MOCK,
         group_name="default",
     )
 

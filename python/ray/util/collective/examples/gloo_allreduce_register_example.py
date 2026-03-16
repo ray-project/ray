@@ -7,13 +7,13 @@ from ray.util.collective import (
     init_collective_group,
     is_backend_available,
 )
-from ray.util.collective.types import ReduceOp
+from ray.util.collective.types import Backend, ReduceOp
 
 
 def test_gloo_via_registry():
     ray.init()
 
-    assert is_backend_available("GLOO")
+    assert is_backend_available(Backend.GLOO)
 
     @ray.remote
     class Worker:
@@ -25,7 +25,7 @@ def test_gloo_via_registry():
             init_collective_group(
                 world_size=world_size,
                 rank=self.rank,
-                backend="GLOO",
+                backend=Backend.GLOO,
                 group_name="default",
                 gloo_timeout=30000,
             )
@@ -40,7 +40,7 @@ def test_gloo_via_registry():
         actors=actors,
         world_size=2,
         ranks=[0, 1],
-        backend="GLOO",
+        backend=Backend.GLOO,
         group_name="default",
         gloo_timeout=30000,
     )

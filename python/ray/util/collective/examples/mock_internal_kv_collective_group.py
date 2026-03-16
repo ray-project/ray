@@ -162,12 +162,7 @@ class MockInternalKVGroup(BaseGroup):
                 )
             time.sleep(0.01)
 
-        if isinstance(tensor, np.ndarray):
-            result = np.zeros_like(tensor)
-        else:
-            import torch
-
-            result = torch.zeros_like(tensor)
+        result = None
 
         for r in range(self._world_size):
             rank_data_key = get_data_key(self._group_name, r, "allreduce")
@@ -180,7 +175,7 @@ class MockInternalKVGroup(BaseGroup):
             rank_dtype_name = rank_dtype_data.decode()
             rank_dtype = np.dtype(rank_dtype_name)
 
-            if isinstance(result, np.ndarray):
+            if isinstance(tensor, np.ndarray):
                 rank_tensor = np.frombuffer(rank_data, dtype=rank_dtype).reshape(
                     rank_shape
                 )
@@ -190,24 +185,31 @@ class MockInternalKVGroup(BaseGroup):
                 rank_np = np.frombuffer(rank_data, dtype=rank_dtype).reshape(rank_shape)
                 rank_tensor = torch.from_numpy(rank_np)
 
-            if reduce_op == ReduceOp.SUM:
-                result += rank_tensor
-            elif reduce_op == ReduceOp.PRODUCT:
-                result *= rank_tensor
-            elif reduce_op == ReduceOp.MAX:
-                if isinstance(result, np.ndarray):
-                    result = np.maximum(result, rank_tensor)
-                else:
-                    import torch
+            if result is None:
+                result = (
+                    rank_tensor.copy()
+                    if isinstance(rank_tensor, np.ndarray)
+                    else rank_tensor.clone()
+                )
+            else:
+                if reduce_op == ReduceOp.SUM:
+                    result += rank_tensor
+                elif reduce_op == ReduceOp.PRODUCT:
+                    result *= rank_tensor
+                elif reduce_op == ReduceOp.MAX:
+                    if isinstance(result, np.ndarray):
+                        result = np.maximum(result, rank_tensor)
+                    else:
+                        import torch
 
-                    result = torch.maximum(result, rank_tensor)
-            elif reduce_op == ReduceOp.MIN:
-                if isinstance(result, np.ndarray):
-                    result = np.minimum(result, rank_tensor)
-                else:
-                    import torch
+                        result = torch.maximum(result, rank_tensor)
+                elif reduce_op == ReduceOp.MIN:
+                    if isinstance(result, np.ndarray):
+                        result = np.minimum(result, rank_tensor)
+                    else:
+                        import torch
 
-                    result = torch.minimum(result, rank_tensor)
+                        result = torch.minimum(result, rank_tensor)
 
         if isinstance(tensor, np.ndarray):
             tensor[:] = result

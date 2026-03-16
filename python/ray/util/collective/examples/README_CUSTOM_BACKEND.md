@@ -134,7 +134,6 @@ The `MockInternalKVGroup` in `mock_kv_collective_group.py` demonstrates:
   - `put(name, group_cls)`: Register a backend
   - `get(name)`: Get a registered backend class
   - `check(name)`: Check if backend is available
-  - `list_backends()`: List all registered backends
 
 - `BaseGroup`: Abstract base class for collective backends
   - Required properties: `rank`, `world_size`, `group_name`
