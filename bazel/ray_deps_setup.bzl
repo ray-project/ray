@@ -95,6 +95,7 @@ def ray_deps_setup():
         url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
+            "//thirdparty/patches:protobuf-bazel7.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -167,7 +168,8 @@ def ray_deps_setup():
     # Using a local build_file forces content-based cache invalidation:
     # changing org_lzma_lzma.BUILD.bazel triggers re-setup on all machines,
     # including Windows CI with persistent output bases where patching
-    # rules_boost's BUILD.lzma would not propagate.
+    # rules_boost's BUILD.lzma would not propagate (build_file label strings
+    # are used for fingerprinting, not file contents of external-repo labels).
     auto_http_archive(
         name = "org_lzma_lzma",
         sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
