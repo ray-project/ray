@@ -802,7 +802,7 @@ class TestScaleDownReplicaSelection:
         cluster = ray_cluster
         cluster.add_node(num_cpus=4)
         cluster.wait_for_nodes()
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, ignore_reinit_error=True)
 
         scheduler, _ = self._create_scheduler()
         dep_id = DeploymentID(name="deployment_non_running")
@@ -861,7 +861,7 @@ class TestScaleDownReplicaSelection:
         cluster.add_node(num_cpus=0)
         cluster.add_node(num_cpus=num_fallback_replicas, labels=fallback_label)
         cluster.wait_for_nodes()
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, ignore_reinit_error=True)
 
         scheduler, cluster_node_info_cache = self._create_scheduler()
         dep_id = DeploymentID(name="deployment_fallback")
@@ -942,7 +942,7 @@ class TestScaleDownReplicaSelection:
         primary_label = {"region": "us-south"}
         cluster.add_node(num_cpus=1, labels=primary_label)
         cluster.wait_for_nodes()
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, ignore_reinit_error=True)
 
         actor_resources = {"CPU": 1}
         ray_actor_options = {
