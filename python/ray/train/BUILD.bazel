@@ -608,7 +608,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "ptl_v2",
+        "ptl_v1",
         "team:ml",
         "train_v2_gpu",
     ],
@@ -948,6 +948,7 @@ py_test(
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = [
         "exclusive",
+        "ptl_v1",
         "team:ml",
     ],
     deps = [":train_lib"],

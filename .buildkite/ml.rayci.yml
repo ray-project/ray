@@ -292,7 +292,7 @@ steps:
         --skip-ray-installation
     depends_on: [ "mlbuild-multipy", "forge" ]
 
-  - label: ":train: ml: train gpu lightning 2.0 tests"
+  - label: ":train: ml: lightning 1.x compatibility tests"
     tags:
       - train_gpu
       - gpu

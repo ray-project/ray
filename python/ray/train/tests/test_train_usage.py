@@ -41,10 +41,9 @@ def run_torch():
 
 
 def run_lightning():
-    try:
-        import lightning.pytorch as pl
-    except ModuleNotFoundError:
-        import pytorch_lightning as pl
+    from ray.train.lightning._lightning_utils import import_lightning
+
+    pl = import_lightning()
 
     from ray.train.lightning import (
         RayDDPStrategy,

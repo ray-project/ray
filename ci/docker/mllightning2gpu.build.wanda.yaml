@@ -1,4 +1,4 @@
-name: mllightning2gpubuild
+name: mllightning1gpubuild
 froms: ["cr.ray.io/rayproject/oss-ci-base_gpu-py3.10"]
 dockerfile: ci/docker/ml.build.Dockerfile
 srcs:
@@ -22,6 +22,6 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
   - RAYCI_IS_GPU_BUILD=true
-  - RAYCI_LIGHTNING_2=true
+  - RAYCI_LIGHTNING_1=true
 tags:
-  - cr.ray.io/rayproject/mllightning2gpubuild
+  - cr.ray.io/rayproject/mllightning1gpubuild

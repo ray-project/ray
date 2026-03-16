@@ -11,12 +11,8 @@ import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
-try:
-    import lightning.pytorch as pl
-    from lightning.pytorch.loggers import WandbLogger
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
-    from pytorch_lightning.loggers import WandbLogger
+import lightning.pytorch as pl
+from lightning.pytorch.loggers import WandbLogger
 
 
 def train_func(config):

@@ -1,6 +1,7 @@
 import math
 import os
 
+import lightning.pytorch as pl
 import torch
 from datasets import load_dataset
 from filelock import FileLock
@@ -11,11 +12,6 @@ from torchvision import transforms
 
 from ray import tune
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
-
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 

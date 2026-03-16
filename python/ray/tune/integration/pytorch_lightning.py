@@ -106,7 +106,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     .. code-block:: python
 
-        import pytorch_lightning as pl
+        import lightning.pytorch as pl
         from ray.tune.integration.pytorch_lightning import (
             TuneReportCheckpointCallback)
 
