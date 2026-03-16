@@ -635,6 +635,45 @@ class TestGetPipHash:
 
         assert hash1 != hash2
 
+    def test_pip_hash_with_circular_reference(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create file A
+            file_a = os.path.join(tmpdir, "a.txt")
+            with open(file_a, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+            
+            # Create file B
+            file_b = os.path.join(tmpdir, "b.txt")
+            with open(file_b, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+            
+            pip_dict = {"packages": [f"-r {file_a}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_self_reference(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create self-referencing file
+            self_file = os.path.join(tmpdir, "self.txt")
+            with open(self_file, "w") as f:
+                f.write("-r self.txt\nnumpy==1.21.0\n")
+            
+            pip_dict = {"packages": [f"-r {self_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
