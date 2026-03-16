@@ -768,6 +768,31 @@ class TestAssignRequest:
 
         assert r1_id not in fake_request_router.dropped_replicas
 
+    async def test_actor_died_none_actor_id_via_callback(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Done-callback with ActorDiedError(actor_id=None) and replica has valid
+        actor_id → replica IS dropped (conservative fallback when ID unknown)."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        r1_actor_id = ray.ActorID.from_random()
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, actor_id=r1_actor_id)
+        )
+
+        result = await router.assign_request(dummy_request_metadata())
+
+        # ActorDiedError without actor_id (e.g., constructed without
+        # ActorDiedErrorContext). Conservative fallback: mark replica dead.
+        error = ActorDiedError()
+        error.actor_id = None  # Explicitly None
+        result.fire_done_callbacks(result=error)
+        await asyncio.sleep(0)
+
+        assert r1_id in fake_request_router.dropped_replicas
+
     async def test_ray_task_error_wrapping_actor_died_matching_id_via_callback(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -952,21 +977,6 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
 
 
 class TestRouterMetricsManager:
-    @pytest.fixture(autouse=True)
-    async def cancel_metrics_tasks(self):
-        """Cancel any lingering _report_cached_metrics_forever tasks after each test
-        to avoid 'Task was destroyed but it is pending!' asyncio warnings."""
-        yield
-        tasks = [
-            t
-            for t in asyncio.all_tasks()
-            if "_report_cached_metrics_forever" in t.get_coro().__qualname__
-        ]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
     @pytest.mark.asyncio
     async def test_num_router_requests(self):
         tags = {
