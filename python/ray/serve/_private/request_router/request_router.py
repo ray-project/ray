@@ -833,10 +833,10 @@ class RequestRouter(ABC):
     def decrement_queue_len_cache(self, replica_id: ReplicaID):
         """Decrement the queue length cache for a replica.
 
-        Called when a request completes on a replica. This is the counterpart
-        to on_send_request which increments the cache. Without this decrement,
-        with max_ongoing_requests=1 the cache gets stuck at 1 after routing,
-        causing every subsequent routing decision to require a blocking probe RPC.
+        Called via add_done_callback when a request finishes on a replica,
+        regardless of outcome (success, failure, or cancellation). This is
+        correct: any request that was actually sent occupies a queue slot,
+        and the slot is freed when the request completes for any reason.
 
         Should NOT be called for rejected requests — on_new_queue_len_info
         already corrects the cache with the replica's actual queue length.

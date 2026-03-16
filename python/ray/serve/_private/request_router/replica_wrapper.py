@@ -209,6 +209,12 @@ class RunningReplica:
         which triggers a broadcast with updated RunningReplicaInfo. Without this
         update, the router would use stale multiplexed_model_ids and break
         multiplexed model routing.
+
+        Because we reassign _replica_info, any property that reads from it
+        (including max_ongoing_requests, node_id, availability_zone, etc.)
+        will reflect the new values. Fields that are cached separately
+        (e.g., _actor_handle) are NOT refreshed here because they are tied
+        to the replica's identity and should never change for a live replica.
         """
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
