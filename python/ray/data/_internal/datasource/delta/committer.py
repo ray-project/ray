@@ -201,7 +201,7 @@ def commit_to_existing_table(
         schema: PyArrow schema (or None to infer from files).
         filesystem: PyArrow filesystem for reading files.
     """
-    # Get existing schema once (used for validation)
+    # Get existing schema once (used for validation and NaN type detection)
     existing_schema = to_pyarrow_schema(table.schema())
 
     # Validate partition columns match existing table
@@ -219,7 +219,7 @@ def commit_to_existing_table(
     if incoming is not None and len(incoming) > 0:
         validate_schema_type_compatibility(existing_schema, incoming)
 
-    # For OVERWRITE mode, delete all existing data after validation passes.
+    # For OVERWRITE mode, delete existing data after validation passes.
     if inputs.mode == "overwrite":
         table.delete()
 

@@ -186,7 +186,7 @@ def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
     data = [
         {"id": 1, "text": "hello world"},
         {"id": 2, "text": "special chars: @#$%^&*()"},
-        {"id": 3, "text": "unicode: cafe\u0301"},
+        {"id": 3, "text": "unicode: café"},
     ]
     ray.data.from_items(data).write_delta(temp_delta_path)
     rows = ray.data.read_delta(temp_delta_path).take_all()
@@ -194,7 +194,7 @@ def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
     texts = {r["text"] for r in rows}
     assert "hello world" in texts
     assert "special chars: @#$%^&*()" in texts
-    assert "unicode: cafe\u0301" in texts
+    assert "unicode: café" in texts
 
 
 # =============================================================================
@@ -211,19 +211,22 @@ def test_read_delta_column_projection(ray_start_regular_shared, temp_delta_path)
     assert sorted(r["id"] for r in rows) == list(range(5))
 
 
-# =============================================================================
-# Time Travel Tests # =============================================================================
-
-
 def test_read_delta_time_travel_version(ray_start_regular_shared, temp_delta_path):
-    ray.data.range(50).write_delta(temp_delta_path)
-    ray.data.range(30).write_delta(temp_delta_path, mode="append")
+    # version 0
+    ray.data.from_items([{"id": 1, "value": "v0"}]).write_delta(
+        temp_delta_path, mode="append"
+    )
+    # version 1
+    ray.data.from_items([{"id": 2, "value": "v1"}]).write_delta(
+        temp_delta_path, mode="append"
+    )
 
-    # Read latest version (should have 80 rows)
-    assert ray.data.read_delta(temp_delta_path).count() == 80
+    assert ray.data.read_delta(temp_delta_path).count() == 2
 
-    # Read version 0 (first write, 50 rows)
-    assert ray.data.read_delta(temp_delta_path, version=0).count() == 50
+    ds_v0 = ray.data.read_delta(temp_delta_path, version=0)
+    assert ds_v0.count() == 1
+    rows_v0 = ds_v0.take_all()
+    assert rows_v0[0]["value"] == "v0"
 
 
 # =============================================================================
@@ -239,7 +242,8 @@ def test_write_delta_invalid_mode(ray_start_regular_shared, temp_delta_path):
 
 
 # =============================================================================
-# Upsert Mode Tests # =============================================================================
+# Upsert Mode Tests
+# =============================================================================
 
 
 def test_write_delta_upsert_basic(ray_start_regular_shared, temp_delta_path):
@@ -313,7 +317,27 @@ def test_write_delta_upsert_kwargs_validation(
 
 
 # =============================================================================
-# Schema Evolution Tests # =============================================================================
+# Edge Cases and Error Handling
+# =============================================================================
+
+
+def test_write_delta_large_dataset(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(10_000).write_delta(temp_delta_path)
+    assert ray.data.read_delta(temp_delta_path).count() == 10_000
+
+
+def test_write_delta_multiple_blocks(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(100, override_num_blocks=10).write_delta(temp_delta_path)
+    assert ray.data.read_delta(temp_delta_path).count() == 100
+
+
+def test_write_delta_nested_type_unsupported(ray_start_regular_shared, temp_delta_path):
+    # Partition columns must not be nested/dictionary
+    data = [{"id": 1, "nested": {"a": 1}}, {"id": 2, "nested": {"a": 2}}]
+    ds = ray.data.from_items(data)
+
+    with pytest.raises(ValueError, match=r"nested type|nested"):
+        ds.write_delta(temp_delta_path, partition_cols=["nested"])
 
 
 def test_write_delta_invalid_schema_mode(ray_start_regular_shared, temp_delta_path):
@@ -339,28 +363,6 @@ def test_write_delta_invalid_schema_mode(ray_start_regular_shared, temp_delta_pa
 # =============================================================================
 # Edge Cases and Error Handling
 # =============================================================================
-
-
-def test_write_delta_large_dataset(ray_start_regular_shared, temp_delta_path):
-    ray.data.range(10_000).write_delta(temp_delta_path)
-    assert ray.data.read_delta(temp_delta_path).count() == 10_000
-
-
-def test_write_delta_multiple_blocks(ray_start_regular_shared, temp_delta_path):
-    ray.data.range(100, override_num_blocks=10).write_delta(temp_delta_path)
-    assert ray.data.read_delta(temp_delta_path).count() == 100
-
-
-def test_write_delta_nested_type_unsupported(ray_start_regular_shared, temp_delta_path):
-    # Partition columns must not be nested/dictionary
-    data = [{"id": 1, "nested": {"a": 1}}, {"id": 2, "nested": {"a": 2}}]
-    ds = ray.data.from_items(data)
-
-    with pytest.raises(ValueError, match=r"nested type|nested"):
-        ds.write_delta(temp_delta_path, partition_cols=["nested"])
-
-
-
 
 def test_write_delta_compression(ray_start_regular_shared, temp_delta_path):
     ray.data.range(10).write_delta(temp_delta_path, compression="zstd")

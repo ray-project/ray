@@ -4432,20 +4432,21 @@ class Dataset:
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
-
                 * schema_mode: Schema evolution mode when writing to existing tables:
+
                   - "merge" (default): Automatically add new columns from incoming data.
                     Existing columns must have compatible types.
                   - "error": Raise error if schemas differ. Use for strict schema enforcement.
 
-                Note: Other write_kwargs (partition_overwrite_mode,
-                target_file_size_bytes) may be added in future releases.
+                * upsert_kwargs: Options for upsert mode (required when mode="upsert"):
+
+                  - join_cols: List of column names to match rows on (required)
 
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
-            ValueError: If mode is not "append", or if partition_cols is provided,
-                or if unsupported write_kwargs are provided.
+            ValueError: If an invalid mode or schema_mode is provided, or if required
+                parameters for the selected mode are missing.
 
         Note:
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
@@ -4478,7 +4479,7 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # Validate mode - accepts both str and SaveMode enum (SaveMode extends str)
+        # Validate mode
         valid_modes = {"append", "overwrite", "ignore", "error", "upsert"}
         if mode not in valid_modes:
             raise ValueError(
@@ -4492,15 +4493,15 @@ class Dataset:
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # Schema evolution mode
-        # Allow schema_mode to be passed in write_kwargs for backward compatibility
-        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        # Also allow schema_mode in write_kwargs for backward compatibility
+        if "schema_mode" in write_kwargs:
+            schema_mode = write_kwargs.pop("schema_mode")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # Upsert mode
+        # Upsert kwargs (explicit param, not passed through write_kwargs)
         upsert_kwargs = write_kwargs.pop("upsert_kwargs", None)
         if mode == "upsert" and not upsert_kwargs:
             raise ValueError(
@@ -4512,13 +4513,13 @@ class Dataset:
                 "upsert_kwargs can only be specified with SaveMode.UPSERT"
             )
 
-        # Partition overwrite not supported yet
+        # Partition overwrite mode not yet supported
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
                 "partition_overwrite_mode is not supported."
             )
 
-        # File buffering not supported yet
+        # File buffering not yet supported
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
                 "target_file_size_bytes is not supported."
