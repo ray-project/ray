@@ -1,9 +1,10 @@
+import inspect
 import json
 import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -20,6 +21,7 @@ from pydantic import (
 
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
+from ray.actor import ActorClass
 
 # Import types needed for AutoscalingContext
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
@@ -934,6 +936,136 @@ class GangRuntimeFailurePolicy(str, Enum):
     Tear down and restart individual replica when it fails.
     Other replicas in the gang will continue running.
     """
+
+
+@PublicAPI(stability="alpha")
+class DeploymentActorConfig(BaseModel):
+    """Configuration for a deployment-scoped actor.
+
+    Deployment-scoped actors are long-lived actors managed by the Serve controller
+    that outlive any single replica but are cleaned up when the deployment is
+    deleted or serve.shutdown() is called. They are shared by all replicas of
+    a deployment.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+                def insert(self, text: str):
+                    self.max_depth += 1
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                        actor_options={"num_cpus": 0.1},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+    """
+
+    name: str = Field(
+        description="Unique name for this deployment-scoped actor within the deployment.",
+    )
+    actor_class: Union[type, str, ActorClass] = Field(
+        description=(
+            "The actor class for this deployment-scoped actor. "
+            "Can be a @ray.remote-decorated class or an import path string "
+            "(e.g. 'my_module:PrefixTreeActor')."
+        ),
+    )
+    init_args: Tuple[Any, ...] = Field(
+        default_factory=tuple,
+        description="Positional arguments to pass to the actor constructor.",
+    )
+    init_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Keyword arguments to pass to the actor constructor.",
+    )
+    actor_options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Ray actor options (e.g. num_cpus, num_gpus, runtime_env). "
+            "Inherits deployment's runtime_env; values here override for this actor."
+        ),
+    )
+
+    _serialized_actor_class: bytes = PrivateAttr(default=b"")
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs: Any):
+        """Initialize deployment actor config.
+
+        Args:
+            **kwargs: Raw model fields, including optional private
+                ``_serialized_actor_class`` for deserialization path.
+        """
+        serialized_actor_class = kwargs.pop("_serialized_actor_class", None)
+        super().__init__(**kwargs)
+        if serialized_actor_class:
+            self._serialized_actor_class = serialized_actor_class
+        elif not isinstance(self.actor_class, str):
+            self._serialize_actor_class()
+
+    @field_validator("init_args")
+    @classmethod
+    def _init_args_to_tuple(cls, v):
+        if v is not None and isinstance(v, list):
+            return tuple(v)
+        return v or ()
+
+    def _serialize_actor_class(self) -> None:
+        """Import and serialize the actor class with pickle-by-value."""
+        actor_class = self.actor_class
+        if isinstance(actor_class, str):
+            actor_module, actor_class = import_module_and_attr(actor_class)
+            # ActorClass (from @ray.remote) has __ray_actor_class__ for the underlying class
+            cls_for_meta = actor_class.__ray_actor_class__
+        else:
+            # For @ray.remote ActorClass, get module and name from underlying class
+            cls_for_meta = actor_class.__ray_actor_class__
+            actor_module = inspect.getmodule(cls_for_meta)
+        actor_class_name = f"{cls_for_meta.__module__}:{cls_for_meta.__qualname__}"
+
+        if actor_module is not None:
+            cloudpickle.register_pickle_by_value(actor_module)
+        self._serialized_actor_class = cloudpickle.dumps(actor_class)
+        if actor_module is not None:
+            cloudpickle.unregister_pickle_by_value(actor_module)
+
+        self.actor_class = actor_class_name
+
+    def get_actor_class(self) -> type:
+        """Deserialize the actor class from cloudpickled bytes."""
+        try:
+            return cloudpickle.loads(self._serialized_actor_class)
+        except (ModuleNotFoundError, ImportError) as e:
+            raise ImportError(
+                f"Failed to deserialize deployment actor class: {e}\n\n"
+                "This typically happens when the actor class depends on external "
+                "modules that aren't available in the current environment. "
+                "To fix this:\n"
+                "  - Ensure all dependencies are installed in your Docker image "
+                "or environment\n"
+                "  - Package the actor module as a Python package and install it\n"
+                "  - Place the actor module in PYTHONPATH"
+            ) from e
 
 
 @PublicAPI(stability="alpha")
