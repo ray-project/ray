@@ -828,10 +828,14 @@ class AsyncioRouter:
         replica_actor_id_hex = (
             replica_actor_id.hex() if replica_actor_id is not None else None
         )
-        # When error_actor_id is None (e.g., ActorDiedError without
-        # ActorDiedErrorContext), treat as match to preserve conservative
+        # When error_actor_id or replica_actor_id_hex is None, we cannot
+        # definitively compare. Treat as match to preserve conservative
         # behavior: mark replica dead rather than leaving it in rotation.
-        if error_actor_id is None or error_actor_id == replica_actor_id_hex:
+        if (
+            error_actor_id is None
+            or replica_actor_id_hex is None
+            or error_actor_id == replica_actor_id_hex
+        ):
             # Replica has died but controller hasn't notified the router yet.
             if self.request_router:
                 self.request_router.on_replica_actor_died(replica_id)
