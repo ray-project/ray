@@ -23,7 +23,8 @@ from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
 from ray.exceptions import RayActorError
-from ray.train import Checkpoint, DataConfig
+from ray.train._checkpoint import Checkpoint
+from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import (
     TrialInfo,
     _TrainingResult,
