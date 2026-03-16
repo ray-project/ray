@@ -27,17 +27,17 @@ from typing import (
 
 import pyarrow as pa
 
+from ray.data._internal.datasource_v2 import InputBucket
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-    InMemorySizeEstimator,
-)
-from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
-    from ray.data._internal.datasource_v2 import InputBucket
+    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+        InMemorySizeEstimator,
+    )
+    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 
 @DeveloperAPI

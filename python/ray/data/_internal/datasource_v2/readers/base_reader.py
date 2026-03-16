@@ -3,7 +3,7 @@ from typing import Generic, Iterator
 
 import pyarrow as pa
 
-from ray.data._internal.datasource_v2.datasource_v2 import InputBucket
+from ray.data._internal.datasource_v2 import InputBucket
 from ray.util.annotations import DeveloperAPI
 
 
