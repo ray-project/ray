@@ -1,6 +1,5 @@
 load("@py_deps_py310//:requirements.bzl", bk_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 exports_files(
     [
@@ -10,15 +9,51 @@ exports_files(
     visibility = ["//ci/ray_ci/automation:__pkg__"],
 )
 
-compile_pip_requirements(
-    name = "requirements_py310",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_py310.in",
-    requirements_txt = "requirements_py310.txt",
-    tags = [
-        "team:ci",
-    ],
+_requirements_py310_args = [
+    "$(rootpath :requirements_py310.in)",
+    "$(rootpath :requirements_py310.txt)",
+    "//release:requirements_py310.update",
+]
+
+_requirements_py310_data = [
+    ":requirements-doc.txt",
+    ":requirements_py310.in",
+    ":requirements_py310.txt",
+]
+
+_requirements_py310_deps = [
+    "@pypi__click//:lib",
+    "@pypi__colorama//:lib",
+    "@pypi__pep517//:lib",
+    "@pypi__pip//:lib",
+    "@pypi__pip_tools//:lib",
+    "@pypi__setuptools//:lib",
+    "@pypi__tomli//:lib",
+]
+
+py_binary(
+    name = "requirements_py310.update",
+    srcs = ["@rules_python//python/pip_install:pip_compile.py"],
+    args = _requirements_py310_args,
+    data = _requirements_py310_data,
+    exec_compatible_with = ["//bazel:py310"],
+    main = "@rules_python//python/pip_install:pip_compile.py",
+    tags = ["team:ci"],
     visibility = ["//visibility:private"],
+    deps = _requirements_py310_deps,
+)
+
+py_test(
+    name = "requirements_py310_test",
+    timeout = "short",
+    srcs = ["@rules_python//python/pip_install:pip_compile.py"],
+    args = _requirements_py310_args,
+    data = _requirements_py310_data,
+    exec_compatible_with = ["//bazel:py310"],
+    main = "@rules_python//python/pip_install:pip_compile.py",
+    tags = ["team:ci"],
+    visibility = ["//visibility:private"],
+    deps = _requirements_py310_deps,
 )
 
 test_srcs = glob(["**/*.py"])
