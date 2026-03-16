@@ -1,5 +1,6 @@
 import collections
 import itertools
+from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
@@ -294,8 +295,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 # Need to fetch number of rows or size in bytes, so just fetch both.
                 num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(block))
                 # Cache on the block metadata.
-                metadata.num_rows = num_rows
-                metadata.size_bytes = size_bytes
+                metadata = replace(metadata, num_rows=num_rows, size_bytes=size_bytes)
             block_rows.append(metadata.num_rows)
             block_bytes.append(metadata.size_bytes)
         return block_rows, block_bytes
