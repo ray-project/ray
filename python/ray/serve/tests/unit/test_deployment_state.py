@@ -5643,6 +5643,64 @@ class TestDeploymentRankManagerIntegrationE2E:
             2,
         }, f"Expected ranks [0, 1, 2], got {[r.rank for r in ranks_mapping.values()]}"
 
+    def test_rank_recovery_skips_when_already_assigned(
+        self, mock_deployment_state_manager
+    ):
+        """Verify that recover_rank is skipped when a replica's rank is already assigned."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy 3 replicas: STARTING -> RUNNING (ranks get assigned).
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Record the actor names and ranks for recovery.
+        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        original_ranks = {
+            r.replica_id.unique_id: ds._rank_manager.get_replica_rank(
+                r.replica_id.unique_id
+            )
+            for r in ds._replicas.get()
+        }
+        dsm.save_checkpoint()
+
+        # Simulate controller crash: create a new DSM with the live actor names.
+        new_dsm: DeploymentStateManager = create_dsm(actor_names)
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+        # Enable strict rank error mode so duplicate recover_rank raises.
+        new_ds._rank_manager._fail_on_rank_error = True
+
+        # Pre-populate 1 replica's rank in the new rank manager, simulating
+        # the scenario where the rank was never released.
+        target = new_ds._replicas.get(states=[ReplicaState.RECOVERING])[0]
+        target_id = target.replica_id.unique_id
+        target_rank = original_ranks[target_id]
+        new_ds._rank_manager.recover_rank(target_id, target.actor_node_id, target_rank)
+        assert new_ds._rank_manager.has_replica_rank(target_id)
+
+        # Mark all recovering replicas as ready.
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+
+        # This update() calls _check_startup_replicas(RECOVERING). For the
+        # pre-populated replica, has_replica_rank returns True so recover_rank
+        # is SKIPPED.
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Verify all ranks were recovered correctly.
+        for rid, expected_rank in original_ranks.items():
+            assert new_ds._rank_manager.get_replica_rank(rid) == expected_rank
+
 
 class TestGetOutboundDeployments:
     def test_basic_outbound_deployments(self, mock_deployment_state_manager):
