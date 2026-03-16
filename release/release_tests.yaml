@@ -2270,6 +2270,7 @@
   cluster:
     byod:
       type: gpu-cu130
+      post_build_script: byod_compiled_graph_gpu_cu130.sh
     cluster_compute: experimental/compute_l4_gpu.yaml
 
   run:
@@ -2286,6 +2287,7 @@
   cluster:
     byod:
       type: gpu-cu130
+      post_build_script: byod_compiled_graph_gpu_cu130.sh
     cluster_compute: experimental/compute_l4_gpu_2x1_aws.yaml
 
   run:
