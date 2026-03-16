@@ -20,7 +20,6 @@ METRIC_CONFIG = {
 
 def raw_metrics(info):
     metrics_page = build_address("localhost", info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     res = fetch_prometheus_metrics([metrics_page])
     return res
 

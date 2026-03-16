@@ -235,6 +235,7 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:lease",
+        "//src/ray/common:memory_monitor_utils",
         "@com_google_absl//absl/time",
     ],
 )
