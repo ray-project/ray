@@ -6,5 +6,6 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - IMAGE_TYPE=pyarrow-nightly
+  - PYTHON=$PYTHON
 tags:
   - cr.ray.io/rayproject/datanbuild-py$PYTHON

@@ -7,5 +7,6 @@ build_args:
   - RAY_CI_JAVA_BUILD=1
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
   - IMAGE_TYPE=mongo
+  - PYTHON=$PYTHON
 tags:
   - cr.ray.io/rayproject/datamongobuild-py$PYTHON
