@@ -282,7 +282,7 @@ By default, when one deployment calls another via a `DeploymentHandle`, requests
 
 1. Since gRPC is required to serialize every payload, it should not be used for large payloads (greater than ~1 MB). If gRPC was enabled by default, individual handles' transport mechanism can be manually set to actor RPC with `handle.options(_by_reference=True)`, and passes larger objects by reference.
 
-2. When passing a Ray Serve `DeploymentResponse` from one deployment into another, the value is resolved at the caller and passed over the wire by value. This means the object is serialized and deserialized at every hop, even if intermediate deployments don't access it. This is a Ray Core behavior that applies to both gRPC and actor RPC. To avoid this, store the value with `ray.put()` and store the resulting `ObjectRef` inside a container (e.g., a list or dataclass), so intermediate deployments can forward the reference without materializing the data. See {doc}`Passing Object Arguments </ray-core/objects>` for details.
+2. When passing a `DeploymentResponse` from one deployment into another (i.e., without `await`-ing it first), gRPC resolves the value at the caller and serializes it over the wire. With actor RPC, the underlying `ObjectRef` is forwarded without materializing the data. If your pipeline chains `DeploymentResponse` objects through multiple deployments with payload sizes >100KB, avoid using gRPC for those handles.
 
 ```{literalinclude} ../doc_code/interdeployment_grpc.py
 :start-after: __start_grpc_override__
