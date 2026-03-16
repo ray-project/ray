@@ -210,12 +210,9 @@ def test_numpy_to_tensor_warning(writable):
     input_data = np.array([[1, 2, 3]], dtype=int)
     input_data.setflags(write=writable)
 
-    import warnings
-
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
+    with pytest.warns(None) as record:
         tensor = convert_ndarray_to_torch_tensor(input_data)
-    assert not record, [w.message for w in record]
+    assert not record.list, [w.message for w in record.list]
     assert tensor is not None
 
 
