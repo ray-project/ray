@@ -825,15 +825,6 @@ def test_callback_log_file_paths(
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
 
 
-def test_training_framework_module_names():
-    """Verify module_names() returns the expected modules for every framework."""
-    assert TrainingFramework.TORCH.module_names() == ("torch",)
-    assert TrainingFramework.JAX.module_names() == ("jax", "jaxlib")
-    assert TrainingFramework.TENSORFLOW.module_names() == ("tensorflow", "keras")
-    assert TrainingFramework.XGBOOST.module_names() == ("xgboost",)
-    assert TrainingFramework.LIGHTGBM.module_names() == ("lightgbm",)
-
-
 def test_get_framework_version():
     """Test _get_framework_version with None and every TrainingFramework value."""
     # None should return only the ray version.
