@@ -632,7 +632,7 @@ class DataIterator(abc.ABC):
 
         This iterator fetches data blocks, converts them to NumPy arrays, and
         loads them directly onto JAX-addressable devices using Global SPMD
-        sharding.
+        sharding. dtypes are inferred from the underlying NumPy arrays.
 
         This iterable will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -669,7 +669,7 @@ class DataIterator(abc.ABC):
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format="numpy",
-            drop_last=drop_last,
+            drop_last=False,  # drop_last is handled by jax_sync_generator
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )

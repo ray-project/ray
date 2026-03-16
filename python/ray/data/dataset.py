@@ -6041,7 +6041,8 @@ class Dataset:
                 mesh and partition layout. Default is ``None``, in which case
                 the data is sharded along the batch dimension across all devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
-            batch_size: The number of rows in each batch. Defaults to 256.
+            batch_size: The number of rows in each batch. Must be divisible
+                by the number of local devices. Defaults to 256.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the

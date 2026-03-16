@@ -1,6 +1,17 @@
+import logging
 from typing import Any, Dict, Iterable, Iterator, Union
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+def _get_slice_start(sl: slice) -> int:
+    return 0 if sl.start is None else sl.start
+
+
+def _get_slice_stop(sl: slice, length: int) -> int:
+    return length if sl.stop is None else sl.stop
 
 
 def _convert_ndarray_to_jax_tensor(
@@ -42,22 +53,16 @@ def _convert_ndarray_to_jax_tensor(
     device_indices_map = physical_sharding.addressable_devices_indices_map(global_shape)
 
     # when a tensor is wholly assigned to a single device instead of being partitioned, addressable_devices_indices_map returns slice(None, None, None) for that dimension instead of concrete indices.
-    # This is a workaround to handle this case.
-    def get_slice_start(sl: slice) -> int:
-        return 0 if sl.start is None else sl.start
-
-    def get_slice_stop(sl: slice, length: int) -> int:
-        return length if sl.stop is None else sl.stop
-
+    # _get_slice_start and _get_slice_stop are workarounds to handle this case.
     host_start_index = min(
-        get_slice_start(idx[0]) for idx in device_indices_map.values()
+        _get_slice_start(idx[0]) for idx in device_indices_map.values()
     )
 
     arrays = []
     for device, index in device_indices_map.items():
         # Translate the global row-sharding index to this host's local ndarray slice
-        start = get_slice_start(index[0])
-        stop = get_slice_stop(index[0], global_shape[0])
+        start = _get_slice_start(index[0])
+        stop = _get_slice_stop(index[0], global_shape[0])
         local_slice = slice(
             start - host_start_index,
             stop - host_start_index,
@@ -146,18 +151,23 @@ def jax_sync_generator(
     num_local_devices = jax.local_device_count()
     iterator = iter(batch_iterable)
     while True:
-        has_batch = True
         try:
             batch = next(iterator)
-            if isinstance(batch, dict):
-                # Use the first column to determine the batch size
-                local_batch_size = len(next(iter(batch.values())))
-            else:
-                local_batch_size = len(batch)
+            has_batch = True
         except StopIteration:
             has_batch = False
             local_batch_size = 0
             batch = None
+
+        if has_batch:
+            if isinstance(batch, dict):
+                # Use the first column to determine the batch size
+                try:
+                    local_batch_size = len(next(iter(batch.values())))
+                except StopIteration:
+                    local_batch_size = 0
+            else:
+                local_batch_size = len(batch)
 
         if jax.process_count() > 1:
             import jax.numpy as jnp
@@ -200,6 +210,8 @@ def jax_sync_generator(
                     "set `drop_last=True` in `iter_jax_batches()`."
                 )
         else:
+            if not has_batch:
+                break
             min_batch_size = local_batch_size
 
         if min_batch_size % num_local_devices != 0:
@@ -217,11 +229,14 @@ def jax_sync_generator(
 
         if min_batch_size == 0:
             # Data insufficient for even a single row across devices, skip and drop
-            break
+            continue
 
         # At this point, if local_batch_size > min_batch_size, drop_last must be True
         if local_batch_size > min_batch_size:
             # Truncate to the minimum batch size across all hosts
+            logger.info(
+                f"Truncating batch from size {local_batch_size} to {min_batch_size}."
+            )
             if isinstance(batch, dict):
                 batch = {k: v[:min_batch_size] for k, v in batch.items()}
             else:

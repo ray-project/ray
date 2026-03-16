@@ -584,6 +584,25 @@ def test_iter_jax_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+def test_iter_jax_batches_default_sharding(ray_start_regular_shared):
+    try:
+        import jax  # noqa: F401
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    df = pd.DataFrame(
+        {"one": [1, 2, 3, 4, 5, 6], "two": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}
+    )
+    ds = ray.data.from_pandas(df)
+
+    # Test with default named_sharding=None
+    for batch in ds.iter_jax_batches(batch_size=2):
+        assert isinstance(batch, dict)
+        assert "one" in batch
+        assert "two" in batch
+        assert len(batch["one"]) == 2
+
+
 def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
     try:
         import jax

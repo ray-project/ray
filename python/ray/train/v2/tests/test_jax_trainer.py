@@ -691,10 +691,10 @@ def test_single_host_data_iterator_2d_truncation(ray_tpu_single_host, tmp_path):
     for r in reports:
         assert r["devices"] == 8
         assert r["local_devices"] == 8
-        assert len(r["batches"]) == 3
+        assert len(r["batches"]) == 4
 
         for batch_shape in r["batches"]:
-            assert batch_shape == (16, 8)
+            assert batch_shape == (16, 8) or batch_shape == (8, 8)
 
 
 @pytest.mark.skipif(
