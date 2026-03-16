@@ -910,6 +910,7 @@ class Worker:
         use_object_store: bool = False,
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
+        rdt_ids: List[str] = []
         for obj_ref, (_, metadata, tensor_transport) in zip(
             object_refs, serialized_objects
         ):
@@ -928,14 +929,15 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in rdt_objects:
+            if object_id not in rdt_objects and object_id not in rdt_ids:
                 # If using a non-object store transport, then tensors will be sent
-                # out-of-band. Get them before deserializing the object store data.
+                # out-of-band. Collect all IDs so we can pipeline the fetches.
                 # The user can set use_object_store to fetch the RDT object
                 # through the object store.
-                rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
-                    object_id, use_object_store
-                )
+                rdt_ids.append(object_id)
+
+        if rdt_ids:
+            rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids, use_object_store)
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports

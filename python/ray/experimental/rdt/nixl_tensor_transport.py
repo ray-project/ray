@@ -265,7 +265,7 @@ class NixlTensorTransport(TensorTransportManager):
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
             self._add_tensor_descs(tensors)
-            added_tensor_descs= True
+            added_tensor_descs = True
             local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
@@ -314,7 +314,7 @@ class NixlTensorTransport(TensorTransportManager):
             )
         except Exception:
             self._cleanup_transfer(
-                obj_id, tensors, xfer_handle, remote_name, remove_tensor_descs
+                obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
             )
             from ray.exceptions import RayDirectTransportError
 

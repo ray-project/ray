@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     )
     from ray.experimental.rdt.tensor_transport_manager import (
         CommunicatorMetadata,
+        FetchRequest,
         TensorTransportMetadata,
     )
 
@@ -444,26 +445,23 @@ class RDTManager:
                 ]
             )
 
-    def _fetch_object(
+    def _trigger_fetch(
         self,
         obj_id: str,
         use_object_store: bool,
-    ):
+    ) -> Optional["FetchRequest"]:
         """
-        Fetches the RDT object from the source actor's RDT store via the object store
-        instead of out-of-band tensor transfer and stores the tensors in the local RDT store.
-
-        This is useful when the current process does not support the designated out-of-band tensor transport.
-        For example, if the tensor transport is NCCL but the driver does not have a GPU, we use this call to
-        fulfill a `ray.get` call.
+        Starts fetching an RDT object, returning a FetchRequest for one-sided transports
+        (so the caller can pipeline multiple fetches before waiting), or None if the fetch
+        is already complete (object-store path or object already in store).
 
         Args:
             obj_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object through the
-                object store or through its designated tensor transport.
+            use_object_store: Whether to fetch through the object store (blocking) or
+                through the designated one-sided tensor transport (async).
 
         Returns:
-            None
+            A FetchRequest to pass to _wait_fetch, or None if no waiting is needed.
         """
         from ray.experimental.rdt.rdt_store import (
             __ray_fetch_rdt_object__,
@@ -474,7 +472,7 @@ class RDTManager:
         )
 
         if self.rdt_store.has_object(obj_id):
-            return
+            return None
 
         rdt_meta = self.get_rdt_metadata(obj_id)
         assert rdt_meta is not None
@@ -492,11 +490,8 @@ class RDTManager:
                 )
             )
             self.rdt_store.add_object(obj_id, tensors)
+            return None
         else:
-            from ray.experimental.rdt.rdt_store import (
-                __ray_recv__,
-            )
-
             tensor_transport = rdt_meta.tensor_transport_backend
             validate_one_sided(tensor_transport, "ray.get")
             tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
@@ -530,14 +525,32 @@ class RDTManager:
                     else:
                         target_buffers.append(buffer)
 
-            __ray_recv__(
-                None,
+            return tensor_transport_manager.fetch_multiple_tensors(
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
-                tensor_transport,
                 target_buffers,
             )
+
+    def _wait_fetch(self, obj_id: str, fetch_request: "FetchRequest"):
+        """
+        Waits for a previously triggered fetch to complete and stores the result.
+
+        Args:
+            obj_id: The object ID of the RDT object.
+            fetch_request: The FetchRequest returned by _trigger_fetch.
+        """
+        from ray.experimental.rdt.util import get_tensor_transport_manager
+
+        rdt_meta = self.get_rdt_metadata(obj_id)
+        tensor_transport_manager = get_tensor_transport_manager(
+            rdt_meta.tensor_transport_backend
+        )
+        try:
+            tensors = tensor_transport_manager.wait_fetch_complete(fetch_request)
+            self.rdt_store.add_object(obj_id, tensors)
+        except Exception as e:
+            self.rdt_store.add_object(obj_id, e)
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -692,40 +705,60 @@ class RDTManager:
         )
         self.start_monitor_thread_if_needed()
 
-    def get_rdt_object(
+    def get_rdt_objects(
         self,
-        object_id: str,
+        object_ids: List[str],
         use_object_store: bool = False,
-    ) -> List[Any]:
+    ) -> Dict[str, List[Any]]:
         """
-        Get the RDT object for a given object ID.
+        Get RDT objects for a list of object IDs, pipelining async fetches.
+
+        For one-sided transports (e.g. NIXL), all transfers are triggered first
+        before waiting, eliminating serial transfer latency.
 
         Args:
-            object_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch the RDT object
-                through the object store or through its designated tensor transport.
+            object_ids: The object IDs of the RDT objects.
+            use_object_store: Whether to fetch through the object store or through
+                the designated tensor transport.
 
         Returns:
-            The RDT object.
+            A dict mapping object ID to the RDT object (list of tensors).
         """
         rdt_store = self.rdt_store
-        if self.is_managed_object(object_id):
-            self._fetch_object(object_id, use_object_store)
 
-        # If the RDT object is the primary copy, it means the transfer is intra-actor.
-        # In this case, we should not remove the RDT object after it is consumed once,
-        # because the RDT object reference may be used again.
-        # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not rdt_store.is_primary_copy(object_id)
-        if pop_object:
-            rdt_object = rdt_store.wait_and_pop_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        else:
-            rdt_object = rdt_store.wait_and_get_object(
-                object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
-            )
-        return rdt_object
+        # Trigger fetches for all objects not yet in the store.
+        fetch_requests: Dict[str, "FetchRequest"] = {}
+        for object_id in object_ids:
+            # TODO(swang): Check if the object is already in the store. If so,
+            # we should use that copy instead. If the copy is not a primary
+            # copy, we also need to ensure that the copy is only popped after
+            # all readers for that copy have finished.
+            if self.is_managed_object(object_id):
+                fetch_request = self._trigger_fetch(object_id, use_object_store)
+                if fetch_request is not None:
+                    fetch_requests[object_id] = fetch_request
+
+        # Wait for each fetch and add to store.
+        for object_id, fetch_request in fetch_requests.items():
+            self._wait_fetch(object_id, fetch_request)
+
+        # Collect results.
+        result: Dict[str, List[Any]] = {}
+        for object_id in object_ids:
+            # If the RDT object is the primary copy, it means the transfer is intra-actor.
+            # In this case, we should not remove the RDT object after it is consumed once,
+            # because the RDT object reference may be used again.
+            # Instead, we should wait for the GC callback to clean it up.
+            pop_object = not rdt_store.is_primary_copy(object_id)
+            if pop_object:
+                result[object_id] = rdt_store.wait_and_pop_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+            else:
+                result[object_id] = rdt_store.wait_and_get_object(
+                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                )
+        return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """
