@@ -40,7 +40,7 @@ First, install Ray Data with LLM support:
 
 .. code-block:: bash
 
-    pip install -U "ray[data, llm]>=2.49.1"
+    pip install -U "ray[data, llm]>=2.53.0"
 
 Here's a complete minimal example that runs batch inference:
 
