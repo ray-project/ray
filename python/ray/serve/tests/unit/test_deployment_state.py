@@ -30,7 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -1707,7 +1707,7 @@ def test_health_gauge_caching(mock_deployment_state_manager):
 
     # After the TTL expires, the gauge should be re-reported even though
     # the value hasn't changed.
-    timer.advance(RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S + 1)
+    timer.advance(RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S + 1)
     dsm.update()
     assert call_count == len(replica_ids), (
         f"Gauge.set was called {call_count} times after TTL expired; "
@@ -2730,13 +2730,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -2924,12 +2924,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 2 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 2
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 2)
                         ]
                         for replica in replicas
@@ -3022,12 +3023,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3133,12 +3135,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3449,11 +3452,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds._replicas.get()[0]._actor.replica_id: [
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3562,11 +3567,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds1._replicas.get()[0]._actor.replica_id: [
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3692,13 +3699,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -3758,13 +3765,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
