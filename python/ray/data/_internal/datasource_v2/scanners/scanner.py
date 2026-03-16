@@ -4,7 +4,7 @@ from typing import Generic, List, Optional
 import pyarrow as pa
 
 from ray.data._internal.datasource_v2 import InputBucket
-from ray.data._internal.datasource_v2.datasource_v2 import Reader
+from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
