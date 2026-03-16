@@ -12,7 +12,7 @@ import pytest
 import ray
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
-from ray.exceptions import ActorDiedError, ActorUnavailableError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayTaskError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -103,15 +103,21 @@ class FakeReplica(RunningReplica):
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
         is_cross_language: bool = False,
         error: Optional[Exception] = None,
+        actor_id: Optional[ray.ActorID] = None,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
         self._error = error
+        self._actor_id = actor_id
 
     @property
     def replica_id(self) -> ReplicaID:
         return self._replica_id
+
+    @property
+    def actor_id(self) -> Optional[ray.ActorID]:
+        return self._actor_id
 
     @property
     def is_cross_language(self) -> bool:
@@ -260,8 +266,7 @@ class FakeRequestRouter(RequestRouter):
 
 
 @pytest.fixture
-@pytest.mark.asyncio
-def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
+async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
     if not hasattr(request, "param"):
         request.param = {}
 
@@ -285,7 +290,8 @@ def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
         prefer_local_node_routing=False,
         _request_router_initialized_event=asyncio.Event(),
     )
-    return router, fake_request_router
+    yield router, fake_request_router
+    await router.shutdown()
 
 
 def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
@@ -647,13 +653,18 @@ class TestAssignRequest:
     async def test_replica_actor_died(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
+        """ActorDiedError whose actor_id matches the replica → replica is dropped."""
         router, fake_request_router = setup_router
         d_id = DeploymentID(name="test")
         r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
         r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
 
+        r1_actor_id = ray.ActorID.from_random()
+        error = ActorDiedError()
+        error.actor_id = r1_actor_id.hex()
+
         fake_request_router.set_replica_to_return(
-            FakeReplica(r1_id, error=ActorDiedError())
+            FakeReplica(r1_id, error=error, actor_id=r1_actor_id)
         )
         fake_request_router.set_replica_to_return_on_retry(
             FakeReplica(
@@ -665,6 +676,160 @@ class TestAssignRequest:
         )
         await router.assign_request(dummy_request_metadata())
         assert r1_id in fake_request_router.dropped_replicas
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {
+                "enable_strict_max_ongoing_requests": True,
+                "enable_queue_len_cache": True,
+            },
+        ],
+        indirect=True,
+    )
+    async def test_replica_actor_died_mismatched_actor_id(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """ActorDiedError whose actor_id does NOT match the replica → replica is NOT
+        dropped (the error came from an upstream dependency, not this replica)."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        # r1 has one actor_id but the error reports a different actor_id (upstream).
+        r1_actor_id = ray.ActorID.from_random()
+        upstream_actor_id = ray.ActorID.from_random()
+        error = ActorDiedError()
+        error.actor_id = upstream_actor_id.hex()
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=error, actor_id=r1_actor_id)
+        )
+        # r2 handles the retry after r1 fails.
+        fake_request_router.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+        await router.assign_request(dummy_request_metadata())
+        # r1 should NOT be dropped because the error came from a different actor.
+        assert r1_id not in fake_request_router.dropped_replicas
+
+    async def test_actor_died_matching_id_via_callback(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Done-callback with ActorDiedError whose actor_id matches the replica →
+        replica is dropped via _process_finished_request."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        r1_actor_id = ray.ActorID.from_random()
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, actor_id=r1_actor_id)
+        )
+
+        result = await router.assign_request(dummy_request_metadata())
+
+        # Simulate the response finishing with an ActorDiedError from this replica.
+        error = ActorDiedError()
+        error.actor_id = r1_actor_id.hex()
+        result.fire_done_callbacks(result=error)
+        await asyncio.sleep(0)
+
+        assert r1_id in fake_request_router.dropped_replicas
+
+    async def test_actor_died_mismatched_id_via_callback(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Done-callback with ActorDiedError whose actor_id does NOT match the
+        replica → replica is NOT dropped (upstream dependency failure)."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        r1_actor_id = ray.ActorID.from_random()
+        upstream_actor_id = ray.ActorID.from_random()
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, actor_id=r1_actor_id)
+        )
+
+        result = await router.assign_request(dummy_request_metadata())
+
+        # Simulate the response finishing with an ActorDiedError from a different actor.
+        error = ActorDiedError()
+        error.actor_id = upstream_actor_id.hex()
+        result.fire_done_callbacks(result=error)
+        await asyncio.sleep(0)
+
+        assert r1_id not in fake_request_router.dropped_replicas
+
+    async def test_ray_task_error_wrapping_actor_died_matching_id_via_callback(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Done-callback with RayTaskError(cause=ActorDiedError) where actor_id
+        matches the replica → replica is dropped."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        r1_actor_id = ray.ActorID.from_random()
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, actor_id=r1_actor_id)
+        )
+
+        result = await router.assign_request(dummy_request_metadata())
+
+        actor_died = ActorDiedError()
+        actor_died.actor_id = r1_actor_id.hex()
+        wrapped = RayTaskError(
+            function_name="test_func",
+            traceback_str="",
+            cause=actor_died,
+            proctitle="test",
+            pid=12345,
+            ip="127.0.0.1",
+        )
+        result.fire_done_callbacks(result=wrapped)
+        await asyncio.sleep(0)
+
+        assert r1_id in fake_request_router.dropped_replicas
+
+    async def test_ray_task_error_wrapping_actor_died_mismatched_id_via_callback(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Done-callback with RayTaskError(cause=ActorDiedError) where actor_id does
+        NOT match the replica → replica is NOT dropped (upstream failure)."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        r1_actor_id = ray.ActorID.from_random()
+        upstream_actor_id = ray.ActorID.from_random()
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, actor_id=r1_actor_id)
+        )
+
+        result = await router.assign_request(dummy_request_metadata())
+
+        actor_died = ActorDiedError()
+        actor_died.actor_id = upstream_actor_id.hex()
+        wrapped = RayTaskError(
+            function_name="test_func",
+            traceback_str="",
+            cause=actor_died,
+            proctitle="test",
+            pid=12345,
+            ip="127.0.0.1",
+        )
+        result.fire_done_callbacks(result=wrapped)
+        await asyncio.sleep(0)
+
+        assert r1_id not in fake_request_router.dropped_replicas
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -787,6 +952,21 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
 
 
 class TestRouterMetricsManager:
+    @pytest.fixture(autouse=True)
+    async def cancel_metrics_tasks(self):
+        """Cancel any lingering _report_cached_metrics_forever tasks after each test
+        to avoid 'Task was destroyed but it is pending!' asyncio warnings."""
+        yield
+        tasks = [
+            t
+            for t in asyncio.all_tasks()
+            if "_report_cached_metrics_forever" in t.get_coro().__qualname__
+        ]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     @pytest.mark.asyncio
     async def test_num_router_requests(self):
         tags = {
