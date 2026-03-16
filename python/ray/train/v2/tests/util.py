@@ -254,6 +254,7 @@ def create_mock_train_run_attempt(
     )
 
     return TrainRunAttempt(
+        schema_version=0,
         attempt_id=attempt_id,
         run_id=run_id or _RUN_ID,
         status=status,

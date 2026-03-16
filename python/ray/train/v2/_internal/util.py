@@ -102,7 +102,7 @@ class TrainingFramework(Enum):
     LIGHTGBM = "lightgbm"
 
     def module_names(self) -> tuple[str, ...]:
-        """Return importable module names to collect versions for.
+        """Returns the relevant module names for the training framework.
 
         These module names are used by Train state version collection (see
         `_get_framework_version`) to gather versions of key framework-related packages.

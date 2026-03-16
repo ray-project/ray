@@ -125,25 +125,27 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
     assert len(data) == 1
     run_settings = data[0]["event_data"]["run_settings"]
 
-    assert run_settings["backend_config"] == {
-        "config": {},
-        "framework": "TRAINING_FRAMEWORK_UNSPECIFIED",
-    }
-    assert run_settings["scaling_config"] == {
-        "num_workers_fixed": 1,
-        "placement_strategy": "PACK",
-        "use_gpu": False,
-        "use_tpu": False,
-        "bundle_label_selector": [],
-    }
-    assert run_settings["datasets"] == ["dataset_1"]
-    assert run_settings["data_config"] == {"all": {}, "enable_shard_locality": True}
-    assert run_settings["run_config"] == {
-        "name": "test_run",
-        "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
-        "worker_runtime_env": {"type": "conda"},
-        "checkpoint_config": {"checkpoint_score_order": "MAX"},
-        "storage_path": "s3://bucket/path",
+    assert run_settings == {
+        "backend_config": {
+            "config": {},
+            "framework": "TRAINING_FRAMEWORK_UNSPECIFIED",
+        },
+        "scaling_config": {
+            "num_workers_fixed": 1,
+            "placement_strategy": "PACK",
+            "use_gpu": False,
+            "use_tpu": False,
+            "bundle_label_selector": [],
+        },
+        "datasets": ["dataset_1"],
+        "data_config": {"all": {}, "enable_shard_locality": True},
+        "run_config": {
+            "name": "test_run",
+            "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
+            "worker_runtime_env": {"type": "conda"},
+            "checkpoint_config": {"checkpoint_score_order": "MAX"},
+            "storage_path": "s3://bucket/path",
+        },
     }
 
 
@@ -242,6 +244,7 @@ def test_dict_to_human_readable_struct_complex_dict():
             "bool": True,
             "none": None,
         },
+        42: "integer_key_value",
     }
 
     expected = {
@@ -259,6 +262,7 @@ def test_dict_to_human_readable_struct_complex_dict():
             "bool": True,
             "none": None,
         },
+        "42": "integer_key_value",
     }
 
     assert json.loads(MessageToJson(_dict_to_human_readable_struct(obj))) == expected

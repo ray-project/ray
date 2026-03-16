@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -59,7 +59,7 @@ class TrainStateManager:
         controller_actor_id: str,
         controller_log_file_path: str,
         run_config: RunConfig,
-        train_loop_config: Optional[Dict[str, Any]],
+        train_loop_config: Optional[Dict],
         scaling_config: ScalingConfig,
         backend_config: BackendConfig,
         datasets: Dict[str, ray.data.Dataset],
@@ -92,7 +92,7 @@ class TrainStateManager:
             accelerator_type=scaling_config.accelerator_type,
             use_tpu=scaling_config.use_tpu,
             topology=scaling_config.topology,
-            bundle_label_selector=scaling_config.bundle_label_selector,
+            bundle_label_selector=scaling_config.label_selector,
         )
 
         backend_config_schema = BackendConfigSchema(
