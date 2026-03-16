@@ -24,9 +24,10 @@ from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.serve._private.common import RequestMetadata, ServeComponentType
+from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -80,6 +81,25 @@ def validate_ssl_config(
             "Both ssl_keyfile and ssl_certfile must be provided together "
             "to enable HTTPS."
         )
+
+
+def get_deployment_actor_name(
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> str:
+    """Return the deterministic Ray actor name for a deployment-scoped actor.
+
+    The name is versioned by code_version to allow old and new replicas to
+    coexist during rollout (each uses its version's actors). Actors serve as
+    central state for replicas, so we version by code_version to ensure fresh
+    actors when a new code version is deployed.
+    """
+    base = (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{deployment_id.app_name}"
+        f"::{deployment_id.name}"
+    )
+    return f"{base}::{code_version}::{actor_name}"
 
 
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(

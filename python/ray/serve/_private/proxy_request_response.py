@@ -10,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.logging_utils import format_grpc_peer_address
 from ray.serve._private.tracing_utils import (
     extract_propagated_context,
     is_tracing_enabled,
@@ -63,6 +64,10 @@ class ProxyRequest(ABC):
     @abstractmethod
     def is_health_request(self) -> bool:
         raise NotImplementedError
+
+    @property
+    def client(self) -> str:
+        return ""
 
     @abstractmethod
     def populate_tracing_context(self):
@@ -224,6 +229,10 @@ class gRPCProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
+
+    @property
+    def client(self) -> str:
+        return format_grpc_peer_address(self.context.peer())
 
     @property
     def has_input_stream(self) -> bool:
