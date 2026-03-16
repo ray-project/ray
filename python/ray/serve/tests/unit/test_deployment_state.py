@@ -30,7 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -1707,7 +1707,7 @@ def test_health_gauge_caching(mock_deployment_state_manager):
 
     # After the TTL expires, the gauge should be re-reported even though
     # the value hasn't changed.
-    timer.advance(RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S + 1)
+    timer.advance(RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S + 1)
     dsm.update()
     assert call_count == len(replica_ids), (
         f"Gauge.set was called {call_count} times after TTL expired; "
