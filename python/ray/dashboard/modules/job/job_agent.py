@@ -204,7 +204,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        if ray_constants.RAY_ENABLE_RAY_EVENT:
+        if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
             try:
                 from ray._raylet import EventRecorder
 

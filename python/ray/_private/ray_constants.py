@@ -518,6 +518,12 @@ RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
 # (mutually exclusive, matching the C++ actor/node event pattern).
 RAY_ENABLE_RAY_EVENT = env_bool("RAY_enable_ray_event", False)
 
+# Whether to enable Python-side ONE-event publishing (e.g. autoscaler, job events)
+# via the dashboard head HTTP API or EventRecorder. Separate from
+# RAY_enable_ray_event so that existing users who enabled C++ events don't
+# automatically opt into the new Python event pipeline.
+RAY_ENABLE_PYTHON_RAY_EVENT = env_bool("RAY_enable_python_ray_event", False)
+
 # Comma separated string containing individual resource
 # to write export API events for. This configuration is only used if
 # RAY_enable_export_api_write is not enabled. Full list of valid

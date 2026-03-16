@@ -44,7 +44,7 @@ def test_ray_submission_job_events(ray_start_cluster, httpserver):
     cluster = ray_start_cluster
     cluster.add_node(
         env_vars={
-            "RAY_enable_ray_event": "1",
+            "RAY_enable_python_ray_event": "1",
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR": f"http://127.0.0.1:{_RAY_EVENT_PORT}",
             "RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES": "SUBMISSION_JOB_DEFINITION_EVENT,SUBMISSION_JOB_LIFECYCLE_EVENT",
         }

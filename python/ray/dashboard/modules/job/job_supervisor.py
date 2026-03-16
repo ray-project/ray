@@ -347,7 +347,7 @@ class JobSupervisor:
 
         # Initialize ray event recorder if enabled, so lifecycle events
         # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
-        if ray_constants.RAY_ENABLE_RAY_EVENT:
+        if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
             try:
                 from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
                 from ray._raylet import EventRecorder
@@ -514,7 +514,7 @@ class JobSupervisor:
                 )
         finally:
             # Flush any remaining events before the actor exits.
-            if ray_constants.RAY_ENABLE_RAY_EVENT:
+            if ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT:
                 try:
                     from ray._raylet import EventRecorder
 
