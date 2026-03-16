@@ -2153,6 +2153,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Attempt to emplace new actor handle for the actor being created with actor id: "
       << actor_id
       << " failed because an actor handle with the same actor id has already been added";
+  // Subscribe to actor state eagerly for owned actors so the owner receives
+  // notifications even if it never directly submits tasks to the actor.
+  // This is needed for owner-driven scheduling of non-detached actors.
+  if (!is_detached) {
+    actor_manager_->SubscribeActorState(actor_id);
+  }
   *return_actor_id = actor_id;
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();

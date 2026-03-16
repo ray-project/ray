@@ -418,10 +418,18 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       queue->second.is_restartable_ = is_restartable;
 
       if (queue->second.is_restartable_ && queue->second.owned_) {
-        // Actor is out of scope so there should be no inflight actor tasks.
-        RAY_CHECK(queue->second.wait_for_death_info_tasks_.empty());
-        RAY_CHECK(inflight_task_callbacks.empty());
-        if (!queue->second.actor_submit_queue_->Empty()) {
+        // Actor is dead but restartable (e.g., out of scope with pending
+        // lineage reconstruction tasks). There may be inflight tasks if
+        // the actor was in a restart loop when it went out of scope.
+        if (!inflight_task_callbacks.empty() ||
+            !queue->second.wait_for_death_info_tasks_.empty()) {
+          // Fail inflight/waiting tasks — they'll be handled by the
+          // normal failure path below.
+          task_ids_to_fail = queue->second.actor_submit_queue_->ClearAllTasks();
+          wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks_);
+          queue->second.wait_for_death_info_tasks_ =
+              std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
+        } else if (!queue->second.actor_submit_queue_->Empty()) {
           // There are pending lineage reconstruction tasks.
           RestartActorForLineageReconstruction(actor_id);
         }
