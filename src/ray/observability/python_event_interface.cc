@@ -14,6 +14,8 @@
 
 #include "ray/observability/python_event_interface.h"
 
+#include <google/protobuf/util/json_util.h>
+
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
@@ -117,6 +119,31 @@ std::string SerializeEventsToRayEventsData(
     dst->Swap(&serialized_event);
   }
   return data.SerializeAsString();
+}
+
+std::string SerializeEventsToRayEventsDataJson(
+    std::vector<std::unique_ptr<RayEventInterface>> &&events) {
+  google::protobuf::util::JsonPrintOptions options;
+  options.always_print_primitive_fields = true;
+  // preserve_proto_field_names defaults to false → camelCase output,
+  // Enums print as strings by default
+
+  std::string result = "[";
+  bool first = true;
+  for (auto &event : events) {
+    auto serialized_event = std::move(*event).Serialize();
+    std::string json_str;
+    auto status =
+        google::protobuf::util::MessageToJsonString(serialized_event, &json_str, options);
+    RAY_CHECK(status.ok()) << "Failed to serialize event to JSON: " << status.message();
+    if (!first) {
+      result += ",";
+    }
+    result += json_str;
+    first = false;
+  }
+  result += "]";
+  return result;
 }
 
 PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
