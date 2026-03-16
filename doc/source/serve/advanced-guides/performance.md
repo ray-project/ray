@@ -125,23 +125,12 @@ class Caller:
 In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
 :::
 
-Throughput-optimized serving enables several optimizations that improve throughput and reduce latency:
+This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
 
-- **Shared event loop**: User code and the Serve framework (router, replica management) run on the same event loop, eliminating thread-switching overhead. This requires all user code to be non-blocking.
-- **gRPC interdeployment transport**: Deployments communicate via gRPC instead of Ray's actor RPC, reducing per-request overhead for small payloads. See [Use gRPC for interdeployment communication](serve-interdeployment-grpc) for details and caveats.
-- **Log buffering**: Logs are buffered and flushed in batches rather than written on every request, reducing I/O overhead. Error-level logs are always flushed immediately.
-- **Reduced stderr logging**: Logs are only written to files, not duplicated to stderr.
+- Reducing overhead associated with frequent logging.
+- Disabling behavior that allowed Serve applications to include blocking operations.
 
-#### Refactor blocking code
-
-Because throughput-optimized serving runs user code on a shared event loop, all deployment methods must be non-blocking. You must refactor any blocking operations in your request path, including:
-
-- Synchronous HTTP requests (e.g., `requests.get`) — use `aiohttp` or `httpx.AsyncClient` instead.
-- Synchronous file I/O (e.g., `open().read()`) — use `aiofiles` instead.
-- Blocking database calls — use async database drivers (e.g., `asyncpg`, `motor`, `aioredis`).
-- `time.sleep()` — use `await asyncio.sleep()` instead.
-
-The following table shows examples of blocking and non-blocking code:
+If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
 
 <table>
 <tr>
