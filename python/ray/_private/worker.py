@@ -844,8 +844,8 @@ class Worker:
             )
         tensors = None
         from ray.experimental.rdt.util import (
+            is_one_sided_transport,
             normalize_and_validate_tensor_transport,
-            validate_one_sided,
         )
 
         tensor_transport = None
@@ -853,7 +853,11 @@ class Worker:
             tensor_transport = normalize_and_validate_tensor_transport(
                 _tensor_transport
             )
-            validate_one_sided(tensor_transport, "ray.put")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}."
+                    f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
+                )
         try:
             if tensor_transport is not None:
                 (

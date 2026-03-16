@@ -451,9 +451,12 @@ class RDTManager:
         use_object_store: bool,
     ) -> Optional["FetchRequest"]:
         """
-        Starts fetching an RDT object, returning a FetchRequest for one-sided transports
-        (so the caller can pipeline multiple fetches before waiting), or None if the fetch
-        is already complete (object-store path or object already in store).
+        Starts fetching an RDT object, returning a FetchRequest for RDT-based
+        transfers (use_object_store=False, so the caller can pipeline multiple
+        fetches before waiting), or None if the fetch is already complete
+        (use_object_store=True). Note that this always triggers a fetch, even if
+        the object is already in the store, since each caller consumes one copy
+        from the store.
 
         Args:
             obj_id: The object ID of the RDT object.
@@ -468,11 +471,8 @@ class RDTManager:
         )
         from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
-            validate_one_sided,
+            is_one_sided_transport,
         )
-
-        if self.rdt_store.has_object(obj_id):
-            return None
 
         rdt_meta = self.get_rdt_metadata(obj_id)
         assert rdt_meta is not None
@@ -493,7 +493,11 @@ class RDTManager:
             return None
         else:
             tensor_transport = rdt_meta.tensor_transport_backend
-            validate_one_sided(tensor_transport, "ray.get")
+            if not is_one_sided_transport(tensor_transport):
+                raise ValueError(
+                    f"ray.get is not allowed on RDT objects using the two-sided transport {tensor_transport}. "
+                    "Either use a one-sided RDT transport or pass _use_object_store=True to ray.get to fetch the object through the object store instead."
+                )
             tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
@@ -736,7 +740,7 @@ class RDTManager:
             # object in the store. If so, use that copy instead. Ensure that the
             # secondary copy is only popped after its original fetcher plus this
             # one have consumed the copy.
-            if self.is_managed_object(object_id) and not rdt_store.is_primary_copy(object_id):
+            if not rdt_store.is_primary_copy(object_id):
                 fetch_request = self._trigger_fetch(object_id, use_object_store)
                 if fetch_request is not None:
                     fetch_requests[object_id] = fetch_request
