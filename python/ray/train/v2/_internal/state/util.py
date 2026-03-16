@@ -78,7 +78,6 @@ def execution_options_to_dict(execution_options: ExecutionOptions) -> dict:
     return {
         "resource_limits": execution_options.resource_limits.to_resource_dict(),
         "exclude_resources": execution_options.exclude_resources.to_resource_dict(),
-        "locality_with_output": execution_options.locality_with_output,
         "preserve_order": execution_options.preserve_order,
         "actor_locality_enabled": execution_options.actor_locality_enabled,
         "verbose_progress": execution_options.verbose_progress,
