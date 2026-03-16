@@ -330,7 +330,7 @@ class TestDeploymentConfig:
         assert schema.request_router_config.initial_backoff_s == 0.1
         assert schema.request_router_config.backoff_multiplier == 3.0
         assert schema.request_router_config.max_backoff_s == 2.0
-    
+
     def test_deployment_actors_config(self):
         """Test deployment_actors config and proto roundtrip."""
 
