@@ -62,6 +62,13 @@ class KafkaDatasink(Datasink):
 
     Writes blocks of data to Kafka with configurable serialization
     and producer settings.
+
+    Delivery guarantees:
+        This sink provides best-effort delivery. Partial writes can occur if a
+        task fails midway (already-flushed messages are not rolled back), and
+        duplicates are possible when the system retries a failed task (e.g., on
+        node failure), since each attempt re-sends all messages from scratch
+        without Kafka transactions or cross-task deduplication.
     """
 
     def __init__(
