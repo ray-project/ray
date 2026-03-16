@@ -60,6 +60,12 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   task_def_event->set_parent_task_id("parent_task_id");
   task_def_event->set_placement_group_id("pg_id");
   (*task_def_event->mutable_label_selector())["region"] = "us-west4";
+  auto *fallback_strategy = task_def_event->mutable_fallback_strategy();
+  auto *option = fallback_strategy->add_options();
+  auto *constraint = option->mutable_label_selector()->add_label_constraints();
+  constraint->set_label_key("region");
+  constraint->set_operator_(rpc::LABEL_OPERATOR_IN);
+  constraint->add_label_values("us-west5");
 
   // Add some required resources
   (*task_def_event->mutable_required_resources())["CPU"] = 1.0;
@@ -107,6 +113,16 @@ TEST(GcsRayEventConverterTest, TestConvertTaskDefinitionEvent) {
   EXPECT_EQ(task_info.parent_task_id(), "parent_task_id");
   EXPECT_EQ(task_info.placement_group_id(), "pg_id");
   EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
+  EXPECT_TRUE(task_info.has_fallback_strategy());
+  const auto &fallback = task_info.fallback_strategy();
+  EXPECT_EQ(fallback.options_size(), 1);
+  const auto &label_selector_verify = fallback.options(0).label_selector();
+  EXPECT_EQ(label_selector_verify.label_constraints_size(), 1);
+  const auto &constraint_verify = label_selector_verify.label_constraints(0);
+  EXPECT_EQ(constraint_verify.label_key(), "region");
+  EXPECT_EQ(constraint_verify.operator_(), rpc::LABEL_OPERATOR_IN);
+  EXPECT_EQ(constraint_verify.label_values_size(), 1);
+  EXPECT_EQ(constraint_verify.label_values(0), "us-west5");
 
   // Verify required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 1.0);
@@ -397,6 +413,13 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   actor_def_event.set_parent_task_id("parent-actor-task");
   actor_def_event.set_placement_group_id("pg-actor");
   (*actor_def_event.mutable_label_selector())["region"] = "us-west4";
+  auto *fallback_strategy = actor_def_event.mutable_fallback_strategy();
+  auto *option = fallback_strategy->add_options();
+  auto *label_selector = option->mutable_label_selector();
+  auto *constraint = label_selector->add_label_constraints();
+  constraint->set_label_key("region");
+  constraint->set_operator_(rpc::LABEL_OPERATOR_IN);
+  constraint->add_label_values("us-west5");
 
   // Set runtime env info
   actor_def_event.set_serialized_runtime_env("test_actor_env");
@@ -434,6 +457,16 @@ TEST(GcsRayEventConverterTest, TestConvertActorTaskDefinitionEvent) {
   EXPECT_EQ(task_info.placement_group_id(), "pg-actor");
   EXPECT_EQ(task_info.label_selector().at("region"), "us-west4");
 
+  EXPECT_TRUE(task_info.has_fallback_strategy());
+  const auto &fallback = task_info.fallback_strategy();
+  EXPECT_EQ(fallback.options_size(), 1);
+  const auto &label_selector_verify = fallback.options(0).label_selector();
+  EXPECT_EQ(label_selector_verify.label_constraints_size(), 1);
+  const auto &constraint_verify = label_selector_verify.label_constraints(0);
+  EXPECT_EQ(constraint_verify.label_key(), "region");
+  EXPECT_EQ(constraint_verify.operator_(), rpc::LABEL_OPERATOR_IN);
+  EXPECT_EQ(constraint_verify.label_values_size(), 1);
+  EXPECT_EQ(constraint_verify.label_values(0), "us-west5");
   // Check required resources
   EXPECT_EQ(task_info.required_resources().at("CPU"), 2.0);
   EXPECT_EQ(task_info.required_resources().at("GPU"), 1.0);

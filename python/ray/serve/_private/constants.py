@@ -19,6 +19,7 @@ SERVE_LOGGER_NAME = "ray.serve"
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
+SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
@@ -366,19 +367,15 @@ RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
     "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
-# How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
+# Factor of look_back_period_s for autoscaling metric record interval.
+# Record interval = look_back_period_s * factor. Used by both router and replica.
+RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
+    "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
-)
-
-# How often autoscaling metrics are recorded on Serve handles.
-RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
 )
 
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
@@ -422,11 +419,12 @@ RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = get_env_bool(
     "RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0"
 )
 
-# How often (in seconds) the controller re-records an unchanged health-check
-# gauge value for each replica. Setting this to 0 disables caching (every loop
-# iteration records the gauge, matching pre-optimization behavior).
-RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
-    "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S", 10.0
+# How often (in seconds) the controller re-records an unchanged status gauge
+# value for replicas and applications. Setting this to 0 disables caching
+# (every control loop iteration records the gauge, matching pre-optimization
+# behavior).
+RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S", 10.0
 )
 
 # Initial deadline for queue length responses in the router.
@@ -779,11 +777,6 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 # Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
-
-# The maximum allowed RPC latency in milliseconds.
-# This is used to detect and warn about long RPC latencies
-# between the controller and the replicas.
-RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(

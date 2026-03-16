@@ -199,9 +199,17 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
 
         return True
 
-    wait_for_condition(lambda: verify(common_pb2.TaskStatus.PENDING_NODE_ASSIGNMENT))
+    wait_for_condition(
+        lambda: verify(common_pb2.TaskStatus.PENDING_NODE_ASSIGNMENT),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
     cluster.add_node(resources={"worker": 2})
-    wait_for_condition(lambda: verify(common_pb2.TaskStatus.SUBMITTED_TO_WORKER))
+    wait_for_condition(
+        lambda: verify(common_pb2.TaskStatus.SUBMITTED_TO_WORKER),
+        timeout=30,
+        retry_interval_ms=1000,
+    )
 
 
 def test_multiple_waits_and_gets(shutdown_only):
