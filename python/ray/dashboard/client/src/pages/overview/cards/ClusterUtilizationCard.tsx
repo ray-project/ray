@@ -23,11 +23,13 @@ export const ClusterUtilizationCard = ({
     dashboardDatasource,
     currentTimeZone,
     themeMode,
+    grafanaDefaultFrom,
+    grafanaDefaultTo,
   } = useContext(GlobalContext);
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=${grafanaOrgId}&theme=${themeMode}&panelId=41&var-datasource=${dashboardDatasource}`;
-  const timeRangeParams = "&from=now-1h&to=now";
+  const timeRangeParams = `&from=${grafanaDefaultFrom ?? "now-1h"}&to=${grafanaDefaultTo ?? "now"}`;
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
     return null;

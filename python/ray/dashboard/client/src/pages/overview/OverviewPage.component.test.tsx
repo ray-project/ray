@@ -96,6 +96,8 @@ const Wrapper =
               nodeMapByIp: {},
               namespaceMap: {},
               dashboardDatasource: "Prometheus",
+              grafanaDefaultFrom: undefined,
+              grafanaDefaultTo: undefined,
               serverTimeZone: undefined,
               currentTimeZone: undefined,
               themeMode: "light",

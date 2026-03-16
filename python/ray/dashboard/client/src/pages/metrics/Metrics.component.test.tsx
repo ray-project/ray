@@ -24,6 +24,8 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
+        grafanaDefaultFrom: undefined,
+        grafanaDefaultTo: undefined,
         serverTimeZone: undefined,
         currentTimeZone: undefined,
         themeMode: "light",
@@ -56,6 +58,8 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
+        grafanaDefaultFrom: undefined,
+        grafanaDefaultTo: undefined,
         serverTimeZone: undefined,
         currentTimeZone: undefined,
         themeMode: "light",
@@ -126,6 +130,55 @@ describe("Metrics", () => {
     expect(iframeSrc).toContain("/d/rayDefaultDashboard");
   });
 
+  it("validates iframe uses custom time range when grafanaDefaultFrom/To are set", async () => {
+    const WrapperWithTimeRange = ({ children }: PropsWithChildren<{}>) => {
+      return (
+        <GlobalContext.Provider
+          value={{
+            metricsContextLoaded: true,
+            grafanaHost: "localhost:3000",
+            grafanaOrgId: "1",
+            grafanaClusterFilter: undefined,
+            dashboardUids: {
+              default: "rayDefaultDashboard",
+              serve: "rayServeDashboard",
+              serveDeployment: "rayServeDeploymentDashboard",
+              data: "rayDataDashboard",
+            },
+            prometheusHealth: true,
+            sessionName: "session-name",
+            nodeMap: {},
+            nodeMapByIp: {},
+            namespaceMap: {},
+            dashboardDatasource: "Prometheus",
+            grafanaDefaultFrom: "2025-01-01T00:00:00.000Z",
+            grafanaDefaultTo: "2025-01-01T01:00:00.000Z",
+            serverTimeZone: undefined,
+            currentTimeZone: undefined,
+            themeMode: "light",
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
+            toggleTheme: () => {},
+          }}
+        >
+          <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
+        </GlobalContext.Provider>
+      );
+    };
+
+    expect.assertions(2);
+
+    render(<Metrics />, { wrapper: WrapperWithTimeRange });
+    await screen.findByText(/View tab in Grafana/);
+
+    const iframes = document.querySelectorAll("iframe");
+    const iframe = iframes[0] as HTMLIFrameElement;
+    const iframeSrc = iframe.src;
+    const url = new URL(iframeSrc);
+
+    expect(url.searchParams.get("from")).toBe("2025-01-01T00:00:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2025-01-01T01:00:00.000Z");
+  });
+
   it("validates iframe query parameters with cluster filter", async () => {
     const WrapperWithClusterFilter = ({ children }: PropsWithChildren<{}>) => {
       return (
@@ -147,6 +200,8 @@ describe("Metrics", () => {
             nodeMapByIp: {},
             namespaceMap: {},
             dashboardDatasource: "Prometheus",
+            grafanaDefaultFrom: undefined,
+            grafanaDefaultTo: undefined,
             serverTimeZone: undefined,
             currentTimeZone: undefined,
             themeMode: "light",

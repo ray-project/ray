@@ -119,6 +119,15 @@ export type GlobalContextType = {
    */
   currentTimeZone: string | undefined;
   /**
+   * Default start of the Grafana time range. When set, overrides the
+   * default "now-5m" value.
+   */
+  grafanaDefaultFrom: string | undefined;
+  /**
+   * Default end of the Grafana time range.
+   */
+  grafanaDefaultTo: string | undefined;
+  /**
    * The current theme mode (light or dark)
    */
   themeMode: "light" | "dark";
@@ -139,6 +148,8 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   prometheusHealth: undefined,
   sessionName: undefined,
   dashboardDatasource: undefined,
+  grafanaDefaultFrom: undefined,
+  grafanaDefaultTo: undefined,
   serverTimeZone: undefined,
   currentTimeZone: undefined,
   themeMode: "light",
@@ -183,6 +194,8 @@ const App = () => {
     prometheusHealth: undefined,
     sessionName: undefined,
     dashboardDatasource: undefined,
+    grafanaDefaultFrom: undefined,
+    grafanaDefaultTo: undefined,
     serverTimeZone: undefined,
   });
 
@@ -248,6 +261,8 @@ const App = () => {
         prometheusHealth,
         dashboardUids,
         dashboardDatasource,
+        grafanaDefaultFrom,
+        grafanaDefaultTo,
       } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
@@ -259,6 +274,8 @@ const App = () => {
         sessionName,
         prometheusHealth,
         dashboardDatasource,
+        grafanaDefaultFrom,
+        grafanaDefaultTo,
       }));
     };
     doEffect();
