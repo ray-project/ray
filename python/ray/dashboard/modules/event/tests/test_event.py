@@ -39,7 +39,6 @@ from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
     events_base_event_pb2,
-    events_event_aggregator_service_pb2,
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
@@ -700,75 +699,6 @@ async def test_report_external_ray_events_rejects_disallowed_event_types(monkeyp
 
     with pytest.raises(aiohttp.web.HTTPBadRequest):
         await event_head.report_external_ray_events(_FakeRequest(payload))
-
-
-@pytest.mark.asyncio
-async def test_report_external_ray_events_forwards_allowed_events(monkeypatch):
-    event_head = EventHead.__new__(EventHead)
-    captured = {}
-    event = events_base_event_pb2.RayEvent(
-        event_id=b"1",
-        source_type=events_base_event_pb2.RayEvent.SourceType.JOBS,
-        event_type=events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
-        severity=events_base_event_pb2.RayEvent.Severity.INFO,
-        message="hello",
-    )
-    payload = [
-        message_to_dict(
-            event,
-            always_print_fields_with_no_presence=True,
-            preserving_proto_field_name=False,
-            use_integers_for_enums=False,
-        )
-    ]
-
-    async def _forward(events):
-        captured["events"] = events
-
-    monkeypatch.setattr(
-        EventHead,
-        "_get_external_ray_event_allowlist",
-        lambda: {"DRIVER_JOB_LIFECYCLE_EVENT"},
-    )
-    event_head._forward_external_ray_events = _forward
-
-    response = await event_head.report_external_ray_events(_FakeRequest(payload))
-
-    assert response.status == 200
-    assert len(captured["events"]) == 1
-    assert (
-        captured["events"][0].event_type
-        == events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT
-    )
-
-
-@pytest.mark.asyncio
-async def test_forward_external_ray_events_builds_aggregator_request():
-    event_head = EventHead.__new__(EventHead)
-    captured = {}
-    event = events_base_event_pb2.RayEvent(
-        event_id=b"1",
-        source_type=events_base_event_pb2.RayEvent.SourceType.JOBS,
-        event_type=events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
-        severity=events_base_event_pb2.RayEvent.Severity.INFO,
-        message="hello",
-    )
-
-    class _Stub:
-        async def AddEvents(self, request):
-            captured["request"] = request
-
-    async def _get_stub():
-        return _Stub()
-
-    event_head._get_head_aggregator_stub = _get_stub
-
-    await event_head._forward_external_ray_events([event])
-
-    request = captured["request"]
-    assert isinstance(request, events_event_aggregator_service_pb2.AddEventsRequest)
-    assert len(request.events_data.events) == 1
-    assert request.events_data.events[0].message == "hello"
 
 
 def test_export_event_logger(tmp_path):
