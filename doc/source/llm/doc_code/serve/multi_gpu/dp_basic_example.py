@@ -50,7 +50,6 @@ config = LLMConfig(
         # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
-        "enforce_eager": True,  # Skip CUDA graph capture for CI compatibility
     },
     experimental_configs={
         # This is a temporary required config. We will remove this in future versions.
