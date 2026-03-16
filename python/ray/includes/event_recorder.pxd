@@ -17,9 +17,6 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
         const c_string &serialized_event_data,
         int nested_event_field_number)
 
-    c_string SerializeEventsToRayEventsData(
-        c_vector[unique_ptr[CRayEventInterface]] &&events)
-
     c_string SerializeEventsToRayEventsDataJson(
         c_vector[unique_ptr[CRayEventInterface]] &&events)
 

@@ -108,19 +108,6 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
       nested_event_field_number);
 }
 
-std::string SerializeEventsToRayEventsData(
-    std::vector<std::unique_ptr<RayEventInterface>> &&events) {
-  rpc::events::RayEventsData data;
-  auto *serialized_events = data.mutable_events();
-  serialized_events->Reserve(events.size());
-  for (auto &event : events) {
-    auto serialized_event = std::move(*event).Serialize();
-    auto *dst = serialized_events->Add();
-    dst->Swap(&serialized_event);
-  }
-  return data.SerializeAsString();
-}
-
 std::string SerializeEventsToRayEventsDataJson(
     std::vector<std::unique_ptr<RayEventInterface>> &&events) {
   google::protobuf::util::JsonPrintOptions options;

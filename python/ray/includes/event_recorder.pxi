@@ -8,7 +8,6 @@ from ray.includes.event_recorder cimport (
     CRayEventInterface,
     CPythonEventRecorder,
     CreatePythonRayEvent,
-    SerializeEventsToRayEventsData,
     SerializeEventsToRayEventsDataJson,
 )
 from ray.includes.common cimport move
@@ -89,20 +88,6 @@ cdef class RayEvent:
     @property
     def event_type(self):
         return self._event_type
-
-
-def serialize_events_to_ray_events_data(list events):
-    """Serialize RayEvent objects into RayEventsData bytes."""
-    cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
-    cdef RayEvent ev
-    cdef c_string serialized_data
-
-    for ev in events:
-        cpp_events.push_back(move(ev.to_cpp_event()))
-
-    with nogil:
-        serialized_data = SerializeEventsToRayEventsData(move(cpp_events))
-    return serialized_data
 
 
 def serialize_events_to_ray_events_data_json(list events):
