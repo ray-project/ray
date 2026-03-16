@@ -95,6 +95,9 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
     def before_controller_shutdown(self):
         self._stop_cleaner()
 
+    def before_controller_abort(self):
+        self._stop_cleaner()
+
     def _stop_cleaner(self):
         if not self._cleaner:
             return

@@ -23,11 +23,9 @@ class PlacementGroupCleaner:
         self,
         controller_actor_id: str,
         check_interval_s: float = 1.0,
-        liveness_check_interval_s: float = 5.0,
     ):
         self._controller_actor_id = controller_actor_id
         self._check_interval_s = check_interval_s
-        self._liveness_check_interval_s = liveness_check_interval_s
         self._pg_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
@@ -66,7 +64,7 @@ class PlacementGroupCleaner:
         Uses a queue to receive placement group updates.
         """
         curr_placement_group: Optional[PlacementGroup] = None
-        last_liveness_check_time = float("-1")
+        last_liveness_check_time = float("-inf")
 
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
@@ -77,12 +75,9 @@ class PlacementGroupCleaner:
             except queue.Empty:
                 pass  # continue to monitor current placement group
 
-            # Skip monitoring if no placement group registered and liveness check not due
+            # Check controller liveness only if due, not on every queue update
             now = time.monotonic()
-            if (
-                not curr_placement_group
-                and now - last_liveness_check_time < self._liveness_check_interval_s
-            ):
+            if now - last_liveness_check_time < self._check_interval_s:
                 continue
             last_liveness_check_time = now
 

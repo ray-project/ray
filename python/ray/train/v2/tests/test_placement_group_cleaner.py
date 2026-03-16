@@ -188,7 +188,6 @@ def test_pg_cleaner_exits_on_controller_death_without_pg_registration(
         .remote(
             controller_actor_id=controller_id,
             check_interval_s=0.1,
-            liveness_check_interval_s=0.1,
         )
     )
 
