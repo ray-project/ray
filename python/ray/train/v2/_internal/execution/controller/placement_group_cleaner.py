@@ -1,6 +1,7 @@
 import logging
 import queue
 import threading
+import time
 from typing import Optional
 
 import ray
@@ -18,23 +19,26 @@ class PlacementGroupCleaner:
     fate-shared with the Train controller.
     """
 
-    def __init__(self, check_interval_s: float = 1.0):
+    def __init__(
+        self,
+        controller_actor_id: str,
+        check_interval_s: float = 1.0,
+        liveness_check_interval_s: float = 5.0,
+    ):
+        self._controller_actor_id = controller_actor_id
         self._check_interval_s = check_interval_s
+        self._liveness_check_interval_s = liveness_check_interval_s
         self._pg_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
-        self._controller_actor_id: Optional[str] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
 
-    def register_controller_and_placement_group(
-        self, controller_actor_id: str, placement_group: PlacementGroup
-    ):
-        self._controller_actor_id = controller_actor_id
+    def register_placement_group(self, placement_group: PlacementGroup):
         logger.debug(
-            "PlacementGroupCleaner registered controller %s with placement group %s",
-            controller_actor_id,
+            "PlacementGroupCleaner registered placement group %s for controller %s",
             placement_group.id,
+            self._controller_actor_id,
         )
         # Send placement group update to the monitor thread via queue
         self._pg_queue.put(placement_group)
@@ -62,6 +66,8 @@ class PlacementGroupCleaner:
         Uses a queue to receive placement group updates.
         """
         curr_placement_group: Optional[PlacementGroup] = None
+        last_liveness_check_time = float("-1")
+
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
             try:
@@ -71,9 +77,11 @@ class PlacementGroupCleaner:
             except queue.Empty:
                 pass  # continue to monitor current placement group
 
-            # Skip monitoring if no placement group registered
-            if not curr_placement_group:
+            # Skip monitoring if no placement group registered and liveness check not due
+            now = time.monotonic()
+            if not curr_placement_group and now - last_liveness_check_time < self._liveness_check_interval_s:
                 continue
+            last_liveness_check_time = now
 
             # Check if controller is still alive
             try:
