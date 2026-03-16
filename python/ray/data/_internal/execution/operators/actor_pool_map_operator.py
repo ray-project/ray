@@ -1,5 +1,4 @@
 import abc
-import gc
 import logging
 import time
 import uuid
@@ -482,19 +481,11 @@ class ActorPoolMapOperator(MapOperator):
             self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def _do_shutdown(self, force: bool = False):
-        if force:
-            # NOTE: For force shutdown, it's critical for Actor Pool to release actors before calling into
-            #       the base method that will attempt to cancel and join pending tasks.
-            #       _data_tasks and _metadata_tasks are cleared by the base class.
-            self._actor_pool.shutdown(force=force)
-            super()._do_shutdown(force)
-        else:
-            # NOTE: For graceful shutdown, we need to manually collect garbage first to
-            #       cleanup all ActorHandles to break any reference cycles involving the
-            #       operator and its tasks.
-            super()._do_shutdown(force)
-            gc.collect()
-            self._actor_pool.shutdown(force=force)
+        self._actor_pool.shutdown(force=force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending tasks.
+        #       _data_tasks and _metadata_tasks are cleared by the base class.
+        super()._do_shutdown(force)
 
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
@@ -1277,7 +1268,7 @@ class _ActorPool(AutoscalingActorPool):
         running = list(self._running_actors.keys())
 
         for actor in running:
-            self._release_running_actor(actor)
+            self._release_running_actor(actor, graceful=not force)
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -1285,7 +1276,9 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ray.actor.ActorHandle) -> None:
+    def _release_running_actor(
+        self, actor: ray.actor.ActorHandle, graceful: bool = True
+    ) -> None:
         """Remove the given actor from the pool.
 
         For graceful releases, submits actor.__ray_terminate__.remote() which queues
@@ -1320,6 +1313,18 @@ class _ActorPool(AutoscalingActorPool):
 
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
+
+        if graceful:
+            # Queue a graceful termination task. Ray Core guarantees this runs
+            # after all currently-queued tasks (FIFO), then calls __ray_shutdown__
+            # on the worker process before the actor exits.
+            #
+            # max_task_retries=0: __ray_terminate__ always exits the actor intentionally
+            # (IntentionalSystemExit), which Ray Core treats as a task failure.
+            # Without this, the actor's max_task_retries=-1 would cause Ray Core
+            # to log a noisy "Task failed, infinite retries remaining" warning for
+            # every gracefully-terminated actor.
+            actor.__ray_terminate__.options(max_task_retries=0).remote()
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
