@@ -307,6 +307,9 @@ class RequestRouterConfig(BaseModel):
             == other.request_routing_stats_period_s
             and self.request_routing_stats_timeout_s
             == other.request_routing_stats_timeout_s
+            and self.initial_backoff_s == other.initial_backoff_s
+            and self.backoff_multiplier == other.backoff_multiplier
+            and self.max_backoff_s == other.max_backoff_s
         )
 
     def __hash__(self):
@@ -325,6 +328,9 @@ class RequestRouterConfig(BaseModel):
                 kwargs_hashable,
                 self.request_routing_stats_period_s,
                 self.request_routing_stats_timeout_s,
+                self.initial_backoff_s,
+                self.backoff_multiplier,
+                self.max_backoff_s,
             )
         )
 
