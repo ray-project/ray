@@ -1,5 +1,6 @@
 import itertools
 import logging
+from dataclasses import replace
 from typing import Iterable, List, Tuple, Union
 
 import ray
@@ -27,7 +28,7 @@ def _calculate_blocks_rows(
         if metadata.num_rows is None:
             # Need to fetch number of rows.
             num_rows = ray.get(get_num_rows.remote(block))
-            metadata.num_rows = num_rows
+            metadata = replace(metadata, num_rows=num_rows)
         else:
             num_rows = metadata.num_rows
         block_rows.append(num_rows)
