@@ -272,7 +272,9 @@ def test_dict_to_human_readable_struct_max_depth():
     """Test that _dict_to_human_readable_struct respects the max_depth argument.
 
     - `max_depth <= 0` raises.
-    - Positive depths truncate nested structures and custom objects appropriately.
+    - Depth counts only dict nesting; lists recurse at the same depth as their parent,
+      so a list of primitives is always shown in full regardless of depth.
+    - Positive depths truncate nested dicts and custom objects appropriately.
     """
 
     class CustomObj:
@@ -290,29 +292,20 @@ def test_dict_to_human_readable_struct_max_depth():
     with pytest.raises(ValueError, match="max_depth must be greater than 0"):
         _dict_to_human_readable_struct(obj, max_depth=0)
 
-    # max_depth=2
+    # max_depth=2: lists shown in full (lists don't consume depth);
+    # dict nested 2 levels deep is truncated at the innermost level
     assert json.loads(
         MessageToJson(_dict_to_human_readable_struct(obj, max_depth=2))
     ) == {
         "native": 42,
         "nested": {"inner": "..."},
         "obj": "CustomObj",
-        "sequence": ["..."],
-    }
-
-    # max_depth=3
-    assert json.loads(
-        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=3))
-    ) == {
-        "native": 42,
-        "nested": {"inner": {"deep": "..."}},
-        "obj": "CustomObj",
         "sequence": [1, "CustomObj"],
     }
 
-    # max_depth=5
+    # max_depth=3: all dict nesting fits within depth; full output
     assert json.loads(
-        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=5))
+        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=3))
     ) == {
         "native": 42,
         "nested": {"inner": {"deep": 99}},

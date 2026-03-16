@@ -89,26 +89,31 @@ def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
 
     Example:
 
+    Depth counts only dict nesting — lists recurse at the same depth level as their
+    parent. This means a list of primitives at any dict depth is always shown in full,
+    while a dict nested beyond ``max_depth`` is replaced with ``"..."``.
+
     ```python
     class MyConfig:
         def __init__(self, lr: float):
             self.lr = lr
-            self.tags = ["a", "b"]
 
         def __str__(self):
             return f"MyConfig(lr={self.lr})"
 
     # Input: dict with mixed value types (nested dict + custom object + list)
-    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001), "steps": [1, 2, 3]}
+    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001), "steps": [1, 2, 3],
+           "nested": {"inner": {"deep": 99}}}
 
-    proto_cfg = _dict_to_human_readable_struct(cfg)
+    proto_cfg = _dict_to_human_readable_struct(cfg, max_depth=2)
 
     # Output: `proto_cfg` is a `google.protobuf.struct_pb2.Struct`.
     # When rendered to JSON/dict (e.g., via protobuf's json_format), it looks like:
     # {
     #   "custom": "MyConfig(lr=0.001)",
     #   "epochs": 3,
-    #   "steps": [1, 2, 3]
+    #   "steps": [1, 2, 3],      # list shown in full — lists don't consume depth
+    #   "nested": {"inner": "..."}  # dict beyond max_depth is truncated
     # }
     ```
     """
@@ -124,24 +129,19 @@ def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
         )
 
     def to_human_readable(value, depth):
-        if depth <= 0:
-            return "..."
-
         # JSON-native types
         if value is None or isinstance(value, (bool, int, float, str)):
             return value
 
         # Dict-like
         if isinstance(value, Mapping):
+            if depth <= 0:
+                return "..."
             return {str(k): to_human_readable(v, depth - 1) for k, v in value.items()}
 
         # List / tuple / set
         if isinstance(value, (list, tuple, set)):
-            if depth - 1 <= 0:
-                # Collapse the list/tuple/set to "..."
-                return ["..."]
-            else:
-                return [to_human_readable(v, depth - 1) for v in value]
+            return [to_human_readable(v, depth) for v in value]
 
         # Fallback: string representation
         return str(value)
