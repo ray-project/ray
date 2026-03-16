@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use parking_lot::RwLock;
+use dashmap::DashMap;
 use ray_common::id::{ActorID, JobID, NodeID, WorkerID};
 use tokio::sync::oneshot;
 use tonic::Status;
@@ -71,20 +71,23 @@ fn make_actor_died_death_cause(
 }
 
 /// The GCS actor manager tracks all actors in the cluster.
+///
+/// Uses DashMap for per-key locking instead of global RwLock<HashMap>,
+/// and Arc-wraps ActorTableData to avoid deep clones on reads.
 pub struct GcsActorManager {
-    /// All registered actors.
-    registered_actors: RwLock<HashMap<ActorID, ray_proto::ray::rpc::ActorTableData>>,
+    /// All registered actors (Arc-wrapped for cheap clones on read paths).
+    registered_actors: DashMap<ActorID, Arc<ray_proto::ray::rpc::ActorTableData>>,
     /// Named actors: (namespace, name) → ActorID.
-    named_actors: RwLock<HashMap<(String, String), ActorID>>,
+    named_actors: DashMap<(String, String), ActorID>,
     /// Dead actors cache (for queries).
-    dead_actors: RwLock<HashMap<ActorID, ray_proto::ray::rpc::ActorTableData>>,
+    dead_actors: DashMap<ActorID, Arc<ray_proto::ray::rpc::ActorTableData>>,
     /// Actors by node: node_id → set of actor_ids.
-    actors_by_node: RwLock<HashMap<NodeID, Vec<ActorID>>>,
+    actors_by_node: DashMap<NodeID, Vec<ActorID>>,
     /// Actors by owner: (node_id, worker_id) → set of actor_ids.
     #[allow(dead_code)]
-    actors_by_owner: RwLock<HashMap<(NodeID, WorkerID), Vec<ActorID>>>,
+    actors_by_owner: DashMap<(NodeID, WorkerID), Vec<ActorID>>,
     /// State counts for metrics.
-    state_counts: RwLock<HashMap<ActorState, usize>>,
+    state_counts: DashMap<ActorState, usize>,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
     /// Actor scheduler for placing actors on nodes (set once during init).
@@ -93,14 +96,12 @@ pub struct GcsActorManager {
     pubsub_handler: OnceLock<Arc<InternalPubSubHandler>>,
     /// Pending CreateActor reply channels: actor_id → Vec<oneshot::Sender>.
     #[allow(clippy::type_complexity)]
-    create_callbacks: RwLock<
-        HashMap<
-            ActorID,
-            Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>,
-        >,
+    create_callbacks: DashMap<
+        ActorID,
+        Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>,
     >,
     /// Task specs stored for actors being created (needed for scheduling).
-    actor_task_specs: RwLock<HashMap<ActorID, ray_proto::ray::rpc::TaskSpec>>,
+    actor_task_specs: DashMap<ActorID, ray_proto::ray::rpc::TaskSpec>,
     /// Node manager for looking up raylet addresses.
     node_manager: Option<Arc<GcsNodeManager>>,
     /// Raylet client for sending KillLocalActor RPCs.
@@ -110,17 +111,17 @@ pub struct GcsActorManager {
 impl GcsActorManager {
     pub fn new(table_storage: Arc<GcsTableStorage>) -> Self {
         Self {
-            registered_actors: RwLock::new(HashMap::new()),
-            named_actors: RwLock::new(HashMap::new()),
-            dead_actors: RwLock::new(HashMap::new()),
-            actors_by_node: RwLock::new(HashMap::new()),
-            actors_by_owner: RwLock::new(HashMap::new()),
-            state_counts: RwLock::new(HashMap::new()),
+            registered_actors: DashMap::new(),
+            named_actors: DashMap::new(),
+            dead_actors: DashMap::new(),
+            actors_by_node: DashMap::new(),
+            actors_by_owner: DashMap::new(),
+            state_counts: DashMap::new(),
             table_storage,
             actor_scheduler: OnceLock::new(),
             pubsub_handler: OnceLock::new(),
-            create_callbacks: RwLock::new(HashMap::new()),
-            actor_task_specs: RwLock::new(HashMap::new()),
+            create_callbacks: DashMap::new(),
+            actor_task_specs: DashMap::new(),
             node_manager: None,
             raylet_client: None,
         }
@@ -155,25 +156,20 @@ impl GcsActorManager {
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        let mut registered = self.registered_actors.write();
-        let mut named = self.named_actors.write();
-        let mut dead = self.dead_actors.write();
-        let mut counts = self.state_counts.write();
-
         for (key, actor) in all_actors {
             let actor_id = ActorID::from_hex(&key);
             let state = ActorState::from(actor.state);
 
-            *counts.entry(state).or_insert(0) += 1;
+            *self.state_counts.entry(state).or_insert(0) += 1;
 
             if state == ActorState::Dead {
-                dead.insert(actor_id, actor);
+                self.dead_actors.insert(actor_id, Arc::new(actor));
             } else {
-                // Register named actor (ray_namespace and name are direct fields on ActorTableData)
                 if !actor.ray_namespace.is_empty() && !actor.name.is_empty() {
-                    named.insert((actor.ray_namespace.clone(), actor.name.clone()), actor_id);
+                    self.named_actors
+                        .insert((actor.ray_namespace.clone(), actor.name.clone()), actor_id);
                 }
-                registered.insert(actor_id, actor);
+                self.registered_actors.insert(actor_id, Arc::new(actor));
             }
         }
         Ok(())
@@ -233,8 +229,7 @@ impl GcsActorManager {
         // Check for name conflict
         if !name.is_empty() {
             let key = (namespace.clone(), name.clone());
-            let named = self.named_actors.read();
-            if named.contains_key(&key) {
+            if self.named_actors.contains_key(&key) {
                 return Err(tonic::Status::already_exists(format!(
                     "actor with name '{}' already exists",
                     name
@@ -251,22 +246,18 @@ impl GcsActorManager {
 
         // Register name
         if !name.is_empty() {
-            self.named_actors
-                .write()
-                .insert((namespace, name), actor_id);
+            self.named_actors.insert((namespace, name), actor_id);
         }
 
-        self.registered_actors.write().insert(actor_id, actor_data);
+        self.registered_actors
+            .insert(actor_id, Arc::new(actor_data));
         // Store the task spec immediately so that GetNamedActorInfo can return
         // it even before CreateActor is called. This matches C++ behavior where
         // GcsActor stores the TaskSpec from the moment of registration, ensuring
         // make_actor_handle can reconstruct the PythonFunctionDescriptor.
-        self.actor_task_specs
-            .write()
-            .insert(actor_id, task_spec);
+        self.actor_task_specs.insert(actor_id, task_spec);
         *self
             .state_counts
-            .write()
             .entry(ActorState::DependenciesUnready)
             .or_insert(0) += 1;
 
@@ -297,19 +288,22 @@ impl GcsActorManager {
 
         // Transition to PENDING_CREATION
         let pending_pub_msg = {
-            let mut registered = self.registered_actors.write();
-            let mut counts = self.state_counts.write();
-
-            if let Some(actor) = registered.get_mut(&actor_id) {
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
                 let old_state = ActorState::from(actor.state);
                 actor.state = ActorState::PendingCreation as i32;
 
-                if let Some(c) = counts.get_mut(&old_state) {
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
                     *c = c.saturating_sub(1);
                 }
-                *counts.entry(ActorState::PendingCreation).or_insert(0) += 1;
+                *self
+                    .state_counts
+                    .entry(ActorState::PendingCreation)
+                    .or_insert(0) += 1;
 
-                Some(Self::build_actor_pub_message(actor))
+                let msg = Self::build_actor_pub_message(&actor);
+                self.registered_actors.insert(actor_id, Arc::new(actor));
+                Some(msg)
             } else {
                 return Err(Status::not_found(format!(
                     "actor {:?} not registered",
@@ -321,14 +315,11 @@ impl GcsActorManager {
         self.publish_deferred_messages(pending_pub_msg.into_iter().collect());
 
         // Store the task spec for scheduling
-        self.actor_task_specs
-            .write()
-            .insert(actor_id, task_spec.clone());
+        self.actor_task_specs.insert(actor_id, task_spec.clone());
 
         // Create oneshot channel for deferred reply
         let (tx, rx) = oneshot::channel();
         self.create_callbacks
-            .write()
             .entry(actor_id)
             .or_default()
             .push(tx);
@@ -378,10 +369,8 @@ impl GcsActorManager {
 
         // Update actor state to ALIVE
         let pub_msg = {
-            let mut registered = self.registered_actors.write();
-            let mut counts = self.state_counts.write();
-
-            if let Some(actor) = registered.get_mut(actor_id) {
+            if let Some((_, old_arc)) = self.registered_actors.remove(actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
                 let old_state = ActorState::from(actor.state);
                 actor.state = ActorState::Alive as i32;
                 actor.address = Some(worker_address);
@@ -389,16 +378,15 @@ impl GcsActorManager {
                 actor.resource_mapping = resource_mapping;
                 actor.node_id = Some(node_id.clone());
 
-                if let Some(c) = counts.get_mut(&old_state) {
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
                     *c = c.saturating_sub(1);
                 }
-                *counts.entry(ActorState::Alive).or_insert(0) += 1;
+                *self.state_counts.entry(ActorState::Alive).or_insert(0) += 1;
 
                 // Track actor by node
                 let node_id_obj =
                     NodeID::from_binary(node_id.as_slice().try_into().unwrap_or(&[0u8; 28]));
                 self.actors_by_node
-                    .write()
                     .entry(node_id_obj)
                     .or_default()
                     .push(*actor_id);
@@ -412,14 +400,14 @@ impl GcsActorManager {
                         addr.worker_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
                     );
                     self.actors_by_owner
-                        .write()
                         .entry((owner_node, owner_worker))
                         .or_default()
                         .push(*actor_id);
                 }
 
-                // Build message inside lock, publish outside
-                Some(Self::build_actor_pub_message(actor))
+                let msg = Self::build_actor_pub_message(&actor);
+                self.registered_actors.insert(*actor_id, Arc::new(actor));
+                Some(msg)
             } else {
                 None
             }
@@ -431,8 +419,8 @@ impl GcsActorManager {
         // Only cleaned up when the actor transitions to DEAD.
 
         // Resolve all pending create callbacks
-        let callbacks = self.create_callbacks.write().remove(actor_id);
-        if let Some(senders) = callbacks {
+        let callbacks = self.create_callbacks.remove(actor_id);
+        if let Some((_, senders)) = callbacks {
             let reply = ray_proto::ray::rpc::CreateActorReply {
                 actor_address: Some(actor_address),
                 ..Default::default()
@@ -447,19 +435,16 @@ impl GcsActorManager {
 
     /// Called by scheduler on failure. Transitions actor to DEAD and resolves callbacks.
     pub fn on_actor_scheduling_failed(&self, actor_id: &ActorID, reason: String) {
-        // Transition to DEAD — collect pubsub message and named_actors removal inside lock
+        // Transition to DEAD
         let (pub_msg, named_key) = {
-            let mut registered = self.registered_actors.write();
-            let mut dead = self.dead_actors.write();
-            let mut counts = self.state_counts.write();
-
-            if let Some(mut actor) = registered.remove(actor_id) {
+            if let Some((_, old_arc)) = self.registered_actors.remove(actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
                 let old_state = ActorState::from(actor.state);
-                if let Some(c) = counts.get_mut(&old_state) {
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
                     *c = c.saturating_sub(1);
                 }
                 actor.state = ActorState::Dead as i32;
-                *counts.entry(ActorState::Dead).or_insert(0) += 1;
+                *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
 
                 // Set death cause so C++ core worker can deserialize the error
                 actor.death_cause = Some(make_actor_died_death_cause(
@@ -468,7 +453,6 @@ impl GcsActorManager {
                     &reason,
                 ));
 
-                // Collect named actor key for deferred removal
                 let named_key = if !actor.name.is_empty() {
                     Some((actor.ray_namespace.clone(), actor.name.clone()))
                 } else {
@@ -476,25 +460,25 @@ impl GcsActorManager {
                 };
 
                 let msg = Self::build_actor_pub_message(&actor);
-                dead.insert(*actor_id, actor);
+                self.dead_actors.insert(*actor_id, Arc::new(actor));
                 (Some(msg), named_key)
             } else {
                 (None, None)
             }
         };
-        // Remove named actor outside the main critical section
+        // Remove named actor
         if let Some(key) = named_key {
-            self.named_actors.write().remove(&key);
+            self.named_actors.remove(&key);
         }
-        // Publish DEAD state outside the critical section
+        // Publish DEAD state
         self.publish_deferred_messages(pub_msg.into_iter().collect());
 
         // Clean up task spec
-        self.actor_task_specs.write().remove(actor_id);
+        self.actor_task_specs.remove(actor_id);
 
         // Resolve all pending create callbacks with error
-        let callbacks = self.create_callbacks.write().remove(actor_id);
-        if let Some(senders) = callbacks {
+        let callbacks = self.create_callbacks.remove(actor_id);
+        if let Some((_, senders)) = callbacks {
             for tx in senders {
                 let _ = tx.send(Err(Status::internal(format!(
                     "actor scheduling failed: {}",
@@ -568,8 +552,7 @@ impl GcsActorManager {
             node_id_bytes.as_slice().try_into().unwrap_or(&[0u8; 28]),
         );
 
-        let alive_nodes = node_manager.get_all_alive_nodes();
-        let node_info = match alive_nodes.get(&node_id) {
+        let node_info = match node_manager.get_alive_node(&node_id) {
             Some(info) => info,
             None => {
                 tracing::info!(
@@ -615,12 +598,10 @@ impl GcsActorManager {
         actor_id_bytes: &[u8],
     ) -> Option<ray_proto::ray::rpc::ActorTableData> {
         let actor_id = ActorID::from_binary(actor_id_bytes.try_into().unwrap_or(&[0u8; 16]));
-        let registered = self.registered_actors.read();
-        if let Some(actor) = registered.get(&actor_id) {
-            return Some(actor.clone());
+        if let Some(entry) = self.registered_actors.get(&actor_id) {
+            return Some((**entry).clone());
         }
-        let dead = self.dead_actors.read();
-        dead.get(&actor_id).cloned()
+        self.dead_actors.get(&actor_id).map(|e| (**e).clone())
     }
 
     /// Handle GetNamedActorInfo RPC.
@@ -633,12 +614,12 @@ impl GcsActorManager {
         ray_proto::ray::rpc::ActorTableData,
         Option<ray_proto::ray::rpc::TaskSpec>,
     )> {
-        let named = self.named_actors.read();
-        let actor_id = named.get(&(namespace.to_string(), name.to_string()))?;
-        let registered = self.registered_actors.read();
-        let actor_data = registered.get(actor_id).cloned()?;
-        let task_spec = self.actor_task_specs.read().get(actor_id).cloned();
-        Some((actor_data, task_spec))
+        let actor_id = *self
+            .named_actors
+            .get(&(namespace.to_string(), name.to_string()))?;
+        let actor_data = self.registered_actors.get(&actor_id)?;
+        let task_spec = self.actor_task_specs.get(&actor_id).map(|e| e.clone());
+        Some(((**actor_data).clone(), task_spec))
     }
 
     /// Handle ListNamedActors RPC.
@@ -647,11 +628,16 @@ impl GcsActorManager {
         namespace: &str,
         all_namespaces: bool,
     ) -> Vec<(String, String)> {
-        let named = self.named_actors.read();
-        named
-            .keys()
-            .filter(|(ns, _)| all_namespaces || ns == namespace)
-            .map(|(ns, name)| (ns.clone(), name.clone()))
+        self.named_actors
+            .iter()
+            .filter(|entry| {
+                let (ns, _) = entry.key();
+                all_namespaces || ns == namespace
+            })
+            .map(|entry| {
+                let (ns, name) = entry.key();
+                (ns.clone(), name.clone())
+            })
             .collect()
     }
 
@@ -662,10 +648,16 @@ impl GcsActorManager {
         _job_id_filter: Option<&JobID>,
         actor_state_filter: Option<ActorState>,
     ) -> Vec<ray_proto::ray::rpc::ActorTableData> {
-        let registered = self.registered_actors.read();
-        let dead = self.dead_actors.read();
+        // Collect Arc refs from both maps, then clone the data
+        let registered: Vec<Arc<ray_proto::ray::rpc::ActorTableData>> = self
+            .registered_actors
+            .iter()
+            .map(|e| Arc::clone(e.value()))
+            .collect();
+        let dead: Vec<Arc<ray_proto::ray::rpc::ActorTableData>> =
+            self.dead_actors.iter().map(|e| Arc::clone(e.value())).collect();
 
-        let all = registered.values().chain(dead.values()).filter(|a| {
+        let all = registered.iter().chain(dead.iter()).filter(|a| {
             if let Some(state) = actor_state_filter {
                 if ActorState::from(a.state) != state {
                     return false;
@@ -675,9 +667,9 @@ impl GcsActorManager {
         });
 
         if let Some(limit) = limit {
-            all.take(limit).cloned().collect()
+            all.take(limit).map(|a| (**a).clone()).collect()
         } else {
-            all.cloned().collect()
+            all.map(|a| (**a).clone()).collect()
         }
     }
 
@@ -686,16 +678,14 @@ impl GcsActorManager {
         let actor_id = ActorID::from_binary(actor_id_bytes.try_into().unwrap_or(&[0u8; 16]));
 
         let actor = {
-            let mut registered = self.registered_actors.write();
-            let mut counts = self.state_counts.write();
-
-            if let Some(mut actor) = registered.remove(&actor_id) {
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
                 let old_state = ActorState::from(actor.state);
-                if let Some(c) = counts.get_mut(&old_state) {
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
                     *c = c.saturating_sub(1);
                 }
                 actor.state = ActorState::Dead as i32;
-                *counts.entry(ActorState::Dead).or_insert(0) += 1;
+                *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
 
                 // Set death cause so C++ core worker can deserialize the error
                 actor.death_cause = Some(make_actor_died_death_cause(
@@ -712,29 +702,23 @@ impl GcsActorManager {
 
         if let Some(actor) = actor {
             // Publish DEAD state BEFORE notifying the raylet to kill the worker.
-            // This matches C++ behavior where PublishActor runs concurrently with
-            // NotifyRayletToKillActor. Publishing first ensures the core worker
-            // receives the death_cause (with ActorDiedErrorContext) before the
-            // worker process dies, so GetErrorInfoFromActorDeathCause correctly
-            // populates actor_died_error in RayErrorInfo.
             self.publish_actor_state(&actor);
 
             // Remove from named actors
             if !actor.name.is_empty() {
                 self.named_actors
-                    .write()
                     .remove(&(actor.ray_namespace.clone(), actor.name.clone()));
             }
 
             // Notify raylet to kill the actor's worker and release resources
             self.notify_raylet_to_kill_actor(&actor).await;
 
-            self.dead_actors.write().insert(actor_id, actor);
+            self.dead_actors.insert(actor_id, Arc::new(actor));
             // Clean up task spec
-            self.actor_task_specs.write().remove(&actor_id);
+            self.actor_task_specs.remove(&actor_id);
             // Resolve any pending create callbacks with error
-            let callbacks = self.create_callbacks.write().remove(&actor_id);
-            if let Some(senders) = callbacks {
+            let callbacks = self.create_callbacks.remove(&actor_id);
+            if let Some((_, senders)) = callbacks {
                 for tx in senders {
                     let _ = tx.send(Err(Status::cancelled("actor was killed")));
                 }
@@ -749,13 +733,12 @@ impl GcsActorManager {
     /// Actors with remaining restarts are transitioned to RESTARTING and will
     /// need to be rescheduled. Actors at max restarts are transitioned to DEAD.
     pub fn on_node_dead(&self, node_id: &NodeID) {
-        let actor_ids = {
-            let by_node = self.actors_by_node.read();
-            by_node.get(node_id).cloned().unwrap_or_default()
-        };
+        let actor_ids = self
+            .actors_by_node
+            .get(node_id)
+            .map(|e| e.value().clone())
+            .unwrap_or_default();
 
-        // Collect pubsub messages, named actor removals, and callback resolutions
-        // inside the critical section, then execute them all after dropping locks.
         let mut deferred_messages = Vec::new();
         let mut named_keys_to_remove = Vec::new();
         let mut callback_errors: Vec<(
@@ -763,85 +746,76 @@ impl GcsActorManager {
             Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>,
         )> = Vec::new();
 
-        {
-            let mut registered = self.registered_actors.write();
-            let mut dead = self.dead_actors.write();
-            let mut counts = self.state_counts.write();
-            let mut callbacks = self.create_callbacks.write();
-
-            for actor_id in actor_ids {
-                if let Some(actor) = registered.get_mut(&actor_id) {
-                    let old_state = ActorState::from(actor.state);
-                    if let Some(c) = counts.get_mut(&old_state) {
-                        *c = c.saturating_sub(1);
-                    }
-
-                    // Check if actor can be restarted
-                    let max_restarts = actor.max_restarts;
-                    let num_restarts = actor.num_restarts;
-                    let can_restart = max_restarts == -1 || num_restarts < max_restarts;
-
-                    if can_restart {
-                        // Transition to RESTARTING
-                        actor.state = ActorState::Restarting as i32;
-                        actor.num_restarts = num_restarts + 1;
-                        // Clear node assignment so it can be rescheduled
-                        actor.address = None;
-                        actor.node_id = None;
-                        *counts.entry(ActorState::Restarting).or_insert(0) += 1;
-                        deferred_messages.push(Self::build_actor_pub_message(actor));
-                        tracing::info!(?actor_id, restart = num_restarts + 1, "Actor restarting");
-                    } else {
-                        // Transition to DEAD
-                        let mut actor = registered.remove(&actor_id).unwrap();
-                        actor.state = ActorState::Dead as i32;
-                        *counts.entry(ActorState::Dead).or_insert(0) += 1;
-
-                        // Set death cause
-                        actor.death_cause = Some(make_actor_died_death_cause(
-                            &actor,
-                            ray_proto::ray::rpc::actor_died_error_context::Reason::NodeDied,
-                            "The actor is dead because its node has died.",
-                        ));
-
-                        // Collect named actor key for deferred removal
-                        if !actor.name.is_empty() {
-                            named_keys_to_remove
-                                .push((actor.ray_namespace.clone(), actor.name.clone()));
-                        }
-
-                        deferred_messages.push(Self::build_actor_pub_message(&actor));
-
-                        // Collect callback senders for deferred resolution
-                        if let Some(senders) = callbacks.remove(&actor_id) {
-                            callback_errors.push((actor_id, senders));
-                        }
-
-                        dead.insert(actor_id, actor);
-                    }
+        for actor_id in actor_ids {
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
+                let old_state = ActorState::from(actor.state);
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
+                    *c = c.saturating_sub(1);
                 }
-            }
-        } // All write locks dropped here
 
-        // Remove named actors outside the critical section
-        if !named_keys_to_remove.is_empty() {
-            let mut named = self.named_actors.write();
-            for key in named_keys_to_remove {
-                named.remove(&key);
+                // Check if actor can be restarted
+                let max_restarts = actor.max_restarts;
+                let num_restarts = actor.num_restarts;
+                let can_restart = max_restarts == -1 || num_restarts < max_restarts;
+
+                if can_restart {
+                    // Transition to RESTARTING
+                    actor.state = ActorState::Restarting as i32;
+                    actor.num_restarts = num_restarts + 1;
+                    actor.address = None;
+                    actor.node_id = None;
+                    *self
+                        .state_counts
+                        .entry(ActorState::Restarting)
+                        .or_insert(0) += 1;
+                    deferred_messages.push(Self::build_actor_pub_message(&actor));
+                    // Re-insert as RESTARTING
+                    self.registered_actors.insert(actor_id, Arc::new(actor));
+                    tracing::info!(?actor_id, restart = num_restarts + 1, "Actor restarting");
+                } else {
+                    // Transition to DEAD
+                    actor.state = ActorState::Dead as i32;
+                    *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                    actor.death_cause = Some(make_actor_died_death_cause(
+                        &actor,
+                        ray_proto::ray::rpc::actor_died_error_context::Reason::NodeDied,
+                        "The actor is dead because its node has died.",
+                    ));
+
+                    if !actor.name.is_empty() {
+                        named_keys_to_remove
+                            .push((actor.ray_namespace.clone(), actor.name.clone()));
+                    }
+
+                    deferred_messages.push(Self::build_actor_pub_message(&actor));
+
+                    if let Some((_, senders)) = self.create_callbacks.remove(&actor_id) {
+                        callback_errors.push((actor_id, senders));
+                    }
+
+                    self.dead_actors.insert(actor_id, Arc::new(actor));
+                }
             }
         }
 
-        // Publish all state changes outside the critical section
+        // Remove named actors
+        for key in named_keys_to_remove {
+            self.named_actors.remove(&key);
+        }
+
+        // Publish all state changes
         self.publish_deferred_messages(deferred_messages);
 
-        // Resolve callbacks outside the critical section
+        // Resolve callbacks
         for (_actor_id, senders) in callback_errors {
             for tx in senders {
                 let _ = tx.send(Err(Status::unavailable("node died during actor creation")));
             }
         }
 
-        self.actors_by_node.write().remove(node_id);
+        self.actors_by_node.remove(node_id);
     }
 
     /// Handle job death — kill non-detached actors belonging to the job.
@@ -853,72 +827,67 @@ impl GcsActorManager {
         // Find actors belonging to this job (job ID is embedded in actor ID)
         let actor_ids: Vec<ActorID> = self
             .registered_actors
-            .read()
-            .keys()
-            .filter(|aid| aid.job_id().to_int() == job_id_int)
-            .copied()
+            .iter()
+            .filter(|entry| entry.key().job_id().to_int() == job_id_int)
+            .map(|entry| *entry.key())
             .collect();
 
         let mut deferred_messages = Vec::new();
         let mut named_keys_to_remove = Vec::new();
 
-        {
-            let mut registered = self.registered_actors.write();
-            let mut dead = self.dead_actors.write();
-            let mut counts = self.state_counts.write();
-
-            for actor_id in actor_ids {
-                if let Some(actor) = registered.get(&actor_id) {
-                    if actor.is_detached {
-                        continue; // Detached actors survive job death
-                    }
-                }
-
-                if let Some(mut actor) = registered.remove(&actor_id) {
-                    let old_state = ActorState::from(actor.state);
-                    if let Some(c) = counts.get_mut(&old_state) {
-                        *c = c.saturating_sub(1);
-                    }
-                    actor.state = ActorState::Dead as i32;
-                    *counts.entry(ActorState::Dead).or_insert(0) += 1;
-
-                    // Set death cause
-                    actor.death_cause = Some(make_actor_died_death_cause(
-                        &actor,
-                        ray_proto::ray::rpc::actor_died_error_context::Reason::OutOfScope,
-                        "The actor is dead because its owner job has completed.",
-                    ));
-
-                    if !actor.name.is_empty() {
-                        named_keys_to_remove
-                            .push((actor.ray_namespace.clone(), actor.name.clone()));
-                    }
-
-                    deferred_messages.push(Self::build_actor_pub_message(&actor));
-                    dead.insert(actor_id, actor);
-                }
+        for actor_id in actor_ids {
+            // Check if detached before removing
+            let is_detached = self
+                .registered_actors
+                .get(&actor_id)
+                .map(|e| e.is_detached)
+                .unwrap_or(false);
+            if is_detached {
+                continue;
             }
-        } // All write locks dropped here
 
-        // Remove named actors outside the critical section
-        if !named_keys_to_remove.is_empty() {
-            let mut named = self.named_actors.write();
-            for key in named_keys_to_remove {
-                named.remove(&key);
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
+                let old_state = ActorState::from(actor.state);
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
+                    *c = c.saturating_sub(1);
+                }
+                actor.state = ActorState::Dead as i32;
+                *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::OutOfScope,
+                    "The actor is dead because its owner job has completed.",
+                ));
+
+                if !actor.name.is_empty() {
+                    named_keys_to_remove
+                        .push((actor.ray_namespace.clone(), actor.name.clone()));
+                }
+
+                deferred_messages.push(Self::build_actor_pub_message(&actor));
+                self.dead_actors.insert(actor_id, Arc::new(actor));
             }
         }
 
-        // Publish all state changes outside the critical section
+        // Remove named actors
+        for key in named_keys_to_remove {
+            self.named_actors.remove(&key);
+        }
+
+        // Publish all state changes
         self.publish_deferred_messages(deferred_messages);
     }
 
     /// Handle worker death — kill actors owned by the dead worker.
     pub fn on_worker_dead(&self, node_id: &NodeID, worker_id: &WorkerID) {
         let key = (*node_id, *worker_id);
-        let actor_ids = {
-            let by_owner = self.actors_by_owner.read();
-            by_owner.get(&key).cloned().unwrap_or_default()
-        };
+        let actor_ids = self
+            .actors_by_owner
+            .get(&key)
+            .map(|e| e.value().clone())
+            .unwrap_or_default();
 
         if actor_ids.is_empty() {
             return;
@@ -927,60 +896,54 @@ impl GcsActorManager {
         let mut deferred_messages = Vec::new();
         let mut named_keys_to_remove = Vec::new();
 
-        {
-            let mut registered = self.registered_actors.write();
-            let mut dead = self.dead_actors.write();
-            let mut counts = self.state_counts.write();
-
-            for actor_id in &actor_ids {
-                if let Some(mut actor) = registered.remove(actor_id) {
-                    let old_state = ActorState::from(actor.state);
-                    if let Some(c) = counts.get_mut(&old_state) {
-                        *c = c.saturating_sub(1);
-                    }
-                    actor.state = ActorState::Dead as i32;
-                    *counts.entry(ActorState::Dead).or_insert(0) += 1;
-
-                    // Set death cause so C++ core worker can deserialize the error
-                    actor.death_cause = Some(make_actor_died_death_cause(
-                        &actor,
-                        ray_proto::ray::rpc::actor_died_error_context::Reason::WorkerDied,
-                        "The actor is dead because its worker process has died.",
-                    ));
-
-                    if !actor.name.is_empty() {
-                        named_keys_to_remove
-                            .push((actor.ray_namespace.clone(), actor.name.clone()));
-                    }
-
-                    deferred_messages.push(Self::build_actor_pub_message(&actor));
-                    dead.insert(*actor_id, actor);
+        for actor_id in &actor_ids {
+            if let Some((_, old_arc)) = self.registered_actors.remove(actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
+                let old_state = ActorState::from(actor.state);
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
+                    *c = c.saturating_sub(1);
                 }
-            }
-        } // All write locks dropped here
+                actor.state = ActorState::Dead as i32;
+                *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
 
-        // Remove named actors outside the critical section
-        if !named_keys_to_remove.is_empty() {
-            let mut named = self.named_actors.write();
-            for key in named_keys_to_remove {
-                named.remove(&key);
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::WorkerDied,
+                    "The actor is dead because its worker process has died.",
+                ));
+
+                if !actor.name.is_empty() {
+                    named_keys_to_remove
+                        .push((actor.ray_namespace.clone(), actor.name.clone()));
+                }
+
+                deferred_messages.push(Self::build_actor_pub_message(&actor));
+                self.dead_actors.insert(*actor_id, Arc::new(actor));
             }
         }
 
-        // Publish all state changes outside the critical section
+        // Remove named actors
+        for key in named_keys_to_remove {
+            self.named_actors.remove(&key);
+        }
+
+        // Publish all state changes
         self.publish_deferred_messages(deferred_messages);
 
-        self.actors_by_owner.write().remove(&key);
+        self.actors_by_owner.remove(&key);
     }
 
     /// Get state counts for metrics.
     pub fn state_counts(&self) -> HashMap<ActorState, usize> {
-        self.state_counts.read().clone()
+        self.state_counts
+            .iter()
+            .map(|e| (*e.key(), *e.value()))
+            .collect()
     }
 
     /// Total registered (non-dead) actors.
     pub fn num_registered_actors(&self) -> usize {
-        self.registered_actors.read().len()
+        self.registered_actors.len()
     }
 }
 
@@ -1213,16 +1176,14 @@ mod tests {
         let mut aid = [0u8; 16];
         aid[0] = 1;
         let actor_id = ActorID::from_binary(&aid);
-        {
-            let mut reg = mgr.registered_actors.write();
-            if let Some(a) = reg.get_mut(&actor_id) {
-                a.state = ActorState::PendingCreation as i32;
-            }
+        if let Some((_, old_arc)) = mgr.registered_actors.remove(&actor_id) {
+            let mut a = Arc::unwrap_or_clone(old_arc);
+            a.state = ActorState::PendingCreation as i32;
+            mgr.registered_actors.insert(actor_id, Arc::new(a));
         }
 
         let (tx, rx) = oneshot::channel();
         mgr.create_callbacks
-            .write()
             .entry(actor_id)
             .or_default()
             .push(tx);
@@ -1275,16 +1236,14 @@ mod tests {
         let mut node_id = vec![0u8; 28];
         node_id[0] = 1;
         let actor_id = ActorID::from_binary(aid.as_slice().try_into().unwrap());
-        {
-            let mut reg = mgr.registered_actors.write();
-            if let Some(a) = reg.get_mut(&actor_id) {
-                a.state = ActorState::Alive as i32;
-                a.max_restarts = 3;
-                a.node_id = Some(node_id.clone());
-            }
+        if let Some((_, old_arc)) = mgr.registered_actors.remove(&actor_id) {
+            let mut a = Arc::unwrap_or_clone(old_arc);
+            a.state = ActorState::Alive as i32;
+            a.max_restarts = 3;
+            a.node_id = Some(node_id.clone());
+            mgr.registered_actors.insert(actor_id, Arc::new(a));
         }
         mgr.actors_by_node
-            .write()
             .entry(NodeID::from_binary(node_id.as_slice().try_into().unwrap()))
             .or_default()
             .push(actor_id);
@@ -1315,17 +1274,15 @@ mod tests {
         let mut node_id = vec![0u8; 28];
         node_id[0] = 1;
         let actor_id = ActorID::from_binary(aid.as_slice().try_into().unwrap());
-        {
-            let mut reg = mgr.registered_actors.write();
-            if let Some(a) = reg.get_mut(&actor_id) {
-                a.state = ActorState::Alive as i32;
-                a.max_restarts = 1;
-                a.num_restarts = 1; // already restarted once
-                a.node_id = Some(node_id.clone());
-            }
+        if let Some((_, old_arc)) = mgr.registered_actors.remove(&actor_id) {
+            let mut a = Arc::unwrap_or_clone(old_arc);
+            a.state = ActorState::Alive as i32;
+            a.max_restarts = 1;
+            a.num_restarts = 1; // already restarted once
+            a.node_id = Some(node_id.clone());
+            mgr.registered_actors.insert(actor_id, Arc::new(a));
         }
         mgr.actors_by_node
-            .write()
             .entry(NodeID::from_binary(node_id.as_slice().try_into().unwrap()))
             .or_default()
             .push(actor_id);
@@ -1362,12 +1319,11 @@ mod tests {
             ..Default::default()
         };
         mgr.handle_register_actor(non_detached_spec).await.unwrap();
-        {
-            let mut reg = mgr.registered_actors.write();
-            if let Some(a) = reg.get_mut(&non_detached_aid) {
-                a.is_detached = false;
-                a.state = ActorState::Alive as i32;
-            }
+        if let Some((_, old_arc)) = mgr.registered_actors.remove(&non_detached_aid) {
+            let mut a = Arc::unwrap_or_clone(old_arc);
+            a.is_detached = false;
+            a.state = ActorState::Alive as i32;
+            mgr.registered_actors.insert(non_detached_aid, Arc::new(a));
         }
 
         // Register detached actor
@@ -1381,12 +1337,11 @@ mod tests {
             ..Default::default()
         };
         mgr.handle_register_actor(detached_spec).await.unwrap();
-        {
-            let mut reg = mgr.registered_actors.write();
-            if let Some(a) = reg.get_mut(&detached_aid) {
-                a.is_detached = true;
-                a.state = ActorState::Alive as i32;
-            }
+        if let Some((_, old_arc)) = mgr.registered_actors.remove(&detached_aid) {
+            let mut a = Arc::unwrap_or_clone(old_arc);
+            a.is_detached = true;
+            a.state = ActorState::Alive as i32;
+            mgr.registered_actors.insert(detached_aid, Arc::new(a));
         }
 
         assert_eq!(mgr.num_registered_actors(), 2);

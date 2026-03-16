@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use tokio::sync::{broadcast, Notify};
@@ -43,8 +44,9 @@ pub struct PubSubMessage {
 
 /// Per-subscriber state for the long-poll delivery mechanism.
 struct SubscriberState {
-    /// Buffered PubMessage protos waiting for delivery.
-    pending_messages: Vec<ray_proto::ray::rpc::PubMessage>,
+    /// Buffered messages: Arc-shared PubMessage + per-subscriber sequence_id.
+    /// The Arc avoids deep-cloning the protobuf for every subscriber.
+    pending_messages: Vec<(Arc<ray_proto::ray::rpc::PubMessage>, i64)>,
     /// Monotonically increasing sequence ID for published messages.
     next_sequence_id: i64,
     /// Subscribed channels: channel_type → set of key_ids (empty = all keys).
@@ -105,6 +107,9 @@ impl InternalPubSubHandler {
         let encoded = prost::Message::encode_to_vec(&pub_message);
         self.publish(channel_type, key_id.clone(), encoded);
 
+        // Wrap in Arc once — subscribers share this single allocation
+        let arc_msg = Arc::new(pub_message);
+
         // Deliver to long-poll subscribers (DashMap provides per-entry locking)
         for mut entry in self.subscribers.iter_mut() {
             let state = entry.value_mut();
@@ -112,10 +117,9 @@ impl InternalPubSubHandler {
             if let Some(keys) = state.subscriptions.get(&channel_type) {
                 // Empty keys list means "subscribe to all keys in this channel"
                 if keys.is_empty() || keys.contains(&key_id) {
-                    let mut msg = pub_message.clone();
-                    msg.sequence_id = state.next_sequence_id;
+                    let seq_id = state.next_sequence_id;
                     state.next_sequence_id += 1;
-                    state.pending_messages.push(msg);
+                    state.pending_messages.push((Arc::clone(&arc_msg), seq_id));
                 }
             }
         }
@@ -140,6 +144,23 @@ impl InternalPubSubHandler {
     ///
     /// Returns pending messages for this subscriber. If no messages are pending,
     /// waits up to the notification (or a timeout in the gRPC handler).
+    /// Reconstruct PubMessages from Arc-shared messages with per-subscriber sequence IDs.
+    fn drain_pending(
+        pending: &mut Vec<(Arc<ray_proto::ray::rpc::PubMessage>, i64)>,
+        max_processed_sequence_id: i64,
+    ) -> Vec<ray_proto::ray::rpc::PubMessage> {
+        pending.retain(|(_, seq)| *seq > max_processed_sequence_id);
+        let drained = std::mem::take(pending);
+        drained
+            .into_iter()
+            .map(|(arc_msg, seq_id)| {
+                let mut msg = (*arc_msg).clone();
+                msg.sequence_id = seq_id;
+                msg
+            })
+            .collect()
+    }
+
     pub async fn handle_subscriber_poll(
         &self,
         subscriber_id: &[u8],
@@ -147,13 +168,10 @@ impl InternalPubSubHandler {
     ) -> Vec<ray_proto::ray::rpc::PubMessage> {
         // Drain any messages with sequence_id > max_processed_sequence_id
         if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
-            // Remove already-processed messages
-            state
-                .pending_messages
-                .retain(|m| m.sequence_id > max_processed_sequence_id);
-
-            if !state.pending_messages.is_empty() {
-                return std::mem::take(&mut state.pending_messages);
+            let messages =
+                Self::drain_pending(&mut state.pending_messages, max_processed_sequence_id);
+            if !messages.is_empty() {
+                return messages;
             }
         }
 
@@ -162,10 +180,7 @@ impl InternalPubSubHandler {
 
         // After notification, drain messages
         if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
-            state
-                .pending_messages
-                .retain(|m| m.sequence_id > max_processed_sequence_id);
-            return std::mem::take(&mut state.pending_messages);
+            return Self::drain_pending(&mut state.pending_messages, max_processed_sequence_id);
         }
         Vec::new()
     }
@@ -206,7 +221,6 @@ impl Default for InternalPubSubHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     fn make_pub_msg(channel_type: i32, key_id: &[u8]) -> ray_proto::ray::rpc::PubMessage {
         ray_proto::ray::rpc::PubMessage {
@@ -320,7 +334,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(4, b"job1"));
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
-        assert!(state.pending_messages.is_empty());
+        assert!(state.pending_messages.is_empty(), "should not receive messages from unsubscribed channel");
     }
 
     #[test]
@@ -336,7 +350,7 @@ mod tests {
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         // Only actor_A should be delivered
         assert_eq!(state.pending_messages.len(), 1);
-        assert_eq!(state.pending_messages[0].key_id, b"actor_A");
+        assert_eq!(state.pending_messages[0].0.key_id, b"actor_A");
     }
 
     #[test]
@@ -350,7 +364,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(3, b"actor_C"));
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
-        assert_eq!(state.pending_messages.len(), 3);
+        assert_eq!(state.pending_messages.len(), 3, "should receive all keys");
     }
 
     #[tokio::test]
@@ -418,7 +432,7 @@ mod tests {
         handler.handle_publish(messages);
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
-        assert_eq!(state.pending_messages.len(), 2);
+        assert_eq!(state.pending_messages.len(), 2, "should receive from both channels");
     }
 
     #[test]
@@ -434,7 +448,7 @@ mod tests {
         let seq_ids: Vec<i64> = state
             .pending_messages
             .iter()
-            .map(|m| m.sequence_id)
+            .map(|(_, seq)| *seq)
             .collect();
         for i in 1..seq_ids.len() {
             assert!(
@@ -479,7 +493,7 @@ mod tests {
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
         // Only A and B should be delivered
-        assert_eq!(state.pending_messages.len(), 2);
+        assert_eq!(state.pending_messages.len(), 2, "only subscribed keys should be delivered");
     }
 
     #[test]
@@ -532,7 +546,7 @@ mod tests {
         let channels: Vec<i32> = state
             .pending_messages
             .iter()
-            .map(|m| m.channel_type)
+            .map(|(m, _)| m.channel_type)
             .collect();
         assert!(channels.contains(&3));
         assert!(channels.contains(&5));
@@ -552,7 +566,7 @@ mod tests {
         handler.handle_publish(msgs);
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
-        assert_eq!(state.pending_messages.len(), 3);
+        assert_eq!(state.pending_messages.len(), 3, "batch publish should deliver all");
     }
 
     #[test]
@@ -568,7 +582,7 @@ mod tests {
         handler.publish_pubmessage(make_pub_msg(6, b"w")); // not subscribed
 
         let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
-        assert_eq!(state.pending_messages.len(), 3);
+        assert_eq!(state.pending_messages.len(), 3, "should receive from 3 subscribed channels");
     }
 
     #[test]
