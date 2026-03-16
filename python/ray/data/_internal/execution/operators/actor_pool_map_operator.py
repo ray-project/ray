@@ -1317,8 +1317,7 @@ class _ActorPool(AutoscalingActorPool):
         if graceful:
             # Queue a graceful termination task. Ray Core guarantees this runs
             # after all currently-queued tasks (FIFO), then calls __ray_shutdown__
-            # on the worker process before the actor exits. Fire-and-forget: the
-            # test (or user code) can wait_for_condition on side effects.
+            # on the worker process before the actor exits.
             #
             # max_task_retries=0: __ray_terminate__ always exits the actor intentionally
             # (IntentionalSystemExit), which Ray Core treats as a task failure.
