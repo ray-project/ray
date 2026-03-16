@@ -275,7 +275,7 @@ def _shuffle_block(
         block, block_type=BlockType.ARROW
     )
 
-    if block.num_rows == 0:
+    if block.num_rows == 0 and not send_empty_blocks:
         empty = BlockAccessor.for_block(block).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
@@ -354,7 +354,7 @@ def _shuffle_block(
         block_exec_stats=stats.build(block_ser_time_s=0)
     )
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG) and partition_shards_stats:
         num_rows_series, byte_sizes_series = zip(
             *[(s.num_rows, s.byte_size) for s in partition_shards_stats.values()]
         )
