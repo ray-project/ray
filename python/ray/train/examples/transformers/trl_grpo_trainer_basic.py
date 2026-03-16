@@ -1,7 +1,7 @@
 """
 Minimal Example adapted from https://huggingface.co/docs/trl/grpo_trainer
 
-RL Post-training a Qwen2 0.5B Instruct model using the GPRO algorithm and the DeepMath 103k dataset.
+RL Post-training a Qwen2 0.5B Instruct model using the GRPO algorithm and the DeepMath-103k dataset.
 """
 from datasets import load_dataset
 from latex2sympy2_extended import NormalizationConfig
@@ -56,12 +56,15 @@ def train_func():
 
     # Use vllm_mode="colocate" to allow easy scaling as each GPU handles their own vLLM instance
     training_args = GRPOConfig(
-        per_device_train_batch_size=4, use_vllm=True, vllm_mode="colocate"
+        per_device_train_batch_size=4,
+        use_vllm=True,
+        vllm_mode="colocate",
+        vllm_gpu_memory_utilization=0.3,
     )
 
     # GRPO Trainer
     trainer = GRPOTrainer(
-        model="Qwen/Qwen2.5-3B",
+        model="Qwen/Qwen2.5-0.5B",
         args=training_args,
         reward_funcs=accuracy_reward,
         train_dataset=dataset,

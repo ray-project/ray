@@ -2,7 +2,7 @@
 
 .. _trl_trainer_basic:
 
-RL Post-Training a Qwen2 0.5B with GRPO and DeepMath dataset
+RL Post-Training Qwen2 0.5B with GRPO on the DeepMath Dataset
 ======================================================================
 
 .. raw:: html
@@ -13,12 +13,12 @@ RL Post-Training a Qwen2 0.5B with GRPO and DeepMath dataset
     </a>
 
 This basic example of distributed training with Ray Train and Hugging Face TRL (Transformer Reinforcement Learning)
-to RL post-train a text classifier using GRPO to answer maths questions.
+to RL post-train a text classifier using GRPO to answer math questions.
 
 Code example
 ------------
 
-.. literalinclude:: /../../python/ray/train/examples/transformers/trl_gpro_trainer_basic.py
+.. literalinclude:: /../../python/ray/train/examples/transformers/trl_grpo_trainer_basic.py
 
 See also
 --------
