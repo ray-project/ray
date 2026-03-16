@@ -298,6 +298,13 @@ class ParquetDatasource(Datasource):
     the cost of some potential performance and/or compatibility penalties.
     """
 
+    # Number of fragments that Pyarrow should look at to determine schema.
+    #
+    # NOTE: Default is 1 for backwards compatibility, which means only 1 fragment
+    #       (in no particular order) will be inspected. To inspect all fragments
+    #       set this to None.
+    _DEFAULT_NUM_FRAGMENTS_TO_INSPECT_FOR_SCHEMA: Optional[int] = 1
+
     _FILE_EXTENSIONS = ["parquet"]
 
     def __init__(
@@ -309,7 +316,7 @@ class ParquetDatasource(Datasource):
         to_batch_kwargs: Optional[Dict[str, Any]] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        schema: Optional[Union["pyarrow.lib.Schema"]] = None,
         meta_provider: Optional[FileMetadataProvider] = None,
         partition_filter: Optional[PathPartitionFilter] = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
@@ -379,7 +386,13 @@ class ParquetDatasource(Datasource):
 
         # NOTE: ParquetDataset only accepts list of paths, hence we need to convert
         #       it to a list
-        pq_ds = get_parquet_dataset(list(paths), filesystem, dataset_kwargs)
+        pq_ds = get_parquet_dataset(
+            list(paths),
+            filesystem=filesystem,
+            schema=schema,
+            inspect_num_fragments=self._DEFAULT_NUM_FRAGMENTS_TO_INSPECT_FOR_SCHEMA,
+            dataset_kwargs=dataset_kwargs,
+        )
 
         # Users can pass both data columns and partition columns in the 'columns'
         # argument. To prevent PyArrow from complaining about missing columns, we
@@ -408,7 +421,7 @@ class ParquetDatasource(Datasource):
         ]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._block_udf = _block_udf
-        self._to_batches_kwargs = to_batch_kwargs
+        self._scanner_kwargs = to_batch_kwargs
         # Store as projection_map (identity mapping if columns specified, None otherwise)
         # Note: Empty list [] means no columns, None means all columns
         # Include partition columns in projection_map if they were requested, so that
@@ -545,7 +558,7 @@ class ParquetDatasource(Datasource):
                 partitioning,
             ) = (
                 self._block_udf,
-                self._to_batches_kwargs,
+                self._scanner_kwargs,
                 self._default_batch_size,
                 self._get_data_columns(),
                 self.get_column_renames(),
@@ -967,7 +980,7 @@ def _parse_partition_column_values(
     fragment: "ParquetFileFragment",
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
-):
+) -> Dict[str, PartitionDataType]:
     partitions = {}
 
     if partitioning is not None:
@@ -1149,24 +1162,37 @@ def _estimate_reader_batch_size(
     return estimated_batch_size
 
 
-def get_parquet_dataset(paths, filesystem, dataset_kwargs):
-    import pyarrow.parquet as pq
+def get_parquet_dataset(
+    paths: List[str],
+    schema: Optional["pyarrow.Schema"] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    inspect_num_fragments: Optional[int] = 0,
+    dataset_kwargs: Optional[Dict[str, Any]] = None,
+):
+    assert inspect_num_fragments is None or inspect_num_fragments >= 0, (
+        f"`inspect_num_fragments` could either be null (inspect all fragments) "
+        f"or >= 0 (got {inspect_num_fragments})"
+    )
 
-    # If you pass a list containing a single directory path to `ParquetDataset`, PyArrow
-    # errors with 'IsADirectoryError: Path ... points to a directory, but only file
-    # paths are supported'. To avoid this, we pass the directory path directly.
-    if len(paths) == 1:
-        paths = paths[0]
+    paths = paths if isinstance(paths, list) else [paths]
+
+    # For linter
+    dataset = None
 
     try:
-        dataset = pq.ParquetDataset(
+        dataset = _get_parquet_dataset_internal(
             paths,
-            **dataset_kwargs,
-            filesystem=filesystem,
+            schema,
+            filesystem,
+            inspect_num_fragments,
+            dataset_kwargs,
         )
+
     except TypeError:
-        # Fallback: resolve filesystem locally in the worker
+        from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
         try:
+            # Fallback: resolve filesystem locally in the worker
             resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
                 paths, filesystem=None
             )
@@ -1174,16 +1200,102 @@ def get_parquet_dataset(paths, filesystem, dataset_kwargs):
                 resolved_filesystem,
                 retryable_errors=DataContext.get_current().retried_io_errors,
             )
-            dataset = pq.ParquetDataset(
+
+            dataset = _get_parquet_dataset_internal(
                 resolved_paths,
-                **dataset_kwargs,
-                filesystem=resolved_filesystem,
+                schema,
+                resolved_filesystem,
+                inspect_num_fragments,
+                dataset_kwargs,
             )
         except OSError as os_e:
             _handle_read_os_error(os_e, paths)
+
     except OSError as e:
         _handle_read_os_error(e, paths)
+
     return dataset
+
+
+def _get_parquet_dataset_internal(
+    paths: List[str],
+    schema: Optional["pyarrow.Schema"],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+    inspect_num_fragments: Optional[int],
+    dataset_kwargs: Optional[Dict[str, Any]] = None,
+) -> "pyarrow.parquet.ParquetDataset":
+
+    import pyarrow.parquet as pq
+
+    should_inspect = inspect_num_fragments != 0
+
+    if schema is None and should_inspect:
+        # NOTE: In case no schema is provided we must infer
+        schema = _infer_schema(
+            paths,
+            inspect_num_fragments,
+            filesystem,
+        )
+
+    dataset_kwargs = dataset_kwargs or {}
+
+    return pq.ParquetDataset(
+        # When passing directories, Pyarrow expects single items and not
+        # a list (otherwise erroring out)
+        paths[0] if len(paths) == 1 else paths,
+        schema=schema,
+        filesystem=filesystem,
+        **dataset_kwargs,
+    )
+
+
+def _infer_schema(
+    paths: List[str],
+    inspect_num_fragments: Optional[int],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> "pyarrow.Schema":
+    import pyarrow as pa
+    import pyarrow.dataset as pds
+
+    factory = pds.FileSystemDatasetFactory(
+        filesystem,
+        paths,
+        format=pds.ParquetFileFormat(),
+    )
+
+    # NOTE: By default we're inspecting all the fragments.
+    #       The ``fragments`` kwarg was added in PyArrow 21.0 (previously
+    #       all fragments were inspected unconditionally).
+    #       PyArrow 22.0 added ``promote_options`` for proper null→concrete
+    #       type promotion across fragments (GH-46629).
+    pa_version = get_pyarrow_version()
+
+    if pa_version >= parse_version("22.0.0"):
+        inspect_kwargs = {
+            "fragments": inspect_num_fragments,
+            "promote_options": "permissive",
+        }
+    elif pa_version >= parse_version("21.0.0"):
+        inspect_kwargs = {"fragments": inspect_num_fragments}
+    else:
+        inspect_kwargs = {}
+
+    schema = factory.inspect(**inspect_kwargs)
+
+    # Before Pyarrow 22.0, ``factory.inspect`` doesn't promote ``null`` types
+    # to concrete types when unifying schemas across fragments (which
+    # happens when some files have all-null values for a column).
+    #
+    # In that case we manually collect physical schemas from all fragments and
+    # call ``pa.unify_schemas`` to correctly promote the types.
+    if pa_version < parse_version("22.0.0") and any(
+        field.type == pa.null() for field in schema
+    ):
+        dataset = factory.finish(schema)
+        fragment_schemas = [f.physical_schema for f in dataset.get_fragments()]
+        schema = pa.unify_schemas([schema] + fragment_schemas)
+
+    return schema
 
 
 def _sample_fragments(
