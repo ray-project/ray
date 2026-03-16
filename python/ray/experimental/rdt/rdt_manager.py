@@ -726,14 +726,17 @@ class RDTManager:
         """
         rdt_store = self.rdt_store
 
-        # Trigger fetches for all objects not yet in the store.
+        # Trigger fetches for all objects where we have the metadata for the
+        # object but we don't have the primary copy. Each fetch request produces
+        # exactly one secondary copy, even if another secondary copy of the
+        # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
         for object_id in object_ids:
-            # TODO(swang): Check if the object is already in the store. If so,
-            # we should use that copy instead. If the copy is not a primary
-            # copy, we also need to ensure that the copy is only popped after
-            # all readers for that copy have finished.
-            if self.is_managed_object(object_id):
+            # TODO(swang): Check if there is already a secondary copy of the
+            # object in the store. If so, use that copy instead. Ensure that the
+            # secondary copy is only popped after its original fetcher plus this
+            # one have consumed the copy.
+            if self.is_managed_object(object_id) and not rdt_store.is_primary_copy(object_id):
                 fetch_request = self._trigger_fetch(object_id, use_object_store)
                 if fetch_request is not None:
                     fetch_requests[object_id] = fetch_request
