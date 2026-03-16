@@ -88,7 +88,7 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
             [path],
             [file_size],
         )
-        batches = self._reader.read_files(manifest, filesystem=self._filesystem)
+        batches = self._reader.read(manifest)
 
         try:
             first_batch = next(batches)
