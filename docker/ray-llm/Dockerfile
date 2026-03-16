@@ -30,8 +30,13 @@ else
     exit 1
 fi
 
+# Hash verification is disabled because uv pip compile generates hashes from
+# PyPI, but unsafe-best-match may download from the CUDA index which serves
+# different builds of some packages (e.g. triton). The lock file still pins
+# exact versions, so integrity is maintained through version pinning.
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
+    --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
