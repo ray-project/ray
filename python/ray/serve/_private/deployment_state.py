@@ -46,7 +46,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
@@ -3401,11 +3401,14 @@ class DeploymentState:
                     # from the replica actor. The invariant is that the rank is assigned
                     # during startup and before the replica is added to the replicas
                     # data structure with RUNNING state.
-                    # Recover rank from the replica actor during controller restart
+                    # Skip if the rank is already assigned (e.g., health-check failure
+                    # put the replica into RECOVERING without a controller crash, so the
+                    # rank was never released).
                     replica_id = replica.replica_id.unique_id
-                    self._rank_manager.recover_rank(
-                        replica_id, replica.actor_node_id, replica.rank
-                    )
+                    if not self._rank_manager.has_replica_rank(replica_id):
+                        self._rank_manager.recover_rank(
+                            replica_id, replica.actor_node_id, replica.rank
+                        )
                 # Register recovered gang replicas in the incremental
                 # bookkeeping (newly created gang replicas are already
                 # registered in _add_upscale_gang_replicas).
@@ -3572,7 +3575,7 @@ class DeploymentState:
         if (
             cached is not None
             and cached[0] == value
-            and (now - cached[1]) < RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S
+            and (now - cached[1]) < RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
         ):
             return
         self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
