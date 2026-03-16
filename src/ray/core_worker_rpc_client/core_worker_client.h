@@ -16,11 +16,11 @@
 
 #include <deque>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/rpc/retryable_grpc_client.h"
@@ -237,8 +237,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The number of bytes currently in flight.
   int64_t rpc_bytes_in_flight_ ABSL_GUARDED_BY(mutex_) = 0;
 
-  /// The max sequence number we have processed responses for.
-  std::optional<int64_t> max_finished_seq_no_ ABSL_GUARDED_BY(mutex_);
+  /// Per-concurrency-group max sequence number we have processed responses for.
+  absl::flat_hash_map<std::string, int64_t> max_finished_group_seq_no_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace rpc

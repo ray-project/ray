@@ -162,6 +162,25 @@ def ray_deps_setup():
         strip_prefix = None
     )
 
+    # Declare org_lzma_lzma before com_github_nelhage_rules_boost so that
+    # boost_deps()'s maybe() skips it and uses this declaration instead.
+    # Using a local build_file forces content-based cache invalidation:
+    # changing org_lzma_lzma.BUILD.bazel triggers re-setup on all machines,
+    # including Windows CI with persistent output bases where patching
+    # rules_boost's BUILD.lzma would not propagate.
+    auto_http_archive(
+        name = "org_lzma_lzma",
+        sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
+        strip_prefix = "xz-5.2.7",
+        urls = [
+            "https://cfhcable.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://superb-sea2.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://ayera.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://astuteinternet.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+        ],
+        build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
+    )
+
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
@@ -281,8 +300,15 @@ def ray_deps_setup():
         sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            # Work around bazelbuild/bazel#21592: with layering_check and
+            # non-sandbox/local spawn, clang can record transitive *.cppmap files
+            # in .d files, which Bazel then reports as undeclared direct deps.
+            # Fixed in Bazel 7.3.0. LLVM used the same workaround by disabling
+            # layering_check in Bazel overlays (llvm/llvm-project@5bba176).
+            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
+            "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
         ],
     )
 
@@ -321,7 +347,7 @@ def ray_deps_setup():
     auto_http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/v1.58.0/bazel/grpc_deps.bzl
+        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
         sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",

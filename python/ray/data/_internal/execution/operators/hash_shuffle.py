@@ -996,6 +996,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 task_resource_bundle=(
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
+                operator_name=self.name,
             )
             self._finalizing_tasks[partition_id] = data_task
 
@@ -1787,15 +1788,14 @@ class HashShuffleAggregator:
             blocks = _shape_blocks(blocks, self._target_max_block_size)
 
         for block in blocks:
-            # Collect execution stats (and reset)
-            exec_stats = exec_stats_builder.build()
-            exec_stats_builder = BlockExecStats.builder()
+            # Finish processing before actually yielding!
+            exec_stats_builder.finish()
 
             stats: StreamingGeneratorStats = yield block
 
-            # Update block serialization time
-            if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+            exec_stats = exec_stats_builder.build(
+                block_ser_time_s=(stats.object_creation_dur_s if stats else None),
+            )
 
             yield BlockMetadataWithSchema.from_block(
                 block,
@@ -1804,6 +1804,9 @@ class HashShuffleAggregator:
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+
+            # Reset the builder
+            exec_stats_builder = BlockExecStats.builder()
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""

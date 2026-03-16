@@ -318,6 +318,11 @@ class AutoscalerStateServiceHandler {
                                DrainNodeReply *reply,
                                SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleResizeRayletResourceInstances(
+      ResizeRayletResourceInstancesRequest request,
+      ResizeRayletResourceInstancesReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleReportClusterConfig(ReportClusterConfigRequest request,
                                          ReportClusterConfigReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
