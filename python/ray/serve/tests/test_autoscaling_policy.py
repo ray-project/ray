@@ -2261,6 +2261,50 @@ def test_class_callable_autoscaling_policy(serve_instance, policy):
     ray.kill(signal)
 
 
+def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
+    """Deploy with upscaling_factor > 1 and no traffic.
+
+    After the deployment becomes healthy the replica count must stay at
+    min_replicas for several seconds — the control loop must not amplify
+    the target while replicas are warming up.
+    """
+
+    min_replicas = 2
+    max_replicas = 10
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": min_replicas,
+            "max_replicas": max_replicas,
+            "target_ongoing_requests": 1,
+            "upscaling_factor": 2.0,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 30,
+        },
+    )
+    class A:
+        def __call__(self):
+            return "ok"
+
+    serve.run(A.bind())
+
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+
+    # Give the control loop time to run many iterations with no traffic.
+    for _ in range(10):
+        time.sleep(0.5)
+        num = get_num_alive_replicas("A")
+        assert num <= min_replicas, (
+            f"Expected at most {min_replicas} replicas with no traffic, "
+            f"but found {num}. The autoscaler may be runaway-scaling "
+            f"during warmup due to the upscaling_factor feedback loop bug."
+        )
+
+
 if __name__ == "__main__":
     import sys
 
