@@ -834,26 +834,28 @@ class AsyncioRouter:
                 )
             # Always register callback to notify router when request completes
             # (needed for token release in queue-based routing, metrics tracking, etc.)
-            # NOTE: add_done_callback fires from a C++ worker thread (for actor
-            # ObjectRefs) or a gRPC callback thread. _process_finished_request
-            # and decrement_queue_len_cache both access shared router state
-            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
-            # schedule them on the router's event loop.
+            # NOTE: These callbacks fire from a C++ worker thread (for actor
+            # ObjectRefs) or a gRPC callback thread — not the router's event
+            # loop. This is safe because:
+            #  - Individual CPython dict operations are GIL-protected, so
+            #    concurrent access won't corrupt the data structure.
+            #  - The compound get-then-update in decrement_queue_len_cache can
+            #    race with event-loop operations (e.g., on_send_request), but
+            #    the queue length cache is best-effort and self-corrects via
+            #    periodic probes and authoritative updates from replicas.
+            #  - _process_finished_request's metrics updates use _queries_lock.
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
             )
-            result.add_done_callback(
-                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
-            )
+            result.add_done_callback(callback)
             callback_registered = True
 
             if not with_rejection:
                 result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
+                    lambda _: self.request_router.decrement_queue_len_cache(
+                        replica.replica_id
                     )
                 )
                 return result
@@ -863,9 +865,8 @@ class AsyncioRouter:
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
                 result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
+                    lambda _: self.request_router.decrement_queue_len_cache(
+                        replica.replica_id
                     )
                 )
                 return result
