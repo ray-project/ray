@@ -8,6 +8,9 @@ ray:
 
   python: ["3.10", "3.11", "3.12", "3.13"]
   architectures: [x86_64, aarch64]
+  exceptions:
+    - architectures: [aarch64]
+      platforms: [tpu]  # JAX does not support aarch64 TPU: https://docs.jax.dev/en/latest/installation.html#supported-platforms
   platforms:
     - cpu
     - tpu
@@ -20,6 +23,7 @@ ray:
     - cu12.6.3-cudnn
     - cu12.8.1-cudnn
     - cu12.9.1-cudnn
+    - cu13.0.0-cudnn
 
 ray-ml:
   defaults:
@@ -39,4 +43,4 @@ ray-llm:
 
   python: ["3.11", "3.12"]
   architectures: [x86_64]
-  platforms: [cu12.8.1-cudnn, cu12.9.1-cudnn]
+  platforms: [cu12.8.1-cudnn, cu12.9.1-cudnn, cu13.0.0-cudnn]
