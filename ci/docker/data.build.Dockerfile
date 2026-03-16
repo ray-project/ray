@@ -5,6 +5,7 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG RAY_CI_JAVA_BUILD=
 ARG IMAGE_TYPE=base
+ARG PYTHON=3.10
 ARG PYTHON_DEPSET=python/deplocks/ci/data-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
 
 COPY $PYTHON_DEPSET /home/ray/python_depset.lock
