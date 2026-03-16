@@ -119,6 +119,8 @@ def jax_sync_generator(
     batch_iterable: Iterable[Any],
     drop_last: bool,
     named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+    synchronize_batches: bool = True,
+    synchronize_lookahead: int = 10,
 ) -> Iterator[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
     """A generator that synchronizes and shards batches across JAX workers.
 
@@ -141,25 +143,24 @@ def jax_sync_generator(
             raises a ValueError when uneven batches or uneven batch sizes are detected.
         named_sharding: An optional JAX NamedSharding specification defining the mesh
             and partition layout. If None, the array is sharded 1D along the batch dimension.
+        synchronize_batches: Whether to synchronize batch shapes across all hosts.
+            Setting this to False can improve performance if you guarantee that all
+            hosts produce identical batch shapes and counts beforehand.
+        synchronize_lookahead: The number of batches to look ahead and synchronize at
+            once. Increasing this value reduces synchronization overhead but may
+            increase memory usage as more batches are buffered locally.
 
     Yields:
-        Union[jax.Array, Dict[str, jax.Array]]: A globally sharded JAX Array or a
+        (jax.Array, Dict[str, jax.Array]): A globally sharded JAX Array or a
             dictionary of JAX Arrays natively placed on devices.
     """
     import jax
 
     num_local_devices = jax.local_device_count()
     iterator = iter(batch_iterable)
-    while True:
-        try:
-            batch = next(iterator)
-            has_batch = True
-        except StopIteration:
-            has_batch = False
-            local_batch_size = 0
-            batch = None
 
-        if has_batch:
+    if not synchronize_batches or jax.process_count() == 1:
+        for batch in iterator:
             if isinstance(batch, dict):
                 # Use the first column to determine the batch size
                 try:
@@ -169,28 +170,96 @@ def jax_sync_generator(
             else:
                 local_batch_size = len(batch)
 
-        if jax.process_count() > 1:
-            import jax.numpy as jnp
-            from jax.experimental.multihost_utils import process_allgather
+            if local_batch_size == 0:
+                continue
 
-            # Synchronize batch availability and size across all hosts.
-            stack = jnp.array([int(has_batch), local_batch_size], dtype=jnp.int32)
-            gathered = process_allgather(stack)
+            min_batch_size = local_batch_size
+            if min_batch_size % num_local_devices != 0:
+                if drop_last:
+                    # Align the minimum batch size to be divisible by local devices
+                    min_batch_size = min_batch_size - (
+                        min_batch_size % num_local_devices
+                    )
+                else:
+                    raise ValueError(
+                        f"The local batch size ({min_batch_size}) must be evenly "
+                        f"divisible by the number of local JAX devices "
+                        f"({num_local_devices}) on this host. "
+                        f"To safely truncate the batch to a divisible size, "
+                        f"set `drop_last=True` in `iter_jax_batches()`."
+                    )
 
-            all_have_batch = bool(gathered[:, 0].all())
-            any_have_batch = bool(gathered[:, 0].any())
+            if min_batch_size == 0:
+                continue
+
+            if local_batch_size > min_batch_size:
+                logger.info(
+                    f"Dropping last {local_batch_size - min_batch_size} samples "
+                    f"from the batch to be evenly divisible by the number of local JAX devices."
+                )
+                if isinstance(batch, dict):
+                    batch = {k: v[:min_batch_size] for k, v in batch.items()}
+                else:
+                    batch = batch[:min_batch_size]
+
+            yield _convert_ndarray_batch_to_jax_tensor_batch(
+                batch, named_sharding=named_sharding
+            )
+        return
+
+    # Multi-host synchronization with lookahead
+    while True:
+        local_batches = []
+        local_infos = []
+        for _ in range(synchronize_lookahead):
+            try:
+                batch = next(iterator)
+                has_batch = True
+                if isinstance(batch, dict):
+                    # Use the first column to determine the batch size
+                    try:
+                        local_batch_size = len(next(iter(batch.values())))
+                    except StopIteration:
+                        local_batch_size = 0
+                else:
+                    local_batch_size = len(batch)
+            except StopIteration:
+                batch = None
+                has_batch = False
+                local_batch_size = 0
+
+            local_batches.append(batch)
+            local_infos.extend([int(has_batch), local_batch_size])
+            if not has_batch:
+                break
+
+        import jax.numpy as jnp
+        from jax.experimental.multihost_utils import process_allgather
+
+        # Pad local_infos to 2 * synchronize_lookahead
+        padding_needed = 2 * synchronize_lookahead - len(local_infos)
+        if padding_needed > 0:
+            local_infos.extend([0] * padding_needed)
+
+        gathered = process_allgather(jnp.array(local_infos, dtype=jnp.int32))
+
+        for i in range(synchronize_lookahead):
+            h = gathered[:, 2 * i]
+            s = gathered[:, 2 * i + 1]
+
+            all_have_batch = bool(h.all())
+            any_have_batch = bool(h.any())
+            min_batch_size = int(s.min())
+            max_batch_size = int(s.max())
 
             if not any_have_batch:
-                # All workers have exhausted their data.
-                break
+                return
 
             if not all_have_batch:
                 # Some workers have exhausted their data while others have more.
                 if drop_last:
-                    # Drop the remaining batches from the workers that still have data.
-                    break
+                    return
                 else:
-                    # Raise an error because the remaining batches will be unevenly distributed.
                     raise ValueError(
                         "Uneven number of batches detected across JAX workers. "
                         "Some workers have exhausted their data while others have more. "
@@ -198,50 +267,47 @@ def jax_sync_generator(
                         "set `drop_last=True` in `iter_jax_batches()`."
                     )
 
-            min_batch_size = int(gathered[:, 1].min())
-            max_batch_size = int(gathered[:, 1].max())
-            # Fail all workers if any worker has a different batch size
+            if min_batch_size % num_local_devices != 0:
+                if drop_last:
+                    # Align the minimum batch size to be divisible by local devices
+                    min_batch_size = min_batch_size - (
+                        min_batch_size % num_local_devices
+                    )
+                else:
+                    raise ValueError(
+                        f"The globally minimum batch size ({min_batch_size}) must be evenly "
+                        f"divisible by the number of local JAX devices "
+                        f"({num_local_devices}) on this host. "
+                        f"To safely truncate the batch to a divisible size, "
+                        f"set `drop_last=True` in `iter_jax_batches()`."
+                    )
+
+            if min_batch_size == 0:
+                continue
+
+            # Fail all workers if any worker has a different batch size and drop_last=False
             if max_batch_size > min_batch_size and not drop_last:
                 raise ValueError(
                     "Uneven batch sizes detected across JAX workers. "
-                    f"This host produced a batch of size {local_batch_size}, "
+                    f"This host produced a batch of size {local_infos[2*i+1]}, "
                     f"but the globally minimum batch size is {min_batch_size}. "
                     "To safely truncate the batch to the minimum size, "
                     "set `drop_last=True` in `iter_jax_batches()`."
                 )
-        else:
-            if not has_batch:
-                break
-            min_batch_size = local_batch_size
 
-        if min_batch_size % num_local_devices != 0:
-            if drop_last:
-                # Align the minimum batch size to be divisible by the number of local devices
-                min_batch_size = min_batch_size - (min_batch_size % num_local_devices)
-            else:
-                raise ValueError(
-                    f"The globally minimum batch size ({min_batch_size}) must be evenly "
-                    f"divisible by the number of local JAX devices "
-                    f"({num_local_devices}) on this host. "
-                    f"To safely truncate the batch to a divisible size, "
-                    f"set `drop_last=True` in `iter_jax_batches()`."
+            batch = local_batches[i]
+            local_batch_size = local_infos[2 * i + 1]
+
+            if local_batch_size > min_batch_size:
+                # Truncate to the minimum batch size across all hosts
+                logger.info(
+                    f"Truncating batch from size {local_batch_size} to {min_batch_size}."
                 )
+                if isinstance(batch, dict):
+                    batch = {k: v[:min_batch_size] for k, v in batch.items()}
+                else:
+                    batch = batch[:min_batch_size]
 
-        if min_batch_size == 0:
-            # Data insufficient for even a single row across devices, skip and drop
-            continue
-
-        # At this point, if local_batch_size > min_batch_size, drop_last must be True
-        if local_batch_size > min_batch_size:
-            # Truncate to the minimum batch size across all hosts
-            logger.info(
-                f"Truncating batch from size {local_batch_size} to {min_batch_size}."
+            yield _convert_ndarray_batch_to_jax_tensor_batch(
+                batch, named_sharding=named_sharding
             )
-            if isinstance(batch, dict):
-                batch = {k: v[:min_batch_size] for k, v in batch.items()}
-            else:
-                batch = batch[:min_batch_size]
-
-        yield _convert_ndarray_batch_to_jax_tensor_batch(
-            batch, named_sharding=named_sharding
-        )
