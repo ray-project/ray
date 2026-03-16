@@ -390,7 +390,7 @@ class AutoscalerEventLogger:
             AutoscalerConfigDefinitionEventBuilder,
         )
 
-        node_type_configs = config.get_node_type_configs()
+        node_type_configs = config.get_node_type_configs() or {}
         available_node_types = []
         for node_type_name, nt_cfg in node_type_configs.items():
             available_node_types.append(

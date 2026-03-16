@@ -248,8 +248,21 @@ class Autoscaler:
             # Emit a node provisioning event when the provisioning state
             # changes (new pending requests, allocations, or failures).
             if autoscaling_state is not None and self._event_logger is not None:
+<<<<<<< external_ray_events_cache
                 provisioning_hash = hashlib.sha256(
                     autoscaling_state.SerializeToString()
+=======
+                # Hash only the repeated fields; exclude
+                # autoscaler_state_version and
+                # last_seen_cluster_resource_state_version which change
+                # every iteration and would defeat deduplication.
+                state_for_hash = AutoscalingState()
+                state_for_hash.CopyFrom(autoscaling_state)
+                state_for_hash.ClearField("autoscaler_state_version")
+                state_for_hash.ClearField("last_seen_cluster_resource_state_version")
+                provisioning_hash = hashlib.sha256(
+                    state_for_hash.SerializeToString()
+>>>>>>> autoscaler_events_2
                 ).hexdigest()
                 if provisioning_hash != self._last_provisioning_hash:
                     self._last_provisioning_hash = provisioning_hash

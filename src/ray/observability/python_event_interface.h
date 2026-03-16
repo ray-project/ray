@@ -101,13 +101,6 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &serialized_event_data,
     int nested_event_field_number);
 
-/// Serialize Python-emitted events into a RayEventsData payload.
-///
-/// Each event is serialized through RayEventInterface::Serialize and appended to
-/// the RayEventsData.events list. The protobuf is returned as serialized bytes.
-std::string SerializeEventsToRayEventsData(
-    std::vector<std::unique_ptr<RayEventInterface>> &&events);
-
 /// Serialize Python-emitted events directly to a JSON array string.
 ///
 /// Each event is serialized through RayEventInterface::Serialize, then converted

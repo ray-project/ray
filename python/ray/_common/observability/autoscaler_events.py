@@ -254,7 +254,11 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
             msg.instance_type_name = requested_instance.get("instance_type_name", "")
             msg.ray_node_type_name = requested_instance.get("ray_node_type_name", "")
             msg.count = requested_instance.get("count", 0)
+<<<<<<< external_ray_events_cache
             if "request_ts" in requested_instance:
+=======
+            if requested_instance.get("request_ts", 0) > 0:
+>>>>>>> autoscaler_events_2
                 msg.request_ts.CopyFrom(
                     epoch_to_protobuf_timestamp(requested_instance["request_ts"])
                 )
@@ -272,11 +276,19 @@ class AutoscalerNodeProvisioningEventBuilder(InternalEventBuilder):
             msg.ray_node_type_name = failed_instance.get("ray_node_type_name", "")
             msg.count = failed_instance.get("count", 0)
             msg.reason = failed_instance.get("reason", "")
+<<<<<<< external_ray_events_cache
             if "start_ts" in failed_instance:
                 msg.start_ts.CopyFrom(
                     epoch_to_protobuf_timestamp(failed_instance["start_ts"])
                 )
             if "failed_ts" in failed_instance:
+=======
+            if failed_instance.get("start_ts", 0) > 0:
+                msg.start_ts.CopyFrom(
+                    epoch_to_protobuf_timestamp(failed_instance["start_ts"])
+                )
+            if failed_instance.get("failed_ts", 0) > 0:
+>>>>>>> autoscaler_events_2
                 msg.failed_ts.CopyFrom(
                     epoch_to_protobuf_timestamp(failed_instance["failed_ts"])
                 )
