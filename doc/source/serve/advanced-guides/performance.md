@@ -125,12 +125,23 @@ class Caller:
 In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
 :::
 
-This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
+Throughput-optimized serving enables several optimizations that improve throughput and reduce latency:
 
-- Reducing overhead associated with frequent logging.
-- Disabling behavior that allowed Serve applications to include blocking operations.
+- **Shared event loop**: User code and the Serve framework (router, replica management) run on the same event loop, eliminating thread-switching overhead. This requires all user code to be non-blocking.
+- **gRPC interdeployment transport**: Deployments communicate via gRPC instead of Ray's actor RPC, reducing per-request overhead for small payloads. See [Use gRPC for interdeployment communication](serve-interdeployment-grpc) for details and caveats.
+- **Log buffering**: Logs are buffered and flushed in batches rather than written on every request, reducing I/O overhead. Error-level logs are always flushed immediately.
+- **Reduced stderr logging**: Logs are only written to files, not duplicated to stderr.
 
-If your Ray Serve code includes thread blocking operations, you must refactor your code to achieve enhanced throughput. The following table shows examples of blocking and non-blocking code:
+#### Refactor blocking code
+
+Because throughput-optimized serving runs user code on a shared event loop, all deployment methods must be non-blocking. You must refactor any blocking operations in your request path, including:
+
+- Synchronous HTTP requests (e.g., `requests.get`) — use `aiohttp` or `httpx.AsyncClient` instead.
+- Synchronous file I/O (e.g., `open().read()`) — use `aiofiles` instead.
+- Blocking database calls — use async database drivers (e.g., `asyncpg`, `motor`, `aioredis`).
+- `time.sleep()` — use `await asyncio.sleep()` instead.
+
+The following table shows examples of blocking and non-blocking code:
 
 <table>
 <tr>
@@ -198,16 +209,15 @@ You can also configure each option individually. The following table details the
 
 You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
-:::{warning} Caveats and limitations
-Throughput-optimized serving does not support the following:
+#### Unsupported features
 
-- [Model multiplexing](serve-model-multiplexing) on ingress deployments. Downstream deployments can still use multiplexing.
-- gRPC ingress endpoints (`grpc_options`).
-- Scale-to-zero on ingress deployments. Set `min_replicas` >= 1 for ingress autoscaling configs.
-- WebSocket connections. Use [streaming responses](serve-http-streaming-response) instead.
+The following features are not supported when throughput-optimized serving is enabled:
 
-See also the [gRPC interdeployment caveats](serve-interdeployment-grpc) for large payloads and chained `DeploymentResponse` objects.
-:::
+- **[Model multiplexing](serve-model-multiplexing) on ingress deployments.** You can still use model multiplexing on downstream (non-ingress) deployments.
+- **gRPC ingress endpoints.** Serving gRPC endpoints via `grpc_options` is not supported. Use HTTP ingress instead.
+- **Scale-to-zero on ingress deployments.** Ingress deployments must have `min_replicas` >= 1 in their autoscaling configuration. Scale-to-zero is still supported for non-ingress deployments.
+- **WebSocket connections.** Use standard HTTP request-response or [streaming responses](serve-http-streaming-response) instead.
+- **Passing large objects between deployments.** Because throughput-optimized serving uses [gRPC for interdeployment communication](serve-interdeployment-grpc) by default, all payloads are serialized over the wire. For large objects (greater than ~1 MB), override individual handles to pass by reference: `handle.options(_by_reference=True)`. See [When not to use gRPC](serve-interdeployment-grpc) for details.
 
 (serve-haproxy)=
 ### Use HAProxy load balancing
