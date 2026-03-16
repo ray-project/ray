@@ -58,7 +58,11 @@ class _CheckpointManagerState(BaseModel):
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
+    # List of processed checkpoints based on if successfully validated,
+    #   timed out or failed due to an error or cancelled for some reason.
     validated_checkpoint_dir_names: List[str]
+    timed_out_validation_checkpoint_dir_names: List[str]
+    failed_validation_checkpoint_dir_names: List[str]
 
 
 def _get_training_result_from_state(
@@ -108,8 +112,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
         ] = {}
 
-        # Set of checkpoints that have completed validation.
-        self._validated_checkpoints: set = set()
+        # Set of checkpoints that have successfully completed, been timed out
+        #   or failed validation.
+        self._validated_checkpoints: set[Checkpoint] = set()
+        self._timed_out_validation_checkpoints: set[Checkpoint] = set()
+        self._failed_validation_checkpoints: set[Checkpoint] = set()
 
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
@@ -243,7 +250,22 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ]
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
-                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
+
+                if checkpoint_result.checkpoint in self._validated_checkpoints:
+                    self._validated_checkpoints.discard(checkpoint_result.checkpoint)
+                elif (
+                    checkpoint_result.checkpoint
+                    in self._timed_out_validation_checkpoints
+                ):
+                    self._timed_out_validation_checkpoints.discard(
+                        checkpoint_result.checkpoint
+                    )
+                elif (
+                    checkpoint_result.checkpoint in self._failed_validation_checkpoints
+                ):
+                    self._failed_validation_checkpoints.discard(
+                        checkpoint_result.checkpoint
+                    )
 
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.
@@ -295,6 +317,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
             for checkpoint in self._validated_checkpoints
         ]
+        timed_out_validation_checkpoint_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._timed_out_validation_checkpoints
+        ]
+        failed_validation_checkpoint_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._failed_validation_checkpoints
+        ]
 
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
@@ -304,6 +334,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             pending_validation_specs=pending_validation_specs,
             current_report_index=self._current_report_index,
             validated_checkpoint_dir_names=validated_checkpoint_dir_names,
+            timed_out_validation_checkpoint_dir_names=timed_out_validation_checkpoint_dir_names,
+            failed_validation_checkpoint_dir_names=failed_validation_checkpoint_dir_names,
         )
         return manager_snapshot.json()
 
@@ -380,10 +412,21 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 validation_spec,
             )
 
-        # Restore validated checkpoints. Only checkpoints still in _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
+        # Restore validated (successful), timed out and failed checkpoints.
+        # Only checkpoints still in _checkpoint_results can be looked up, evicted checkpoints are irrelevant.
         for dir_name in manager_snapshot.validated_checkpoint_dir_names:
             if dir_name in checkpoint_dir_name_to_checkpoint_result:
                 self._validated_checkpoints.add(
+                    checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                )
+        for dir_name in manager_snapshot.timed_out_validation_checkpoint_dir_names:
+            if dir_name in checkpoint_dir_name_to_checkpoint_result:
+                self._timed_out_validation_checkpoints.add(
+                    checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                )
+        for dir_name in manager_snapshot.failed_validation_checkpoint_dir_names:
+            if dir_name in checkpoint_dir_name_to_checkpoint_result:
+                self._failed_validation_checkpoints.add(
                     checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
                 )
 

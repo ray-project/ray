@@ -72,12 +72,15 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         # _TrainingReports that we will validate
         self._training_report_queue = deque()
 
-        # Map from in flight validation task to checkpoint
+        # Map from in flight validation task to (checkpoint, start_time, timeout_s)
         self._pending_validations = OrderedDict()
 
         # Map from validation task to checkpoint
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
+
+        # Map from validation task to checkpoint which have been timed out
+        self._timed_out_validations = OrderedDict()
 
         self._requeue_incomplete_validations()
 
@@ -155,7 +158,17 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 training_report.validation,
                 training_report.checkpoint,
             )
-            self._pending_validations[validate_task] = training_report.checkpoint
+
+            if isinstance(training_report.validation, ValidationTaskConfig) and training_report.validation.timeout_s is not None:
+                effective_timeout_s = training_report.validation.timeout_s
+            else:
+                effective_timeout_s = self._validation_config.task_config.timeout_s
+
+            self._pending_validations[validate_task] = (
+                training_report.checkpoint,
+                time.monotonic(),
+                effective_timeout_s,
+            )
             logger.info(
                 f"Launched async validation task for checkpoint {training_report.checkpoint}"
             )
