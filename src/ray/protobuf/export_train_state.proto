@@ -84,7 +84,8 @@ message ExportTrainRunEventData {
   // Run settings
   RunSettings run_settings = 15;
 
-  // Settings for a Train run, primarily consisting of configs set before a train run starts.
+  // Settings for a Train run, primarily consisting of configs set before a train run
+  // starts.
   message RunSettings {
     // The user defined train loop config for a Train run.
     optional google.protobuf.Struct train_loop_config = 1;
@@ -133,7 +134,8 @@ message ExportTrainRunEventData {
       int32 max = 2;
     }
 
-    // The number of workers for the Train run, can be a range with elastic training enabled
+    // The number of workers for the Train run, can be a range with elastic training
+    // enabled
     oneof num_workers {
       int32 num_workers_fixed = 1;
       IntRange num_workers_range = 2;
@@ -150,7 +152,7 @@ message ExportTrainRunEventData {
     // Whether to use TPUs for the Train run.
     bool use_tpu = 7;
     // The topology for the Train run.
-    optional string topology= 8;
+    optional string topology = 8;
     // The bundle label selector for the Train run.
     repeated StringMap bundle_label_selector = 9;
   }
@@ -217,7 +219,6 @@ message ExportTrainRunEventData {
     // of the checkpoint_score_attribute will be kept.
     CheckpointScoreOrder checkpoint_score_order = 3;
   }
-
 }
 
 // Metadata for an individual attempt to execute a Train run
