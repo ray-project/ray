@@ -181,7 +181,7 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
-        # Guard against non-numeric types (e.g. numpy objects) that would cause
+        # Guard against non-scalar types (e.g. numpy arrays) that would cause
         # np.isnan() to raise TypeError in newer numpy versions.
         and isinstance(mem_size, (int, float))
         and not np.isnan(mem_size)
