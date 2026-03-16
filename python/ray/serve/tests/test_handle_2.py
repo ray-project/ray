@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from typing import Any, List
 
@@ -6,12 +7,18 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import SignalActor, async_wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
+from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
 )
+from ray.serve._private.test_utils import check_num_replicas_eq
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
@@ -277,6 +284,418 @@ async def test_chained_deployment_response_await_order(
     # c = 30 * 4 = 120 (true_c)
     # result = 30 * 120 = 3600
     assert result == 3600, f"Expected 3600, got {result}"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_upstream_crash_downstream_stays_in_rotation(
+    serve_instance,
+):
+    """
+    When upstream (Adder) crashes with os._exit in a chained DeploymentResponse
+    scenario, the downstream (Multiplier) must NOT be incorrectly marked as dead.
+    Subsequent requests should succeed after the upstream is restarted.
+    """
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (5 + 1) * 2 = 12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
+    # Trigger Adder crash with os._exit(0)
+    crash_response = handle.remote(0)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for Adder to be restarted by controller
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="Adder",
+        target=1,
+        timeout=30,
+    )
+
+    # Multiplier should still be in rotation (don't mark it dead when error is
+    # from upstream). A new request should succeed. (2 + 1) * 2 = 6
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must not have been restarted (same actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before == multiplier_actor_id_after, (
+        f"Multiplier was incorrectly marked dead and restarted: "
+        f"actor_id {multiplier_actor_id_before} -> {multiplier_actor_id_after}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_downstream_crash_replica_marked_dead(
+    serve_instance,
+):
+    """
+    When downstream (Multiplier) crashes in a chained DeploymentResponse
+    scenario, the Multiplier replica MUST be correctly marked as dead.
+    Subsequent requests should succeed after the Multiplier is restarted.
+    """
+    # Adder returns input+1. Multiplier crashes when input==0.
+    # So input=-1 -> Adder returns 0 -> Multiplier gets 0 and crashes.
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val * self._multiple
+
+        def get_actor_id(self) -> str:
+            return ray.get_runtime_context().get_actor_id()
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: (-1 + 1) * 2 = 0, but Multiplier crashes on 0. Use val=5: (5+1)*2=12
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    multiplier_handle = serve.get_deployment_handle("Multiplier", "default")
+    multiplier_actor_id_before = multiplier_handle.get_actor_id.remote().result()
+
+    # Trigger Multiplier crash: Adder returns 0, Multiplier gets 0 and os._exit(0)
+    crash_response = handle.remote(-1)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for Multiplier to be restarted by controller
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="Multiplier",
+        target=1,
+        timeout=30,
+    )
+
+    # New request should succeed with restarted Multiplier. (2 + 1) * 2 = 6
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
+
+    # Multiplier replica must have been restarted (different actor_id).
+    multiplier_actor_id_after = multiplier_handle.get_actor_id.remote().result()
+    assert multiplier_actor_id_before != multiplier_actor_id_after, (
+        f"Multiplier was not correctly marked dead and restarted: "
+        f"actor_id unchanged at {multiplier_actor_id_before}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_middle_of_chain_crash(serve_instance):
+    """
+    When the middle deployment (B) crashes in a 3-hop chain Ingress->A->B->C,
+    only B should be marked dead. A and C must NOT be incorrectly marked dead.
+    Subsequent requests should succeed after B is restarted.
+    """
+
+    @serve.deployment
+    class ServiceA:
+        def __call__(self, val: int) -> int:
+            return val * 2
+
+    @serve.deployment
+    class ServiceB:
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val * 3
+
+    @serve.deployment
+    class ServiceC:
+        def __call__(self, val: int) -> int:
+            return val * 5
+
+    @serve.deployment
+    class Ingress:
+        def __init__(
+            self,
+            a: DeploymentHandle,
+            b: DeploymentHandle,
+            c: DeploymentHandle,
+        ):
+            self._a = a
+            self._b = b
+            self._c = c
+
+        async def __call__(self, val: int) -> int:
+            a_resp: DeploymentResponse = self._a.remote(val)
+            b_resp: DeploymentResponse = self._b.remote(a_resp)
+            c_resp: DeploymentResponse = self._c.remote(b_resp)
+            return await c_resp
+
+    app = Ingress.bind(
+        ServiceA.bind(),
+        ServiceB.bind(),
+        ServiceC.bind(),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup: 5 -> A=10 -> B=30 -> C=150
+    assert handle.remote(5).result(timeout_s=10) == 150
+
+    # Trigger B crash: val=0 -> A=0 -> B gets 0, crashes
+    crash_response = handle.remote(0)
+    with pytest.raises((RayActorError, Exception)):
+        crash_response.result(timeout_s=5)
+
+    # Wait for B to be restarted
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="ServiceB",
+        target=1,
+        timeout=30,
+    )
+
+    # A and C should still be in rotation. New request: 2 -> A=4 -> B=12 -> C=60
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 60, f"Expected 60, got {result}"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ActorDiedError not raised properly on Windows.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_multiple_crashes_then_success(serve_instance):
+    """
+    Multiple crash requests followed by multiple success requests.
+    Verifies recovery and routing after repeated upstream failures.
+    """
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                os._exit(0)
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    # Trigger multiple crashes (each kills Adder, controller restarts it)
+    for _ in range(3):
+        crash_response = handle.remote(0)
+        with pytest.raises((RayActorError, Exception)):
+            crash_response.result(timeout_s=5)
+
+    # Wait for Adder to be healthy
+    wait_for_condition(
+        check_num_replicas_eq,
+        name="Adder",
+        target=1,
+        timeout=30,
+    )
+
+    # Multiple success requests should all succeed
+    for i in range(3):
+        result = handle.remote(2).result(timeout_s=30)
+        assert result == 6, f"Request {i}: expected 6, got {result}"
+
+
+@pytest.mark.skipif(
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="Chained object refs use Ray actor transport; gRPC path differs.",
+)
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode has different failure handling.",
+)
+def test_chained_deployment_response_upstream_raises_exception(serve_instance):
+    """
+    When upstream raises a normal exception (not ActorDiedError), the error
+    propagates correctly and the downstream replica remains in rotation.
+    """
+    # No Windows skip: we use raise ValueError, not os._exit
+
+    @serve.deployment
+    class Adder:
+        def __init__(self, increment: int):
+            self._increment = increment
+
+        def __call__(self, val: int) -> int:
+            if val == 0:
+                raise ValueError("Adder rejects 0")
+            return val + self._increment
+
+    @serve.deployment
+    class Multiplier:
+        def __init__(self, multiple: int):
+            self._multiple = multiple
+
+        def __call__(self, val: int) -> int:
+            return val * self._multiple
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, adder: DeploymentHandle, multiplier: DeploymentHandle):
+            self._adder = adder
+            self._multiplier = multiplier
+
+        async def __call__(self, input: int) -> int:
+            adder_response: DeploymentResponse = self._adder.remote(input)
+            multiplier_response: DeploymentResponse = self._multiplier.remote(
+                adder_response
+            )
+            return await multiplier_response
+
+    app = Ingress.bind(
+        Adder.bind(increment=1),
+        Multiplier.bind(multiple=2),
+    )
+    handle: DeploymentHandle = serve.run(app)
+
+    # Warmup
+    assert handle.remote(5).result(timeout_s=10) == 12
+
+    # Upstream raises ValueError (may be wrapped in RayTaskError)
+    error_response = handle.remote(0)
+    with pytest.raises(Exception):
+        error_response.result(timeout_s=5)
+
+    # Multiplier should still be in rotation. Next request succeeds.
+    result = handle.remote(2).result(timeout_s=30)
+    assert result == 6, f"Expected 6, got {result}"
 
 
 def test_nested_deployment_response_error(serve_instance):
