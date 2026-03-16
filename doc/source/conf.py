@@ -839,7 +839,10 @@ intersphinx_mapping = {
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
     "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "pandas": (
+        "https://pandas.pydata.org/pandas-docs/stable/",
+        "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
     "pydantic": ("https://docs.pydantic.dev/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
