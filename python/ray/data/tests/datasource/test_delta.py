@@ -11,6 +11,12 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
+# deltalake's write_deltalake requires pyarrow >= 15 for the Arrow C Stream interface.
+pytestmark = pytest.mark.skipif(
+    tuple(int(x) for x in pa.__version__.split(".")[:2]) < (15, 0),
+    reason="deltalake write_deltalake requires pyarrow >= 15.0",
+)
+
 
 @pytest.mark.parametrize(
     "batch_size",
