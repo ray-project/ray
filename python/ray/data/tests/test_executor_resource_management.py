@@ -285,12 +285,12 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.current_logical_usage() == ExecutionResources(cpu=1, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
+    assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(2400, rel=0.5)
     # No sample available yet, uses fallback estimate: 1 task * per_task_output.
     assert (
         op.metrics.obj_store_mem_pending_task_outputs
         == 1 * op.data_context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
     )
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
 
 def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
