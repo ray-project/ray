@@ -1244,6 +1244,33 @@ def _normalize_gcs_address(address: str) -> Tuple[str, int]:
     return (ip, int(port))
 
 
+def _extract_flag_value(cmdline: List[str], flag: str) -> Optional[str]:
+    """Extract the value of --flag=value from a command line argument list.
+
+    Handles both normal args (--flag=value) and setproctitle cases where
+    args are concatenated into a single string
+    (e.g., "ray::DashboardAgent --flag=value").
+
+    Args:
+        cmdline: List of command line arguments from psutil.Process.cmdline().
+        flag: Flag name without leading dashes (e.g., "gcs-address").
+
+    Returns:
+        The flag value if found, None otherwise.
+    """
+    prefix = f"--{flag}="
+    for arg in cmdline:
+        if arg.startswith(prefix):
+            return arg.split("=", 1)[1]
+        elif prefix in arg:
+            idx = arg.find(prefix)
+            if idx >= 0:
+                parts = arg[idx + len(prefix) :].rstrip("\"'").split()
+                if parts and parts[0]:
+                    return parts[0]
+    return None
+
+
 def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     """Extract GCS address from a process's command line arguments.
 
@@ -1251,7 +1278,6 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     1. Most processes: --gcs-address=ip:port
     2. ray.util.client.server: --address=ip:port (equivalent to GCS address)
     3. gcs_server: --node-ip-address=ip + --gcs_server_port=port
-    4. setproctitle case: args concatenated in first string
 
     Args:
         cmdline: List of command line arguments from psutil.Process.cmdline().
@@ -1262,73 +1288,22 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     if not cmdline:
         return None
 
-    # Strategy 1: Look for --gcs-address=ip:port pattern.
-    for arg in cmdline:
-        if arg.startswith("--gcs-address="):
-            return arg.split("=", 1)[1]
-        elif "--gcs-address=" in arg:
-            # Handle setproctitle case where args might be concatenated,
-            # e.g., "ray::DashboardAgent --gcs-address=127.0.0.1:6379".
-            idx = arg.find("--gcs-address=")
-            if idx >= 0:
-                addr_part = arg[idx + len("--gcs-address=") :]
-                # Remove any trailing quotes, spaces, or other args.
-                addr_part = addr_part.rstrip("\"'").split()[0]
-                if addr_part:
-                    return addr_part
+    # Strategy 1: --gcs-address=ip:port (most Ray processes).
+    addr = _extract_flag_value(cmdline, "gcs-address")
+    if addr:
+        return addr
 
-    # Strategy 2: Look for --address=ip:port (for ray.util.client.server).
-    # This is equivalent to GCS address for client server.
-    for arg in cmdline:
-        if arg.startswith("--address="):
-            return arg.split("=", 1)[1]
-        elif "--address=" in arg:
-            # Handle setproctitle case.
-            idx = arg.find("--address=")
-            if idx >= 0:
-                addr_part = arg[idx + len("--address=") :]
-                addr_part = addr_part.rstrip("\"'").split()[0]
-                if addr_part:
-                    return addr_part
+    # Strategy 2: --address=ip:port (ray.util.client.server).
+    addr = _extract_flag_value(cmdline, "address")
+    if addr:
+        return addr
 
-    # Strategy 3: For gcs_server, extract from --node-ip-address/--node_ip_address
-    # and --gcs_server_port (C++ gflags may show underscore in argv).
-    # Use independent checks (not elif) so that both ip and port can be
-    # extracted from a single concatenated setproctitle string.
-    node_ip = None
-    gcs_port = None
-    for arg in cmdline:
-        # Extract node IP.
-        if node_ip is None:
-            if arg.startswith("--node-ip-address="):
-                node_ip = arg.split("=", 1)[1]
-            elif arg.startswith("--node_ip_address="):
-                node_ip = arg.split("=", 1)[1]
-            elif "--node-ip-address=" in arg:
-                # Handle setproctitle case.
-                idx = arg.find("--node-ip-address=")
-                if idx >= 0:
-                    node_ip = (
-                        arg[idx + len("--node-ip-address=") :].rstrip("\"'").split()[0]
-                    )
-            elif "--node_ip_address=" in arg:
-                idx = arg.find("--node_ip_address=")
-                if idx >= 0:
-                    node_ip = (
-                        arg[idx + len("--node_ip_address=") :].rstrip("\"'").split()[0]
-                    )
-        # Extract GCS port (independent of node IP check).
-        if gcs_port is None:
-            if arg.startswith("--gcs_server_port="):
-                gcs_port = arg.split("=", 1)[1]
-            elif "--gcs_server_port=" in arg:
-                # Handle setproctitle case.
-                idx = arg.find("--gcs_server_port=")
-                if idx >= 0:
-                    gcs_port = (
-                        arg[idx + len("--gcs_server_port=") :].rstrip("\"'").split()[0]
-                    )
-
+    # Strategy 3: gcs_server uses --node-ip-address + --gcs_server_port.
+    # C++ gflags may show underscore or hyphen variants in argv.
+    node_ip = _extract_flag_value(cmdline, "node-ip-address") or _extract_flag_value(
+        cmdline, "node_ip_address"
+    )
+    gcs_port = _extract_flag_value(cmdline, "gcs_server_port")
     if node_ip and gcs_port:
         return f"{node_ip}:{gcs_port}"
 
@@ -1457,13 +1432,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
                     # If stop_address is set, only include processes whose
                     # command line matches the target GCS address.
                     if stop_address is not None:
-                        try:
-                            if not _cmdline_matches_gcs_address(
-                                proc_args, stop_address
-                            ):
-                                continue
-                        except Exception:
-                            # If address matching fails, skip this process.
+                        if not _cmdline_matches_gcs_address(proc_args, stop_address):
                             continue
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
