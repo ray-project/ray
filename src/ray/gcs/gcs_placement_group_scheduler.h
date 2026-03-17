@@ -483,6 +483,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const rpc::PlacementStrategy strategy);
 
+  /// Helper to undo any tentative resource deductions from a failed TrySchedule attempt.
+  /// \param res The scheduling result containing the tentatively selected nodes.
+  /// \param req_bundles The bundles that were attempted to be scheduled.
+  void UndoTentativeReservations(
+      const raylet_scheduling_policy::SchedulingResult &res,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &req_bundles);
+
   instrumented_io_context &io_context_;
 
   /// A timer that ticks every cancel resource failure milliseconds.

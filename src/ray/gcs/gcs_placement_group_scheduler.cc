@@ -56,6 +56,20 @@ raylet_scheduling_policy::SchedulingResult GcsPlacementGroupScheduler::TrySchedu
   return cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 }
 
+void GcsPlacementGroupScheduler::UndoTentativeReservations(
+    const raylet_scheduling_policy::SchedulingResult &res,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &req_bundles) {
+  if (res.status.IsSuccess()) {
+    return;
+  }
+  auto &crm = cluster_resource_scheduler_.GetClusterResourceManager();
+  for (size_t j = 0; j < res.selected_nodes.size(); ++j) {
+    scheduling::NodeID node_id(res.selected_nodes[j].Binary());
+    crm.AddNodeAvailableResources(
+        node_id, req_bundles[j]->GetRequiredResources().GetResourceSet());
+  }
+}
+
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const SchedulePgRequest &request) {
   const auto &placement_group = request.placement_group;
@@ -108,20 +122,26 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   int selected_strategy_index =
       is_scheduling_all_bundles ? 0 : placement_group->GetActiveStrategyIndex();
 
-  // If a partial reschedule is infeasible but fallback strategies exist,
-  // force the PG to remain retryable instead of marking it permanently infeasible.
-  if (!is_scheduling_all_bundles && !any_strategy_feasible &&
-      scheduling_strategies.size() > 1) {
-    any_strategy_feasible = true;
+  UndoTentativeReservations(scheduling_result, bundles_to_schedule);
+
+  bool attempt_fallbacks = false;
+  if (scheduling_strategies.size() > 1) {
+    if (is_scheduling_all_bundles && !scheduling_result.status.IsSuccess()) {
+      attempt_fallbacks = true;
+    } else if (!is_scheduling_all_bundles && scheduling_result.status.IsInfeasible()) {
+      attempt_fallbacks = true;
+    }
   }
 
-  if (is_scheduling_all_bundles && !scheduling_result.status.IsSuccess() &&
-      scheduling_strategies.size() > 1) {
+  if (attempt_fallbacks) {
     RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
                    << placement_group->GetPlacementGroupID() << ". Attempting "
                    << (scheduling_strategies.size() - 1) << " fallback options.";
 
     for (int i = 1; i < scheduling_strategies.size(); i++) {
+      if (!is_scheduling_all_bundles && i == placement_group->GetActiveStrategyIndex())
+        continue;
+
       const auto &option = scheduling_strategies.Get(i);
       std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
       for (const auto &bundle_proto : option.bundles()) {
@@ -142,7 +162,25 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         scheduling_result = fallback_result;
         bundles_to_schedule = fallback_bundles;
         selected_strategy_index = i;
+
+        // If a partial reschedule is switching strategies, abandon the surviving
+        // committed bundles from the old strategy to reshape the PG.
+        if (!is_scheduling_all_bundles) {
+          auto maybe_bundle_locations =
+              committed_bundle_location_index_.GetBundleLocations(
+                  placement_group->GetPlacementGroupID());
+          if (maybe_bundle_locations.has_value()) {
+            auto bundle_locations = maybe_bundle_locations.value();
+            DestroyPlacementGroupCommittedBundleResources(
+                placement_group->GetPlacementGroupID());
+            ReturnBundleResources(bundle_locations);
+          }
+          is_scheduling_all_bundles = true;
+        }
         break;
+      } else {
+        // Undo failed fallback tentative reservations before trying next
+        UndoTentativeReservations(fallback_result, fallback_bundles);
       }
     }
   }
