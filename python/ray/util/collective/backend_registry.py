@@ -44,7 +44,6 @@ def register_collective_backend(name: str, group_cls: Type[BaseGroup]):
     upper_name = name.upper()
     if not hasattr(types.Backend, upper_name):
         setattr(types.Backend, upper_name, upper_name)
-    return getattr(types.Backend, upper_name)
 
 
 def is_registered_collective_backend(name: str) -> bool:

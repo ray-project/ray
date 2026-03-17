@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    types.Backend.NCCL = register_collective_backend("NCCL", NCCLGroup)
+    register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
     pass
 
@@ -33,7 +33,7 @@ try:
         get_master_address_metadata_key as _get_master_addr_key,
     )
 
-    types.Backend.GLOO = register_collective_backend("GLOO", TorchGLOOGroup)
+    register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
     pass
 

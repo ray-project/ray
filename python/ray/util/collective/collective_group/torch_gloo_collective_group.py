@@ -9,6 +9,7 @@ from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
+    Backend,
     BarrierOptions,
     BroadcastOptions,
     RecvOptions,
@@ -110,7 +111,7 @@ class TorchGLOOGroup(BaseGroup):
     @classmethod
     def backend(cls):
         """The backend of this collective group."""
-        return "GLOO"
+        return Backend.GLOO
 
     @classmethod
     def check_backend_availability(cls) -> bool:

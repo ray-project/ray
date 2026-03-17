@@ -10,6 +10,7 @@ from ray.util.collective.const import ENV, get_store_name
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
+    Backend,
     BarrierOptions,
     BroadcastOptions,
     RecvOptions,
@@ -169,7 +170,7 @@ class NCCLGroup(BaseGroup):
 
     @classmethod
     def backend(cls):
-        return "NCCL"
+        return Backend.NCCL
 
     @classmethod
     def check_backend_availability(cls) -> bool:
