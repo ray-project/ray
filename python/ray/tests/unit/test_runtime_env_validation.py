@@ -740,6 +740,38 @@ class TestGetPipHash:
             assert isinstance(hash_val, str)
             assert len(hash_val) == 40
 
+    def test_pip_hash_with_long_form_requirement(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("numpy==1.21.0\n")
+            temp_file = f.name
+
+        try:
+            pip_dict = {"packages": [f"--requirement {temp_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+        finally:
+            os.unlink(temp_file)
+
+    def test_pip_hash_with_invalid_file(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Test with non-existent file
+            non_existent_file = os.path.join(tmpdir, "non_existent.txt")
+            pip_dict = {"packages": [f"-r {non_existent_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
