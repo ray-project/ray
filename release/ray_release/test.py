@@ -441,6 +441,8 @@ class Test(dict):
         byod_type = self.get_byod_type()
         if byod_type.startswith("llm-"):
             return byod_type[len("llm-") :]
+        if byod_type.startswith("gpu-"):
+            return byod_type[len("gpu-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
