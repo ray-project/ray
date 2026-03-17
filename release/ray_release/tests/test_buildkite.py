@@ -2,11 +2,13 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Callable, Dict
+from typing import TYPE_CHECKING, Callable, Dict
+
+if TYPE_CHECKING:
+    from ray_release.github_client import GitHubRepo
 from unittest.mock import patch
 
 import yaml
-from github import Repository
 
 from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.concurrency import (
@@ -72,7 +74,7 @@ class MockTest(Test):
     def update_from_s3(self) -> None:
         self["update_from_s3"] = True
 
-    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         return False
 
 
