@@ -45,7 +45,6 @@ from ray.core.generated import (
 )
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.autoscaler_events_storage import (
-    AutoscalerEventCacheInput,
     AutoscalerEventsStorage,
 )
 from ray.dashboard.modules.event.event_head import EventHead, _list_cluster_events_impl
@@ -71,6 +70,31 @@ def _make_event_head_for_external_event_tests(max_size_bytes=10 * 1024 * 1024):
     event_head.events = defaultdict(OrderedDict)
     event_head._autoscaler_events_storage = AutoscalerEventsStorage(max_size_bytes)
     return event_head
+
+
+def _make_scaling_decision_event(
+    *,
+    event_id: bytes = b"\x01",
+    timestamp_seconds: int = 123,
+    launch_actions=None,
+    terminate_actions=None,
+    cluster_resources_after=None,
+    infeasible_resource_requests=None,
+):
+    event = events_base_event_pb2.RayEvent(
+        event_id=event_id,
+        source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
+        event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
+        severity=events_base_event_pb2.RayEvent.Severity.INFO,
+        autoscaler_scaling_decision_event=events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent(
+            launch_actions=launch_actions or [],
+            terminate_actions=terminate_actions or [],
+            cluster_resources_after=cluster_resources_after or {},
+            infeasible_resource_requests=infeasible_resource_requests or [],
+        ),
+    )
+    event.timestamp.seconds = timestamp_seconds
+    return event
 
 
 def _get_event(msg="empty message", job_id=None, source_type=None):
@@ -725,21 +749,15 @@ async def test_report_external_ray_events_rejects_disallowed_event_types(monkeyp
 @pytest.mark.asyncio
 async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
     event_head = _make_event_head_for_external_event_tests()
-    event = events_base_event_pb2.RayEvent(
-        event_id=b"\x01",
-        source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
-        event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
-        severity=events_base_event_pb2.RayEvent.Severity.INFO,
-        autoscaler_scaling_decision_event=events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent(
-            launch_actions=[
-                events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
-                    instance_type="type-1",
-                    count=1,
-                )
-            ]
-        ),
+    event = _make_scaling_decision_event(
+        launch_actions=[
+            events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                instance_type="type-1",
+                count=1,
+            )
+        ],
+        cluster_resources_after={"CPU": 1},
     )
-    event.timestamp.seconds = 123
     payload = [
         message_to_dict(
             event,
@@ -763,17 +781,14 @@ async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
 
     assert response.status == 200
     cached_event = event_head._autoscaler_events_storage.get_events()["01"]
-    assert cached_event["source_type"] == "AUTOSCALER"
-    assert cached_event["severity"] == "INFO"
-    assert cached_event["timestamp"] == 123
-    assert json.loads(cached_event["message"]) == {
-        "clusterResourcesAfter": {},
-        "infeasibleClusterResourceConstraints": [],
-        "infeasibleGangResourceRequests": [],
-        "infeasibleResourceRequests": [],
-        "launchActions": [{"count": 1, "instanceType": "type-1"}],
-        "terminateActions": [],
-    }
+    assert cached_event.event_type == event.event_type
+    assert cached_event.timestamp.seconds == 123
+
+    dashboard_rows = event_head._autoscaler_events_storage.get_event_values()
+    assert [(row["severity"], row["message"]) for row in dashboard_rows] == [
+        ("INFO", "Adding 1 node(s) of type type-1."),
+        ("INFO", "Resized to 1 CPUs."),
+    ]
 
 
 @pytest.mark.asyncio
@@ -817,15 +832,18 @@ async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
     global_event = _get_event("legacy global", job_id="global")
     event_head.events["global"][global_event["event_id"]] = global_event
 
-    payload = {
-        "eventId": "AQ==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
-    }
     event_head._autoscaler_events_storage.add_events(
-        [AutoscalerEventCacheInput(payload, "01", 123, 1)]
+        [
+            _make_scaling_decision_event(
+                launch_actions=[
+                    events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                        instance_type="a",
+                        count=1,
+                    )
+                ],
+                cluster_resources_after={"CPU": 1},
+            )
+        ]
     )
 
     class _FakeEventQueryRequest:
@@ -845,7 +863,8 @@ async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
 
     assert messages == {
         "legacy global",
-        '{"launchActions": [{"instanceType": "a"}]}',
+        "Adding 1 node(s) of type a.",
+        "Resized to 1 CPUs.",
     }
 
     response = await event_head.get_event(_FakeEventQueryRequest("global"))
@@ -855,85 +874,80 @@ async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
 
     assert messages == {
         "legacy global",
-        '{"launchActions": [{"instanceType": "a"}]}',
+        "Adding 1 node(s) of type a.",
+        "Resized to 1 CPUs.",
     }
 
 
 def test_autoscaler_events_storage_retention_evicts_oldest_by_size():
-    payload1 = {
-        "eventId": "AQ==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
-    }
-    payload2 = {
-        "eventId": "Ag==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "b"}]},
-    }
-    payload3 = {
-        "eventId": "Aw==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "c"}]},
-    }
-
-    storage = AutoscalerEventsStorage(max_size_bytes=5)
-    storage.add_events(
-        [
-            AutoscalerEventCacheInput(payload1, "01", 1, 2),
-            AutoscalerEventCacheInput(payload2, "02", 2, 2),
-            AutoscalerEventCacheInput(payload3, "03", 3, 2),
-        ]
-    )
+    event1 = _make_scaling_decision_event(event_id=b"\x01")
+    event2 = _make_scaling_decision_event(event_id=b"\x02")
+    event3 = _make_scaling_decision_event(event_id=b"\x03")
+    storage = AutoscalerEventsStorage(max_size_bytes=event1.ByteSize() * 2 + 1)
+    storage.add_events([event1, event2, event3])
 
     assert list(storage.get_events()) == ["02", "03"]
 
 
 def test_autoscaler_events_storage_skips_oversized_event():
-    payload = {
-        "eventId": "AQ==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
-    }
-
     storage = AutoscalerEventsStorage(max_size_bytes=1)
-    storage.add_events([AutoscalerEventCacheInput(payload, "01", 1, 2)])
+    storage.add_events([_make_scaling_decision_event()])
 
     assert storage.get_events() == OrderedDict()
 
 
 def test_autoscaler_events_storage_replaces_duplicate_event_id():
-    payload1 = {
-        "eventId": "AQ==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
-    }
-    payload2 = {
-        "eventId": "AQ==",
-        "sourceType": "AUTOSCALER",
-        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-        "severity": "INFO",
-        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "b"}]},
-    }
-
-    storage = AutoscalerEventsStorage(max_size_bytes=10)
-    storage.add_events([AutoscalerEventCacheInput(payload1, "01", 1, 2)])
-    storage.add_events([AutoscalerEventCacheInput(payload2, "01", 2, 3)])
+    storage = AutoscalerEventsStorage(max_size_bytes=1024)
+    storage.add_events(
+        [
+            _make_scaling_decision_event(
+                launch_actions=[
+                    events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                        instance_type="a",
+                        count=1,
+                    )
+                ],
+                cluster_resources_after={"CPU": 1},
+            )
+        ]
+    )
+    storage.add_events(
+        [
+            _make_scaling_decision_event(
+                launch_actions=[
+                    events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                        instance_type="b",
+                        count=1,
+                    )
+                ],
+                cluster_resources_after={"CPU": 2},
+            )
+        ]
+    )
 
     cached_event = storage.get_events()["01"]
-    assert cached_event["timestamp"] == 2
-    assert json.loads(cached_event["message"]) == {
-        "launchActions": [{"instanceType": "b"}]
-    }
+    assert cached_event.timestamp.seconds == 123
+    rows = storage.get_event_values()
+    assert [(row["severity"], row["message"]) for row in rows] == [
+        ("INFO", "Adding 1 node(s) of type b."),
+        ("INFO", "Resized to 2 CPUs."),
+    ]
+
+
+def test_autoscaler_events_storage_skips_non_scaling_events():
+    storage = AutoscalerEventsStorage(max_size_bytes=1024)
+    storage.add_events(
+        [
+            events_base_event_pb2.RayEvent(
+                event_id=b"\x02",
+                source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
+                event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_CONFIG_DEFINITION_EVENT,
+                severity=events_base_event_pb2.RayEvent.Severity.INFO,
+            )
+        ]
+    )
+
+    assert storage.get_events() == OrderedDict()
 
 
 @pytest.mark.asyncio
@@ -949,19 +963,15 @@ async def test_list_cluster_events_includes_autoscaler_cached_events():
     }
     event_head._autoscaler_events_storage.add_events(
         [
-            AutoscalerEventCacheInput(
-                event_json={
-                    "eventId": "AQ==",
-                    "sourceType": "AUTOSCALER",
-                    "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
-                    "severity": "INFO",
-                    "autoscalerScalingDecisionEvent": {
-                        "launchActions": [{"instanceType": "type-1", "count": 1}]
-                    },
-                },
-                event_id="01",
+            _make_scaling_decision_event(
                 timestamp_seconds=2,
-                size_bytes=1,
+                launch_actions=[
+                    events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                        instance_type="type-1",
+                        count=1,
+                    )
+                ],
+                cluster_resources_after={"CPU": 1},
             )
         ]
     )
@@ -974,8 +984,16 @@ async def test_list_cluster_events_includes_autoscaler_cached_events():
             option=create_api_options(),
         )
 
-    assert [event["event_id"] for event in result.result] == ["legacy", "01"]
-    assert "time" not in event_head._autoscaler_events_storage.get_events()["01"]
+    assert [event["event_id"] for event in result.result] == [
+        "legacy",
+        "01:0",
+        "01:1",
+    ]
+    assert [event["message"] for event in result.result[1:]] == [
+        "Adding 1 node(s) of type type-1.",
+        "Resized to 1 CPUs.",
+    ]
+    assert "time" not in event_head._autoscaler_events_storage.get_event_values()[0]
 
 
 def test_export_event_logger(tmp_path):

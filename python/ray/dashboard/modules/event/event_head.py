@@ -33,7 +33,6 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
 from ray.dashboard.modules.event.autoscaler_events_storage import (
-    AutoscalerEventCacheInput,
     AutoscalerEventsStorage,
 )
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
@@ -62,9 +61,7 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 )
 
 _AUTOSCALER_EVENT_TYPES = {
-    events_base_event_pb2.RayEvent.EventType.AUTOSCALER_CONFIG_DEFINITION_EVENT,
     events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
-    events_base_event_pb2.RayEvent.EventType.AUTOSCALER_NODE_PROVISIONING_EVENT,
 }
 
 
@@ -224,23 +221,15 @@ class EventHead(
         return event_type in _AUTOSCALER_EVENT_TYPES
 
     def _cache_supported_external_ray_events(
-        self, request_body, events: List[events_base_event_pb2.RayEvent]
+        self, events: List[events_base_event_pb2.RayEvent]
     ) -> None:
-        cache_inputs = []
-        for event_json, event in zip(request_body, events):
-            if not self._is_autoscaler_event_type(event.event_type):
-                # we currently only cache autoscaler events
-                continue
-            cache_inputs.append(
-                AutoscalerEventCacheInput(
-                    event_json=event_json,
-                    event_id=event.event_id.hex(),
-                    timestamp_seconds=event.timestamp.seconds,
-                    size_bytes=event.ByteSize(),
-                )
-            )
-        if cache_inputs:
-            self._autoscaler_events_storage.add_events(cache_inputs)
+        autoscaler_events = [
+            event
+            for event in events
+            if self._is_autoscaler_event_type(event.event_type)
+        ]
+        if autoscaler_events:
+            self._autoscaler_events_storage.add_events(autoscaler_events)
 
     @classmethod
     def _validate_external_ray_events(
@@ -355,7 +344,7 @@ class EventHead(
             logger.exception("Failed to forward external Ray events to aggregator.")
             raise aiohttp.web.HTTPInternalServerError()
 
-        self._cache_supported_external_ray_events(request_body, events)
+        self._cache_supported_external_ray_events(events)
 
         return dashboard_optional_utils.rest_response(
             success=True,
