@@ -3,7 +3,7 @@
 
 about-time==4.2.1
     # via alive-progress
-absl-py==1.4.0
+absl-py==2.0.0
     # via
     #   array-record
     #   dm-control
@@ -14,6 +14,7 @@ absl-py==1.4.0
     #   ml-collections
     #   mujoco
     #   open-spiel
+    #   ortools
     #   tensorboard
     #   tensorflow
     #   tensorflow-probability

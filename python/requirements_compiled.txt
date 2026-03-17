@@ -1,7 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
-absl-py==1.4.0
+absl-py==2.0.0
     # via
     #   array-record
     #   dm-control
@@ -11,6 +11,7 @@ absl-py==1.4.0
     #   ml-collections
     #   mujoco
     #   open-spiel
+    #   ortools
     #   tensorboard
     #   tensorflow
     #   tensorflow-datasets
