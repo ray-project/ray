@@ -13,7 +13,7 @@ struct Args {
     target: String,
 
     /// Benchmark scenario to run
-    #[arg(long, value_parser = ["kv-throughput", "actor-lookup", "node-info", "job-lifecycle", "mixed", "all"])]
+    #[arg(long, value_parser = ["kv-throughput", "actor-lookup", "node-info", "job-lifecycle", "mixed", "node-churn", "pg-storm", "task-events", "all"])]
     scenario: String,
 
     /// Number of concurrent clients
@@ -55,6 +55,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "node-info",
                 "job-lifecycle",
                 "mixed",
+                "node-churn",
+                "pg-storm",
+                "task-events",
             ]
         } else {
             vec![args.scenario.as_str()]
@@ -112,6 +115,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "node-info",
                 "job-lifecycle",
                 "mixed",
+                "node-churn",
+                "pg-storm",
+                "task-events",
             ] {
                 let ch = channel.clone();
                 let stats =
@@ -147,6 +153,9 @@ async fn run_scenario(
         "node-info" => scenarios::node_info(channel, clients, requests).await,
         "job-lifecycle" => scenarios::job_lifecycle(channel, clients, requests).await,
         "mixed" => scenarios::mixed(channel, clients, duration).await,
+        "node-churn" => scenarios::node_churn(channel, clients, requests).await,
+        "pg-storm" => scenarios::pg_storm(channel, clients, requests).await,
+        "task-events" => scenarios::task_events(channel, clients, requests).await,
         _ => {
             eprintln!("Unknown scenario: {scenario}");
             std::process::exit(1);

@@ -411,6 +411,273 @@ pub async fn mixed(
     merged
 }
 
+/// Run node register + query + unregister churn benchmark.
+/// Stresses node_manager (alive_nodes, dead_nodes, draining_nodes DashMaps).
+pub async fn node_churn(
+    channel: Channel,
+    clients: usize,
+    requests_per_client: usize,
+) -> BenchStats {
+    let sem = Arc::new(Semaphore::new(clients));
+    let mut handles = Vec::new();
+    let start = Instant::now();
+
+    for client_id in 0..clients {
+        let ch = channel.clone();
+        let sem = sem.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            let mut client =
+                rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(ch);
+            let mut stats = BenchStats::new();
+
+            for i in 0..requests_per_client {
+                let node_id = make_node_id((client_id * requests_per_client + i) as u32 + 10000);
+
+                // RegisterNode
+                let req_start = Instant::now();
+                let result = client
+                    .register_node(rpc::RegisterNodeRequest {
+                        node_info: Some(rpc::GcsNodeInfo {
+                            node_id: node_id.clone(),
+                            state: 0, // ALIVE
+                            node_manager_address: format!("10.{}.{}.{}", client_id % 256, (i >> 8) & 0xff, i & 0xff),
+                            node_manager_port: 8000 + (i % 1000) as i32,
+                            ..Default::default()
+                        }),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+
+                // GetAllNodeInfo (read under write pressure)
+                let req_start = Instant::now();
+                let result = client
+                    .get_all_node_info(rpc::GetAllNodeInfoRequest {
+                        limit: None,
+                        node_selectors: vec![],
+                        state_filter: None,
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+
+                // UnregisterNode (moves node from alive to dead)
+                let req_start = Instant::now();
+                let result = client
+                    .unregister_node(rpc::UnregisterNodeRequest {
+                        node_id: node_id.clone(),
+                        node_death_info: Some(rpc::NodeDeathInfo {
+                            reason: 1, // EXPECTED_TERMINATION
+                            reason_message: "bench".to_string(),
+                        }),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+            }
+            stats
+        }));
+    }
+
+    let mut merged = BenchStats::new();
+    for h in handles {
+        let s = h.await.unwrap();
+        merged.merge(&s);
+    }
+    merged.set_elapsed(start.elapsed());
+    merged
+}
+
+/// Run placement group create + get + remove storm benchmark.
+/// Stresses placement_group_manager (placement_groups, named_placement_groups DashMaps).
+pub async fn pg_storm(
+    channel: Channel,
+    clients: usize,
+    requests_per_client: usize,
+) -> BenchStats {
+    let sem = Arc::new(Semaphore::new(clients));
+    let mut handles = Vec::new();
+    let start = Instant::now();
+
+    for client_id in 0..clients {
+        let ch = channel.clone();
+        let sem = sem.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            let mut client =
+                rpc::placement_group_info_gcs_service_client::PlacementGroupInfoGcsServiceClient::new(ch);
+            let mut stats = BenchStats::new();
+
+            for i in 0..requests_per_client {
+                let pg_id = make_placement_group_id((client_id * requests_per_client + i) as u32);
+                let pg_name = format!("bench-pg-{client_id}-{i}");
+                let job_id = make_job_id(1);
+
+                // CreatePlacementGroup
+                let req_start = Instant::now();
+                let result = client
+                    .create_placement_group(rpc::CreatePlacementGroupRequest {
+                        placement_group_spec: Some(rpc::PlacementGroupSpec {
+                            placement_group_id: pg_id.clone(),
+                            name: pg_name.clone(),
+                            bundles: vec![rpc::Bundle {
+                                bundle_id: Some(rpc::bundle::BundleIdentifier {
+                                    placement_group_id: pg_id.clone(),
+                                    bundle_index: 0,
+                                }),
+                                unit_resources: [("CPU".to_string(), 1.0)].into_iter().collect(),
+                                ..Default::default()
+                            }],
+                            strategy: 1, // SPREAD
+                            creator_job_id: job_id.clone(),
+                            is_detached: false,
+                            ..Default::default()
+                        }),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+
+                // GetPlacementGroup (read under write pressure)
+                let req_start = Instant::now();
+                let result = client
+                    .get_placement_group(rpc::GetPlacementGroupRequest {
+                        placement_group_id: pg_id.clone(),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+
+                // RemovePlacementGroup
+                let req_start = Instant::now();
+                let result = client
+                    .remove_placement_group(rpc::RemovePlacementGroupRequest {
+                        placement_group_id: pg_id.clone(),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+            }
+            stats
+        }));
+    }
+
+    let mut merged = BenchStats::new();
+    for h in handles {
+        let s = h.await.unwrap();
+        merged.merge(&s);
+    }
+    merged.set_elapsed(start.elapsed());
+    merged
+}
+
+/// Run task event ingestion + query benchmark.
+/// Stresses task_manager (task_events, job_index DashMaps).
+pub async fn task_events(
+    channel: Channel,
+    clients: usize,
+    requests_per_client: usize,
+) -> BenchStats {
+    let sem = Arc::new(Semaphore::new(clients));
+    let mut handles = Vec::new();
+    let start = Instant::now();
+
+    for client_id in 0..clients {
+        let ch = channel.clone();
+        let sem = sem.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.unwrap();
+            let mut client =
+                rpc::task_info_gcs_service_client::TaskInfoGcsServiceClient::new(ch);
+            let mut stats = BenchStats::new();
+            let job_id = make_job_id(client_id as u32 + 1);
+
+            for i in 0..requests_per_client {
+                // AddTaskEventData — batch of 10 task events
+                let base = (client_id * requests_per_client + i) as u32 * 10;
+                let events: Vec<rpc::TaskEvents> = (0..10)
+                    .map(|j| {
+                        let task_id = make_task_id(base + j);
+                        rpc::TaskEvents {
+                            task_id: task_id.clone(),
+                            attempt_number: 0,
+                            task_info: Some(rpc::TaskInfoEntry {
+                                r#type: 0, // NORMAL_TASK
+                                name: format!("bench_task_{base}_{j}"),
+                                func_or_class_name: "bench_fn".to_string(),
+                                job_id: job_id.clone(),
+                                task_id,
+                                ..Default::default()
+                            }),
+                            state_updates: None,
+                            profile_events: None,
+                            job_id: job_id.clone(),
+                        }
+                    })
+                    .collect();
+
+                let req_start = Instant::now();
+                let result = client
+                    .add_task_event_data(rpc::AddTaskEventDataRequest {
+                        data: Some(rpc::TaskEventData {
+                            events_by_task: events,
+                            job_id: job_id.clone(),
+                            ..Default::default()
+                        }),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+
+                // GetTaskEvents — query by job_id (read under write pressure)
+                let req_start = Instant::now();
+                let result = client
+                    .get_task_events(rpc::GetTaskEventsRequest {
+                        limit: Some(100),
+                        filters: Some(rpc::get_task_events_request::Filters {
+                            job_filters: vec![
+                                rpc::get_task_events_request::filters::JobIdFilter {
+                                    predicate: 0, // EQUAL
+                                    job_id: job_id.clone(),
+                                },
+                            ],
+                            ..Default::default()
+                        }),
+                    })
+                    .await;
+                match result {
+                    Ok(_) => stats.record(req_start.elapsed()),
+                    Err(_) => stats.record_error(),
+                }
+            }
+            stats
+        }));
+    }
+
+    let mut merged = BenchStats::new();
+    for h in handles {
+        let s = h.await.unwrap();
+        merged.merge(&s);
+    }
+    merged.set_elapsed(start.elapsed());
+    merged
+}
+
 // --- Helper functions ---
 
 fn make_actor_id(id: u32) -> Vec<u8> {
@@ -428,6 +695,18 @@ fn make_node_id(id: u32) -> Vec<u8> {
 fn make_job_id(id: u32) -> Vec<u8> {
     let mut bytes = vec![0u8; 4];
     bytes.copy_from_slice(&id.to_be_bytes());
+    bytes
+}
+
+fn make_placement_group_id(id: u32) -> Vec<u8> {
+    let mut bytes = vec![0u8; 18];
+    bytes[0..4].copy_from_slice(&id.to_be_bytes());
+    bytes
+}
+
+fn make_task_id(id: u32) -> Vec<u8> {
+    let mut bytes = vec![0u8; 24];
+    bytes[0..4].copy_from_slice(&id.to_be_bytes());
     bytes
 }
 
