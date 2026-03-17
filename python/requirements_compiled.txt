@@ -11,7 +11,6 @@ absl-py==2.0.0
     #   ml-collections
     #   mujoco
     #   open-spiel
-    #   ortools
     #   tensorboard
     #   tensorflow
     #   tensorflow-datasets
@@ -1371,6 +1370,8 @@ ormsgpack==1.7.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
+ortools==9.15.6755
+    # via -r python/requirements.txt
 overrides==7.7.0
     # via jupyter-server
 packaging==24.2
@@ -2215,7 +2216,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow
-tensorflow-metadata==1.13.1
+tensorflow-metadata==1.17.3
     # via tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
