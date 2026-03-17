@@ -4,6 +4,7 @@ import time
 import warnings
 import weakref
 from collections import defaultdict
+from dataclasses import dataclass
 from queue import Queue
 from typing import (
     TYPE_CHECKING,
@@ -16,11 +17,27 @@ from typing import (
     Tuple,
     Union,
 )
+from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 
 import ray
 from ray._private import ray_constants
 from ray._raylet import ObjectRef
 from ray.util.annotations import PublicAPI
+
+@dataclass
+class ObjectStoreFetchRequest(FetchRequest):
+    """Pending fetch via the object store. Holds the remote ObjectRef to ray.get on.
+
+    Args:
+        obj_id: The RDT object ID being fetched.
+        object_ref: The ObjectRef returned by the __ray_fetch_rdt_object__ remote call.
+        tensors: Unused. Tensors are returned directly by ray.get.
+    """
+
+    obj_id: str
+    object_ref: ObjectRef
+    tensors: None
+
 
 if TYPE_CHECKING:
 
@@ -449,22 +466,22 @@ class RDTManager:
         self,
         obj_id: str,
         use_object_store: bool,
-    ) -> Optional["FetchRequest"]:
+    ) -> FetchRequest:
         """
-        Starts fetching an RDT object, returning a FetchRequest for RDT-based
-        transfers (use_object_store=False, so the caller can pipeline multiple
-        fetches before waiting), or None if the fetch is already complete
-        (use_object_store=True). Note that this always triggers a fetch, even if
-        the object is already in the store, since each caller consumes one copy
-        from the store.
+        Start fetching an RDT object.
+        
+        If the specified transport supports async fetches, this will trigger the
+        fetch without blocking. Note that this always triggers a fetch, even if
+        the object is already in the store, since each caller consumes exactly
+        one copy from the store.
 
         Args:
             obj_id: The object ID of the RDT object.
-            use_object_store: Whether to fetch through the object store (blocking) or
-                through the designated one-sided tensor transport (async).
+            use_object_store: Whether to fetch through the object store or through
+                the designated one-sided tensor transport.
 
         Returns:
-            A FetchRequest to pass to _wait_fetch, or None if no waiting is needed.
+            A FetchRequest. Wait on the FetchRequest to get the tensors.
         """
         from ray.experimental.rdt.rdt_store import (
             __ray_fetch_rdt_object__,
@@ -484,13 +501,10 @@ class RDTManager:
                 )
 
             src_actor = rdt_meta.src_actor
-            tensors = ray.get(
-                src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                    __ray_fetch_rdt_object__, obj_id
-                )
-            )
-            self.rdt_store.add_object(obj_id, tensors)
-            return None
+            object_ref = src_actor.__ray_call__.options(
+                concurrency_group="_ray_system"
+            ).remote(__ray_fetch_rdt_object__, obj_id)
+            return ObjectStoreFetchRequest(obj_id=obj_id, object_ref=object_ref, tensors=[])
         else:
             tensor_transport = rdt_meta.tensor_transport_backend
             if not is_one_sided_transport(tensor_transport):
@@ -536,22 +550,27 @@ class RDTManager:
                 target_buffers,
             )
 
-    def _wait_fetch(self, obj_id: str, fetch_request: "FetchRequest"):
+    def _wait_fetch(self, obj_id: str, fetch_request: FetchRequest):
         """
-        Waits for a previously triggered fetch to complete and stores the result.
+        Waits for a previously triggered fetch to complete and stores the resulting tensors.
 
         Args:
             obj_id: The object ID of the RDT object.
-            fetch_request: The FetchRequest returned by _trigger_fetch.
+            fetch_request: An ObjectStoreFetchRequest representing an object
+                transferred via Ray's object store or a FetchRequest
+                representing an object transferred via a tensor transport.
         """
-        from ray.experimental.rdt.util import get_tensor_transport_manager
-
-        rdt_meta = self.get_rdt_metadata(obj_id)
-        tensor_transport_manager = get_tensor_transport_manager(
-            rdt_meta.tensor_transport_backend
-        )
         try:
-            tensors = tensor_transport_manager.wait_fetch_complete(fetch_request)
+            if isinstance(fetch_request, ObjectStoreFetchRequest):
+                tensors = ray.get(fetch_request.object_ref)
+            else:
+                from ray.experimental.rdt.util import get_tensor_transport_manager
+
+                rdt_meta = self.get_rdt_metadata(obj_id)
+                tensor_transport_manager = get_tensor_transport_manager(
+                    rdt_meta.tensor_transport_backend
+                )
+                tensors = tensor_transport_manager.wait_fetch_complete(fetch_request)
             self.rdt_store.add_object(obj_id, tensors)
         except Exception as e:
             self.rdt_store.add_object(obj_id, e)
@@ -736,14 +755,12 @@ class RDTManager:
         # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
         for object_id in object_ids:
-            # TODO(swang): Check if there is already a secondary copy of the
-            # object in the store. If so, use that copy instead. Ensure that the
-            # secondary copy is only popped after its original fetcher plus this
-            # one have consumed the copy.
             if not rdt_store.is_primary_copy(object_id):
-                fetch_request = self._trigger_fetch(object_id, use_object_store)
-                if fetch_request is not None:
-                    fetch_requests[object_id] = fetch_request
+                # TODO(swang): Check if there is already a secondary copy of the
+                # object in the store. If so, use that copy instead. Ensure that
+                # the secondary copy is only popped after its original fetcher
+                # plus this one have consumed the copy.
+                fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
 
         # Wait for each fetch and add to store.
         for object_id, fetch_request in fetch_requests.items():
