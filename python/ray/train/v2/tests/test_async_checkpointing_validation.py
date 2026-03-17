@@ -439,7 +439,8 @@ def test_report_validation_fn_success_after_retry():
 def test_report_validation_fn_resumption(
     tmp_path, validation_task_config, expected_score
 ):
-    """Start train run with interrupted validations. Confirm second run finishes validations."""
+    """A train_func call a validation_fn that stalls and the trainer is cancelled.
+    Does the resumed trainer restart the validation?"""
     signal_actor = create_remote_signal_actor(ray).remote()
 
     def validation_fn_stall(checkpoint, score):
@@ -459,7 +460,12 @@ def test_report_validation_fn_resumption(
             )
 
     def train_fn_second():
-        pass
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 1
+        assert rc[0].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[0].metrics == {"score": expected_score}
 
     @ray.remote
     def run_trainer(validation_fn, train_fn):
@@ -487,6 +493,138 @@ def test_report_validation_fn_resumption(
     training_task = run_trainer.remote(validation_fn_finish, train_fn_second)
     result = ray.get(training_task)
     assert result.metrics == {"score": expected_score}
+
+
+@pytest.mark.parametrize(
+    "validation_task_config, expected_score",
+    [
+        (True, 1),
+        (ValidationTaskConfig(fn_kwargs={"score": 2}), 2),
+    ],
+)
+def test_report_validation_fn_resumption_on_train_fn_error(
+    tmp_path, validation_task_config, expected_score
+):
+    """Train run where train_fn fails after reporting a checkpoint with pending validation.
+    The validation only returns after train_fn signals failure. before_controller_shutdown
+    drains the validation, persisting the validated metrics. The second run sees them."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def validation_fn(checkpoint, score):
+        # Block until train_fn has signaled and sleep to ensure that the train_func has closed.
+        ray.get(signal_actor.wait.remote())
+        time.sleep(2)
+        return {"score": score}
+
+    def train_fn_first():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=validation_task_config,
+            )
+        try:
+            raise RuntimeError("train_fn failed intentionally")
+        finally:
+            signal_actor.send.remote()
+
+    def train_fn_second():
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 1
+        assert rc[0].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[0].metrics == {"score": expected_score}
+
+    run_config = RunConfig(
+        name="validation_fn_resumption_on_train_fn_error",
+        storage_path=str(tmp_path),
+    )
+    validation_config = ValidationConfig(
+        fn=validation_fn,
+        task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+    )
+
+    with pytest.raises(WorkerGroupError):
+        DataParallelTrainer(
+            train_fn_first,
+            validation_config=validation_config,
+            run_config=run_config,
+        ).fit()
+
+    result = DataParallelTrainer(
+        train_fn_second,
+        validation_config=validation_config,
+        run_config=run_config,
+    ).fit()
+    assert result.metrics == {"score": expected_score}
+
+
+def test_report_validation_fn_resumption_checkpoint_status(tmp_path):
+    """When a train_func does it remember all previous validation_fn status and metrics."""
+
+    def validation_fn(checkpoint, score):
+        return {"score": score}
+
+    def train_fn_first():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 1},
+                checkpoint=cp,
+                validation=False,
+            )
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"score": 2}),
+            )
+
+        raise RuntimeError("train_fn failed intentionally")
+
+    def train_fn_second():
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 2
+        assert rc[0].status == ReportedCheckpointStatus.COMMITTED
+        assert rc[0].metrics == {"score": 1}
+        assert rc[1].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[1].metrics == {"score": 2}
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"score": 3}),
+            )
+
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 3
+        assert rc[2].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[2].metrics == {"score": 3}
+
+    run_config = RunConfig(
+        name="validation_fn_resumption_checkpoint_status",
+        storage_path=str(tmp_path),
+    )
+
+    with pytest.raises(WorkerGroupError):
+        DataParallelTrainer(
+            train_fn_first,
+            validation_config=ValidationConfig(fn=validation_fn),
+            run_config=run_config,
+        ).fit()
+
+    result = DataParallelTrainer(
+        train_fn_second,
+        validation_config=ValidationConfig(fn=validation_fn),
+        run_config=run_config,
+    ).fit()
+    assert result.metrics == {"score": 3}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):
