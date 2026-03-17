@@ -299,7 +299,7 @@ async def wait_with_logging(
 
 
 @contextlib.contextmanager
-def context_watchdog(func: Callable, *args: Any):
+def context_watchdog(fn: Callable, *args: Any):
     """Run a function in a background thread for the duration of the context.
 
     The function is started in a daemon thread on entry. On exit, a
@@ -307,14 +307,14 @@ def context_watchdog(func: Callable, *args: Any):
     responsible for checking the event and returning promptly once it is set.
 
     Args:
-        func: A function whose first argument is a threading.Event stop signal.
+        fn: A function whose first argument is a threading.Event stop signal.
             The function should return when stop_event.is_set() or
             stop_event.wait(...) returns True.
-        *args: Additional arguments forwarded to func after the stop event.
+        *args: Additional arguments forwarded to fn after the stop event.
     """
     stop_event = threading.Event()
     thread = threading.Thread(
-        target=func,
+        target=fn,
         args=(stop_event, *args),
         daemon=True,  # thread will end even if the finally is bypassed by an abnormal exit
     )
