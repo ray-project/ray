@@ -1652,7 +1652,7 @@ pyarrow-hotfix==0.7
     # via
     #   dask
     #   hudi
-pyasn1==0.5.1
+pyasn1==0.6.3
     # via
     #   oauth2client
     #   pyasn1-modules
