@@ -179,12 +179,9 @@ class HangingExecutionIssueDetector(IssueDetector):
         task made progress then stalled again).
         """
         task_metadata: Optional[TaskMetadata] = None
-        bytes_output: Optional[int] = None
         if old_state is not None:
             task_metadata = old_state.task_metadata
-            bytes_output = old_state.bytes_output
-
-        if old_state is None or bytes_output != task_info.bytes_output:
+        else:
             task_metadata = get_latest_state_for_task(task_info.task_id)
 
         return HangingExecutionState(
