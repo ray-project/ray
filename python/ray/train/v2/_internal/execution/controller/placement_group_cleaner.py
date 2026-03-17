@@ -1,7 +1,6 @@
 import logging
 import queue
 import threading
-import time
 from typing import Optional
 
 import ray
@@ -64,7 +63,6 @@ class PlacementGroupCleaner:
         Uses a queue to receive placement group updates.
         """
         curr_placement_group: Optional[PlacementGroup] = None
-        last_liveness_check_time = float("-inf")
 
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
@@ -74,12 +72,6 @@ class PlacementGroupCleaner:
                 logger.debug(f"Updated current placement group to {pg.id}")
             except queue.Empty:
                 pass  # continue to monitor current placement group
-
-            # Check controller liveness only if due, not on every queue update
-            now = time.monotonic()
-            if now - last_liveness_check_time < self._check_interval_s:
-                continue
-            last_liveness_check_time = now
 
             # Check if controller is still alive
             try:
