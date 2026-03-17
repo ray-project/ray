@@ -7,7 +7,10 @@ import pytest
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
-from ray.serve._private.autoscaling_state import AutoscalingStateManager
+from ray.serve._private.autoscaling_state import (
+    AutoscalingStateManager,
+    DeploymentAutoscalingState,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -3414,6 +3417,45 @@ class TestAutoscaling:
 
             # Set replica finished stopping
             replica._actor.set_done_stopping()
+
+    def test_simple_mode_prefers_zero_replica_metrics_over_handle_running_metrics(self):
+        autoscaling_state = DeploymentAutoscalingState(TEST_DEPLOYMENT_ID)
+        replica_id = ReplicaID("replica", deployment_id=TEST_DEPLOYMENT_ID)
+        replica_str = replica_id.to_full_id_str()
+        autoscaling_state.update_running_replica_ids([replica_id])
+
+        autoscaling_state.record_request_metrics_for_handle(
+            HandleMetricReport(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                handle_id="handle",
+                actor_id="actor_id",
+                handle_source=DeploymentHandleSource.UNKNOWN,
+                queued_requests=[TimeStampedValue(0, 0)],
+                aggregated_queued_requests=0,
+                aggregated_metrics={RUNNING_REQUESTS_KEY: {replica_str: 2}},
+                metrics={
+                    RUNNING_REQUESTS_KEY: {
+                        replica_str: [TimeStampedValue(0, 2)],
+                    }
+                },
+                timestamp=1,
+            )
+        )
+        autoscaling_state.record_request_metrics_for_replica(
+            ReplicaMetricReport(
+                replica_id=replica_id,
+                aggregated_metrics={RUNNING_REQUESTS_KEY: 0},
+                metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(0, 0)]},
+                timestamp=1,
+            )
+        )
+
+        with patch.object(
+            autoscaling_state,
+            "_should_aggregate_metrics_at_controller",
+            return_value=False,
+        ):
+            assert autoscaling_state.get_total_num_requests() == 0
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
