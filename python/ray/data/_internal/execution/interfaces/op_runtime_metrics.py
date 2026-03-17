@@ -144,7 +144,7 @@ class RunningTaskInfo:
     last_updated: float = field(init=False)
 
     def __post_init__(self):
-        self.last_updated = time.time()
+        self.last_updated = time.perf_counter()
 
 
 @dataclass

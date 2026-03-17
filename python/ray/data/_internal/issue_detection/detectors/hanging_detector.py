@@ -70,11 +70,11 @@ class HangingExecutionState:
     task_id: ray.TaskID
     task_metadata: Optional[TaskMetadata]
     bytes_output: int
-    # from time.time()
+    # NOTE This is from perf_couinter()
     start_time_hanging: float
 
     def hanging_time(self):
-        return time.time() - self.start_time_hanging
+        return time.perf_counter() - self.start_time_hanging
 
 
 @dataclass
@@ -139,12 +139,13 @@ class HangingExecutionIssueDetector(IssueDetector):
         if meta is not None:
             task_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
-        hanging_since = _format_timestamp(hes.start_time_hanging)
+        hanging_time = hes.hanging_time()
+        hanging_since = _format_timestamp(time.time() - hanging_time)
 
         message = (
             f"A task (task_id={hes.task_id}) of operator "
             f"{operator.name} {task_info}has been running or stuck in scheduling for "
-            f"{hes.hanging_time():.2f}s, which is longer than the average task "
+            f"{hanging_time:.2f}s, which is longer than the average task "
             f"duration + z-score * stddev of this operator "
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
