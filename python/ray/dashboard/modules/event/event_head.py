@@ -81,8 +81,8 @@ async def _list_cluster_events_impl(
     Args:
         all_events: The job or actor events to include (typically an OrderedDict).
         autoscaler_events: List of autoscaler event dictionaries.
-        executor (ThreadPoolExecutor): The executor to use for running the transformation.
-        option (ListApiOptions): Options for list API (filtering, limits, etc.).
+        executor: The executor to use for running the transformation.
+        option: Options for list API (filtering, limits, etc.).
 
     Returns:
         A list of cluster events in the cluster.
