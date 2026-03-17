@@ -40,7 +40,8 @@ class GcsTaskManagerTest : public ::testing::Test {
         R"(
 {
   "task_events_max_num_task_in_gcs": 1000,
-  "gcs_mark_task_failed_on_job_done_delay_ms": 100
+  "gcs_mark_task_failed_on_job_done_delay_ms": 100,
+  "gcs_mark_task_failed_on_worker_dead_delay_ms": 100
 }
   )");
   }
@@ -1811,6 +1812,389 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {
     reply = SyncGetTaskEvents({});
     EXPECT_EQ(reply.events_by_task_size(), num_limit);
     EXPECT_EQ(reply.num_status_task_events_dropped(), 3);
+  }
+}
+
+// Helper to build WorkerTableData for OnWorkerDead tests.
+static std::shared_ptr<rpc::WorkerTableData> GenWorkerFailureData(
+    rpc::WorkerExitType exit_type,
+    int64_t end_time_ms = 10,
+    const std::string &exit_detail = "test worker death") {
+  auto data = std::make_shared<rpc::WorkerTableData>();
+  data->set_exit_type(exit_type);
+  data->set_end_time_ms(end_time_ms);
+  data->set_exit_detail(exit_detail);
+  return data;
+}
+
+// Test that when a worker dies ungracefully, the entire tree of child tasks owned by that
+// worker is marked FAILED.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadMarksChildTaskTreeFailed) {
+  // Setup: owner_worker runs parent_task, which spawned child_task_1 and child_task_2.
+  // child_task_1 in turn spawned grandchild_task.
+  auto owner_worker = WorkerID::FromRandom();
+  auto parent_task = GenTaskIDs(1)[0];
+  auto child_tasks = GenTaskIDs(2);
+  auto grandchild_task = GenTaskIDs(1)[0];
+
+  // Add parent task (running on owner_worker).
+  auto parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child tasks (parent_task_id = parent_task).
+  auto child_events = GenTaskEvents(child_tasks,
+                                    0,
+                                    0,
+                                    absl::nullopt,
+                                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Add grandchild task (parent_task_id = child_tasks[0]).
+  auto grandchild_events = GenTaskEvents({grandchild_task},
+                                         0,
+                                         0,
+                                         absl::nullopt,
+                                         GenStateUpdate({{rpc::TaskStatus::RUNNING, 3}}),
+                                         GenTaskInfo(JobID::FromInt(0), child_tasks[0]));
+  SyncAddTaskEventData(GenTaskEventsData(grandchild_events));
+
+  // Owner worker dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Parent task should NOT be marked failed (its own owner is responsible).
+  {
+    auto reply = SyncGetTaskEvents({parent_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+  }
+
+  // Child tasks should be marked FAILED with OWNER_DIED error.
+  for (const auto &child_id : child_tasks) {
+    auto reply = SyncGetTaskEvents({child_id});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    auto &task_event = reply.events_by_task(0);
+    EXPECT_TRUE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
+              10 * 1000 * 1000);
+    EXPECT_EQ(task_event.state_updates().error_info().error_type(),
+              rpc::ErrorType::OWNER_DIED);
+  }
+
+  // Grandchild task should also be marked FAILED (DFS walks the full tree).
+  {
+    auto reply = SyncGetTaskEvents({grandchild_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    auto &task_event = reply.events_by_task(0);
+    EXPECT_TRUE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().error_info().error_type(),
+              rpc::ErrorType::OWNER_DIED);
+  }
+}
+
+// Test that graceful worker death (INTENDED_USER_EXIT) does NOT mark child tasks as
+// failed.
+TEST_F(GcsTaskManagerTest, TestGracefulWorkerDeadDoesNotMarkChildTasksFailed) {
+  auto owner_worker = WorkerID::FromRandom();
+  auto parent_task = GenTaskIDs(1)[0];
+  auto child_task = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  auto parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child task.
+  auto child_events = GenTaskEvents({child_task},
+                                    0,
+                                    0,
+                                    absl::nullopt,
+                                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Owner worker dies gracefully (INTENDED_USER_EXIT).
+  task_manager->OnWorkerDead(
+      owner_worker, GenWorkerFailureData(rpc::WorkerExitType::INTENDED_USER_EXIT, 10));
+
+  // Wait for the delay timer (even though it should return early).
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Child task should NOT be marked failed.
+  {
+    auto reply = SyncGetTaskEvents({child_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+  }
+}
+
+// Test that graceful worker death (INTENDED_SYSTEM_EXIT) does NOT mark child tasks as
+// failed.
+TEST_F(GcsTaskManagerTest, TestIntendedSystemExitDoesNotMarkChildTasksFailed) {
+  auto owner_worker = WorkerID::FromRandom();
+  auto parent_task = GenTaskIDs(1)[0];
+  auto child_task = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  auto parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child task.
+  auto child_events = GenTaskEvents({child_task},
+                                    0,
+                                    0,
+                                    absl::nullopt,
+                                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Owner worker dies with INTENDED_SYSTEM_EXIT (e.g., job teardown).
+  task_manager->OnWorkerDead(
+      owner_worker, GenWorkerFailureData(rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Child task should NOT be marked failed.
+  {
+    auto reply = SyncGetTaskEvents({child_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+  }
+}
+
+// Test that already-terminated child tasks are not overwritten when owner dies.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadDoesNotOverrideTerminatedChildTasks) {
+  auto owner_worker = WorkerID::FromRandom();
+  auto parent_task = GenTaskIDs(1)[0];
+  auto child_finished = GenTaskIDs(1)[0];
+  auto child_failed = GenTaskIDs(1)[0];
+  auto child_running = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  auto parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child that already finished.
+  auto finished_events = GenTaskEvents({child_finished},
+                                       0,
+                                       0,
+                                       absl::nullopt,
+                                       GenStateUpdate({{rpc::TaskStatus::FINISHED, 2}}),
+                                       GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(finished_events));
+
+  // Add child that already failed.
+  auto failed_events = GenTaskEvents({child_failed},
+                                     0,
+                                     0,
+                                     absl::nullopt,
+                                     GenStateUpdate({{rpc::TaskStatus::FAILED, 3}}),
+                                     GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(failed_events));
+
+  // Add child that is still running.
+  auto running_events = GenTaskEvents({child_running},
+                                      0,
+                                      0,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 4}}),
+                                      GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(running_events));
+
+  // Owner dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Finished child should not be marked FAILED.
+  {
+    auto reply = SyncGetTaskEvents({child_finished});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+    EXPECT_EQ(reply.events_by_task(0).state_updates().state_ts_ns().at(
+                  rpc::TaskStatus::FINISHED),
+              2);
+  }
+
+  // Already failed child should keep its original failure timestamp.
+  {
+    auto reply = SyncGetTaskEvents({child_failed});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(
+        reply.events_by_task(0).state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
+        3);
+  }
+
+  // Running child should now be marked FAILED.
+  {
+    auto reply = SyncGetTaskEvents({child_running});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_TRUE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+    EXPECT_EQ(
+        reply.events_by_task(0).state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
+        10 * 1000 * 1000);
+  }
+}
+
+// Test that OnWorkerDead with no tasks for the worker doesn't crash.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadNoTasks) {
+  auto unknown_worker = WorkerID::FromRandom();
+  task_manager->OnWorkerDead(unknown_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Should not crash, no events to check.
+  auto reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+}
+
+// Test that when a worker dies ungracefully but has no child tasks (leaf executor),
+// nothing extra is marked failed.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadLeafTaskNoChildren) {
+  auto owner_worker = WorkerID::FromRandom();
+  auto leaf_task = GenTaskIDs(1)[0];
+
+  // Add a leaf task running on owner_worker (no children).
+  auto events =
+      GenTaskEvents({leaf_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(events));
+
+  // Worker dies ungracefully.
+  task_manager->OnWorkerDead(owner_worker,
+                             GenWorkerFailureData(rpc::WorkerExitType::SYSTEM_ERROR, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Leaf task itself should NOT be marked failed (no children to mark, and the task
+  // itself is the responsibility of its own owner).
+  {
+    auto reply = SyncGetTaskEvents({leaf_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_FALSE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+  }
+}
+
+// Test that NODE_OUT_OF_MEMORY exit type (ungraceful) marks child tasks as failed.
+TEST_F(GcsTaskManagerTest, TestWorkerDeadOOMMarksChildTasksFailed) {
+  auto owner_worker = WorkerID::FromRandom();
+  auto parent_task = GenTaskIDs(1)[0];
+  auto child_task = GenTaskIDs(1)[0];
+
+  // Add parent task running on owner_worker.
+  auto parent_events =
+      GenTaskEvents({parent_task},
+                    0,
+                    0,
+                    absl::nullopt,
+                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}, owner_worker),
+                    GenTaskInfo(JobID::FromInt(0)));
+  SyncAddTaskEventData(GenTaskEventsData(parent_events));
+
+  // Add child task.
+  auto child_events = GenTaskEvents({child_task},
+                                    0,
+                                    0,
+                                    absl::nullopt,
+                                    GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                    GenTaskInfo(JobID::FromInt(0), parent_task));
+  SyncAddTaskEventData(GenTaskEventsData(child_events));
+
+  // Worker dies from OOM.
+  task_manager->OnWorkerDead(
+      owner_worker, GenWorkerFailureData(rpc::WorkerExitType::NODE_OUT_OF_MEMORY, 10));
+
+  // Wait for the delay timer.
+  boost::asio::io_context io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_worker_dead_delay_ms()));
+  timer.wait();
+
+  // Child task should be marked FAILED.
+  {
+    auto reply = SyncGetTaskEvents({child_task});
+    ASSERT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_TRUE(reply.events_by_task(0).state_updates().state_ts_ns().contains(
+        rpc::TaskStatus::FAILED));
+    EXPECT_EQ(reply.events_by_task(0).state_updates().error_info().error_type(),
+              rpc::ErrorType::OWNER_DIED);
   }
 }
 
