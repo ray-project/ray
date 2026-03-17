@@ -617,7 +617,7 @@ def _shuffle_block(
         block, block_type=BlockType.ARROW
     )
 
-    if block.num_rows == 0:
+    if block.num_rows == 0 and not send_empty_blocks:
         empty = BlockAccessor.for_block(block).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
@@ -696,7 +696,7 @@ def _shuffle_block(
         block_exec_stats=stats.build(block_ser_time_s=0)
     )
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if logger.isEnabledFor(logging.DEBUG) and partition_shards_stats:
         num_rows_series, byte_sizes_series = zip(
             *[(s.num_rows, s.byte_size) for s in partition_shards_stats.values()]
         )
@@ -2040,15 +2040,14 @@ class HashShuffleAggregator:
             blocks = _shape_blocks(blocks, self._target_max_block_size)
 
         for block in blocks:
-            # Collect execution stats (and reset)
-            exec_stats = exec_stats_builder.build()
-            exec_stats_builder = BlockExecStats.builder()
+            # Finish processing before actually yielding!
+            exec_stats_builder.finish()
 
             stats: StreamingGeneratorStats = yield block
 
-            # Update block serialization time
-            if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+            exec_stats = exec_stats_builder.build(
+                block_ser_time_s=(stats.object_creation_dur_s if stats else None),
+            )
 
             yield BlockMetadataWithSchema.from_block(
                 block,
@@ -2057,6 +2056,9 @@ class HashShuffleAggregator:
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+
+            # Reset the builder
+            exec_stats_builder = BlockExecStats.builder()
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""

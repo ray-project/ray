@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict
 
 import ray
-from ray._private.ray_logging.constants import LogKey
+from ray._common.logging_constants import LogKey
 
 
 class CoreContextFilter(logging.Filter):

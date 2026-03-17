@@ -11,6 +11,7 @@ Depending on your goal, you may not need all sections on this page:
 - **Build Ray with C++** - choose one:
 
   - **Distributable manylinux wheel** - uses a manylinux build container to produce a ``.whl`` file for installation on a cluster, for testing the packaged artifact locally, or for sharing (see :ref:`build-distributable-wheel`).
+  - **Ray image** - build a nightly-style ``rayproject/ray`` or ``rayproject/ray-llm`` image (see :ref:`build-ray-image`).
   - **Full source build (editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
 
 .. contents::
@@ -41,7 +42,7 @@ You can propose changes to the main project by submitting a pull request to the 
 Prepare a Python virtual environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you only need to build a distributable manylinux wheel, skip this section. See :ref:`build-distributable-wheel`.
+Skip this section if you're building a :ref:`distributable wheel <build-distributable-wheel>` or a :ref:`Ray image <build-ray-image>`.
 
 Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
@@ -164,6 +165,35 @@ and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM6
 
 See ``python/README-building-wheels.md`` for additional options, including building
 manylinux wheels directly with Docker.
+
+.. _build-ray-image:
+
+Building Ray images
+--------------------------
+
+.. dropdown:: Setup
+  :open:
+
+  Before you begin, make sure you have:
+
+  - A clone of the Ray repository (see :ref:`fork-ray-repo`)
+  - `uv <https://docs.astral.sh/uv/>`_ installed
+  - `Docker <https://docs.docker.com/get-docker/>`_ installed
+
+To build a Ray image, use the ``build-image.sh`` script at the repository root.
+
+.. code-block:: bash
+
+  # Build the default Ray image:
+  ./build-image.sh ray
+
+  # Build with a specific Python version:
+  ./build-image.sh ray -p 3.12
+
+  # Build a GPU image:
+  ./build-image.sh ray --platform cu12.8.1-cudnn
+
+Run ``./build-image.sh --help`` to see available image types, Python versions, and platform variants.
 
 
 .. _full-source-build:

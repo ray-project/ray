@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
+from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
@@ -39,6 +39,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    DeploymentActorConfig,
     GangSchedulingConfig,
     ProxyLocation,
     RequestRouterConfig,
@@ -196,7 +197,7 @@ class LoggingConfig(BaseModel):
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
                     f"Unknown attribute '{attr}'. "
-                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                    f"Additional log standard attributes must be one of {set(LOGRECORD_STANDARD_ATTRS)}."
                 )
         return list(set(v))
 
@@ -453,6 +454,15 @@ class DeploymentSchema(BaseModel):
             "gang_placement_strategy and runtime_failure_policy."
         ),
     )
+    deployment_actors: Optional[List[Union[Dict, DeploymentActorConfig]]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Deployment-scoped actors managed by the controller. "
+            "Each actor is shared by all replicas and cleaned up on deployment "
+            "deletion. Each item has name, actor_class (import path), "
+            "init_kwargs, and actor_options."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -650,6 +660,18 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.gang_scheduling_config = (
             info.deployment_config.gang_scheduling_config.model_dump()
         )
+
+    if info.deployment_config.deployment_actors is not None:
+        deployment_actors = []
+        for cfg in info.deployment_config.deployment_actors:
+            cfg_dict = cfg.model_dump()
+            ac = cfg.actor_class
+            cfg_dict["actor_class"] = (
+                ac if isinstance(ac, str) else f"{ac.__module__}:{ac.__qualname__}"
+            )
+            cfg_dict["init_args"] = list(cfg_dict["init_args"])
+            deployment_actors.append(cfg_dict)
+        schema.deployment_actors = deployment_actors
 
     return schema
 
