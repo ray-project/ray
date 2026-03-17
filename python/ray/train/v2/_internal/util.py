@@ -13,6 +13,7 @@ from typing import (
     Dict,
     Generator,
     Generic,
+    Iterator,
     List,
     Optional,
     TypeVar,
@@ -299,7 +300,7 @@ async def wait_with_logging(
 
 
 @contextlib.contextmanager
-def context_watchdog(fn: Callable, *args: Any):
+def context_watchdog(fn: Callable, *args: Any) -> Iterator[None]:
     """Run a function in a background thread for the duration of the context.
 
     The function is started in a daemon thread on entry. On exit, a
@@ -311,6 +312,9 @@ def context_watchdog(fn: Callable, *args: Any):
             The function should return when stop_event.is_set() or
             stop_event.wait(...) returns True.
         *args: Additional arguments forwarded to fn after the stop event.
+
+    Yields:
+        None: Control is yielded to the caller while the watchdog thread runs.
     """
     stop_event = threading.Event()
     thread = threading.Thread(
