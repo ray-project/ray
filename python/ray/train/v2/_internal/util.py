@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import functools
 import logging
+import threading
 import time
 import traceback
 from datetime import datetime
@@ -295,3 +296,31 @@ async def wait_with_logging(
         _wait_loop(),
         timeout=timeout_s if timeout_s >= 0 else None,
     )
+
+
+@contextlib.contextmanager
+def context_watchdog(func: Callable, *args: Any):
+    """Run a function in a background thread for the duration of the context.
+
+    The function is started in a daemon thread on entry. On exit, a
+    threading.Event is set to signal the thread to stop. The function is
+    responsible for checking the event and returning promptly once it is set.
+
+    Args:
+        func: A function whose first argument is a threading.Event stop signal.
+            The function should return when stop_event.is_set() or
+            stop_event.wait(...) returns True.
+        *args: Additional arguments forwarded to func after the stop event.
+    """
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=func,
+        args=(stop_event, *args),
+        daemon=True,  # thread will end even if the finally is bypassed by an abnormal exit
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join()
