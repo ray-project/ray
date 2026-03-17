@@ -173,8 +173,10 @@ class TestGPURankPool:
             nranks=nranks,
             total_nparts=total_nparts,
             key_columns=["user_id"],
+            columns=None,
             rmm_pool_size="auto",
             spill_memory_limit="auto",
+            setup_timeout_s=60.0,
         )
 
     def test_actors_empty_before_start(self):
@@ -882,8 +884,10 @@ class TestGPURankPoolReal:
             nranks=nranks,
             total_nparts=total_nparts,
             key_columns=["id"],
+            columns=None,
             rmm_pool_size="auto",
             spill_memory_limit="auto",
+            setup_timeout_s=60.0,
         )
 
     def test_pool_start_creates_actors(self, ray_with_gpu):
