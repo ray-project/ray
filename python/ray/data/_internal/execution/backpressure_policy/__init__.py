@@ -5,6 +5,9 @@ from .concurrency_cap_backpressure_policy import ConcurrencyCapBackpressurePolic
 from .downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from .memory_watermark_backpressure_policy import (
+    MemoryWatermarkBackpressurePolicy,
+)
 from .resource_budget_backpressure_policy import ResourceBudgetBackpressurePolicy
 from ray.data.context import DataContext
 
@@ -15,6 +18,7 @@ if TYPE_CHECKING:
 # Default enabled backpressure policies and its config key.
 # Use `DataContext.set_config` to config it.
 ENABLED_BACKPRESSURE_POLICIES = [
+    MemoryWatermarkBackpressurePolicy,
     ConcurrencyCapBackpressurePolicy,
     ResourceBudgetBackpressurePolicy,
     DownstreamCapacityBackpressurePolicy,
@@ -38,6 +42,7 @@ __all__ = [
     "BackpressurePolicy",
     "ConcurrencyCapBackpressurePolicy",
     "DownstreamCapacityBackpressurePolicy",
+    "MemoryWatermarkBackpressurePolicy",
     "ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY",
     "get_backpressure_policies",
 ]

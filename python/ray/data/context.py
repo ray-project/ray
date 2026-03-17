@@ -287,6 +287,14 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
+# Memory watermark backpressure defaults.
+DEFAULT_MEMORY_WATERMARK_HIGH: float = env_float(
+    "RAY_DATA_MEMORY_WATERMARK_HIGH", 0.85
+)
+DEFAULT_MEMORY_WATERMARK_LOW: float = env_float(
+    "RAY_DATA_MEMORY_WATERMARK_LOW", 0.65
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -693,6 +701,9 @@ class DataContext:
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
     )
+
+    memory_watermark_high: float = DEFAULT_MEMORY_WATERMARK_HIGH
+    memory_watermark_low: float = DEFAULT_MEMORY_WATERMARK_LOW
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
