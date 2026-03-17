@@ -331,6 +331,7 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    "_collections/serve/tutorials/model-composition-recsys/README.*",
     "_collections/serve/tutorials/model-composition-recsys/*.ipynb",
     "_collections/serve/tutorials/model-composition-recsys/**/*.ipynb",
 ] + autogen_files
