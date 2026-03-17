@@ -170,15 +170,6 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
 
   auto &work_queue = work_queues_[pool_id];
 
-  std::vector<ObjectID> arg_ids;
-  for (const auto &arg : args) {
-    rpc::TaskArg arg_proto;
-    arg->ToProto(&arg_proto);
-    if (arg_proto.has_object_ref()) {
-      arg_ids.push_back(ObjectID::FromBinary(arg_proto.object_ref().object_id()));
-    }
-  }
-
   // Work item ID is an opaque unique key for retry tracking — it is NOT the
   // actual TaskID used for submission (SubmitActorTaskForPool creates that).
   // The nil JobID is fine because this ID never enters the task lineage.
@@ -191,7 +182,19 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   work_item.attempt_number = 0;
   work_item.enqueued_at_ms = current_time_ms();
 
-  ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
+  // Precompute by-reference arg ObjectIDs for locality-aware scheduling.
+  // Stored once in the work item so DrainWorkQueue and RetryWorkItem
+  // can reuse them without re-serializing args.
+  for (const auto &arg : work_item.args) {
+    rpc::TaskArg arg_proto;
+    arg->ToProto(&arg_proto);
+    if (arg_proto.has_object_ref()) {
+      work_item.arg_ids.push_back(
+          ObjectID::FromBinary(arg_proto.object_ref().object_id()));
+    }
+  }
+
+  ActorID selected_actor = SelectActorFromPool(pool_id, work_item.arg_ids);
 
   if (selected_actor.IsNil()) {
     RAY_LOG(DEBUG) << "No actors available in pool " << pool_id
@@ -679,16 +682,7 @@ void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem wo
 
   auto &work_queue = work_queues_[pool_id];
 
-  std::vector<ObjectID> arg_ids;
-  for (const auto &arg : work_item.args) {
-    rpc::TaskArg arg_proto;
-    arg->ToProto(&arg_proto);
-    if (arg_proto.has_object_ref()) {
-      arg_ids.push_back(ObjectID::FromBinary(arg_proto.object_ref().object_id()));
-    }
-  }
-
-  ActorID selected_actor = SelectActorFromPool(pool_id, arg_ids);
+  ActorID selected_actor = SelectActorFromPool(pool_id, work_item.arg_ids);
 
   if (selected_actor.IsNil()) {
     RAY_LOG(DEBUG) << "No actors available for retry of work item "
@@ -818,13 +812,15 @@ void ActorPoolManager::DrainWorkQueue(const ActorPoolID &pool_id) {
 
   auto &work_queue = wq_it->second;
   while (work_queue->HasWork()) {
-    ActorID actor = SelectActorFromPool(pool_id, /*arg_ids=*/{});
-    if (actor.IsNil()) {
+    auto work_item = work_queue->Pop();
+    if (!work_item.has_value()) {
       break;
     }
 
-    auto work_item = work_queue->Pop();
-    if (!work_item.has_value()) {
+    ActorID actor = SelectActorFromPool(pool_id, work_item->arg_ids);
+    if (actor.IsNil()) {
+      // No actors available — push the item back and stop draining.
+      work_queue->Push(std::move(*work_item));
       break;
     }
 

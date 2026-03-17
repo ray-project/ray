@@ -40,6 +40,9 @@ struct PoolWorkItem {
   /// Task arguments.
   std::vector<std::unique_ptr<TaskArg>> args;
 
+  /// ObjectIDs of by-reference arguments, precomputed for locality-aware scheduling.
+  std::vector<ObjectID> arg_ids;
+
   /// Task options (num_returns, resources, etc).
   TaskOptions options;
 
@@ -56,6 +59,7 @@ struct PoolWorkItem {
       : work_item_id(std::move(other.work_item_id)),
         function(std::move(other.function)),
         args(std::move(other.args)),
+        arg_ids(std::move(other.arg_ids)),
         options(std::move(other.options)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms) {}
@@ -66,6 +70,7 @@ struct PoolWorkItem {
       work_item_id = std::move(other.work_item_id);
       function = std::move(other.function);
       args = std::move(other.args);
+      arg_ids = std::move(other.arg_ids);
       options = std::move(other.options);
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
