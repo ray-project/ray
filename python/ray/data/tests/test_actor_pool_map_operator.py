@@ -96,11 +96,11 @@ def _schedule_bundles(
     queue: HashLinkedQueue,
     actor_locality_enabled: bool = False,
 ) -> list:
-    """Schedule all bundles via select_actor_for_bundle; return list of actors."""
+    """Schedule all bundles via select_actors; return list of actors."""
     results = []
     while queue.has_next() and pool.can_schedule_task():
         bundle = queue.get_next()
-        actor = pool.select_actor_for_bundle(
+        actor = pool.select_actors(
             bundle=bundle,
             actor_locality_enabled=actor_locality_enabled,
         )
@@ -132,7 +132,7 @@ class TestActorPool(unittest.TestCase):
             return None
 
         bundle = queue.get_next()
-        actor = pool.select_actor_for_bundle(
+        actor = pool.select_actors(
             bundle=bundle,
             actor_locality_enabled=actor_locality_enabled,
         )
@@ -568,7 +568,7 @@ class TestActorPool(unittest.TestCase):
         actor1 = self._add_ready_actor(pool, node_id="node1")
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
-        # Schedule bundles via select_actor_for_bundle (one bundle at a time)
+        # Schedule bundles via select_actors (one bundle at a time)
         results = _schedule_bundles(
             pool, _make_bundle_queue(bundles), actor_locality_enabled=True
         )
@@ -597,7 +597,7 @@ class TestActorPool(unittest.TestCase):
         # Schedule one bundle on actor1
         assert bundle_queue.has_next() and pool.can_schedule_task()
         bundle = bundle_queue.get_next()
-        res1 = pool.select_actor_for_bundle(bundle=bundle, actor_locality_enabled=True)
+        res1 = pool.select_actors(bundle=bundle, actor_locality_enabled=True)
         pool.on_task_submitted(res1)
         assert res1 == actor1
         pool.on_task_completed(actor1)
@@ -605,7 +605,7 @@ class TestActorPool(unittest.TestCase):
         # Add another actor to the pool
         self._add_ready_actor(pool, node_id="node2")
 
-        # Schedule remaining bundles via select_actor_for_bundle
+        # Schedule remaining bundles via select_actors
         results = _schedule_bundles(pool, bundle_queue, actor_locality_enabled=True)
 
         # After 4 total tasks (2 per actor at max_tasks_in_flight=2), no more
@@ -619,8 +619,8 @@ class TestActorPool(unittest.TestCase):
 
         assert not pool.can_schedule_task()
 
-    def test_selector_select_actor_for_bundle_strict(self):
-        """Tests that `select_actor_for_bundle` returns None when no capacity."""
+    def test_selector_select_actors_strict(self):
+        """Tests that `select_actors` returns None when no capacity."""
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Add 1 actor
@@ -646,35 +646,32 @@ class TestActorPool(unittest.TestCase):
         # Verify can_schedule_task() returns False when actor is busy
         assert not pool.can_schedule_task()
 
-        # select_actor_for_bundle() returns None when no capacity
+        # select_actors() returns None when no capacity
         bundle = make_ref_bundles([[0]])[0]
-        assert (
-            pool.select_actor_for_bundle(bundle=bundle, actor_locality_enabled=False)
-            is None
-        )
+        assert pool.select_actors(bundle=bundle, actor_locality_enabled=False) is None
 
-    def test_select_actor_for_bundle_none_probes_schedulability(self):
-        """select_actor_for_bundle(bundle=None) is equivalent to can_schedule_task."""
+    def test_select_actors_none_probes_schedulability(self):
+        """select_actors(bundle=None) is equivalent to can_schedule_task."""
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Empty pool
-        assert pool.select_actor_for_bundle() is None
+        assert pool.select_actors() is None
         assert not pool.can_schedule_task()
 
         # One actor ready
         actor = self._add_ready_actor(pool)
-        assert pool.select_actor_for_bundle() is not None
+        assert pool.select_actors() is not None
         assert pool.can_schedule_task()
 
         # Exhaust capacity
         pool.on_task_submitted(actor)
         pool.on_task_submitted(actor)
-        assert pool.select_actor_for_bundle() is None
+        assert pool.select_actors() is None
         assert not pool.can_schedule_task()
 
         # Free a slot
         pool.on_task_completed(actor)
-        assert pool.select_actor_for_bundle() is not None
+        assert pool.select_actors() is not None
         assert pool.can_schedule_task()
 
     def test_selector_can_schedule_task_basic(self):
