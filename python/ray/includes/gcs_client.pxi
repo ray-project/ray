@@ -655,6 +655,23 @@ cdef class InnerGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
+    def resize_raylet_resource_instances(
+            self,
+            node_id: c_string,
+            resources: unordered_map[c_string, cython.double],
+            timeout_s=None):
+        """Send the ResizeRayletResourceInstances request to GCS."""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            unordered_map[c_string, cython.double] total_resources
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ResizeRayletResourceInstances(
+                    node_id, resources, timeout_ms, total_resources
+                )
+            )
+        return {key.decode(): value for key, value in total_resources}
+
     #############################################################
     # Publisher methods
     #############################################################

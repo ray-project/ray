@@ -552,11 +552,10 @@ void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
   raylet_client->ResizeLocalResourceInstances(
       std::move(*request.mutable_resources()),
       [reply, send_reply_callback](
-          const Status &status,
-          const rpc::ResizeLocalResourceInstancesReply &raylet_reply) {
+          const Status &status, rpc::ResizeLocalResourceInstancesReply &&raylet_reply) {
         if (status.ok()) {
-          reply->mutable_total_resources()->insert(raylet_reply.total_resources().begin(),
-                                                   raylet_reply.total_resources().end());
+          *reply->mutable_total_resources() =
+              std::move(*raylet_reply.mutable_total_resources());
         }
         send_reply_callback(status, nullptr, nullptr);
       });
