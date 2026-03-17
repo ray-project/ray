@@ -196,6 +196,8 @@ Removes specified packages from another depset's lock file. Validates that all s
 
 Additional fields: `source_depset` (name of the depset to relax from), `packages` (list of package names to remove from the lock file).
 
+> **Warning:** This operation performs a simple removal of packages from the lock file and does not re-evaluate the dependency graph. Removing a package that is required by another package in the lock file may result in an inconsistent environment. Use with caution.
+
 ### YAML Anchors
 
 Configs support standard YAML anchors for DRY definitions:
