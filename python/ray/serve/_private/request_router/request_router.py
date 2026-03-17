@@ -838,13 +838,6 @@ class RequestRouter(ABC):
         correct: any request that was actually sent occupies a queue slot,
         and the slot is freed when the request completes for any reason.
 
-        Threading: this runs from a C++ ObjectRef callback thread or gRPC
-        callback thread — not the router's event loop. The get-then-update
-        is not atomic and can race with event-loop callers (on_send_request,
-        on_new_queue_len_info), but the cache is best-effort: stale values
-        only trigger an extra probe RPC, and authoritative updates from
-        replicas overwrite any drift.
-
         Should NOT be called for rejected requests — on_new_queue_len_info
         already corrects the cache with the replica's actual queue length.
         """
