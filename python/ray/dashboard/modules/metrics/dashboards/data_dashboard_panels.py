@@ -1133,6 +1133,8 @@ MAX_BYTES_TO_READ_PANEL = Panel(
 
 # Ray Data Metrics (Cluster Autoscaler)
 # Default threshold for scaling up is 75%.
+# TODO: This should depend on what the cluster autoscaler is configured to use, rather
+# than hardcoded here.
 DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD = 75
 
 CLUSTER_CPU_UTILIZATION_PANEL = Panel(
@@ -1165,6 +1167,26 @@ CLUSTER_GPU_UTILIZATION_PANEL = Panel(
         Target(
             expr="sum(ray_data_cluster_gpu_utilization{{{global_filters}}}) by (dataset)",
             legend="GPU Utilization %: {{dataset}}",
+        ),
+        Target(
+            expr=str(DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD),
+            legend="MAX",
+        ),
+    ],
+    fill=0,
+    stack=False,
+    template=PanelTemplate.GRAPH,
+)
+
+CLUSTER_MEMORY_UTILIZATION_PANEL = Panel(
+    id=125,
+    title="Cluster utilization % (Memory)",
+    description="Average cluster memory utilization percentage used by Ray Data. When utilization exceeds the scaling threshold (default 75%), the cluster autoscaler may request additional resources.",
+    unit="percent",
+    targets=[
+        Target(
+            expr="sum(ray_data_cluster_mem_utilization{{{global_filters}}}) by (dataset)",
+            legend="Memory Utilization %: {{dataset}}",
         ),
         Target(
             expr=str(DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD),
@@ -1499,6 +1521,7 @@ DATA_GRAFANA_ROWS = [
         panels=[
             CLUSTER_CPU_UTILIZATION_PANEL,
             CLUSTER_GPU_UTILIZATION_PANEL,
+            CLUSTER_MEMORY_UTILIZATION_PANEL,
             CLUSTER_OBJECT_STORE_MEMORY_UTILIZATION_PANEL,
         ],
         collapsed=True,

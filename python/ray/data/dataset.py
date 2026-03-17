@@ -84,7 +84,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -145,6 +145,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -641,8 +642,10 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame`` (requires cudf to be installed).
+                If ``batch_format`` is set to ``None`` input block format
+                will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -967,8 +970,9 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
+                If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -979,7 +983,7 @@ class Dataset:
             A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "cudf"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -1015,6 +1019,15 @@ class Dataset:
                 if column_idx == -1:
                     return batch.append_column(col, column)
                 return batch.set_column(column_idx, col, column)
+
+            elif batch_format == "cudf":
+                import cudf
+
+                # cuDF uses pandas-like API: batch[col] = column
+                if isinstance(column, (cudf.DataFrame, cudf.Index, cudf.Series)):
+                    column.index = batch.index
+                batch[col] = column
+                return batch
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -1660,6 +1673,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
+        strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
@@ -1709,6 +1723,13 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            strict: If ``True``, ``repartition`` guarantees that all output blocks,
+                except for the last one, will have exactly ``target_num_rows_per_block`` rows.
+                If ``False``, ``repartition`` uses best-effort bundling and may produce at most
+                one block smaller than ``target_num_rows_per_block`` per input block without
+                forcing exact sizes through block splitting.
+                This parameter is only used with ``target_num_rows_per_block``.
+                Defaults to ``False``.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1745,6 +1766,13 @@ class Dataset:
                 warnings.warn(
                     "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
+        else:
+            if strict:
+                # strict is used in row-based repartition only
+                warnings.warn(
+                    "`strict` is ignored when `target_num_rows_per_block` is not set. "
+                    "Use `target_num_rows_per_block` instead of `num_blocks` to enable `strict` mode."
+                )
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
@@ -1766,6 +1794,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                strict=strict,
             )
         else:
             op = Repartition(
@@ -2413,7 +2442,7 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2431,7 +2460,7 @@ class Dataset:
                 "Couldn't create non-empty splits with the given proportions."
             )
 
-        return self.split_at_indices(split_indices)
+        return ds.split_at_indices(split_indices)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2500,9 +2529,21 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            self._validate_test_size_int(test_size, ds)
-            ds_length = ds.count()
+            ds, ds_length = self._try_count_or_materialize(ds)
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
+
+    def _try_count_or_materialize(self, ds: "Dataset") -> Tuple["Dataset", int]:
+        dataset_length = ds._meta_count()
+        if dataset_length is None:
+            # Materialize once so split_at_indices() can reuse the computed snapshot.
+            # Calling count() first would execute the upstream pipeline for counting,
+            # then execute it again for the split.
+            ds = ds.materialize()
+            dataset_length = ds._meta_count()
+            if dataset_length is None:
+                dataset_length = ds.count()
+        return ds, dataset_length
 
     def _stratified_train_test_split(
         self, ds: "Dataset", test_size: Union[int, float], stratify: str
@@ -2558,12 +2599,18 @@ class Dataset:
                 f"than 1. Got {test_size}."
             )
 
-    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+    def _validate_test_size_int(
+        self,
+        test_size: int,
+        ds: "Dataset",
+        ds_length: Optional[int] = None,
+    ) -> int:
         """Validate test_size when it's an int and return dataset length.
 
         Args:
             test_size: Test size as int.
             ds: Dataset to validate against.
+            ds_length: Dataset length if already known.
 
         Returns:
             Dataset length for reuse.
@@ -2571,7 +2618,8 @@ class Dataset:
         Raises:
             ValueError: If test_size is not in valid range.
         """
-        ds_length = ds.count()
+        if ds_length is None:
+            ds_length = ds.count()
         if test_size <= 0 or test_size >= ds_length:
             raise ValueError(
                 "If `test_size` is an int, it must be bigger than 0 and smaller "
@@ -2622,9 +2670,9 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(8)
             >>> train, test = ds.streaming_train_test_split(test_size=0.25, split_type="hash", hash_column="id")
-            >>> train.take_batch()
+            >>> train.take_batch()  # doctest: +SKIP
             {'id': array([0, 2, 3, 4, 5, 6])}
-            >>> test.take_batch()
+            >>> test.take_batch()  # doctest: +SKIP
             {'id': array([1, 7])}
 
         Args:
@@ -3639,7 +3687,9 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -3665,7 +3715,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return res
 
     @ConsumptionAPI
@@ -3716,7 +3766,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return output
 
     @ConsumptionAPI
@@ -3869,23 +3919,10 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-
-        context = self._plan._context
-
-        # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
-            return Schema(base_schema, data_context=context)
-
-        # Lazily execute only the first block to minimize computation. We achieve this
-        # by appending a Limit[1] operation to a copy of this Dataset, which we then
-        # execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
-        if base_schema is not None:
-            self._plan.cache_schema(base_schema)
-            return Schema(base_schema, data_context=context)
-        else:
-            return None
+            return Schema(base_schema, data_context=self._plan._context)
+        return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -3959,10 +3996,10 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
-        if not metadata or metadata[0].size_bytes is None:
-            return None
-        return sum(m.size_bytes for m in metadata)
+        cached = self._plan._cache.get_size_bytes(self._logical_plan.dag)
+        if cached is not None:
+            return cached
+        return self._plan.execute().size_bytes()
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -3979,7 +4016,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return list(set(self._plan.input_files()))
+        return self._plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5308,7 +5345,8 @@ class Dataset:
         *,
         namespace: Optional[str] = None,
         namespace_column: Optional[str] = None,
-        region: str,
+        region: Optional[str] = None,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
         id_column: str = "id",
@@ -5376,7 +5414,13 @@ class Dataset:
                 namespace.  The column is removed from the data before
                 writing.  Mutually exclusive with ``namespace``.
             region: Turbopuffer region identifier (for example,
-                ``"gcp-us-central1"``).
+                ``"gcp-us-central1"``).  Mutually exclusive with
+                ``base_url``.  Exactly one of ``region`` or ``base_url``
+                must be supplied.
+            base_url: Base URL for the Turbopuffer API (for example,
+                ``"https://gcp-us-central1.turbopuffer.com"``).  Mutually
+                exclusive with ``region``.  Exactly one of ``region`` or
+                ``base_url`` must be supplied.
             api_key: Turbopuffer API key. If omitted, the value is read from
                 the ``TURBOPUFFER_API_KEY`` environment variable.
             schema: Optional Turbopuffer schema definition to pass along with
@@ -5405,6 +5449,7 @@ class Dataset:
             namespace=namespace,
             namespace_column=namespace_column,
             region=region,
+            base_url=base_url,
             api_key=api_key,
             schema=schema,
             id_column=id_column,
@@ -5648,7 +5693,9 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -6720,7 +6767,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_snapshot()
+        ds._plan.clear_cache()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7082,7 +7129,7 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return self.base_schema.names
+        return list(self.base_schema.names)
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
@@ -7094,7 +7141,10 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data.extensions import ArrowTensorType, TensorDtype
+        from ray.data._internal.tensor_extensions.arrow import (
+            create_arrow_fixed_shape_tensor_type,
+        )
+        from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
             dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
@@ -7114,18 +7164,16 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-                if self._context.use_arrow_tensor_v2:
-                    pa_tensor_type_class = ArrowTensorTypeV2
-                else:
-                    pa_tensor_type_class = ArrowTensorType
-
-                # Manually convert our Pandas tensor extension type to Arrow.
-                arrow_types.append(
-                    pa_tensor_type_class(
-                        shape=dtype._shape,
-                        dtype=_convert_to_pa_type(dtype._dtype),
+                pa_dtype = _convert_to_pa_type(dtype._dtype)
+                if any(dim is None for dim in dtype._shape):
+                    tensor_type = ArrowVariableShapedTensorType(
+                        pa_dtype, len(dtype._shape)
                     )
-                )
+                else:
+                    tensor_type = create_arrow_fixed_shape_tensor_type(
+                        shape=dtype._shape, dtype=pa_dtype
+                    )
+                arrow_types.append(tensor_type)
 
             else:
                 try:
@@ -7178,3 +7226,138 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+class _ExecutionCache:
+    """Consolidated cache for Dataset execution results.
+
+    Caches the output bundle, execution stats, and lightweight metadata
+    (schema, num_rows, size_bytes), and tracks which operator produced
+    the cached data.
+
+    There are two "layers" of cache:
+      1. Bundle layer: the full RefBundle from eager execution (execute()).
+         Valid only when _operator matches the current DAG.
+      2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
+         Populated when a streaming iterator is fully exhausted
+         (CacheMetadataIterator in legacy_compat.py).
+
+    Getters check the bundle layer first, then the metadata layer.
+    """
+
+    def __init__(self):
+        # --- Bundle layer (from eager execution) ---
+        self._operator: Optional["LogicalOperator"] = None
+        self._bundle: Optional[RefBundle] = None
+
+        # --- Metadata layer (from streaming iteration) ---
+        self._num_rows: Optional[int] = None
+        self._size_bytes: Optional[int] = None
+        # Note schema can be cached via other means as well.
+        self._schema: Optional["Schema"] = None
+
+        # --- Other ---
+        self._stats: Optional[DatasetStats] = None
+
+    # --- Consolidated Getters ---
+
+    def _cache_is_fresh(self, dag: "LogicalOperator") -> bool:
+        # This _ExecutionCache is only fresh if the current logical
+        # plan dag ends with the same operator. Otherwise, the plan
+        # has changed, so there may have been a change in schema,
+        # count, etc.
+        return self._operator == dag
+
+    def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
+        if self._cache_is_fresh(dag):
+            return self._bundle
+        return None
+
+    def get_stats(self) -> Optional[DatasetStats]:
+        # We don't check for cache freshness just for stats for behaviorial
+        # backwards compatibility.
+        return self._stats
+
+    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.schema is not None:
+                return self._bundle.schema
+            return self._schema
+        return None
+
+    def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.num_rows() is not None:
+                return self._bundle.num_rows()
+            return self._num_rows
+        return None
+
+    def get_size_bytes(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None:
+                return self._bundle.size_bytes()
+            return self._size_bytes
+        return None
+
+    # --- Setters ---
+
+    def set_stats(self, stats: DatasetStats) -> None:
+        # stats are cached independently
+        self._stats = stats
+
+    def set_num_rows(self, dag: "LogicalOperator", num_rows: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._num_rows = num_rows
+
+    def set_size_bytes(self, dag: "LogicalOperator", size_bytes: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._size_bytes = size_bytes
+
+    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._schema = schema
+
+    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._bundle = bundle
+
+    # --- Lifecycle ---
+
+    def clear(self) -> None:
+        self._stats = None
+        self._clear_dag_dependent_cache()
+
+    def _clear_dag_dependent_cache(self) -> None:
+        self._operator = None
+        self._bundle = None
+        self._schema = None
+        self._num_rows = None
+        self._size_bytes = None
+
+    def copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = self._operator
+        new._bundle = self._bundle
+        new._stats = self._stats
+        new._schema = self._schema
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
+
+    def deep_copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = copy.copy(self._operator)
+        new._bundle = copy.copy(self._bundle)
+        new._stats = copy.copy(self._stats)
+        new._schema = copy.copy(self._schema)
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new

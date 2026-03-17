@@ -21,7 +21,7 @@ from vllm.entrypoints.openai.engine.protocol import (
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
 )
-from vllm.entrypoints.openai.translations.protocol import (
+from vllm.entrypoints.openai.speech_to_text.protocol import (
     TranscriptionRequest as vLLMTranscriptionRequest,
     TranscriptionResponse as vLLMTranscriptionResponse,
     TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,

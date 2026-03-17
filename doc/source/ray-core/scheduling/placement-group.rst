@@ -226,6 +226,10 @@ The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to 
 If the Autoscaler can't provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups.
 You can observe the scheduling state of the placement group from the :ref:`dashboard or state APIs <ray-placement-group-observability-ref>`.
 
+.. note::
+  When a placement group with GPUs is reserved successfully, the bundles are not necessarily ordered by GPU physical rank.
+  That is, adjacent bundles don't necessarily map to adjacent physical GPUs.
+
 .. _ray-placement-group-schedule-tasks-actors-ref:
 
 Schedule Tasks and Actors to Placement Groups (Use Reserved Resources)
@@ -573,10 +577,6 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
   :language: python
   :start-after: __child_capture_disable_pg_start__
   :end-before: __child_capture_disable_pg_end__
-
-.. warning::
-  The value of ``placement_group_capture_child_tasks`` for a given actor isn't inherited from its parent. If you're creating nested actors of depth greater than 1
-  and should all use the same placement group, you should explicitly set ``placement_group_capture_child_tasks`` explicitly set for each actor.
 
 
 [Advanced] Named Placement Group
