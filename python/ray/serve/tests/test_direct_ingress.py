@@ -2212,7 +2212,9 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         ]
     }
 
-    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(
+        controller.apply_config.remote(config=ServeDeploySchema.model_validate(config))
+    )
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -2345,6 +2347,9 @@ def test_get_serve_instance_details_json_serializable(
                                     "request_router_kwargs": {},
                                     "request_routing_stats_period_s": 10.0,
                                     "request_routing_stats_timeout_s": 30.0,
+                                    "initial_backoff_s": 0.025,
+                                    "backoff_multiplier": 2.0,
+                                    "max_backoff_s": 0.5,
                                 },
                             },
                             "target_num_replicas": 1,
