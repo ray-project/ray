@@ -890,9 +890,15 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Handle null values - replace them with sentinel values
+        # Nulls sort last in Arrow, so they accumulate at the tail of col_vals.
+        # Stripping them before searching avoids a TypeError from np.searchsorted
+        # on None values — and if desired_val is also None, the answer is simply
+        # the end of the non-null region.
+        col_vals = col_vals[
+            ~pd.isna(col_vals)
+        ]  # remove nulls from the tail of col_vals
         if desired_val is None:
-            desired_val = NULL_SENTINEL
+            return left + len(col_vals)
 
         prevleft = left
         if descending[i] is True:
