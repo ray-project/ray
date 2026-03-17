@@ -189,6 +189,7 @@ class ActorPoolMapOperator(MapOperator):
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             map_worker_cls_name=self._map_worker_cls_name,
+            enable_actor_pool_on_exit_hook=self.data_context.enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -698,6 +699,7 @@ class _MapWorker:
         _ActorPool._release_running_actor during graceful shutdown) or when all
         Python actor handles go out of scope. Ray Core guarantees this is called
         after all pending tasks complete and before the actor process exits.
+
         Note: this is NOT called if the actor is forcefully killed (e.g. via
         `ray.kill(actor)`) or crashes unexpectedly.
         """
@@ -881,6 +883,7 @@ class _ActorPool(AutoscalingActorPool):
     """
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
+    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
     _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
@@ -895,6 +898,7 @@ class _ActorPool(AutoscalingActorPool):
         max_tasks_in_flight_per_actor: int,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
+        enable_actor_pool_on_exit_hook: bool = True,
     ):
         """Initialize the actor pool.
 
@@ -916,7 +920,9 @@ class _ActorPool(AutoscalingActorPool):
             max_tasks_in_flight_per_actor: The maximum number of tasks that can
                 be submitted to a single actor at any given time.
             map_worker_cls_name: Name of the map worker class for logging purposes.
-            debounce_period_s: Debounce period for scaling down after scaling up.
+            debounce_period_s: Debounce period for scaling down after scaling up
+            enable_actor_pool_on_exit_hook: Whether to trigger UDF cleanup
+                (via ``__ray_shutdown__``) when actors are terminated.
         """
 
         self._min_size: int = min_size
@@ -926,6 +932,7 @@ class _ActorPool(AutoscalingActorPool):
         self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
+        self._enable_actor_pool_on_exit_hook = enable_actor_pool_on_exit_hook
         self._create_actor_fn = create_actor_fn
         self._per_actor_resource_usage = per_actor_resource_usage
 
@@ -1267,8 +1274,18 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = list(self._running_actors.keys())
 
+        terminate_refs = []
         for actor in running:
-            self._release_running_actor(actor, graceful=not force)
+            ref = self._release_running_actor(actor)
+            if ref:
+                terminate_refs.append(ref)
+
+        # Block until all actors have run __ray_shutdown__ (or timeout).
+        if terminate_refs:
+            ray.wait(
+                terminate_refs,
+                timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+            )
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -1277,25 +1294,20 @@ class _ActorPool(AutoscalingActorPool):
                 ray.kill(actor)
 
     def _release_running_actor(
-        self, actor: ray.actor.ActorHandle, graceful: bool = True
-    ) -> None:
-        """Remove the given actor from the pool.
+        self, actor: ray.actor.ActorHandle
+    ) -> Optional[ray.ObjectRef]:
+        """Remove the given actor from the pool and trigger graceful termination.
 
-        For graceful releases, submits actor.__ray_terminate__.remote() which queues
-        a termination task (FIFO) that triggers _MapWorker.__ray_shutdown__() after
-        all pending tasks (including lineage-reconstruction retries) complete.
+        Submits ``actor.__ray_terminate__.remote()`` which queues a termination
+        task on the actor's FIFO queue. When executed, this triggers
+        ``_MapWorker.__ray_shutdown__()`` (and therefore ``UDF.__del__``) before
+        the actor exits.
 
-        This avoids the race condition of the old on_exit approach: once __ray_terminate__
-        starts processing, the actor stops accepting new tasks, so no retry can arrive
-        after cleanup has run.
+        Returns the ``ObjectRef`` for the terminate task so the caller can
+        ``ray.wait()`` on it.
         """
-        # NOTE: By default, we remove references to the actor and let ref counting
-        # garbage collect the actor, instead of using ray.kill.
-        #
-        # Otherwise, actor cannot be reconstructed for the purposes of produced
-        # object's lineage reconstruction.
         if actor not in self._running_actors:
-            return
+            return None
 
         # Update cached statistics before removing the actor
         actor_state = self._running_actors[actor]
@@ -1311,20 +1323,30 @@ class _ActorPool(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        del self._running_actors[actor]
-        del self._actor_to_logical_id[actor]
-
-        if graceful:
+        ref = None
+        if self._enable_actor_pool_on_exit_hook:
             # Queue a graceful termination task. Ray Core guarantees this runs
             # after all currently-queued tasks (FIFO), then calls __ray_shutdown__
             # on the worker process before the actor exits.
             #
-            # max_task_retries=0: __ray_terminate__ always exits the actor intentionally
+            # NOTE: __ray_terminate__ causes an IntentionalSystemExit, so the
+            # actor won't be restarted and lineage reconstruction of its
+            # produced objects is no longer possible.  This is the expected
+            # trade-off when cleanup is enabled.
+            #
+            # max_task_retries=0: __ray_terminate__ exits the actor intentionally
             # (IntentionalSystemExit), which Ray Core treats as a task failure.
             # Without this, the actor's max_task_retries=-1 would cause Ray Core
-            # to log a noisy "Task failed, infinite retries remaining" warning for
-            # every gracefully-terminated actor.
-            actor.__ray_terminate__.options(max_task_retries=0).remote()
+            # to log a noisy "Task failed, infinite retries remaining" warning.
+            ref = actor.__ray_terminate__.options(max_task_retries=0).remote()
+        # When the hook is disabled, we just drop references and let ref
+        # counting garbage-collect the actor, preserving the ability to
+        # reconstruct produced objects via lineage reconstruction.
+
+        del self._running_actors[actor]
+        del self._actor_to_logical_id[actor]
+
+        return ref
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""

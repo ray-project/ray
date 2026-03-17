@@ -888,6 +888,8 @@ def test_actor_udf_cleanup(
     """Test that for the actor map operator, the UDF object is deleted properly."""
     ray.shutdown()
     ray.init(num_cpus=2)
+    ctx = DataContext.get_current()
+    ctx.enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 
