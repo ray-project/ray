@@ -32,7 +32,7 @@ py_test_module_list(
 
 # Custom metrics tests.
 py_test_module_list_with_env_variants(
-    size = "small",
+    size = "medium",
     env_variants = {
         "metr_agg_at_controller": {
             "env": {
