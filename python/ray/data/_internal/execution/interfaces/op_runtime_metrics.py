@@ -141,7 +141,7 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
-    last_updated: float = field(init=False, default_factory=time.perf_counter)
+    last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
 
 
 @dataclass
