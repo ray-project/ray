@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["pyyaml"]
+# dependencies = []
 # ///
 """
 Build Ray Docker images locally using raymake.
@@ -9,14 +9,13 @@ Build Ray Docker images locally using raymake.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-import yaml
 
 from ci.build.build_common import (
     BuildError,
@@ -38,18 +37,16 @@ _BASE_TYPE_MAP: dict[str, str] = {
 }
 
 
-def _load_ray_images_yaml() -> dict:
-    """Load ray-images.yaml from the repository root."""
-    path = find_ray_root() / "ray-images.yaml"
+def _load_ray_images() -> dict:
+    path = find_ray_root() / "ray-images.json"
     if not path.exists():
         raise BuildError(f"Missing {path}")
-    with open(path) as f:
-        return yaml.safe_load(f)
+    return json.loads(path.read_text())
 
 
 def _build_image_type_config() -> dict[str, dict]:
     """Build IMAGE_TYPE_CONFIG from ray-images.yaml."""
-    raw = _load_ray_images_yaml()
+    raw = _load_ray_images()
     config: dict[str, dict] = {}
     for image_type, yaml_key in _BASE_TYPE_MAP.items():
         yaml_cfg = raw[yaml_key]
