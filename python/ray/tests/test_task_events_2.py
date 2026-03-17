@@ -1328,5 +1328,186 @@ class TestIsActorTaskRunning:
         wait_for_condition(lambda: not _is_actor_task_running(pid, task_name))
 
 
+def test_owner_ungraceful_death_marks_child_tree_failed(shutdown_only):
+    """
+    Test that when an owner worker dies ungracefully (os._exit), the entire tree of
+    child tasks is marked FAILED with error_type OWNER_DIED.
+
+    Task tree:
+        owner_task -> child_task_1 (sleeping)
+                   -> child_task_2 -> grandchild_task (sleeping)
+
+    owner_task crashes via os._exit(1). All descendants should be marked FAILED.
+    """
+    ray.init(num_cpus=8, _system_config=_SYSTEM_CONFIG)
+
+    @ray.remote(max_retries=0)
+    def grandchild_task():
+        time.sleep(999)
+
+    @ray.remote(max_retries=0)
+    def child_task_1():
+        time.sleep(999)
+
+    @ray.remote(max_retries=0)
+    def child_task_2():
+        ray.get(grandchild_task.remote())
+
+    @ray.remote(max_retries=0)
+    def owner_task():
+        child_task_1.remote()
+        child_task_2.remote()
+        # Wait until all children are running before crashing.
+        def children_running():
+            tasks = list_tasks(filters=[("name", "!=", "owner_task")], detail=True)
+            running = [t for t in tasks if t["state"] == "RUNNING"]
+            # child_task_1, child_task_2, grandchild_task
+            return len(running) >= 3
+
+        wait_for_condition(children_running, timeout=15)
+        os._exit(1)
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(owner_task.remote())
+
+    def verify():
+        for name in ["child_task_1", "child_task_2", "grandchild_task"]:
+            tasks = list_tasks(filters=[("name", "=", name)], detail=True)
+            assert len(tasks) == 1, f"Expected 1 task for {name}, got {len(tasks)}"
+            t = tasks[0]
+            assert t["state"] == "FAILED", f"{name} should be FAILED, got {t['state']}"
+            assert (
+                t["error_type"] == "OWNER_DIED"
+            ), f"{name} error_type should be OWNER_DIED, got {t['error_type']}"
+        return True
+
+    wait_for_condition(verify, timeout=30, retry_interval_ms=1000)
+
+
+@pytest.mark.parametrize("worker_dead_delay_ms", [30000, 0])
+def test_owner_graceful_death_waited_does_not_fail_children(
+    shutdown_only, worker_dead_delay_ms
+):
+    """
+    Test that when an owner exits gracefully after waiting for all children
+    (via ray.get), the children are NOT incorrectly marked as FAILED.
+
+    Parametrized with delay=30000 (task events will be reported) and delay=0 (worst-case race where
+    OnWorkerDead fires before task events arrive — should still not mark children
+    failed because the death is graceful).
+    """
+    sys_config = _SYSTEM_CONFIG.copy()
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = worker_dead_delay_ms
+    ray.init(num_cpus=8, _system_config=sys_config)
+
+    @ray.remote
+    def child_task():
+        return 1
+
+    @ray.remote
+    def owner_task():
+        refs = [child_task.remote() for _ in range(3)]
+        ray.get(refs)  # Wait for all children.
+        return "done"
+
+    ray.get(owner_task.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "child_task")], detail=True)
+        assert len(tasks) == 3, f"Expected 3 child tasks, got {len(tasks)}"
+        for t in tasks:
+            assert (
+                t["state"] == "FINISHED"
+            ), f"child_task should be FINISHED, got {t['state']}"
+        return True
+
+    wait_for_condition(verify, timeout=15, retry_interval_ms=500)
+
+
+@pytest.mark.parametrize("worker_dead_delay_ms", [30000, 0])
+def test_owner_graceful_death_no_wait_does_not_fail_children(
+    shutdown_only, worker_dead_delay_ms
+):
+    """
+    Test that when an owner exits gracefully WITHOUT waiting for children,
+    the children are NOT incorrectly marked as FAILED. The worker process stays
+    alive in the pool and remains the owner, so it will relay the statuses.
+
+    Parametrized with delay=30000 (task events will be reported) and delay=0 (worst-case race — should
+    still not mark children failed because the death is graceful).
+    """
+    sys_config = _SYSTEM_CONFIG.copy()
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = worker_dead_delay_ms
+    ray.init(num_cpus=8, _system_config=sys_config)
+
+    @ray.remote
+    def short_child():
+        return 1
+
+    @ray.remote
+    def owner_no_wait():
+        # Spawn children but don't ray.get them.
+        refs = [short_child.remote() for _ in range(3)]  # noqa: F841
+        return "done"
+
+    ray.get(owner_no_wait.remote())
+
+    # Give time for children to finish and events to be reported.
+    time.sleep(3)
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "short_child")], detail=True)
+        assert len(tasks) == 3, f"Expected 3 child tasks, got {len(tasks)}"
+        for t in tasks:
+            assert (
+                t["state"] == "FINISHED"
+            ), f"short_child should be FINISHED, got {t['state']}"
+        return True
+
+    wait_for_condition(verify, timeout=15, retry_interval_ms=500)
+
+
+def test_completed_task_not_marked_failed_on_worker_death(shutdown_only):
+    """
+    Repro test for: https://github.com/ray-project/ray/issues/56427.
+    Workers with max_calls=1 die (INTENDED_SYSTEM_EXIT) after each task completes.
+    The worker death notification races with the task event buffer flush from the
+    owner. Completed tasks should NOT be incorrectly marked as FAILED.
+
+    With delay=0, OnWorkerDead fires immediately — maximizing the chance of the
+    race. Since we don't mark tasks on the dead worker as failed, this prevents marking
+    it as failed.
+    """
+    sys_config = _SYSTEM_CONFIG.copy()
+    # Zero delay to maximize the race between OnWorkerDead and task events.
+    sys_config["gcs_mark_task_failed_on_worker_dead_delay_ms"] = 0
+    ray.init(num_cpus=8, _system_config=sys_config)
+
+    @ray.remote(max_calls=1)
+    def one_shot(i):
+        return 42 + i
+
+    num_tasks = 50
+    refs = [one_shot.remote(i) for i in range(num_tasks)]
+    results = ray.get(refs)
+    assert results == list(range(42, 42 + num_tasks))
+
+    # Give time for worker death notifications and task events to be processed.
+    time.sleep(3)
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "one_shot")], detail=True)
+        assert len(tasks) == num_tasks, f"Expected {num_tasks} tasks, got {len(tasks)}"
+        for t in tasks:
+            assert t["state"] == "FINISHED", (
+                f"one_shot task should be FINISHED, got {t['state']}. "
+                f"error_type={t.get('error_type')}, "
+                f"error_message={t.get('error_message')}"
+            )
+        return True
+
+    wait_for_condition(verify, timeout=15, retry_interval_ms=500)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
