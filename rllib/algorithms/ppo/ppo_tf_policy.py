@@ -144,7 +144,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
             # Only calculate kl loss if necessary (kl-coeff > 0.0).
-            if self.config["kl_coeff"] > 0.0:
+            if self.config["use_kl_loss"] and self.config["kl_coeff"] > 0.0:
                 action_kl = prev_action_dist.kl(curr_action_dist)
                 mean_kl_loss = reduce_mean_valid(action_kl)
                 warn_if_infinite_kl_divergence(self, mean_kl_loss)
@@ -186,7 +186,7 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
             # Add mean_kl_loss (already processed through `reduce_mean_valid`),
             # if necessary.
-            if self.config["kl_coeff"] > 0.0:
+            if self.config["use_kl_loss"] and self.config["kl_coeff"] > 0.0:
                 total_loss += self.kl_coeff * mean_kl_loss
 
             # Store stats in policy for stats_fn.
