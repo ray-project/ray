@@ -602,12 +602,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return ExecutionResources(gpu=1)
 
     def get_actor_info(self):
-        from ray.data._internal.execution.interfaces.physical_operator import (
-            _ActorPoolInfo,
+        from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+            ActorPoolInfo,
         )
 
         n = len(self._rank_pool.actors)
-        return _ActorPoolInfo(running=n, pending=0, restarting=0)
+        return ActorPoolInfo(running=n, pending=0, restarting=0)
 
     # ------------------------------------------------------------------
     # SubProgressBarMixin
