@@ -501,9 +501,7 @@ class SGLangServer:
         else:
             # Chat tokenize request - render messages to prompt string
             chat_messages = self._build_chat_messages(request.messages)
-            add_generation_prompt = getattr(
-                request, "add_generation_prompt", True
-            )
+            add_generation_prompt = getattr(request, "add_generation_prompt", True)
             template_kwargs = self._build_chat_template_kwargs(request)
             prompt = self._render_chat_prompt(
                 chat_messages,
