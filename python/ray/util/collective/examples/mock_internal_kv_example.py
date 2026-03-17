@@ -22,7 +22,7 @@ def test_mock_backend():
     # Initialize Ray
     ray.init()
     # Register mock backend
-    Backend.MOCK = register_collective_backend("MOCK", MockInternalKVGroup)
+    register_collective_backend("MOCK", MockInternalKVGroup)
 
     @ray.remote
     class Worker:
@@ -38,7 +38,7 @@ def test_mock_backend():
             from ray.util.collective.types import Backend
 
             # Register backend in each worker process
-            Backend.MOCK = register_collective_backend("MOCK", MockInternalKVGroup)
+            register_collective_backend("MOCK", MockInternalKVGroup)
 
             init_collective_group(
                 world_size=world_size,
