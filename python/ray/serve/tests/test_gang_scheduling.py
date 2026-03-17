@@ -16,6 +16,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -1546,6 +1547,137 @@ class TestGangScaling:
 
         smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
         assert smaller.issubset(larger)
+
+        serve.delete("app")
+        serve.shutdown()
+
+
+class TestGangRollingUpdate:
+    def test_rolling_update(self, ray_cluster):
+        """Verifies that rolling update replaces complete gangs atomically.
+
+        During the update, RUNNING replicas must always form complete gangs.
+        """
+        GANG_SIZE = 2
+        NUM_REPLICAS = 4
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V1:
+            def __call__(self):
+                return "v1"
+
+        handle = serve.run(V1.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+        assert handle.remote().result() == "v1"
+
+        client = _get_global_client()
+        controller = client._controller
+        deployment_id = DeploymentID(name="D", app_name="app")
+
+        # Collect initial gang_ids.
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == NUM_REPLICAS
+        initial_gang_ids = {r.gang_context.gang_id for r in running}
+        assert len(initial_gang_ids) == NUM_REPLICAS // GANG_SIZE
+
+        # Gate V2 startup behind a signal so we can deterministically
+        # observe mixed old/new gang state during the rolling update.
+        signal = SignalActor.remote()
+
+        # New code version triggers requires_actor_restart -> rolling update
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V2:
+            def __init__(self):
+                ray.get(signal.wait.remote())
+
+            def __call__(self):
+                return "v2"
+
+        # Issue the update in a background thread so we can poll
+        # intermediate controller state from the main thread.
+        update_done = threading.Event()
+
+        def update():
+            serve.run(V2.bind(), name="app")
+            update_done.set()
+
+        t = threading.Thread(target=update, daemon=True)
+        t.start()
+
+        # Wait until we observe mixed state: at least one old gang still
+        # RUNNING and at least one new gang in STARTING (blocked on signal).
+        def mixed_state_observed():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            starting = replicas.get([ReplicaState.STARTING])
+
+            running_gang_ids = {
+                r.gang_context.gang_id for r in running if r.gang_context is not None
+            }
+            starting_gang_ids = {
+                r.gang_context.gang_id for r in starting if r.gang_context is not None
+            }
+
+            has_old_running = bool(running_gang_ids & initial_gang_ids)
+            has_new_starting = bool(starting_gang_ids - initial_gang_ids)
+
+            # While old gangs are still running, they must be complete.
+            gang_counts: dict = {}
+            for r in running:
+                if r.gang_context is not None:
+                    gid = r.gang_context.gang_id
+                    gang_counts[gid] = gang_counts.get(gid, 0) + 1
+            for gid, count in gang_counts.items():
+                if gid in initial_gang_ids:
+                    assert count == GANG_SIZE
+
+            return has_old_running and has_new_starting
+
+        wait_for_condition(mixed_state_observed, timeout=30)
+
+        # Unblock V2 constructors and wait for the update to finish.
+        signal.send.remote()
+
+        def update_complete():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != NUM_REPLICAS:
+                return False
+            current_gang_ids = {
+                r.gang_context.gang_id for r in running if r.gang_context is not None
+            }
+            return current_gang_ids and not (current_gang_ids & initial_gang_ids)
+
+        wait_for_condition(update_complete, timeout=60)
+        t.join(timeout=10)
+
+        # Confirm all replicas serve the new version.
+        for _ in range(20):
+            assert handle.remote().result() == "v2"
 
         serve.delete("app")
         serve.shutdown()
