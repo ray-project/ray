@@ -855,7 +855,7 @@ class Worker:
             )
             if not is_one_sided_transport(tensor_transport):
                 raise ValueError(
-                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}."
+                    f"ray.put is not supported for two-sided RDT transport {tensor_transport}. "
                     f"Either pass a one-sided transport, or return the value from an actor task and use the @ray.method(tensor_transport={tensor_transport}) decorator instead."
                 )
         try:

@@ -543,6 +543,20 @@ class RDTManager:
                     else:
                         target_buffers.append(buffer)
 
+            if target_buffers is not None:
+                from ray.experimental.rdt.rdt_store import validate_tensor_buffers
+                from ray.experimental.rdt.util import device_match_transport
+
+                device = tensor_transport_meta.tensor_device
+                tensor_meta = tensor_transport_meta.tensor_meta
+
+                if tensor_meta and not device_match_transport(device, tensor_transport):
+                    raise ValueError(
+                        f"Tensor transport backend {tensor_transport} does not "
+                        f"support tensor transfer on device {device}."
+                    )
+                validate_tensor_buffers(target_buffers, tensor_meta, device)
+
             return tensor_transport_manager.fetch_multiple_tensors(
                 obj_id,
                 tensor_transport_meta,
@@ -749,13 +763,14 @@ class RDTManager:
         """
         rdt_store = self.rdt_store
 
-        # Trigger fetches for all objects where we don't have the primary copy.
-        # Each fetch request produces exactly one secondary copy, even if
-        # another secondary copy of the object is already in the local store.
+        # Trigger fetches for the ray.get codepath: all objects where we have
+        # the metadata but not the primary copy. Each fetch request produces
+        # exactly one secondary copy, even if another secondary copy of the
+        # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
         trigger_exception = None
         for object_id in object_ids:
-            if not rdt_store.is_primary_copy(object_id):
+            if self.is_managed_object(object_id) and not rdt_store.is_primary_copy(object_id):
                 # TODO(swang): Check if there is already a secondary copy of the
                 # object in the store. If so, use that copy instead. Ensure that
                 # the secondary copy is only popped after its original fetcher
