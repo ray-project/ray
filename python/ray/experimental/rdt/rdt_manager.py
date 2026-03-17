@@ -749,22 +749,40 @@ class RDTManager:
         """
         rdt_store = self.rdt_store
 
-        # Trigger fetches for all objects where we have the metadata for the
-        # object but we don't have the primary copy. Each fetch request produces
-        # exactly one secondary copy, even if another secondary copy of the
-        # object is already in the local store.
+        # Trigger fetches for all objects where we don't have the primary copy.
+        # Each fetch request produces exactly one secondary copy, even if
+        # another secondary copy of the object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
+        trigger_exception = None
         for object_id in object_ids:
             if not rdt_store.is_primary_copy(object_id):
                 # TODO(swang): Check if there is already a secondary copy of the
                 # object in the store. If so, use that copy instead. Ensure that
                 # the secondary copy is only popped after its original fetcher
                 # plus this one have consumed the copy.
-                fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
+                try:
+                    fetch_requests[object_id] = self._trigger_fetch(
+                        object_id, use_object_store
+                    )
+                except Exception as e:
+                    trigger_exception = e
+                    break
 
-        # Wait for each fetch and add to store.
+        # Always wait for all in-flight fetches to complete, even if
+        # _trigger_fetch failed for some object. This cleans up any async
+        # transfers that were already started.
+        # TODO(swang): This will wait for other fetches to succeed or error.
+        # Ideally if an exception was already thrown, we should just cancel
+        # the remaining fetches.
         for object_id, fetch_request in fetch_requests.items():
-            self._wait_fetch(object_id, fetch_request)
+            try:
+                self._wait_fetch(object_id, fetch_request)
+            except Exception as e:
+                if trigger_exception is None:
+                    trigger_exception = e
+
+        if trigger_exception is not None:
+            raise trigger_exception
 
         # Collect results.
         result: Dict[str, List[Any]] = {}
@@ -773,6 +791,8 @@ class RDTManager:
             # In this case, we should not remove the RDT object after it is consumed once,
             # because the RDT object reference may be used again.
             # Instead, we should wait for the GC callback to clean it up.
+            # TODO(swang): Timeout should start at the beginning of the get
+            # function. At this point, fetches should have already completed.
             pop_object = not rdt_store.is_primary_copy(object_id)
             if pop_object:
                 result[object_id] = rdt_store.wait_and_pop_object(

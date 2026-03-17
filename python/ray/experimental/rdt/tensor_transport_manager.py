@@ -35,20 +35,6 @@ class TensorTransportMetadata:
 
 
 @dataclass
-class TransferMetadata:
-    """Base class for in-flight tensor transfer state.
-
-    This class holds the minimal state needed to track an async transfer.
-    Backend-specific implementations should extend this class with additional fields.
-
-    Args:
-        tensors: The tensors being transferred.
-    """
-
-    tensors: List[Any]
-
-
-@dataclass
 class FetchRequest:
     """Represents a pending or completed tensor fetch operation.
 
