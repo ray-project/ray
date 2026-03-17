@@ -62,7 +62,6 @@ from ray.data.context import (
     DataContext,
 )
 from ray.types import ObjectRef
-from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -789,85 +788,196 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
             not strict or self.can_schedule_task()
         ), "select_actors(...) might not be invoked unless can_schedule_task(...) returns true"
 
-        while input_queue:
-            # Filter out actors that are invalid, i.e. actors with number of tasks in
-            # flight >= _max_tasks_in_flight or actor_state is not ALIVE.
-            bundle = input_queue.peek_next()
-            # Fetch available actors
-            available_actors = self._actor_pool.schedulable_actors()
-            if not available_actors:
-                return
+        if not input_queue:
+            return
 
-            # Rank all valid actors
-            ranks = self._rank_actors(
-                available_actors, bundle if actor_locality_enabled else None
-            )
+        available_actors = self._actor_pool.schedulable_actors()
+        if not available_actors:
+            return
 
-            assert len(ranks) == len(
-                available_actors
-            ), f"{len(ranks)} != {len(available_actors)}"
+        if actor_locality_enabled:
+            yield from self._select_actors_min_cost_flow(input_queue, available_actors)
+        else:
+            yield from self._select_actors_no_locality(input_queue, available_actors)
 
-            # Pick the actor with the highest rank (lower value, higher rank)
-            target_actor_idx = min(
-                range(len(available_actors)), key=lambda idx: ranks[idx]
-            )
-
-            target_actor = available_actors[target_actor_idx]
-
-            # We remove the bundle and yield the actor to the operator. We do not use pop()
-            # in case the queue has changed the order of the bundles.
-            input_queue.remove(bundle)
-            yield bundle, target_actor
-
-    def _rank_actors(
+    def _select_actors_min_cost_flow(
         self,
-        actors: List[ActorHandle],
-        bundle: Optional[RefBundle],
-    ) -> List[Tuple[int, int]]:
-        """Return ranks for each actor based on node affinity with the blocks in the provided
-        bundle and current Actor's load.
+        input_queue: QueueWithRemoval,
+        available_actors: List[ActorHandle],
+    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
+        """Select actors using min-cost max-flow to minimize total data movement.
 
-        The rank for each actor is a tuple of
+        Models the assignment as a flow network:
+            Source → Bundles → Actors → Sink
+        where edge costs on Bundle→Actor arcs represent the bytes that must be
+        transferred (total bundle size minus bytes already local to the actor's node).
+        The number of remaining task slots per actor is encoded as the
+        max flow limit on Actor→Sink edges.
 
-            1. Locality rank: a rank of a node Actor is scheduled on determined based on
-            the ranking of preferred locations for provided ``RefBundle`` (defined by
-            ``RefBundle.get_preferred_locations``). Lower is better.
-            2. Number of tasks currently executed by Actor. Lower is better.
-
-        Args:
-            actors: List of actors to rank
-            bundle: Optional bundle whose locality preferences should be considered
-
-        Returns:
-            List of (locality_rank, num_tasks) tuples, one per input actor
+        Semantics:
+        ┌─────────┬─────────────────────────────────────┬─────────────────────────────────────┬────────────────────────────────────────┐
+        │  Edge   │   Units of Flow Edge                │                Cost                 │                Purpose                 │
+        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
+        │ S → Bᵢ  │ 1                                   │ 0                                   │ Each bundle assigned at most once      │
+        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
+        │ Bᵢ → Aⱼ │ 1                                   │ total_bytes(Bᵢ) - bytes_on_node(Aⱼ) │ Data movement cost of this assignment  │
+        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
+        │ Aⱼ → T  │ max_in_flight - tasks_in_flight(Aⱼ) │ 0                                   │ Actor accepts up to remaining capacity │
+        └─────────┴─────────────────────────────────────┴─────────────────────────────────────┴────────────────────────────────────────┘
         """
-        locs_priorities = (
-            {
-                # NOTE: We're negating total bytes to maintain an invariant
-                #       of the rank used -- lower value corresponding to a higher rank
-                node_id: -total_bytes
-                for node_id, total_bytes in bundle.get_preferred_object_locations().items()
-            }
-            if bundle is not None
-            else {}
+        import numpy as np
+        from ortools.graph.python import min_cost_flow
+
+        bundles: List[RefBundle] = list(input_queue)
+        actor_states: Dict[ActorHandle, _ActorState] = self._actor_pool.running_actors()
+        max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
+
+        num_bundles = len(bundles)
+        num_actors = len(available_actors)
+
+        # Compute remaining task slots per actor.
+        actor_remaining_slots = [
+            max_in_flight - actor_states[actor].num_tasks_in_flight
+            for actor in available_actors
+        ]
+        total_slots = sum(actor_remaining_slots)
+        max_assignable = min(num_bundles, total_slots)
+        if max_assignable == 0:
+            return
+
+        # Flow network node layout:
+        #   0                                       = source
+        #   1 .. num_bundles                        = one node per bundle
+        #   num_bundles+1 .. num_bundles+num_actors = one node per actor
+        #   num_bundles+num_actors+1                = sink
+        source_node = 0
+        sink_node = num_bundles + num_actors + 1
+        num_flow_nodes = num_bundles + num_actors + 2
+
+        # Arc counts per section.
+        num_source_edges = num_bundles
+        num_bundle_actor_edges = num_bundles * num_actors
+        num_actor_sink_edges = num_actors
+        num_total_edges = (
+            num_source_edges + num_bundle_actor_edges + num_actor_sink_edges
         )
 
-        # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
-        #       and rank[-1] is the lowest)
-        ranks = [
-            (
-                # Priority/rank of the location (based on the object size).
-                # Defaults to int32 max value (ie no rank)
-                locs_priorities.get(
-                    self._actor_pool.running_actors()[actor].actor_location, INT32_MAX
-                ),
-                # Number of tasks currently in flight at the given actor
-                self._actor_pool.running_actors()[actor].num_tasks_in_flight,
-            )
-            for actor in actors
-        ]
+        # Preallocate the four parallel arc arrays:
+        # (start, end, max_flow_through_arc, cost_per_unit_flow).
+        arc_starts = np.empty(num_total_edges, dtype=np.int32)
+        arc_ends = np.empty(num_total_edges, dtype=np.int32)
+        arc_max_flows = np.empty(num_total_edges, dtype=np.int64)
+        arc_unit_costs = np.empty(num_total_edges, dtype=np.int64)
 
-        return ranks
+        bundle_nodes = np.arange(1, num_bundles + 1, dtype=np.int32)
+        actor_nodes = np.arange(
+            num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
+        )
+
+        ## Construct edges for the flow network.
+
+        # --- Section 1: Source → each bundle (max flow 1, cost 0) ---
+        # Each bundle can be assigned at most once.
+        source_edge = slice(0, num_source_edges)
+        arc_starts[source_edge] = source_node
+        arc_ends[source_edge] = bundle_nodes
+        arc_max_flows[source_edge] = 1
+        arc_unit_costs[source_edge] = 0
+
+        # --- Section 2: Bundle → actor edges (max flow 1, cost = data movement) ---
+        # Cost represents bytes that must transfer over the network.
+        # Each bundle connects to every actor: repeat each bundle node num_actors
+        # times, tile actor nodes num_bundles times.
+        bundle_actor_edge = slice(
+            num_source_edges, num_source_edges + num_bundle_actor_edges
+        )
+        arc_starts[bundle_actor_edge] = np.repeat(bundle_nodes, num_actors)
+        arc_ends[bundle_actor_edge] = np.tile(actor_nodes, num_bundles)
+        arc_max_flows[bundle_actor_edge] = 1
+
+        # Build movement costs: movement_cost[i,j] = total_bytes(i) - local_bytes(i,j)
+        actor_locations = [
+            actor_states[actor].actor_location for actor in available_actors
+        ]
+        movement_costs = np.empty(num_bundle_actor_edges, dtype=np.int64)
+        for bundle_idx, bundle in enumerate(bundles):
+            preferred_locs = bundle.get_preferred_object_locations()
+            total_bytes = bundle.size_bytes()
+            offset = bundle_idx * num_actors
+            for actor_idx, actor_location in enumerate(actor_locations):
+                local_bytes = preferred_locs.get(actor_location, 0)
+                movement_costs[offset + actor_idx] = total_bytes - local_bytes
+        arc_unit_costs[bundle_actor_edge] = movement_costs
+
+        # --- Section 3: Actor → sink (max flow = remaining task slots, cost 0) ---
+        # Limits how many bundles each actor can accept.
+        sink_edge = slice(num_source_edges + num_bundle_actor_edges, num_total_edges)
+        arc_starts[sink_edge] = actor_nodes
+        arc_ends[sink_edge] = sink_node
+        arc_max_flows[sink_edge] = np.array(actor_remaining_slots, dtype=np.int64)
+        arc_unit_costs[sink_edge] = 0
+
+        # Build the solver with all arcs at once.
+        solver = min_cost_flow.SimpleMinCostFlow()
+        all_arcs = solver.add_arcs_with_capacity_and_unit_cost(
+            arc_starts,
+            arc_ends,
+            arc_max_flows,
+            arc_unit_costs,
+        )
+
+        # Source produces flow, sink consumes it.
+        supplies = np.zeros(num_flow_nodes, dtype=np.int64)
+        supplies[source_node] = max_assignable
+        supplies[sink_node] = -max_assignable
+        solver.set_nodes_supplies(np.arange(num_flow_nodes, dtype=np.int32), supplies)
+
+        status = solver.solve()
+        if status != solver.OPTIMAL:
+            return
+
+        # Extract assignments from bundle→actor arcs where the solver
+        # pushed flow (flow > 0 means this bundle is assigned to this actor).
+        bundle_actor_edges = all_arcs[bundle_actor_edge]
+        edge_flows = solver.flows(bundle_actor_edges)
+
+        for edge, flow in zip(bundle_actor_edges, edge_flows):
+            if flow > 0:
+                # Recover bundle/actor indices from the flow node ids.
+                # Bundle nodes are 1-indexed, actor nodes start at num_bundles+1.
+                bundle_idx = solver.tail(edge) - 1
+                actor_idx = solver.head(edge) - (num_bundles + 1)
+                input_queue.remove(bundles[bundle_idx])
+                yield bundles[bundle_idx], available_actors[actor_idx]
+
+    def _select_actors_no_locality(
+        self,
+        input_queue: QueueWithRemoval,
+        available_actors: List[ActorHandle],
+    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
+        """When locality is disabled, assign bundles to least-loaded actors."""
+        import heapq
+
+        running = self._actor_pool.running_actors()
+        max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
+
+        # Max-heap by remaining capacity (negate for min-heap).
+        heap = []
+        for actor in available_actors:
+            remaining = max_in_flight - running[actor].num_tasks_in_flight
+            if remaining > 0:
+                heapq.heappush(heap, (-remaining, id(actor), actor))
+
+        bundles = list(input_queue)
+        for bundle in bundles:
+            if not heap:
+                return
+            neg_rem, _, actor = heapq.heappop(heap)
+            remaining = -neg_rem
+            input_queue.remove(bundle)
+            yield bundle, actor
+            if remaining - 1 > 0:
+                heapq.heappush(heap, (-(remaining - 1), id(actor), actor))
 
 
 class _ActorPool(AutoscalingActorPool):
