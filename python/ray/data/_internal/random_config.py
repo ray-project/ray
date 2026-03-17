@@ -139,8 +139,11 @@ class RandomSeedConfig:
                 use_timestamp_as_default=use_timestamp_as_default,
             )
         elif isinstance(seed, RandomSeedConfig):
-            seed.use_timestamp_as_default = use_timestamp_as_default
-            return seed
+            return cls(
+                seed=seed.seed,
+                reseed_after_execution=seed.reseed_after_execution,
+                use_timestamp_as_default=use_timestamp_as_default,
+            )
 
         raise ValueError(f"Invalid seed type: {type(seed)}")
 
