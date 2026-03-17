@@ -4016,7 +4016,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return list(set(self._plan.input_files()))
+        return self._plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
