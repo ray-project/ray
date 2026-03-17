@@ -36,7 +36,7 @@ class ObjectStoreFetchRequest(FetchRequest):
 
     obj_id: str
     object_ref: ObjectRef
-    tensors: None
+    tensors = None
 
 
 if TYPE_CHECKING:
