@@ -908,20 +908,6 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
             num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
         )
 
-        def _build_fan_edges(
-            from_node: int,
-            to_nodes: np.ndarray,
-            max_flow: int,
-        ) -> _FlowEdges:
-            """Build edges from one node to many with uniform max_flow and zero cost."""
-            count = len(to_nodes)
-            return _FlowEdges(
-                starts=np.full(count, from_node, dtype=np.int32),
-                ends=to_nodes,
-                max_flows=np.full(count, max_flow, dtype=np.int64),
-                unit_costs=np.zeros(count, dtype=np.int64),
-            )
-
         def _build_bundle_actor_edges() -> _FlowEdges:
             """Build bipartite bundle->actor edges with locality-aware costs.
 
@@ -973,14 +959,19 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         # --- Build the three edge sections ---
 
         # Source -> each bundle: each bundle assigned at most once.
-        source_edges = _build_fan_edges(source_node, bundle_nodes, max_flow=1)
+        count = len(bundle_nodes)
+        source_edges = _FlowEdges(
+            starts=np.full(count, source_node, dtype=np.int32),
+            ends=bundle_nodes,
+            max_flows=np.full(count, max_flow=1, dtype=np.int64),
+            unit_costs=np.zeros(count, dtype=np.int64),
+        )
 
         # Bundle -> actor: bipartite edges with locality-aware costs.
         bundle_actor_edges = _build_bundle_actor_edges()
 
         # Actor -> sink: limits how many bundles each actor can accept.
-        # Each actor has a different max_flow (remaining task slots), so we
-        # build these directly rather than using _build_fan_edges.
+        # Each actor has a different max_flow (remaining task slots).
         sink_edges = _FlowEdges(
             starts=actor_nodes,
             ends=np.full(num_actors, sink_node, dtype=np.int32),
