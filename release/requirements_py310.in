@@ -13,6 +13,7 @@ jinja2
 msal
 protobuf >= 3.15.3, != 3.19.5
 pytest
+responses
 pyyaml
 pybuildkite
 PyGithub
