@@ -674,6 +674,72 @@ class TestGetPipHash:
             assert isinstance(hash_val, str)
             assert len(hash_val) == 40
 
+    def test_pip_hash_with_nested_relative_paths(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+            
+            # Create base.txt in reqs directory
+            base_file = os.path.join(reqs_dir, "base.txt")
+            with open(base_file, "w") as f:
+                f.write("-r extras.txt\nnumpy==1.21.0\n")
+            
+            # Create extras.txt in the same directory (relative path)
+            extras_file = os.path.join(reqs_dir, "extras.txt")
+            with open(extras_file, "w") as f:
+                f.write("pandas==1.3.0\n")
+            
+            # Test with absolute path to base.txt
+            pip_dict = {"packages": [f"-r {base_file}"]}
+            hash1 = _get_pip_hash(pip_dict)
+            
+            # Test with relative path from tmpdir
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                relative_base = os.path.relpath(base_file, tmpdir)
+                pip_dict2 = {"packages": [f"-r {relative_base}"]}
+                hash2 = _get_pip_hash(pip_dict2)
+                # Hashes should be the same regardless of how we reference the file
+                assert hash1 == hash2
+            finally:
+                os.chdir(original_cwd)
+            
+            assert isinstance(hash1, str)
+            assert len(hash1) == 40
+
+    def test_pip_hash_with_nested_circular_relative_paths(self):
+        from ray._private.runtime_env.pip import _get_pip_hash
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+            
+            # Create circular references with relative paths
+            a_file = os.path.join(reqs_dir, "a.txt")
+            with open(a_file, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+            
+            b_file = os.path.join(reqs_dir, "b.txt")
+            with open(b_file, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+            
+            # This should not cause an infinite loop
+            pip_dict = {"packages": [f"-r {a_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
