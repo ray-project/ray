@@ -459,9 +459,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
+  SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy,
-                                            NodeID soft_target_node_id);
+                                            std::optional<std::string> label_domain);
 
   /// Try to release bundle resource to cluster resource manager.
   ///
@@ -473,7 +473,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /**
    * @brief Determines whether a placement group requires label-domain-aware
-   * scheduling.
+   * scheduling. Currently only supports GB200 and GB300 accelerator types
+   * for GPU-domain scheduling.
+   * TODO(#61777): Remove once label-domain scheduling is part of the pg public API
+   * as an option.
    *
    * @param pg The placement group to inspect.
    * @return The node label key to use for domain grouping, or std::nullopt if
@@ -520,18 +523,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
-
-  /**
-   * @brief Tracks the selected label domain value for each (placement group,
-   * label key) pair.
-   *
-   * @details Outer key is the placement group ID. Inner key is the node label
-   * key (e.g. "ray.io/gpu-domain"), inner value is the selected domain value
-   * (e.g. "rack-1"). The nested map supports multiple tiers of label-domain
-   * scheduling for the same placement group.
-   */
-  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<std::string, std::string>>
-      placement_group_label_domains_;
 
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);

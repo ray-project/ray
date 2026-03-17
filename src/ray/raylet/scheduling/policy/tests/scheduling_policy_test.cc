@@ -732,9 +732,8 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
   auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
-  auto options = SchedulingOptions::BundlePack();
-  options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
-  options.target_label_domain_.first = kDomainLabelKey;
+  auto options =
+      SchedulingOptions::BundlePack(std::make_pair(kDomainLabelKey, std::string()));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
   NodeScheduleFn node_schedule_fn =
@@ -823,9 +822,8 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
   auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
-  auto options = SchedulingOptions::BundlePack();
-  options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
-  options.target_label_domain_.first = kDomainLabelKey;
+  auto options =
+      SchedulingOptions::BundlePack(std::make_pair(kDomainLabelKey, std::string()));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
   NodeScheduleFn node_schedule_fn =

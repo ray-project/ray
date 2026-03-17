@@ -156,6 +156,17 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
+  /// Get the label domain assignment for the given label key.
+  std::optional<std::string> GetLabelDomainAssignment(const std::string &label_key) const;
+
+  /// Set the label domain assignment for the given label key.
+  void SetLabelDomainAssignment(const std::string &label_key,
+                                const std::string &label_value);
+
+  /// Clear all label domain assignments (used when all bundles for label-domain PGs are
+  /// unplaced).
+  void ClearLabelDomainAssignments();
+
  private:
   // XXX.
   FRIEND_TEST(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache);

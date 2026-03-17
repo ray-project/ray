@@ -82,6 +82,9 @@ struct SchedulingResult {
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
   // The label domain selected during placement group scheduling.
+  // The key is the label domain key (e.g. "ray.io/gpu-domain"),
+  // the value is the label domain value (e.g. "rack-1").
+  // TODO(#61777): Extend to support multiple tiers of label-domain scheduling.
   std::optional<std::pair<std::string, std::string>> selected_label_domain;
 };
 

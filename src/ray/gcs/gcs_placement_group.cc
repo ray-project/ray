@@ -144,5 +144,25 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
+std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
+    const std::string &label_key) const {
+  const auto &assignments = placement_group_table_data_.label_domain_assignments();
+  auto it = assignments.find(label_key);
+  if (it != assignments.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+void GcsPlacementGroup::SetLabelDomainAssignment(const std::string &label_key,
+                                                 const std::string &label_value) {
+  (*placement_group_table_data_.mutable_label_domain_assignments())[label_key] =
+      label_value;
+}
+
+void GcsPlacementGroup::ClearLabelDomainAssignments() {
+  placement_group_table_data_.mutable_label_domain_assignments()->clear();
+}
+
 }  // namespace gcs
 }  // namespace ray

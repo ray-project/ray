@@ -66,11 +66,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const auto &all_bundles = placement_group->GetBundles();
     bool is_total_failure = (bundles.size() == all_bundles.size());
     if (is_total_failure) {
-      auto pg_id = placement_group->GetPlacementGroupID();
-      if (placement_group_label_domains_.erase(pg_id) > 0) {
-        RAY_LOG(INFO) << "All bundles for pg " << pg_id
-                      << " are unplaced, rescheduling on a new label domain";
-      }
+      placement_group->ClearLabelDomainAssignments();
+      RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
+                    << " are unplaced, rescheduling on a new label domain";
     }
   }
 
@@ -85,25 +83,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   auto scheduling_options =
-      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
-                              strategy,
-                              placement_group->GetSoftTargetNodeID());
-  if (label_domain.has_value()) {
-    const auto &label_domain_key = label_domain.value();
-    scheduling_options.label_domain_scheduling_strategy_ =
-        raylet_scheduling_policy::LabelDomainSchedulingStrategy::STRICT_PACK;
-    scheduling_options.target_label_domain_.first = label_domain_key;
-    auto pg_it =
-        placement_group_label_domains_.find(placement_group->GetPlacementGroupID());
-    if (pg_it != placement_group_label_domains_.end()) {
-      auto key_it = pg_it->second.find(label_domain_key);
-      // If the label domain value is already selected for this pg, it means
-      // the bundles are being rescheduled and must be on the same domain.
-      if (key_it != pg_it->second.end()) {
-        scheduling_options.target_label_domain_.second = key_it->second;
-      }
-    }
-  }
+      CreateSchedulingOptions(*placement_group, strategy, label_domain);
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -133,8 +113,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   if (scheduling_result.selected_label_domain.has_value()) {
     const auto &[label_domain_key, label_domain_value] =
         *scheduling_result.selected_label_domain;
-    placement_group_label_domains_[placement_group->GetPlacementGroupID()]
-                                  [label_domain_key] = label_domain_value;
+    placement_group->SetLabelDomainAssignment(label_domain_key, label_domain_value);
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
                   << " assigned to label domain " << label_domain_key << ": "
                   << label_domain_value;
@@ -209,7 +188,6 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // Return destroyed bundles resources to the cluster resource.
     ReturnBundleResources(bundle_locations.value());
   }
-  placement_group_label_domains_.erase(placement_group_id);
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -514,22 +492,35 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
-    const PlacementGroupID &placement_group_id,
+    const GcsPlacementGroup &placement_group,
     rpc::PlacementStrategy strategy,
-    NodeID soft_target_node_id) {
+    std::optional<std::string> label_domain) {
+  std::optional<std::pair<std::string, std::string>> target_label_domain;
+  if (label_domain.has_value()) {
+    const std::string &label_domain_key = label_domain.value();
+    std::optional<std::string> label_value =
+        placement_group.GetLabelDomainAssignment(label_domain_key);
+    // If the label domain value is already selected for this pg, it means
+    // the bundles are being rescheduled and must be on the same domain.
+    target_label_domain = {label_domain_key, label_value.value_or("")};
+  }
+
+  NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
+  PlacementGroupID placement_group_id = placement_group.GetPlacementGroupID();
+
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack();
+    return SchedulingOptions::BundlePack(std::move(target_label_domain));
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread();
+    return SchedulingOptions::BundleSpread(std::move(target_label_domain));
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
-                                    : scheduling::NodeID(soft_target_node_id.Binary()));
-
+                                    : scheduling::NodeID(soft_target_node_id.Binary()),
+        std::move(target_label_domain));
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id));
+        CreateSchedulingContext(placement_group_id), std::move(target_label_domain));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
@@ -709,15 +700,21 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
 
 std::optional<std::string> GcsPlacementGroupScheduler::IsLabelDomainPlacementGroup(
     const GcsPlacementGroup &pg) const {
+  static const std::string kAcceleratorTypeLabelKey = "ray.io/accelerator-type";
+  static const std::string kGpuDomainLabelKey = "ray.io/gpu-domain";
+  static const std::string kGB200 = "GB200";
+  static const std::string kGB300 = "GB300";
+
   const auto &all_bundles = pg.GetBundles();
   RAY_CHECK(!all_bundles.empty());
   const auto &bundle = all_bundles[0];
   const auto &label_selector = bundle->GetRequiredResources().GetLabelSelector();
   for (const auto &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == "ray.io/accelerator-type" &&
+    if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        constraint.GetLabelValues().contains("GB300")) {
-      return "ray.io/gpu-domain";
+        (constraint.GetLabelValues().contains(kGB300) ||
+         constraint.GetLabelValues().contains(kGB200))) {
+      return kGpuDomainLabelKey;
     }
   }
   return std::nullopt;
