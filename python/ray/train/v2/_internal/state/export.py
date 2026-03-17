@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 from collections.abc import Mapping
 from typing import Dict
 
@@ -129,9 +130,11 @@ def _dict_to_human_readable_struct(d: Dict, *, max_depth: int = 3) -> Struct:
         )
 
     def to_human_readable(value, depth):
-        # JSON-native types
-        if value is None or isinstance(value, (bool, int, float, str)):
+        # JSON-native types — non-finite floats are not valid JSON, convert to str
+        if value is None or isinstance(value, (bool, int, str)):
             return value
+        if isinstance(value, float):
+            return str(value) if not math.isfinite(value) else value
 
         # Dict-like
         if isinstance(value, Mapping):

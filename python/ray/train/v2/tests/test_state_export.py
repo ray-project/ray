@@ -286,6 +286,7 @@ def test_dict_to_human_readable_struct_max_depth():
         "sequence": [1, CustomObj()],
         "nested": {"inner": {"deep": 99}},
         "obj": CustomObj(),
+        "inf_float": float("inf"),
     }
 
     # max_depth <= 0 raises
@@ -426,6 +427,41 @@ def test_export_multiple_source_types(enable_export_api_write):
 
     assert [d["source_type"] for d in data] == expected_source_types
     assert [d["event_data"]["status"] for d in data] == expected_statuses
+
+
+def test_export_execution_options_with_inf_resource_limits(enable_export_api_write):
+    """Test that execution_options containing float('inf') resource limits export cleanly.
+
+    ExecutionResources.for_limits() sets unspecified fields to float('inf'), so any
+    DataConfig with per-dataset execution options will contain inf values. These are
+    non-standard in JSON and caused MessageToDict to raise ValueError during export,
+    crashing the send_event call entirely.
+    """
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionOptions,
+    )
+    from ray.train.v2._internal.state.util import execution_options_to_dict
+
+    state_actor = get_or_create_state_actor()
+
+    run = create_mock_train_run(RunStatus.RUNNING)
+    # Default ExecutionOptions uses for_limits(), setting all resource fields to inf.
+    run.run_settings.data_config.execution_options = {
+        "train": execution_options_to_dict(ExecutionOptions())
+    }
+
+    # Must not raise — previously MessageToDict crashed on inf values.
+    ray.get(state_actor.create_or_update_train_run.remote(run))
+
+    data = _get_exported_data()
+    assert len(data) == 1
+
+    resource_limits = data[0]["event_data"]["run_settings"]["data_config"][
+        "execution_options"
+    ]["train"]["resource_limits"]
+    # inf must be serialized as the string "inf", not a bare float.
+    assert resource_limits["CPU"] == "inf"
+    assert resource_limits["GPU"] == "inf"
 
 
 def test_export_optional_fields(enable_export_api_write):
