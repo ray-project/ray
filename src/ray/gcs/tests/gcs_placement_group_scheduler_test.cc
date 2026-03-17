@@ -1767,7 +1767,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPartialRescheduleUsesFallbackIfInfeas
   ASSERT_EQ(placement_group->GetBundles().size(), 1);
 }
 
-TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyWithTentativeResourceUndo) {
+TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyResourceIsolation) {
   auto node = GenNodeInfo(0);
   AddNode(node, 5);
 
@@ -1810,6 +1810,140 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyWithTentativeResource
   // Verify the active bundles have the shape from the fallback
   ASSERT_EQ(placement_group->GetActiveStrategyIndex(), 1);
   ASSERT_EQ(placement_group->GetBundles().size(), 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPartialRescheduleFallbackFailure) {
+  auto node0 = GenNodeInfo(0);
+  (*node0->mutable_resources_total())["Res0"] = 1;
+  AddNode(node0, 5);
+
+  auto node1 = GenNodeInfo(1);
+  (*node1->mutable_resources_total())["Res1"] = 1;
+  AddNode(node1, 5);
+
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 2, 1.0);
+
+  // Primary scheduling option, bundle 0 goes on node 0 and bundle 1 on node 1.
+  auto *primary_bundle0 = request.mutable_placement_group_spec()->mutable_bundles(0);
+  primary_bundle0->mutable_unit_resources()->clear();
+  (*primary_bundle0->mutable_unit_resources())["Res0"] = 1.0;
+
+  auto *primary_bundle1 = request.mutable_placement_group_spec()->mutable_bundles(1);
+  primary_bundle1->mutable_unit_resources()->clear();
+  (*primary_bundle1->mutable_unit_resources())["Res1"] = 1.0;
+
+  // Fallback strategy is infeasible
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
+  auto *fallback_bundle = fallback_option->add_bundles();
+  (*fallback_bundle->mutable_unit_resources())["ImpossibleResource"] = 1.0;
+  fallback_bundle->mutable_bundle_id()->set_bundle_index(0);
+  fallback_bundle->mutable_bundle_id()->set_placement_group_id(
+      request.placement_group_spec().placement_group_id());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+
+  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> pg, bool is_feasible) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    failure_placement_groups_.emplace_back(std::move(pg));
+  };
+  auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> pg) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(pg));
+  };
+
+  // Schedule successfully with the primary scheduling option.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group, failure_handler, success_handler});
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Simulate preemption on node 1 to force a partial reschedule.
+  RemoveNode(node1);
+  placement_group->GetMutableBundle(1)->clear_node_id();
+
+  {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.clear();
+  }
+
+  // Attempt to reschedule the bundles
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group, failure_handler, success_handler});
+
+  // Validate the overall scheduling attempt failed
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // Verify the resource masker did not alter the reserved resources after
+  // using it to attempt re-scheduling.
+  ASSERT_FALSE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_FALSE(placement_group->GetMutableBundle(0)->node_id().empty());
+  ASSERT_EQ(placement_group->GetActiveStrategyIndex(), 0);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestMultipleFallbacksSecondSucceeds) {
+  auto node = GenNodeInfo();
+  AddNode(node, 5);
+
+  // Infeasible primary strategy
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 1, 10.0);
+
+  // Infeasible fallback option
+  auto *fallback_option_1 =
+      request.mutable_placement_group_spec()->add_fallback_strategy();
+  auto *fallback_bundle_1 = fallback_option_1->add_bundles();
+  (*fallback_bundle_1->mutable_unit_resources())["CPU"] = 8.0;
+  fallback_bundle_1->mutable_bundle_id()->set_bundle_index(0);
+  fallback_bundle_1->mutable_bundle_id()->set_placement_group_id(
+      request.placement_group_spec().placement_group_id());
+
+  // Second, feasible fallback option
+  auto *fallback_option_2 =
+      request.mutable_placement_group_spec()->add_fallback_strategy();
+  auto *fallback_bundle_2 = fallback_option_2->add_bundles();
+  (*fallback_bundle_2->mutable_unit_resources())["CPU"] = 4.0;
+  fallback_bundle_2->mutable_bundle_id()->set_bundle_index(0);
+  fallback_bundle_2->mutable_bundle_id()->set_placement_group_id(
+      request.placement_group_spec().placement_group_id());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+
+  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    failure_placement_groups_.emplace_back(std::move(pg));
+  };
+  auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> pg) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(pg));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group, failure_handler, success_handler});
+
+  ASSERT_EQ(1, raylet_clients_[0]->num_lease_requested);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+
+  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Assert that it correctly using the second fallback strategy
+  ASSERT_EQ(placement_group->GetActiveStrategyIndex(), 2);
+  auto final_bundles = placement_group->GetBundles();
+  ASSERT_EQ(final_bundles.size(), 1);
+  auto cpu_amount = final_bundles[0]
+                        ->GetRequiredResources()
+                        .Get(scheduling::ResourceID("CPU"))
+                        .Double();
+  ASSERT_EQ(cpu_amount, 4.0);
 }
 
 }  // namespace gcs
