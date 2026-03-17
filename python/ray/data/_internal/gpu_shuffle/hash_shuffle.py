@@ -457,7 +457,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 task_resource_bundle=None,
             )
             self._insert_tasks[task_idx] = task
-            self._reduce_metrics.on_task_submitted(
+            self._shuffle_metrics.on_task_submitted(
                 task_idx, bundle, task_id=task.get_task_id()
             )
 
@@ -473,8 +473,24 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
+        # Running count of partitions extracted across all ranks.
+        # In the CPU path each partition has its own finalize task so
+        # partition_id naturally counts completed partitions.  Here a
+        # single rank yields many partitions, so we maintain an explicit
+        # counter to keep the metrics aligned.
+        self._num_partitions_reduced = 0
 
-        def _on_bundle_ready(partition_id: int, bundle: RefBundle) -> None:
+        def _on_bundle_ready(bundle: RefBundle) -> None:
+            partition_id = self._num_partitions_reduced
+            self._num_partitions_reduced += 1
+
+            # Register a logical reduce "task" for this partition, mirroring
+            # the per-partition task lifecycle in the CPU path.
+            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
+            self._reduce_metrics.on_task_submitted(
+                partition_id, empty_bundle, task_id=None
+            )
+
             # Add finalized block to the output queue
             self._output_queue.append(bundle)
 
@@ -483,8 +499,18 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._reduce_metrics.on_task_output_generated(
                 task_index=partition_id, output=bundle
             )
+
+            # Mark the logical partition task as finished (each GPU
+            # partition produces exactly one block).
+            self._reduce_metrics.on_task_finished(
+                task_index=partition_id,
+                exception=None,
+                task_exec_stats=None,
+                task_exec_driver_stats=None,
+            )
+
             _, num_outputs, num_rows = estimate_total_num_of_blocks(
-                partition_id + 1,
+                self._num_partitions_reduced,
                 self.upstream_op_num_outputs(),
                 self._reduce_metrics,
                 total_num_tasks=self._num_partitions,
@@ -513,7 +539,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             data_task = DataOpTask(
                 task_index=rank_idx,
                 streaming_gen=block_gen,
-                output_ready_callback=functools.partial(_on_bundle_ready, rank_idx),
+                output_ready_callback=_on_bundle_ready,
                 task_done_callback=functools.partial(
                     _on_extraction_done, rank=rank_idx
                 ),
