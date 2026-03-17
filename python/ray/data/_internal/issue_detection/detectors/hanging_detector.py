@@ -219,7 +219,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             for task_idx, task_info in op_metrics._running_tasks.items():
 
                 time_since_last_update = time.perf_counter() - task_info.last_updated
-                if time_since_last_update < threshold:
+                if time_since_last_update <= threshold:
                     continue
 
                 old_state = self._hanging_op_tasks[operator.id].get(task_idx)

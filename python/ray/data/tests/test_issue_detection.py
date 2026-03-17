@@ -137,8 +137,10 @@ class TestHangingExecutionIssueDetector:
         log_output = log_capture.getvalue()
         assert re.search(warn_msg, log_output) is not None, log_output
 
-    @patch("time.time")
-    def test_hanging_detector_detects_issues(self, mock_time, ray_start_regular_shared):
+    @patch("time.perf_counter")
+    def test_hanging_detector_detects_issues(
+        self, mock_perf_counter, ray_start_regular_shared
+    ):
         """Test that the hanging detector correctly identifies tasks that exceed the adaptive threshold."""
 
         # Configure hanging detector with extreme std_factor values
@@ -161,7 +163,7 @@ class TestHangingExecutionIssueDetector:
             blocks=((block_ref, metadata),), owns_blocks=True, schema=None
         )
 
-        mock_time.return_value = 0.0
+        mock_perf_counter.return_value = 0.0
 
         # Submit three tasks. Two of them finish immediately, while the third one hangs.
         op.metrics.on_task_submitted(0, input_bundle)
@@ -170,22 +172,22 @@ class TestHangingExecutionIssueDetector:
         op.metrics.on_task_finished(
             0,
             exception=None,
-            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=0.0),
+            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=1.0),
             task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
         )
         op.metrics.on_task_finished(
             1,
             exception=None,
-            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=0.0),
+            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=1.0),
             task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
         )
 
-        # Start detecting
+        # Start detecting — all tasks were submitted at t=0, so no time has elapsed.
         issues = detector.detect()
         assert len(issues) == 0
 
-        # Set the perf_counter to trigger the issue detection
-        mock_time.return_value = 10.0
+        # Advance perf_counter to trigger the issue detection
+        mock_perf_counter.return_value = 10.0
 
         # On the second detect() call, the hanging task should be detected
         issues = detector.detect()
