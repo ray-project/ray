@@ -35,6 +35,9 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
@@ -253,6 +256,28 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
+    initial_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+        description=(
+            "Initial backoff time (in seconds) before retrying to route a request "
+            "to a replica. Defaults to 0.025."
+        ),
+    )
+
+    backoff_multiplier: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+        description=(
+            "Multiplier applied to the backoff time after each retry. " "Defaults to 2."
+        ),
+    )
+
+    max_backoff_s: PositiveFloat = Field(
+        default=RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+        description=(
+            "Maximum backoff time (in seconds) between retries. " "Defaults to 0.5."
+        ),
+    )
+
     @field_validator("request_router_kwargs")
     @classmethod
     def request_router_kwargs_json_serializable(cls, v):
@@ -284,6 +309,9 @@ class RequestRouterConfig(BaseModel):
             == other.request_routing_stats_period_s
             and self.request_routing_stats_timeout_s
             == other.request_routing_stats_timeout_s
+            and self.initial_backoff_s == other.initial_backoff_s
+            and self.backoff_multiplier == other.backoff_multiplier
+            and self.max_backoff_s == other.max_backoff_s
         )
 
     def __hash__(self):
@@ -302,6 +330,9 @@ class RequestRouterConfig(BaseModel):
                 kwargs_hashable,
                 self.request_routing_stats_period_s,
                 self.request_routing_stats_timeout_s,
+                self.initial_backoff_s,
+                self.backoff_multiplier,
+                self.max_backoff_s,
             )
         )
 

@@ -74,6 +74,14 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
+### Set timeouts while probing replicas for queue length
+
+Ray Serve's request router probes replicas for their queue lengths to make intelligent load balancing decisions. You can tune the following environment variables to optimize this behavior for your workload:
+
+- `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The initial timeout (in seconds) for waiting for replicas to respond with their queue length information. Default is `0.1`.
+- `RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The maximum timeout (in seconds) for queue length responses. When retrying with exponential backoff, the deadline increases but is capped at this value. Default is `1.0`.
+- `RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S`: How long (in seconds) cached queue length information from replicas is considered valid. After this timeout, the cache entry expires and the router must probe the replica again. Default is `10.0`.
+
 ### Configure locality-based routing
 
 Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).

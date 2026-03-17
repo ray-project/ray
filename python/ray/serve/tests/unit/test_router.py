@@ -41,7 +41,7 @@ from ray.serve._private.router import (
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import decompress_metric_report, get_random_string
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, RequestRouterConfig
 from ray.serve.exceptions import BackPressureError
 
 
@@ -1556,6 +1556,54 @@ class TestSingletonThreadRouter:
 
 
 @pytest.mark.asyncio
+class TestAsyncioRouterBackoffConfig:
+    """Test that backoff config flows from DeploymentConfig to RequestRouter."""
+
+    async def test_update_deployment_config_sets_backoff_params(self):
+        """Test that update_deployment_config extracts backoff params from config."""
+        fake_request_router = FakeRequestRouter(use_queue_len_cache=False)
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=fake_request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        # Create a DeploymentConfig with custom backoff params
+        custom_initial_backoff = 0.15
+        custom_multiplier = 4
+        custom_max_backoff = 2.5
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=custom_initial_backoff,
+                backoff_multiplier=custom_multiplier,
+                max_backoff_s=custom_max_backoff,
+            )
+        )
+
+        # Update the router with the config
+        router.update_deployment_config(deployment_config)
+
+        # Verify the backoff params were stored on the router
+        assert router._initial_backoff_s == custom_initial_backoff
+        assert router._backoff_multiplier == custom_multiplier
+        assert router._max_backoff_s == custom_max_backoff
+
+        # Verify the backoff params were propagated to the request router
+        assert fake_request_router.initial_backoff_s == custom_initial_backoff
+        assert fake_request_router.backoff_multiplier == custom_multiplier
+        assert fake_request_router.max_backoff_s == custom_max_backoff
+
+
 class TestOnRequestCompleted:
     """Tests for the on_request_completed hook introduced in this branch.
 
@@ -1771,8 +1819,6 @@ class TestCustomRequestRouterAPIs:
         will respect it."""
 
         class CustomBackoffRouter(RequestRouter):
-            backoff_multiplier = 1.5
-
             async def choose_replicas(self, candidate_replicas, pending_request=None):
                 return [candidate_replicas]
 
@@ -1780,6 +1826,7 @@ class TestCustomRequestRouterAPIs:
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
             create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+            backoff_multiplier=1.5,
         )
 
         b0 = r._compute_backoff_s(0)
