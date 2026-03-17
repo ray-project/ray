@@ -20,6 +20,8 @@ from typing import (
 if TYPE_CHECKING:
     import pyarrow as pa
 
+import numpy as np
+
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -705,6 +707,36 @@ class _MapWorker:
 
 
 @dataclass
+class _FlowEdges:
+    """Parallel arrays describing a set of edges in a flow network."""
+
+    starts: "np.ndarray"
+    ends: "np.ndarray"
+    max_flows: "np.ndarray"
+    unit_costs: "np.ndarray"
+
+    @staticmethod
+    def concatenate(*edge_groups: "_FlowEdges") -> "_FlowEdges":
+        """Concatenate multiple _FlowEdges into one, iterating edges once."""
+        total = sum(len(e.starts) for e in edge_groups)
+        starts = np.empty(total, dtype=np.int32)
+        ends = np.empty(total, dtype=np.int32)
+        max_flows = np.empty(total, dtype=np.int64)
+        unit_costs = np.empty(total, dtype=np.int64)
+        offset = 0
+        for e in edge_groups:
+            n = len(e.starts)
+            starts[offset : offset + n] = e.starts
+            ends[offset : offset + n] = e.ends
+            max_flows[offset : offset + n] = e.max_flows
+            unit_costs[offset : offset + n] = e.unit_costs
+            offset += n
+        return _FlowEdges(
+            starts=starts, ends=ends, max_flows=max_flows, unit_costs=unit_costs
+        )
+
+
+@dataclass
 class _ActorState:
     """Actor state"""
 
@@ -807,23 +839,40 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
     ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
         """Select actors using min-cost max-flow to minimize total data movement.
 
-        Models the assignment as a flow network:
-            Source → Bundles → Actors → Sink
-        where edge costs on Bundle→Actor arcs represent the bytes that must be
-        transferred (total bundle size minus bytes already local to the actor's node).
-        The number of remaining task slots per actor is encoded as the
-        max flow limit on Actor→Sink edges.
+        Models the assignment as a flow network where edge costs on
+        bundle->actor arcs represent bytes that must transfer over the network,
+        and actor->sink edge limits encode remaining task slots per actor.
 
-        Semantics:
-        ┌─────────┬─────────────────────────────────────┬─────────────────────────────────────┬────────────────────────────────────────┐
-        │  Edge   │   Units of Flow Edge                │                Cost                 │                Purpose                 │
-        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
-        │ S → Bᵢ  │ 1                                   │ 0                                   │ Each bundle assigned at most once      │
-        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
-        │ Bᵢ → Aⱼ │ 1                                   │ total_bytes(Bᵢ) - bytes_on_node(Aⱼ) │ Data movement cost of this assignment  │
-        ├─────────┼─────────────────────────────────────┼─────────────────────────────────────┼────────────────────────────────────────┤
-        │ Aⱼ → T  │ max_in_flight - tasks_in_flight(Aⱼ) │ 0                                   │ Actor accepts up to remaining capacity │
-        └─────────┴─────────────────────────────────────┴─────────────────────────────────────┴────────────────────────────────────────┘
+        Example with 3 bundles, 2 actors (actor_0 on node_0, actor_1 on node_1)::
+
+                          max_flow=1          max_flow=1              max_flow=remaining_slots
+                          cost=0              cost=movement           cost=0
+
+                          +---------+       cost=50     +---------+
+                    +---->| bundle_0|-------+---------->| actor_0 |------+
+                    |     +---------+       |           | (node_0)|      |
+                    |          |            |           +---------+      |
+            +------+          |  cost=100   |               ^            |   +------+
+            |source|          +-------------)---------------+            +-->| sink |
+            +------+                        |                            |   +------+
+                    |     +---------+       |           +---------+      |
+                    +---->| bundle_1|-------+---------->| actor_1 |------+
+                    |     +---------+--+                | (node_1)|      |
+                    |                  |                +---------+      |
+                    |     +---------+  |  cost=0            ^            |
+                    +---->| bundle_2|--+--------------------+            |
+                          +---------+                                    |
+
+            Each bundle connects to every actor. The solver finds the
+            assignment that minimizes total data movement.
+
+        Edge semantics:
+            source -> bundle_i :  max_flow=1, cost=0
+                Each bundle can be assigned at most once.
+            bundle_i -> actor_j : max_flow=1, cost=locality_cost * scale + load
+                Data movement cost of this particular assignment.
+            actor_j -> sink :     max_flow=remaining_task_slots, cost=0
+                Limits how many bundles each actor can accept.
         """
         import numpy as np
         from ortools.graph.python import min_cost_flow
@@ -854,100 +903,101 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         sink_node = num_bundles + num_actors + 1
         num_flow_nodes = num_bundles + num_actors + 2
 
-        # Arc counts per section.
-        num_source_edges = num_bundles
-        num_bundle_actor_edges = num_bundles * num_actors
-        num_actor_sink_edges = num_actors
-        num_total_edges = (
-            num_source_edges + num_bundle_actor_edges + num_actor_sink_edges
-        )
-
-        # Preallocate the four parallel arc arrays:
-        # (start, end, max_flow_through_arc, cost_per_unit_flow).
-        arc_starts = np.empty(num_total_edges, dtype=np.int32)
-        arc_ends = np.empty(num_total_edges, dtype=np.int32)
-        arc_max_flows = np.empty(num_total_edges, dtype=np.int64)
-        arc_unit_costs = np.empty(num_total_edges, dtype=np.int64)
-
         bundle_nodes = np.arange(1, num_bundles + 1, dtype=np.int32)
         actor_nodes = np.arange(
             num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
         )
 
-        ## Construct edges for the flow network.
+        def _build_fan_edges(
+            from_node: int,
+            to_nodes: np.ndarray,
+            max_flow: int,
+        ) -> _FlowEdges:
+            """Build edges from one node to many with uniform max_flow and zero cost."""
+            count = len(to_nodes)
+            return _FlowEdges(
+                starts=np.full(count, from_node, dtype=np.int32),
+                ends=to_nodes,
+                max_flows=np.full(count, max_flow, dtype=np.int64),
+                unit_costs=np.zeros(count, dtype=np.int64),
+            )
 
-        # --- Section 1: Source → each bundle (max flow 1, cost 0) ---
-        # Each bundle can be assigned at most once.
-        source_edge = slice(0, num_source_edges)
-        arc_starts[source_edge] = source_node
-        arc_ends[source_edge] = bundle_nodes
-        arc_max_flows[source_edge] = 1
-        arc_unit_costs[source_edge] = 0
+        def _build_bundle_actor_edges() -> _FlowEdges:
+            """Build bipartite bundle->actor edges with locality-aware costs.
 
-        # --- Section 2: Bundle → actor edges (max flow 1, cost = data movement) ---
-        # Cost represents bytes that must transfer over the network.
-        # Each bundle connects to every actor: repeat each bundle node num_actors
-        # times, tile actor nodes num_bundles times.
-        bundle_actor_edge = slice(
-            num_source_edges, num_source_edges + num_bundle_actor_edges
+            Edge costs encode two objectives:
+              Primary: maximize local data (prefer co-located actors)
+              Secondary: prefer least-loaded actors (tiebreaker)
+
+            The locality cost is (max_local_bytes - local_bytes_on_actor_node),
+            which is 0 for the best-located actor and positive for others. This
+            gives the same optimal assignment as (total_bytes - local_bytes)
+            since the per-bundle offset doesn't affect the flow solution.
+
+            We combine them into a single cost:
+              cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
+
+            load_tiebreaker_scale > max possible num_tasks_in_flight, so any
+            locality difference always dominates the load tiebreaker.
+            """
+            num_edges = num_bundles * num_actors
+
+            actor_locations = [
+                actor_states[actor].actor_location for actor in available_actors
+            ]
+            actor_tasks_in_flight = [
+                actor_states[actor].num_tasks_in_flight for actor in available_actors
+            ]
+            load_tiebreaker_scale = max_in_flight + 1
+
+            costs = np.empty(num_edges, dtype=np.int64)
+            for bundle_idx, bundle in enumerate(bundles):
+                preferred_locs = bundle.get_preferred_object_locations()
+                max_local = max(preferred_locs.values(), default=0)
+                offset = bundle_idx * num_actors
+                for actor_idx, actor_location in enumerate(actor_locations):
+                    local_bytes = preferred_locs.get(actor_location, 0)
+                    locality_cost = max_local - local_bytes
+                    costs[offset + actor_idx] = (
+                        locality_cost * load_tiebreaker_scale
+                        + actor_tasks_in_flight[actor_idx]
+                    )
+
+            return _FlowEdges(
+                starts=np.repeat(bundle_nodes, num_actors),
+                ends=np.tile(actor_nodes, num_bundles),
+                max_flows=np.ones(num_edges, dtype=np.int64),
+                unit_costs=costs,
+            )
+
+        # --- Build the three edge sections ---
+
+        # Source -> each bundle: each bundle assigned at most once.
+        source_edges = _build_fan_edges(source_node, bundle_nodes, max_flow=1)
+
+        # Bundle -> actor: bipartite edges with locality-aware costs.
+        bundle_actor_edges = _build_bundle_actor_edges()
+
+        # Actor -> sink: limits how many bundles each actor can accept.
+        # Each actor has a different max_flow (remaining task slots), so we
+        # build these directly rather than using _build_fan_edges.
+        sink_edges = _FlowEdges(
+            starts=actor_nodes,
+            ends=np.full(num_actors, sink_node, dtype=np.int32),
+            max_flows=np.array(actor_remaining_slots, dtype=np.int64),
+            unit_costs=np.zeros(num_actors, dtype=np.int64),
         )
-        arc_starts[bundle_actor_edge] = np.repeat(bundle_nodes, num_actors)
-        arc_ends[bundle_actor_edge] = np.tile(actor_nodes, num_bundles)
-        arc_max_flows[bundle_actor_edge] = 1
 
-        # Build edge costs encoding two objectives:
-        #   Primary: maximize local data (prefer actors co-located with bundle data)
-        #   Secondary: prefer least-loaded actors (tiebreaker when locality is equal)
-        #
-        # For each bundle, the locality cost is:
-        #   max_local_bytes - local_bytes_on_actor_node
-        # This is 0 for the best-located actor and positive for others, and is
-        # always non-negative. It gives the same optimal MCF assignment as
-        # (total_bytes - local_bytes) since the per-bundle offset is constant
-        # across actors and doesn't affect the flow solution.
-        #
-        # We combine locality and load into a single cost:
-        #   cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
-        #
-        # load_tiebreaker_scale > max possible num_tasks_in_flight, so any
-        # locality difference always dominates the load tiebreaker.
-        actor_locations = [
-            actor_states[actor].actor_location for actor in available_actors
-        ]
-        actor_tasks_in_flight = [
-            actor_states[actor].num_tasks_in_flight for actor in available_actors
-        ]
-        load_tiebreaker_scale = max_in_flight + 1
-
-        edge_costs = np.empty(num_bundle_actor_edges, dtype=np.int64)
-        for bundle_idx, bundle in enumerate(bundles):
-            preferred_locs = bundle.get_preferred_object_locations()
-            max_local = max(preferred_locs.values(), default=0)
-            offset = bundle_idx * num_actors
-            for actor_idx, actor_location in enumerate(actor_locations):
-                local_bytes = preferred_locs.get(actor_location, 0)
-                locality_cost = max_local - local_bytes
-                edge_costs[offset + actor_idx] = (
-                    locality_cost * load_tiebreaker_scale
-                    + actor_tasks_in_flight[actor_idx]
-                )
-        arc_unit_costs[bundle_actor_edge] = edge_costs
-
-        # --- Section 3: Actor → sink (max flow = remaining task slots, cost 0) ---
-        # Limits how many bundles each actor can accept.
-        sink_edge = slice(num_source_edges + num_bundle_actor_edges, num_total_edges)
-        arc_starts[sink_edge] = actor_nodes
-        arc_ends[sink_edge] = sink_node
-        arc_max_flows[sink_edge] = np.array(actor_remaining_slots, dtype=np.int64)
-        arc_unit_costs[sink_edge] = 0
-
-        # Build the solver with all arcs at once.
+        # Concatenate all sections and build the solver.
+        all_flow_edges = _FlowEdges.concatenate(
+            source_edges, bundle_actor_edges, sink_edges
+        )
         solver = min_cost_flow.SimpleMinCostFlow()
         all_arcs = solver.add_arcs_with_capacity_and_unit_cost(
-            arc_starts,
-            arc_ends,
-            arc_max_flows,
-            arc_unit_costs,
+            all_flow_edges.starts,
+            all_flow_edges.ends,
+            all_flow_edges.max_flows,
+            all_flow_edges.unit_costs,
         )
 
         # Source produces flow, sink consumes it.
@@ -960,17 +1010,21 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         if status != solver.OPTIMAL:
             return
 
-        # Extract assignments from bundle→actor arcs where the solver
+        # Extract assignments from bundle->actor arcs where the solver
         # pushed flow (flow > 0 means this bundle is assigned to this actor).
-        bundle_actor_edges = all_arcs[bundle_actor_edge]
-        edge_flows = solver.flows(bundle_actor_edges)
+        num_source_arcs = len(source_edges.starts)
+        num_bundle_actor_arcs = len(bundle_actor_edges.starts)
+        bundle_actor_arc_ids = all_arcs[
+            num_source_arcs : num_source_arcs + num_bundle_actor_arcs
+        ]
+        edge_flows = solver.flows(bundle_actor_arc_ids)
 
-        for edge, flow in zip(bundle_actor_edges, edge_flows):
+        for arc_id, flow in zip(bundle_actor_arc_ids, edge_flows):
             if flow > 0:
                 # Recover bundle/actor indices from the flow node ids.
                 # Bundle nodes are 1-indexed, actor nodes start at num_bundles+1.
-                bundle_idx = solver.tail(edge) - 1
-                actor_idx = solver.head(edge) - (num_bundles + 1)
+                bundle_idx = solver.tail(arc_id) - 1
+                actor_idx = solver.head(arc_id) - (num_bundles + 1)
                 input_queue.remove(bundles[bundle_idx])
                 yield bundles[bundle_idx], available_actors[actor_idx]
 
