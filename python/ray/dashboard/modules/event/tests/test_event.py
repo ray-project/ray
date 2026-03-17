@@ -39,12 +39,15 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
-    events_autoscaler_node_provisioning_event_pb2,
     events_autoscaler_scaling_decision_event_pb2,
     events_base_event_pb2,
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.autoscaler_events_storage import (
+    AutoscalerEventCacheInput,
+    AutoscalerEventsStorage,
+)
 from ray.dashboard.modules.event.event_head import EventHead, _list_cluster_events_impl
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
@@ -63,11 +66,10 @@ class _FakeRequest:
         return self._payload
 
 
-def _make_event_head_for_external_event_tests(cache_limit=1000):
+def _make_event_head_for_external_event_tests(max_size_bytes=10 * 1024 * 1024):
     event_head = EventHead.__new__(EventHead)
     event_head.events = defaultdict(OrderedDict)
-    event_head._cached_external_event_ids = OrderedDict()
-    event_head._external_event_cache_limit = cache_limit
+    event_head._autoscaler_events_storage = AutoscalerEventsStorage(max_size_bytes)
     return event_head
 
 
@@ -639,7 +641,10 @@ async def test_list_cluster_events_impl():
         }
     }
     result = await _list_cluster_events_impl(
-        all_events=events, executor=executor, option=create_api_options()
+        all_events=events,
+        autoscaler_events=(),
+        executor=executor,
+        option=create_api_options(),
     )
     data = result.result
     data = data[0]
@@ -656,7 +661,10 @@ async def test_list_cluster_events_impl():
     """
     assert len(result.result) == 2
     result = await _list_cluster_events_impl(
-        all_events=events, executor=executor, option=create_api_options(limit=1)
+        all_events=events,
+        autoscaler_events=(),
+        executor=executor,
+        option=create_api_options(limit=1),
     )
     data = result.result
     assert len(data) == 1
@@ -669,11 +677,13 @@ async def test_list_cluster_events_impl():
     with pytest.raises(ValueError):
         result = await _list_cluster_events_impl(
             all_events=events,
+            autoscaler_events=(),
             executor=executor,
             option=create_api_options(filters=[("time", "=", "20")]),
         )
     result = await _list_cluster_events_impl(
         all_events=events,
+        autoscaler_events=(),
         executor=executor,
         option=create_api_options(filters=[("severity", "=", "INFO")]),
     )
@@ -752,7 +762,7 @@ async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
     response = await event_head.report_external_ray_events(_FakeRequest(payload))
 
     assert response.status == 200
-    cached_event = event_head.events["global"]["01"]
+    cached_event = event_head._autoscaler_events_storage.get_events()["01"]
     assert cached_event["source_type"] == "AUTOSCALER"
     assert cached_event["severity"] == "INFO"
     assert cached_event["timestamp"] == 123
@@ -767,37 +777,205 @@ async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_external_ray_event_cache_retention_evicts_oldest():
-    event_head = _make_event_head_for_external_event_tests(cache_limit=2)
-
-    for index in range(3):
-        event = events_base_event_pb2.RayEvent(
-            event_id=bytes([index + 1]),
-            source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
-            event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_NODE_PROVISIONING_EVENT,
-            severity=events_base_event_pb2.RayEvent.Severity.INFO,
-            autoscaler_node_provisioning_event=events_autoscaler_node_provisioning_event_pb2.AutoscalerNodeProvisioningEvent(
-                requested_instances=[
-                    events_autoscaler_node_provisioning_event_pb2.AutoscalerNodeProvisioningEvent.RequestedInstance(
-                        ray_node_type_name=f"type-{index}",
-                        count=1,
-                    )
-                ]
-            ),
+async def test_report_external_ray_events_only_caches_autoscaler_types(monkeypatch):
+    event_head = _make_event_head_for_external_event_tests()
+    event = events_base_event_pb2.RayEvent(
+        event_id=b"1",
+        source_type=events_base_event_pb2.RayEvent.SourceType.JOBS,
+        event_type=events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
+        severity=events_base_event_pb2.RayEvent.Severity.INFO,
+        message="hello",
+    )
+    payload = [
+        message_to_dict(
+            event,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=False,
+            use_integers_for_enums=False,
         )
-        event.timestamp.seconds = index + 1
-        event_head._cache_external_ray_events([event])
+    ]
+
+    async def _forward(events):
+        assert len(events) == 1
+
+    monkeypatch.setattr(
+        EventHead,
+        "_get_external_ray_event_allowlist",
+        lambda: {"DRIVER_JOB_LIFECYCLE_EVENT"},
+    )
+    event_head._forward_external_ray_events = _forward
+
+    response = await event_head.report_external_ray_events(_FakeRequest(payload))
+
+    assert response.status == 200
+    assert event_head._autoscaler_events_storage.get_events() == OrderedDict()
+
+
+@pytest.mark.asyncio
+async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
+    event_head = _make_event_head_for_external_event_tests()
+    global_event = _get_event("legacy global", job_id="global")
+    event_head.events["global"][global_event["event_id"]] = global_event
+
+    payload = {
+        "eventId": "AQ==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
+    }
+    event_head._autoscaler_events_storage.add_events(
+        [AutoscalerEventCacheInput(payload, "01", 123, 1)]
+    )
+
+    class _FakeEventQueryRequest:
+        def __init__(self, job_id=None):
+            self.query = {}
+            if job_id is not None:
+                self.query["job_id"] = job_id
+            self.method = "GET"
+            self.path_qs = (
+                f"/events?job_id={job_id}" if job_id is not None else "/events"
+            )
+
+    response = await event_head.get_event(_FakeEventQueryRequest())
+    payload = json.loads(response.text)
+    global_events = payload["data"]["events"]["global"]
+    messages = {event["message"] for event in global_events}
+
+    assert messages == {
+        "legacy global",
+        '{"launchActions": [{"instanceType": "a"}]}',
+    }
+
+    response = await event_head.get_event(_FakeEventQueryRequest("global"))
+    payload = json.loads(response.text)
+    global_events = payload["data"]["events"]
+    messages = {event["message"] for event in global_events}
+
+    assert messages == {
+        "legacy global",
+        '{"launchActions": [{"instanceType": "a"}]}',
+    }
+
+
+def test_autoscaler_events_storage_retention_evicts_oldest_by_size():
+    payload1 = {
+        "eventId": "AQ==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
+    }
+    payload2 = {
+        "eventId": "Ag==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "b"}]},
+    }
+    payload3 = {
+        "eventId": "Aw==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "c"}]},
+    }
+
+    storage = AutoscalerEventsStorage(max_size_bytes=5)
+    storage.add_events(
+        [
+            AutoscalerEventCacheInput(payload1, "01", 1, 2),
+            AutoscalerEventCacheInput(payload2, "02", 2, 2),
+            AutoscalerEventCacheInput(payload3, "03", 3, 2),
+        ]
+    )
+
+    assert list(storage.get_events()) == ["02", "03"]
+
+
+def test_autoscaler_events_storage_skips_oversized_event():
+    payload = {
+        "eventId": "AQ==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
+    }
+
+    storage = AutoscalerEventsStorage(max_size_bytes=1)
+    storage.add_events([AutoscalerEventCacheInput(payload, "01", 1, 2)])
+
+    assert storage.get_events() == OrderedDict()
+
+
+def test_autoscaler_events_storage_replaces_duplicate_event_id():
+    payload1 = {
+        "eventId": "AQ==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "a"}]},
+    }
+    payload2 = {
+        "eventId": "AQ==",
+        "sourceType": "AUTOSCALER",
+        "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+        "severity": "INFO",
+        "autoscalerScalingDecisionEvent": {"launchActions": [{"instanceType": "b"}]},
+    }
+
+    storage = AutoscalerEventsStorage(max_size_bytes=10)
+    storage.add_events([AutoscalerEventCacheInput(payload1, "01", 1, 2)])
+    storage.add_events([AutoscalerEventCacheInput(payload2, "01", 2, 3)])
+
+    cached_event = storage.get_events()["01"]
+    assert cached_event["timestamp"] == 2
+    assert json.loads(cached_event["message"]) == {
+        "launchActions": [{"instanceType": "b"}]
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_cluster_events_includes_autoscaler_cached_events():
+    event_head = _make_event_head_for_external_event_tests()
+    event_head.events["global"]["legacy"] = {
+        "event_id": "legacy",
+        "source_type": "GCS",
+        "message": "legacy",
+        "timestamp": 1,
+        "severity": "INFO",
+        "custom_fields": {},
+    }
+    event_head._autoscaler_events_storage.add_events(
+        [
+            AutoscalerEventCacheInput(
+                event_json={
+                    "eventId": "AQ==",
+                    "sourceType": "AUTOSCALER",
+                    "eventType": "AUTOSCALER_SCALING_DECISION_EVENT",
+                    "severity": "INFO",
+                    "autoscalerScalingDecisionEvent": {
+                        "launchActions": [{"instanceType": "type-1", "count": 1}]
+                    },
+                },
+                event_id="01",
+                timestamp_seconds=2,
+                size_bytes=1,
+            )
+        ]
+    )
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         result = await _list_cluster_events_impl(
             all_events=event_head.events,
+            autoscaler_events=event_head._autoscaler_events_storage.get_event_values(),
             executor=executor,
             option=create_api_options(),
         )
 
-    assert "01" not in event_head.events["global"]
-    assert [event["event_id"] for event in result.result] == ["02", "03"]
-    assert all(event["source_type"] == "AUTOSCALER" for event in result.result)
+    assert [event["event_id"] for event in result.result] == ["legacy", "01"]
+    assert "time" not in event_head._autoscaler_events_storage.get_events()["01"]
 
 
 def test_export_event_logger(tmp_path):
