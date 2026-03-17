@@ -257,9 +257,11 @@ def get_latest_state_for_task(task_id: ray.TaskID) -> Optional[TaskMetadata]:
     has indexed it) or the API is unreachable.
     """
     try:
+        # NOTE: timeout is set to 1 because ray will take max(1, timeout).
+        # TODO(Justin): Make this asynchronous
         task_state: Union[TaskState, List[TaskState], None] = get_task(
             task_id.hex(),
-            timeout=0,
+            timeout=1,
             _explain=True,
         )
     except (RayStateApiException, requests.exceptions.RequestException):
