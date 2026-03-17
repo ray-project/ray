@@ -1308,6 +1308,8 @@ def test_backoff_params_imperative(serve_instance):
         max_ongoing_requests=1,
         request_router_config=RequestRouterConfig(
             initial_backoff_s=custom_initial_backoff_s,
+            backoff_multiplier=2.0,
+            max_backoff_s=custom_initial_backoff_s,
         ),
     )
     class SlowApp:
@@ -1318,20 +1320,28 @@ def test_backoff_params_imperative(serve_instance):
 
     handle = serve.run(SlowApp.bind())
 
+    # Send a few warm-up requests so the long poll has time to propagate
+    # the custom backoff config to the router (avoids the race where the
+    # router is lazy-initialized with default params before the long poll
+    # fires).
+    for _ in range(5):
+        assert handle.remote().result() == "ok"
+
     # Send a blocking request to fill the single slot.
     blocking_ref = handle.remote(block=True)
 
     # Wait for the blocking request to be processing.
     time.sleep(0.5)
 
-    # Send a second request — this will be rejected by the replica and enter
-    # the backoff loop, sleeping for initial_backoff_s before retrying.
+    # Send a second request — the router's queue length probe will find the
+    # replica at capacity and enter the backoff loop.
     start = time.monotonic()
     second_ref = handle.remote(block=False)
 
-    # Unblock the first request after a short delay, so the second request
-    # can succeed on retry after the backoff sleep.
-    time.sleep(0.3)
+    # Unblock the first request while the backoff sleep is in progress.
+    # The router exhausts locality probes then sleeps for initial_backoff_s;
+    # we wait 1s (< 3s) so the signal arrives during the sleep.
+    time.sleep(1)
     ray.get(signal.send.remote())
 
     # Wait for both requests to complete.
@@ -1339,10 +1349,13 @@ def test_backoff_params_imperative(serve_instance):
     second_ref.result()
     elapsed = time.monotonic() - start
 
-    # The second request should have waited at least initial_backoff_s
-    # before retrying (the backoff sleep dominates the elapsed time).
-    assert elapsed >= custom_initial_backoff_s, (
-        f"Expected at least {custom_initial_backoff_s}s due to backoff, "
+    # With initial_backoff_s=3.0 and max_backoff_s=3.0, every backoff sleep
+    # is exactly 3.0s (min(3.0 * 2.0^attempt, 3.0) = 3.0 for all attempts).
+    # A lower bound of 3.0s proves the backoff sleep was applied.
+    # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
+    # confirming it was the initial backoff (attempt 0).
+    assert custom_initial_backoff_s <= elapsed < 5.0, (
+        f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
         f"but request completed in {elapsed:.2f}s"
     )
 
