@@ -458,7 +458,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             )
             self._insert_tasks[task_idx] = task
             self._shuffle_metrics.on_task_submitted(
-                task_idx, bundle, task_id=task.get_task_id()
+                task_idx,
+                RefBundle([(block_ref, metadata)], schema=None, owns_blocks=False),
+                task_id=task.get_task_id(),
             )
 
             if self._shuffle_bar is not None:
