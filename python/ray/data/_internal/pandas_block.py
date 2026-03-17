@@ -354,7 +354,6 @@ class PandasBlockBuilder(TableBlockBuilder):
         from ray.data.extensions.tensor_extension import TensorArray
 
         pandas = lazy_import_pandas()
-
         return pandas.DataFrame(
             {
                 column_name: (
