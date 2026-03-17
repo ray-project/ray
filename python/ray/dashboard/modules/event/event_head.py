@@ -78,6 +78,12 @@ async def _list_cluster_events_impl(
     """
     List all cluster events from the cluster. Made a free function to allow unit tests.
 
+    Args:
+        all_events: The job or actor events to include (typically an OrderedDict).
+        autoscaler_events: List of autoscaler event dictionaries.
+        executor (ThreadPoolExecutor): The executor to use for running the transformation.
+        option (ListApiOptions): Options for list API (filtering, limits, etc.).
+
     Returns:
         A list of cluster events in the cluster.
         The schema of returned "dict" is equivalent to the
