@@ -4,13 +4,11 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
-
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 # NumPy's RandomState/seed range is [0, 2**32 - 1].
-NUMPY_RNG_SEED_MAX = np.iinfo(np.uint32).max + 1
+NUMPY_RNG_SEED_MAX = 2**32
 
 
 @dataclass(frozen=True)
