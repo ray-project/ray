@@ -963,7 +963,7 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         source_edges = _FlowEdges(
             starts=np.full(count, source_node, dtype=np.int32),
             ends=bundle_nodes,
-            max_flows=np.full(count, max_flow=1, dtype=np.int64),
+            max_flows=np.full(count, 1, dtype=np.int64),
             unit_costs=np.zeros(count, dtype=np.int64),
         )
 
