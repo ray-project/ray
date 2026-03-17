@@ -21,11 +21,39 @@ class GitHubException(Exception):
 
 
 @dataclass
+class GitHubPullUser:
+    """The author of a pull request."""
+
+    login: str
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GitHubPullUser":
+        return cls(login=data["login"])
+
+
+@dataclass
+class GitHubPull:
+    """A GitHub pull request."""
+
+    number: int
+    user: GitHubPullUser
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GitHubPull":
+        return cls(number=data["number"], user=GitHubPullUser.from_dict(data["user"]))
+
+
+@dataclass
 class GitHubRepo:
     """A GitHub repository."""
 
     full_name: str
     _client: "GitHubClient"
+
+    def get_pull(self, number: int) -> GitHubPull:
+        """Return a single pull request by number."""
+        data = self._client._get(f"/repos/{self.full_name}/pulls/{number}")
+        return GitHubPull.from_dict(data)
 
 
 class GitHubClient:
