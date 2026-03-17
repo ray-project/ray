@@ -412,6 +412,29 @@ class ActorPool:
             return -num_to_remove
         return 0
 
+    def remove_actor(self, actor: ray.actor.ActorHandle, kill: bool = True) -> bool:
+        """Remove a specific actor from the pool.
+
+        Unregisters the actor from Python and C++ tracking. Does NOT
+        enforce min_size — callers are responsible for pool sizing.
+
+        Args:
+            actor: The actor handle to remove.
+            kill: Whether to kill the actor process (default True).
+
+        Returns:
+            True if the actor was found and removed, False otherwise.
+        """
+        if actor not in self._actor_handles:
+            return False
+
+        self._actor_handles.remove(actor)
+        self._actor_to_logical_id.pop(actor, None)
+        self._core_worker.remove_actor_from_pool(self._pool_id, actor._actor_id)
+        if kill:
+            ray.kill(actor)
+        return True
+
     def shutdown(self, force: bool = False, grace_period_s: float = 30.0) -> None:
         """Shutdown the pool and kill all actors.
 

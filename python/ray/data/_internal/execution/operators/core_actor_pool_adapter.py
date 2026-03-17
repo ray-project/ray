@@ -520,18 +520,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         if self._pending_actors:
             ready_ref = next(iter(self._pending_actors.keys()))
             actor = self._pending_actors.pop(ready_ref)
-            # Remove this specific actor from the underlying pool and C++ state.
-            if actor in self._pool._actor_handles:
-                self._pool._actor_handles.remove(actor)
-                self._pool._actor_to_logical_id.pop(actor, None)
-            try:
-                worker = self._get_worker()
-                worker.core_worker.remove_actor_from_pool(
-                    self._pool.pool_id, actor._actor_id
-                )
-            except Exception:
-                pass
-            ray.kill(actor)
+            self._pool.remove_actor(actor, kill=True)
             return True
         return False
 
@@ -568,8 +557,8 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
 
         # Kill actors after on_exit hooks have completed/timed out.
-        # _release_running_actor removes actors from _pool._actor_handles,
-        # so _pool.shutdown() won't find them — we must kill them here.
+        # _release_running_actor calls remove_actor(kill=False), so
+        # _pool.shutdown() won't find them — we must kill them here.
         for actor in running:
             try:
                 ray.kill(actor)
@@ -586,19 +575,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        # Remove from underlying ActorPool's tracking lists.
-        if actor in self._pool._actor_handles:
-            self._pool._actor_handles.remove(actor)
-            self._pool._actor_to_logical_id.pop(actor, None)
-
-        # Sync C++ pool state: remove actor so C++ doesn't hold stale state.
-        try:
-            worker = self._get_worker()
-            worker.core_worker.remove_actor_from_pool(
-                self._pool.pool_id, actor._actor_id
-            )
-        except Exception:
-            pass
+        # Remove from underlying ActorPool (Python + C++ tracking).
+        # kill=False because the caller handles killing after on_exit hooks.
+        self._pool.remove_actor(actor, kill=False)
 
         ref = None
         if self._enable_actor_pool_on_exit_hook:
