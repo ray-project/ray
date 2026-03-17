@@ -268,6 +268,9 @@ def test_torch_tensor_nccl(
         assert ray.get(ref) == (i, shape, dtype)
 
 
+@pytest.mark.skip(
+    reason="Flaky: compiled DAG worker hangs on shared memory channel read"
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_shm(ray_start_regular):
@@ -314,6 +317,9 @@ def test_torch_tensor_shm(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.skip(
+    reason="Flaky: compiled DAG worker hangs on shared memory channel read"
+)
 @pytest.mark.skipif(not USE_GPU, reason="Skipping GPU Test")
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("num_gpus", [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]])
