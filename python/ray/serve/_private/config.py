@@ -143,6 +143,8 @@ class DeploymentConfig(BaseModel):
         request_router_config: Configuration for deployment request router.
         max_constructor_retry_count: Maximum number of times to retry the
             deployment constructor. Defaults to 20.
+        prefer_local_node_routing: Feature flag to turn on node locality routing for proxies. On by default.
+        prefer_local_az_routing: Feature flag to turn on AZ locality routing for proxies. On by default.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -217,6 +219,16 @@ class DeploymentConfig(BaseModel):
     deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    prefer_local_node_routing: Optional[bool] = Field(
+        default=1,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    prefer_local_az_routing: Optional[bool] = Field (
+        default=1,
+        update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
     # Contains the names of deployment options manually set by the user

@@ -1,6 +1,8 @@
 import collections
 import inspect
 import logging
+import os
+import warnings
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
@@ -22,6 +24,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
@@ -351,6 +355,8 @@ def deployment(
     gang_scheduling_config: Default[
         Union[Dict, GangSchedulingConfig, None]
     ] = DEFAULT.VALUE,
+    prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+    prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -425,6 +431,8 @@ def deployment(
             Gang scheduling ensures that groups of replicas are scheduled together
             atomically, which is essential for distributed workloads that require
             coordination between replicas. See `GangSchedulingConfig` for options.
+        prefer_local_node_routing: Feature flag to turn on node locality routing for proxies. On by default.
+        prefer_local_az_routing: Feature flag to turn on AZ locality routing for proxies. On by default.
     Returns:
         `Deployment`
     """
@@ -493,6 +501,26 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    # check for deprecated environment variable usage
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
+        warnings.warn(
+            "The environment variable 'RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING' "
+            "is deprecated and will be removed in a future release. "
+            "Please use 'prefer_local_node_routing' in @serve.deployment instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+    # check for deprecated environment variable usage
+    if "RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING" in os.environ:
+        warnings.warn(
+            "The environment variable 'RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING' "
+            "is deprecated and will be removed in a future release. "
+            "Please use 'prefer_local_az_routing' in @serve.deployment instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.model_dump()
 
@@ -510,6 +538,8 @@ def deployment(
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
+        prefer_local_node_routing=prefer_local_node_routing,
+        prefer_local_az_routing=prefer_local_az_routing,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

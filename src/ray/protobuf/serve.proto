@@ -234,6 +234,12 @@ message DeploymentConfig {
 
   // Deployment-scoped actors managed by the controller.
   repeated DeploymentActorConfig deployment_actors = 22;
+
+  // Prefer routing requests to replicas on the same node as the caller.
+  bool prefer_local_node_routing = 23;
+
+  // Prefer routing requests to replicas in the same availability zone as the caller.
+  bool prefer_local_az_routing = 24;
 }
 
 // Deployment language.
