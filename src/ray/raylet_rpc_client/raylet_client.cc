@@ -392,12 +392,13 @@ void RayletClient::ResizeLocalResourceInstances(
     const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) {
   rpc::ResizeLocalResourceInstancesRequest request;
   *request.mutable_resources() = std::move(resources);
-  INVOKE_RPC_CALL(NodeManagerService,
-                  ResizeLocalResourceInstances,
-                  request,
-                  callback,
-                  grpc_client_,
-                  /*method_timeout_ms*/ -1);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ResizeLocalResourceInstances,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
 }
 
 void RayletClient::IsLocalWorkerDead(
