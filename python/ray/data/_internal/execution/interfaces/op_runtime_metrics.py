@@ -976,7 +976,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.num_outputs += num_outputs
         task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
-        task_info.last_updated = time.time()
+        task_info.last_updated = time.perf_counter()
 
         for block_ref, meta in output.blocks:
             exec_stats = meta.exec_stats
