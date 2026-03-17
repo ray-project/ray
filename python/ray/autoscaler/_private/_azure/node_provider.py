@@ -748,6 +748,13 @@ class AzureNodeProvider(NodeProvider):
                 exc,
             )
 
+        shared_msi = (
+            self.provider_config.get("msi_name") is not None
+            and self.provider_config.get("msi_resource_group") is not None
+        )
+        if shared_msi:
+            return msi_principal_id
+
         try:
             logger.info("Deleting Managed Service Identity: %s", msi_name)
             delete = get_azure_sdk_function(
