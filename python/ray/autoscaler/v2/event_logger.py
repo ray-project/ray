@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -44,6 +46,7 @@ class AutoscalerEventLogger:
         self._export_event_logger = export_event_logger
         self._ray_event_publisher = ray_event_publisher
         self._session_name = session_name
+        self._last_scaling_decision_hash: str = ""
 
     def log_node_provisioning(
         self,
@@ -366,6 +369,24 @@ class AutoscalerEventLogger:
                     {"resource_requests": resource_requests}
                 )
 
+        payload_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "launch_actions": launch_actions,
+                    "terminate_actions": terminate_actions,
+                    "cluster_resources_after": dict(cluster_resources),
+                    "infeasible_resource_requests": infeasible_resource_dicts,
+                    "infeasible_gang_resource_requests": infeasible_gang_dicts,
+                    "infeasible_cluster_resource_constraints": (
+                        infeasible_constraint_dicts
+                    ),
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        if payload_hash == self._last_scaling_decision_hash:
+            return
+
         try:
             builder = AutoscalerScalingDecisionEventBuilder(
                 launch_actions=launch_actions,
@@ -378,6 +399,7 @@ class AutoscalerEventLogger:
             )
             event = builder.build()
             self._ray_event_publisher.publish(event)
+            self._last_scaling_decision_hash = payload_hash
         except Exception:
             logger.exception("Failed to emit AutoscalerScalingDecisionEvent.")
 
