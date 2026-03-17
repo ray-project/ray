@@ -198,10 +198,17 @@ class TestGPURankPool:
             "ray.data._internal.gpu_shuffle.hash_shuffle.GPUShuffleActor"
         ) as mock_actor_cls, patch(
             "ray.data._internal.gpu_shuffle.hash_shuffle.ray.get"
-        ) as mock_ray_get:
+        ) as mock_ray_get, patch(
+            "ray.data._internal.gpu_shuffle.hash_shuffle.ray.wait"
+        ) as mock_ray_wait:
             mock_actor_cls.options.return_value.remote.side_effect = mock_actor_handles
             # First ray.get returns (rank, root_address); second returns None list (setup done)
             mock_ray_get.side_effect = [(0, mock_root_address), [None, None, None]]
+            # ray.wait returns all refs as ready
+            worker_refs = [
+                h.setup_worker.remote.return_value for h in mock_actor_handles
+            ]
+            mock_ray_wait.return_value = (worker_refs, [])
 
             pool.start()
 
