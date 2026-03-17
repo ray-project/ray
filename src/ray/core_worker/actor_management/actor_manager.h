@@ -148,6 +148,17 @@ class ActorManager {
   /// Returns the actor handle if it exists, nullptr otherwise.
   std::shared_ptr<ActorHandle> GetActorHandleIfExists(const ActorID &actor_id);
 
+  /// Callback type for notifying actor pool state changes.
+  /// \param actor_id The actor whose state changed.
+  /// \param is_alive True if the actor is alive, false if dead/restarting.
+  /// \param node_id The node the actor is on (only meaningful when is_alive=true).
+  using ActorPoolStateCallback =
+      std::function<void(const ActorID &actor_id, bool is_alive, const NodeID &node_id)>;
+
+  /// Set callback for notifying the ActorPoolManager of actor state changes.
+  /// Called once during CoreWorker initialization.
+  void SetActorPoolStateCallback(ActorPoolStateCallback callback);
+
  private:
   /// Give this worker a handle to an actor.
   ///
@@ -223,6 +234,9 @@ class ActorManager {
   /// id -> is_killed_or_out_of_scope
   /// The state of actor is true When the actor is out of scope or is killed
   absl::flat_hash_map<ActorID, bool> subscribed_actors_ ABSL_GUARDED_BY(cache_mutex_);
+
+  /// Callback to notify ActorPoolManager of actor state changes.
+  ActorPoolStateCallback actor_pool_state_callback_;
 
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledAfterSubscribeFinished);
   FRIEND_TEST(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished);

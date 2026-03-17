@@ -212,13 +212,21 @@ class ActorPool:
         if logical_id and self._logical_id_kwarg_name:
             actor_kwargs[self._logical_id_kwarg_name] = logical_id
 
-        # Create actor with labels (if any)
+        # Create actor with labels (if any).
+        # max_restarts=-1 makes actors restartable so that when an actor dies,
+        # GCS marks it RESTARTING instead of permanently DEAD.  This avoids the
+        # DisconnectActor(dead=true) path which calls MarkTaskNoRetry and
+        # interferes with in-flight task reference counting.  Cross-actor retry
+        # (via InternalHeartbeat) redirects the task to a healthy pool actor,
+        # so the restarted actor is not actually needed for task completion.
         if labels:
-            actor = self._remote_cls.options(_labels=labels).remote(
+            actor = self._remote_cls.options(_labels=labels, max_restarts=-1).remote(
                 *self._actor_args, **actor_kwargs
             )
         else:
-            actor = self._remote_cls.remote(*self._actor_args, **actor_kwargs)
+            actor = self._remote_cls.options(max_restarts=-1).remote(
+                *self._actor_args, **actor_kwargs
+            )
 
         self._actor_handles.append(actor)
 

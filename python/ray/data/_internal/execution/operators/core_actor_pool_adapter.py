@@ -59,6 +59,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
     _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
+    _ACTOR_STARTUP_TIMEOUT_S = 30
     _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
@@ -295,9 +296,19 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             return False
 
         actor = self._pending_actors.pop(ready_ref)
-        # TODO(P4): Use ray.wait() with timeout instead of blocking ray.get().
-        # If get_location() fails, this blocks indefinitely.
-        actor_location = ray.get(ready_ref)
+        # Use ray.wait() with timeout to avoid blocking indefinitely
+        # if the actor crashes during startup.
+        ready, _ = ray.wait([ready_ref], timeout=self._ACTOR_STARTUP_TIMEOUT_S)
+        if not ready:
+            logger.warning(
+                "Timed out waiting for actor location after %ds. "
+                "Returning actor to pending state.",
+                self._ACTOR_STARTUP_TIMEOUT_S,
+            )
+            self._pending_actors[ready_ref] = actor
+            return False
+
+        actor_location = ray.get(ready[0])
 
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,

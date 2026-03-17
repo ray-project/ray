@@ -327,6 +327,70 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
   }
 }
 
+void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = actor_to_pool_.find(actor_id);
+  if (pool_it == actor_to_pool_.end()) {
+    return;  // Actor not in any pool.
+  }
+
+  const auto &pool_id = pool_it->second;
+  auto info_it = pools_.find(pool_id);
+  if (info_it == pools_.end()) {
+    return;
+  }
+
+  auto &pool_info = info_it->second;
+  auto state_it = pool_info.actor_states.find(actor_id);
+  if (state_it == pool_info.actor_states.end()) {
+    return;
+  }
+
+  auto &actor_state = state_it->second;
+  actor_state.is_alive = true;
+  actor_state.consecutive_failures = 0;
+  // Reset in-flight count. Cross-actor retry redirects tasks to other actors
+  // via InternalHeartbeat, bypassing SubmitToActor (so num_tasks_in_flight is
+  // not incremented on the target). The guarded decrement in OnTaskSucceeded
+  // (num_tasks_in_flight > 0) prevents underflow. Minor load-balancing
+  // imprecision only, not a correctness issue.
+  actor_state.num_tasks_in_flight = 0;
+  if (!node_id.IsNil()) {
+    actor_state.location = node_id;
+  }
+
+  RAY_LOG(INFO) << "Actor " << actor_id << " in pool " << pool_id
+                << " is alive (possibly restarted), draining work queue";
+
+  DrainWorkQueue(pool_id);
+}
+
+void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = actor_to_pool_.find(actor_id);
+  if (pool_it == actor_to_pool_.end()) {
+    return;
+  }
+
+  const auto &pool_id = pool_it->second;
+  auto info_it = pools_.find(pool_id);
+  if (info_it == pools_.end()) {
+    return;
+  }
+
+  auto state_it = info_it->second.actor_states.find(actor_id);
+  if (state_it == info_it->second.actor_states.end()) {
+    return;
+  }
+
+  state_it->second.is_alive = false;
+
+  RAY_LOG(INFO) << "Actor " << actor_id << " in pool " << pool_id
+                << " marked dead/restarting";
+}
+
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
                                               const std::vector<ObjectID> &arg_ids) {
   auto pool_it = pools_.find(pool_id);
@@ -492,6 +556,19 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
       actor_state.num_tasks_in_flight--;
     }
     actor_state.consecutive_failures++;
+
+    // Mark actor as not alive on system errors (actor death, node death).
+    // The actor may come back via OnActorAlive when GCS notifies of a restart.
+    // Note: with max_retries=-1, actor death errors are retried by the
+    // ActorTaskSubmitter and the pool callback never fires for those, so this
+    // code path is only reached for non-retried failures. Kept as a safety net
+    // and for OnActorDead which is the primary liveness tracker.
+    if (error_info.error_type() == rpc::ErrorType::ACTOR_DIED ||
+        error_info.error_type() == rpc::ErrorType::ACTOR_UNAVAILABLE ||
+        error_info.error_type() == rpc::ErrorType::WORKER_DIED ||
+        error_info.error_type() == rpc::ErrorType::NODE_DIED) {
+      actor_state.is_alive = false;
+    }
   }
 
   pool_info.total_tasks_failed++;

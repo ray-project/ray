@@ -270,9 +270,9 @@ class ActorPoolManager {
   ActorID SelectActorForTask(const ActorPoolID &pool_id,
                              const std::vector<ObjectID> &arg_ids = {});
 
-  /// Called when a pool task completes (success or failure).
-  /// This is the main entry point for the cross-actor retry mechanism.
-  /// Called by ActorTaskSubmitter when it detects a completed pool task.
+  /// Called when a pool task terminally completes (success or exhausted retries).
+  /// Updates num_tasks_in_flight and drains queued work on success.
+  /// Called by ActorTaskSubmitter via MaybeNotifyPoolTaskComplete.
   ///
   /// \param pool_id The ID of the pool the task belongs to.
   /// \param work_item_id The ID of the work item within the pool.
@@ -287,6 +287,21 @@ class ActorPoolManager {
                           const Status &status,
                           const rpc::RayErrorInfo *error_info);
 
+  /// Notify that an actor has come alive (e.g. after restart).
+  /// Called from ActorManager::HandleActorStateNotification when state = ALIVE.
+  /// Marks the actor as alive and drains the work queue to dispatch queued tasks.
+  ///
+  /// \param actor_id The actor that is now alive.
+  /// \param node_id The node the actor is running on.
+  void OnActorAlive(const ActorID &actor_id, const NodeID &node_id);
+
+  /// Notify that an actor is dead or restarting.
+  /// Called from ActorManager::HandleActorStateNotification when state = RESTARTING/DEAD.
+  /// Marks the actor as not alive so SelectActorFromPool skips it.
+  ///
+  /// \param actor_id The actor that is dead or restarting.
+  void OnActorDead(const ActorID &actor_id);
+
  private:
   FRIEND_TEST(ActorPoolManagerTest, RegisterUnregisterPool);
   FRIEND_TEST(ActorPoolManagerTest, AddRemoveActors);
@@ -300,6 +315,9 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad);
   FRIEND_TEST(ActorPoolManagerTest, GetOccupiedTaskSlots);
   FRIEND_TEST(ActorPoolManagerTest, GetNumActiveActors);
+  FRIEND_TEST(ActorPoolManagerTest, OnTaskFailedMarksActorDead);
+  FRIEND_TEST(ActorPoolManagerTest, OnActorAliveDrainsQueue);
+  FRIEND_TEST(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive);
 
   /// Select the best actor from a pool based on load and locality.
   ///

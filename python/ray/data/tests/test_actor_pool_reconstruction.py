@@ -105,6 +105,47 @@ def test_cascading_pool_reconstruction_with_sort(
     np.testing.assert_array_equal(actual, expected)
 
 
+def test_map_batches_to_map_batches_reconstruction_no_sort(
+    ray_start_cluster, enable_core_actor_pool
+):
+    """map_batches(pool1) -> map_batches(pool2): kill node, verify results.
+
+    Unlike test_cascading_pool_reconstruction_with_sort, there is no sort
+    (AllToAll barrier) between the two pool stages. Both pools must handle
+    reconstruction when a node is lost.
+    """
+    ray.shutdown()
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=3)
+    victim = cluster.add_node(num_cpus=2)
+    ray.init()
+
+    n_rows = 300
+
+    class MultiplyById:
+        def __call__(self, batch):
+            return {"val": batch["id"] * 3}
+
+    class AddOffset:
+        def __call__(self, batch):
+            return {"result": batch["val"] + 10}
+
+    ds = ray.data.range(n_rows)
+    ds = ds.map_batches(MultiplyById, batch_size=25, concurrency=2)
+    ds = ds.map_batches(AddOffset, batch_size=25, concurrency=2)
+
+    cluster.remove_node(victim)
+
+    result = ds.take_all()
+    assert len(result) == n_rows, f"Expected {n_rows} rows, got {len(result)}"
+
+    expected = sorted([i * 3 + 10 for i in range(n_rows)])
+    actual = sorted([r["result"] for r in result])
+    np.testing.assert_array_equal(actual, expected)
+
+
 if __name__ == "__main__":
     import sys
 

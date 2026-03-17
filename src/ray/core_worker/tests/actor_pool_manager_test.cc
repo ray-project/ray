@@ -836,5 +836,179 @@ TEST_F(ActorPoolManagerTest, GetNumActiveActors) {
   EXPECT_EQ(pool_manager_->GetNumActiveActors(ActorPoolID::FromRandom()), 0);
 }
 
+// =========================================================================
+// Actor Death/Restart Recovery Tests
+// =========================================================================
+
+// Test: OnTaskFailed with ACTOR_DIED marks actor as not alive
+TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  // Simulate actor1 having a task in flight
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
+  }
+
+  // Create a work item in work_items_ so OnTaskFailed can find it
+  TaskID work_item_id = TaskID::FromRandom(JobID());
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    PoolWorkItem work_item;
+    work_item.work_item_id = work_item_id;
+    work_item.attempt_number = 0;
+    pool_manager_->work_items_[work_item_id] = std::move(work_item);
+  }
+
+  // Simulate task failure with ACTOR_DIED error
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+  error_info.set_error_message("Actor died");
+
+  pool_manager_->OnPoolTaskComplete(pool_id,
+                                    work_item_id,
+                                    TaskID::FromRandom(JobID()),
+                                    actor1,
+                                    Status::IOError("actor died"),
+                                    &error_info);
+
+  // Actor1 should be marked as not alive
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    // Actor2 should still be alive
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
+  }
+
+  // SelectActorForTask should only return actor2
+  auto selected = pool_manager_->SelectActorForTask(pool_id);
+  EXPECT_EQ(selected, actor2);
+}
+
+// Test: OnActorAlive marks actor alive and drains work queue
+TEST_F(ActorPoolManagerTest, OnActorAliveDrainsQueue) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+
+  // Mark actor as dead
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].is_alive = false;
+  }
+
+  // Submit a task — should be queued since no alive actors
+  RayFunction function;
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+  pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+
+  // Verify task is queued
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 1);
+
+  // Simulate actor coming alive (e.g. after restart)
+  pool_manager_->OnActorAlive(actor1, NodeID::FromRandom());
+
+  // Actor should be alive again
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor1].consecutive_failures,
+              0);
+  }
+
+  // Work queue should have been drained. Check that the drain
+  // attempted to process the queued item.
+  stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.total_in_flight, 1);
+  EXPECT_EQ(stats.backlog_size, 0);
+}
+
+// Test: OnActorDead marks actor as not alive
+TEST_F(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  // Both should be alive initially
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
+  }
+
+  // Mark actor1 as dead via OnActorDead
+  pool_manager_->OnActorDead(actor1);
+
+  // Actor1 should be not alive, actor2 still alive
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
+  }
+
+  // SelectActorForTask should skip actor1
+  auto selected = pool_manager_->SelectActorForTask(pool_id);
+  EXPECT_EQ(selected, actor2);
+}
+
+// Test: OnActorDead for non-pool actor is safe
+TEST_F(ActorPoolManagerTest, OnActorDeadForNonPoolActorIsSafe) {
+  auto actor_id = CreateActorID();
+
+  // Should not crash
+  pool_manager_->OnActorDead(actor_id);
+}
+
+// Test: OnActorAlive for non-pool actor is safe
+TEST_F(ActorPoolManagerTest, OnActorAliveForNonPoolActorIsSafe) {
+  auto actor_id = CreateActorID();
+
+  // Should not crash
+  pool_manager_->OnActorAlive(actor_id, NodeID::FromRandom());
+}
+
+// Test: Full cycle — actor dies, work queued, actor restarts, work drained
+TEST_F(ActorPoolManagerTest, FullDeathRestartRecoveryCycle) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+
+  // Mark actor as dead
+  pool_manager_->OnActorDead(actor1);
+
+  // Submit tasks to empty pool (all actors dead) — should be queued
+  for (int i = 0; i < 3; i++) {
+    RayFunction function;
+    std::vector<std::unique_ptr<TaskArg>> args;
+    TaskOptions options;
+    pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+  }
+
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 3);
+  EXPECT_EQ(stats.total_in_flight, 0);
+
+  // Actor restarts
+  pool_manager_->OnActorAlive(actor1, NodeID::FromRandom());
+
+  // All queued work should have been drained
+  stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 0);
+  // All 3 items get submitted (in_flight incremented)
+  EXPECT_EQ(stats.total_in_flight, 3);
+}
+
 }  // namespace core
 }  // namespace ray

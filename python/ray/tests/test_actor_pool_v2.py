@@ -1,18 +1,8 @@
 """Integration tests for Actor Pool V2 API (ray.experimental.actor_pool).
 
-These tests cover the Phase 1 implementation which provides:
-- Pool registration and lifecycle
-- Actor membership management
-- Load-balanced actor selection
-- Task submission (happy path)
-- Basic stats tracking
-
-KNOWN LIMITATIONS (Phase 1):
-- Cross-actor retry does NOT work (callbacks not wired)
-- num_tasks_in_flight counters not updated after submission
-- OnTaskFailed/OnTaskSucceeded never invoked
-
-Tests for retry logic will be added in Phase 2 when callbacks are wired.
+Covers pool lifecycle, task submission, load balancing, scaling,
+shutdown, and cross-actor retry (task retried on a different actor
+when the original actor dies).
 
 This tests the NEW ray.experimental.actor_pool.ActorPool API,
 not the existing ray.util.ActorPool (tested in test_actor_pool.py).
@@ -44,6 +34,34 @@ class SimpleWorker:
 
     def echo(self, msg):
         return f"{self.name}: {msg}"
+
+
+@ray.remote
+class CrashableWorker:
+    """Worker that crashes via os._exit(1) when signaled.
+
+    Used to test cross-actor retry: when this actor dies mid-task, the pool
+    retries the task on a different healthy actor.
+    """
+
+    def __init__(self, name="worker"):
+        self.name = name
+        self.call_count = 0
+        self._crash_on_next = False
+
+    def set_crash_on_next(self):
+        self._crash_on_next = True
+
+    def process(self, x):
+        self.call_count += 1
+        if self._crash_on_next:
+            import os
+
+            os._exit(1)
+        return x * 2
+
+    def get_call_count(self):
+        return self.call_count
 
 
 @pytest.fixture
@@ -243,6 +261,37 @@ class TestActorPoolV2LoadBalancing:
 
         # Both actors should have been used (not all work on one actor)
         assert all(count > 0 for count in call_counts)
+
+        pool.shutdown()
+
+
+class TestActorPoolV2CrossActorRetry:
+    """Tests for cross-actor retry when a pool actor dies."""
+
+    def test_retry_on_actor_death(self, ray_start):
+        """Crash an actor mid-task, verify the task completes on a survivor."""
+        pool = ActorPool(CrashableWorker, size=3, retry=RetryPolicy(max_attempts=3))
+
+        ray.get(pool.actors[0].set_crash_on_next.remote())
+
+        # Each actor gets one task. Actor 0 crashes; pool retries on a survivor.
+        refs = [pool.submit("process", i) for i in range(3)]
+
+        results = ray.get(refs, timeout=10)
+        assert sorted(results) == [0, 2, 4]
+
+        pool.shutdown()
+
+    def test_retry_multiple_tasks_on_actor_death(self, ray_start):
+        """Crash an actor, verify all 10 tasks complete."""
+        pool = ActorPool(CrashableWorker, size=3, retry=RetryPolicy(max_attempts=3))
+
+        ray.get(pool.actors[0].set_crash_on_next.remote())
+
+        refs = [pool.submit("process", i) for i in range(10)]
+
+        results = ray.get(refs, timeout=30)
+        assert sorted(results) == sorted([i * 2 for i in range(10)])
 
         pool.shutdown()
 

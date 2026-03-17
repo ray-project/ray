@@ -439,6 +439,19 @@ CoreWorker::CoreWorker(
         }
       });
 
+  // Wire actor state notifications from GCS to ActorPoolManager.
+  // When a pool actor restarts (ALIVE), this triggers DrainWorkQueue to
+  // dispatch queued tasks. When it dies (RESTARTING/DEAD), the actor is
+  // marked not alive so SelectActorFromPool skips it.
+  actor_manager_->SetActorPoolStateCallback(
+      [this](const ActorID &actor_id, bool is_alive, const NodeID &node_id) {
+        if (is_alive) {
+          actor_pool_manager_->OnActorAlive(actor_id, node_id);
+        } else {
+          actor_pool_manager_->OnActorDead(actor_id);
+        }
+      });
+
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   if (options_.worker_type == WorkerType::DRIVER) {
@@ -2779,9 +2792,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     TaskCompletionCallback on_complete,
     const ActorPoolID &pool_id,
     const TaskID &work_item_id) {
-  // This method is called by ActorPoolManager to submit tasks.
-  // We set max_retries=0 because the pool handles cross-actor retries.
-
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
 
   if (!actor_task_submitter_->CheckActorExists(actor_id)) {
@@ -2845,10 +2855,12 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
 
-  // Set actor task spec with max_retries=0 (pool handles retries)
+  // Set actor task spec with max_retries=-1 (infinite retries).
+  // Keeps the ObjectRef pending through failures, enabling cross-actor retry
+  // via InternalHeartbeat redirect.
   actor_handle->SetActorTaskSpec(builder,
                                  ObjectID::Nil(),
-                                 /*max_retries=*/0,
+                                 /*max_retries=*/-1,
                                  /*retry_exceptions=*/false,
                                  /*serialized_retry_exception_allowlist=*/"",
                                  task_options.concurrency_group_name,
@@ -2868,7 +2880,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
 
   // Add pending task and get return refs
   auto returned_refs = task_manager_->AddPendingTask(
-      rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/0);
+      rpc_address_, task_spec, CurrentCallSite(), /*max_retries=*/-1);
 
   // Note: The on_complete callback passed here is NOT directly invoked by TaskManager
   // because TaskManager doesn't support completion callbacks. Instead, task completion

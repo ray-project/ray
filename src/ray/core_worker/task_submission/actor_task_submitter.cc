@@ -798,8 +798,9 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              /*mark_task_object_failed*/ is_actor_dead,
                                              fail_immediately);
 
-    // For pool tasks with max_retries=0, will_retry will be false.
-    // Notify pool of failure so it can handle cross-actor retry.
+    // With max_retries=-1 (pool default), will_retry is always true for
+    // actor death, so this branch is not taken. Kept for safety if
+    // max_retries is changed to a finite value in the future.
     if (is_actor_dead && !will_retry) {
       MaybeNotifyPoolTaskComplete(
           pool_task_completion_callback_, task_spec, status, &error_info);

@@ -1167,10 +1167,16 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     assert actor_pool_map_op.has_completed()
 
 
-def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
+@pytest.mark.parametrize("use_core_actor_pool", [False, True])
+def test_actor_pool_fault_tolerance_e2e(
+    ray_start_cluster, restore_data_context, use_core_actor_pool
+):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
     ray.shutdown()
+
+    ctx = restore_data_context
+    ctx.use_core_actor_pool = use_core_actor_pool
 
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)

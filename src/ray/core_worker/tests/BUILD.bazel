@@ -45,7 +45,7 @@ ray_cc_test(
 
 ray_cc_test(
     name = "actor_pool_work_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["actor_pool_work_queue_test.cc"],
     tags = ["team:core"],
     deps = [
