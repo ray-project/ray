@@ -7,7 +7,7 @@ import unittest
 # coding: utf-8
 # coding: utf-8
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from unittest.mock import MagicMock
 
 import pytest  # noqa
@@ -354,11 +354,16 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 
-    def get_patches(self, path: str) -> List[Dict[str, Any]]:
+    def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
 
 
@@ -378,6 +383,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=self.mock_client,
         )
 
@@ -648,6 +654,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -694,6 +701,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
@@ -787,6 +795,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 "namespace": "default",
                 "head_node_type": "headgroup",
             },
+            gcs_client=MagicMock(),
             k8s_api_client=mock_client,
         )
 
