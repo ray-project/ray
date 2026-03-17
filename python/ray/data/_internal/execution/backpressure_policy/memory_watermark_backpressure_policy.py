@@ -117,7 +117,12 @@ class MemoryWatermarkBackpressurePolicy(BackpressurePolicy):
             self._cached_utilization = util
             self._last_query_time = now
             return util
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "Failed to query object store memory utilization, "
+                "using cached value. Error: %s",
+                e,
+            )
             # Return cached value — NOT 0.0.
             # 0.0 = "no pressure" = false safety; cached = conservative.
             return self._cached_utilization
