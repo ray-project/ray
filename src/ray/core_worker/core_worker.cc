@@ -911,6 +911,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2510,7 +2512,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
