@@ -9,7 +9,10 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.context import DataContext
+from ray.data.context import (
+    MAX_SAFE_BLOCK_SIZE_FACTOR,
+    DataContext,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
@@ -212,8 +215,8 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is None.
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
+    # No tasks running yet, so pending task outputs is 0.
+    assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     op.add_input(input_op.get_next(), 0)
     op.add_input(input_op.get_next(), 0)
@@ -221,8 +224,11 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(1600, rel=0.5)
-    # No sample available yet, so pending task outputs is None.
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
+    # No sample available yet, uses fallback estimate: 2 tasks * per_task_output.
+    assert (
+        op.metrics.obj_store_mem_pending_task_outputs
+        == 2 * op.data_context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+    )
 
     run_op_tasks_sync(op)
 
@@ -253,8 +259,8 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is None.
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
+    # No tasks running yet, so pending task outputs is 0.
+    assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
@@ -262,8 +268,8 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(800, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is None.
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
+    # No tasks running yet, so pending task outputs is 0.
+    assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
@@ -271,16 +277,19 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(1600, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    # No tasks running yet, so pending task outputs is None.
-    assert op.metrics.obj_store_mem_pending_task_outputs is None
+    # No tasks running yet, so pending task outputs is 0.
+    assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     op.add_input(input_op.get_next(), 0)
     # Task has now been submitted since we've met the minimum bundle size.
     assert op.current_logical_usage() == ExecutionResources(cpu=1, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
-    assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(2400, rel=0.5)
-    # No sample available yet, so pending task outputs is None.
+    # No sample available yet, uses fallback estimate: 1 task * per_task_output.
+    assert (
+        op.metrics.obj_store_mem_pending_task_outputs
+        == 1 * op.data_context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+    )
     assert op.metrics.obj_store_mem_pending_task_outputs is None
 
 
