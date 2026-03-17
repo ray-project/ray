@@ -1281,9 +1281,13 @@ class _ActorPool(AutoscalingActorPool):
                 terminate_refs.append(ref)
 
         # Block until all actors have run __ray_shutdown__ (or timeout).
+        # Each ObjectRef resolves when the actor process exits (after
+        # __ray_shutdown__ completes), not when the __ray_terminate__ task
+        # raises IntentionalSystemExit.
         if terminate_refs:
             ray.wait(
                 terminate_refs,
+                num_returns=len(terminate_refs),
                 timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S,
             )
 
