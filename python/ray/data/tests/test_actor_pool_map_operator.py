@@ -632,6 +632,71 @@ class TestActorPool(unittest.TestCase):
             res5 = None
         assert res5 is None
 
+    def test_selector_optimal_locality_assignment(self):
+        """Tests that select_actors produces a globally optimal assignment
+        rather than a greedy per-bundle one.
+
+        Setup:
+            B0 has data: {N1: 100, N2: 50}  (data on both nodes)
+            B1 has data: {N1: 200}           (data only on N1)
+            A0 on N1 (1 slot), A1 on N2 (1 slot)
+
+        A greedy approach (process B0 first) would assign:
+            B0 → A0 (100 bytes local), B1 → A1 (0 bytes local)
+            Total data movement: (150-100) + (200-0) = 250
+
+        The optimal assignment is:
+            B0 → A1 (50 bytes local), B1 → A0 (200 bytes local)
+            Total data movement: (150-50) + (200-200) = 100
+        """
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+
+        bundles = make_ref_bundles([[0], [1]])
+        b0, b1 = bundles
+
+        # B0 has data on both nodes, B1 only on N1.
+        preferred_locs = {
+            id(b0): {"node1": 100, "node2": 50},
+            id(b1): {"node1": 200},
+        }
+
+        actor_n1 = self._add_ready_actor(pool, node_id="node1")
+        actor_n2 = self._add_ready_actor(pool, node_id="node2")
+
+        bundle_queue = HashLinkedQueue()
+        # Add B0 first — a greedy approach would assign B0 → A0(N1)
+        bundle_queue.add(b0)
+        bundle_queue.add(b1)
+
+        # Mock per-bundle preferred locations. We patch at the class level
+        # because RefBundle is a frozen dataclass.
+        preferred_locs = {
+            id(b0): {"node1": 100, "node2": 50},
+            id(b1): {"node1": 200},
+        }
+        original_method = RefBundle.get_preferred_object_locations
+        RefBundle.get_preferred_object_locations = lambda self: preferred_locs[id(self)]
+        try:
+            task_selector = self._create_task_selector(pool)
+            results = list(
+                task_selector.select_actors(
+                    bundle_queue, actor_locality_enabled=True, strict=True
+                )
+            )
+        finally:
+            RefBundle.get_preferred_object_locations = original_method
+
+        assignment = {id(bundle): actor for bundle, actor in results}
+
+        # Optimal: B0 → A1(N2), B1 → A0(N1)
+        assert assignment[id(b0)] == actor_n2, (
+            "B0 should be assigned to actor on N2 (has fallback locality), "
+            "leaving N1 for B1 which needs it exclusively"
+        )
+        assert (
+            assignment[id(b1)] == actor_n1
+        ), "B1 should be assigned to actor on N1 (its only locality option)"
+
     def test_selector_select_actors_strict(self):
         """Tests that `select_actors` enforces strict input handling protocol correctly.
 

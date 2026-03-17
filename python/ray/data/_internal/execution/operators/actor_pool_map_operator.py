@@ -895,19 +895,43 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         arc_ends[bundle_actor_edge] = np.tile(actor_nodes, num_bundles)
         arc_max_flows[bundle_actor_edge] = 1
 
-        # Build movement costs: movement_cost[i,j] = total_bytes(i) - local_bytes(i,j)
+        # Build edge costs encoding two objectives:
+        #   Primary: maximize local data (prefer actors co-located with bundle data)
+        #   Secondary: prefer least-loaded actors (tiebreaker when locality is equal)
+        #
+        # For each bundle, the locality cost is:
+        #   max_local_bytes - local_bytes_on_actor_node
+        # This is 0 for the best-located actor and positive for others, and is
+        # always non-negative. It gives the same optimal MCF assignment as
+        # (total_bytes - local_bytes) since the per-bundle offset is constant
+        # across actors and doesn't affect the flow solution.
+        #
+        # We combine locality and load into a single cost:
+        #   cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
+        #
+        # load_tiebreaker_scale > max possible num_tasks_in_flight, so any
+        # locality difference always dominates the load tiebreaker.
         actor_locations = [
             actor_states[actor].actor_location for actor in available_actors
         ]
-        movement_costs = np.empty(num_bundle_actor_edges, dtype=np.int64)
+        actor_tasks_in_flight = [
+            actor_states[actor].num_tasks_in_flight for actor in available_actors
+        ]
+        load_tiebreaker_scale = max_in_flight + 1
+
+        edge_costs = np.empty(num_bundle_actor_edges, dtype=np.int64)
         for bundle_idx, bundle in enumerate(bundles):
             preferred_locs = bundle.get_preferred_object_locations()
-            total_bytes = bundle.size_bytes()
+            max_local = max(preferred_locs.values(), default=0)
             offset = bundle_idx * num_actors
             for actor_idx, actor_location in enumerate(actor_locations):
                 local_bytes = preferred_locs.get(actor_location, 0)
-                movement_costs[offset + actor_idx] = total_bytes - local_bytes
-        arc_unit_costs[bundle_actor_edge] = movement_costs
+                locality_cost = max_local - local_bytes
+                edge_costs[offset + actor_idx] = (
+                    locality_cost * load_tiebreaker_scale
+                    + actor_tasks_in_flight[actor_idx]
+                )
+        arc_unit_costs[bundle_actor_edge] = edge_costs
 
         # --- Section 3: Actor → sink (max flow = remaining task slots, cost 0) ---
         # Limits how many bundles each actor can accept.
@@ -958,20 +982,18 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
         """When locality is disabled, assign bundles to least-loaded actors."""
         import heapq
 
-        running = self._actor_pool.running_actors()
+        actor_states = self._actor_pool.running_actors()
         max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
 
-        # Max-heap by remaining capacity (negate for min-heap).
+        # Max-heap by remaining task slots (negate for min-heap).
         heap = []
         for actor in available_actors:
-            remaining = max_in_flight - running[actor].num_tasks_in_flight
+            remaining = max_in_flight - actor_states[actor].num_tasks_in_flight
             if remaining > 0:
                 heapq.heappush(heap, (-remaining, id(actor), actor))
 
-        bundles = list(input_queue)
-        for bundle in bundles:
-            if not heap:
-                return
+        while input_queue and heap:
+            bundle = input_queue.peek_next()
             neg_rem, _, actor = heapq.heappop(heap)
             remaining = -neg_rem
             input_queue.remove(bundle)
