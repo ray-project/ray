@@ -1532,9 +1532,9 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
 
 
 # =============================================================================
-# Parity Tests for ClassBasedActorPoolAdapter
+# Parity Tests for CoreActorPoolAdapter
 # =============================================================================
-# These tests verify that ClassBasedActorPoolAdapter (via use_core_actor_pool flag)
+# These tests verify that CoreActorPoolAdapter (via use_core_actor_pool flag)
 # works correctly through the full ActorPoolMapOperator integration.
 
 

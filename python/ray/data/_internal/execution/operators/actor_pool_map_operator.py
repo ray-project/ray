@@ -65,21 +65,21 @@ from ray.types import ObjectRef
 from ray.util.common import INT32_MAX
 
 # Lazy import to avoid circular dependencies
-_ClassBasedActorPoolAdapter = None
+_CoreActorPoolAdapter = None
 
 logger = logging.getLogger(__name__)
 
 
-def _get_class_based_actor_pool_adapter():
-    """Lazy import of ClassBasedActorPoolAdapter to avoid circular imports."""
-    global _ClassBasedActorPoolAdapter
-    if _ClassBasedActorPoolAdapter is None:
+def _get_core_actor_pool_adapter():
+    """Lazy import of CoreActorPoolAdapter to avoid circular imports."""
+    global _CoreActorPoolAdapter
+    if _CoreActorPoolAdapter is None:
         from ray.data._internal.execution.operators.core_actor_pool_adapter import (
-            ClassBasedActorPoolAdapter,
+            CoreActorPoolAdapter,
         )
 
-        _ClassBasedActorPoolAdapter = ClassBasedActorPoolAdapter
-    return _ClassBasedActorPoolAdapter
+        _CoreActorPoolAdapter = CoreActorPoolAdapter
+    return _CoreActorPoolAdapter
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -206,7 +206,7 @@ class ActorPoolMapOperator(MapOperator):
         )
         self._use_core_pool = use_core_pool
         if use_core_pool:
-            Adapter = _get_class_based_actor_pool_adapter()
+            Adapter = _get_core_actor_pool_adapter()
             self._actor_pool = Adapter(
                 actor_cls=self._map_worker_cls,
                 per_actor_resource_usage=per_actor_resource_usage,
@@ -226,7 +226,7 @@ class ActorPoolMapOperator(MapOperator):
                 _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
             )
             logger.debug(
-                f"Using ClassBasedActorPoolAdapter for operator {name} "
+                f"Using CoreActorPoolAdapter for operator {name} "
                 f"(min={compute_strategy.min_size}, max={compute_strategy.max_size})"
             )
         else:
@@ -316,7 +316,7 @@ class ActorPoolMapOperator(MapOperator):
             )
         )
 
-        # For ClassBasedActorPoolAdapter, register callbacks for pending refs
+        # For CoreActorPoolAdapter, register callbacks for pending refs
         # to transition actors from pending to running when ready
         if self._use_core_pool:
             self._register_pending_actor_callbacks()
@@ -400,7 +400,7 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _register_pending_actor_callbacks(self):
-        """Register callbacks for pending actors in ClassBasedActorPoolAdapter.
+        """Register callbacks for pending actors in CoreActorPoolAdapter.
 
         When using the class-based adapter, actors are created by the adapter's
         internal ActorPool. We need to register callbacks so that when actors
@@ -734,7 +734,7 @@ class ActorPoolMapOperator(MapOperator):
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
         # Only refresh the task selector on the legacy path. The Core pool path
-        # (ClassBasedActorPoolAdapter) manages actor selection in C++.
+        # (CoreActorPoolAdapter) manages actor selection in C++.
         if self._actor_task_selector is not None:
             self._actor_task_selector.refresh_state()
 

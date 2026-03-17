@@ -1,6 +1,6 @@
 """Adapter to integrate ray.experimental.actor_pool.ActorPool with Ray Data.
 
-This module provides ClassBasedActorPoolAdapter, which implements the
+This module provides CoreActorPoolAdapter, which implements the
 AutoscalingActorPool interface expected by Ray Data's ActorPoolMapOperator,
 using the Core-backed ActorPool with actor_cls directly.
 
@@ -45,12 +45,11 @@ class _ActorState:
     is_restarting: bool
 
 
-class ClassBasedActorPoolAdapter(AutoscalingActorPool):
-    """Class-based adapter using ray.experimental.actor_pool.ActorPool.
+class CoreActorPoolAdapter(AutoscalingActorPool):
+    """Core ActorPool adapter using ray.experimental.actor_pool.ActorPool.
 
     This adapter implements the AutoscalingActorPool interface expected by
-    ActorPoolMapOperator, using the new C++-backed ActorPool with actor_cls
-    directly (no callback).
+    ActorPoolMapOperator, using the new C++-backed ActorPool.
 
     Key features:
     - Creates ActorPool internally which handles actor lifecycle
