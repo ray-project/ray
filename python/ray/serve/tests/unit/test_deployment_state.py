@@ -6746,8 +6746,8 @@ class TestScaleDeploymentGangReplicas:
             ds,
             total=initial_replicas,
             by_state=[
-                (ReplicaState.RUNNING, 3, version),
-                (ReplicaState.STARTING, 1, version),
+                (ReplicaState.RUNNING, 2, version),
+                (ReplicaState.STARTING, 2, version),
             ],
         )
 

@@ -3433,6 +3433,67 @@ class DeploymentState:
 
         return False, any_replicas_recovering
 
+    def _transition_replica_to_running(
+        self, replica: DeploymentReplica, original_state: ReplicaState
+    ):
+        """Transition a single replica from a startup state to RUNNING."""
+        if original_state == ReplicaState.RECOVERING:
+            replica_id = replica.replica_id.unique_id
+            if not self._rank_manager.has_replica_rank(replica_id):
+                self._rank_manager.recover_rank(
+                    replica_id, replica.actor_node_id, replica.rank
+                )
+        if (
+            original_state == ReplicaState.RECOVERING
+            and replica.gang_context is not None
+        ):
+            self._register_gang_replica(
+                replica.replica_id, replica.gang_context.gang_id
+            )
+        self._replicas.add(ReplicaState.RUNNING, replica)
+        self._deployment_scheduler.on_replica_running(
+            replica.replica_id, replica.actor_node_id
+        )
+        if replica.version == self._target_state.version:
+            self._docs_path = replica.docs_path
+            self._route_patterns = replica.route_patterns
+        e2e_replica_start_latency = time.time() - replica._start_time
+        replica_startup_message = (
+            f"{replica.replica_id} started successfully "
+            f"on node '{replica.actor_node_id}' after "
+            f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
+        )
+        if replica.initialization_latency_s is not None:
+            replica_startup_message += (
+                " Replica constructor, "
+                "reconfigure method, and initial health check took "
+                f"{replica.initialization_latency_s:.1f}s."
+            )
+        logger.info(replica_startup_message, extra={"log_to_stderr": False})
+        metric_tags = {
+            "replica": replica.replica_id.unique_id,
+        }
+        if original_state == ReplicaState.STARTING:
+            e2e_replica_start_latency_ms = e2e_replica_start_latency * 1000
+            self.replica_startup_latency_histogram.observe(
+                e2e_replica_start_latency_ms, tags=metric_tags
+            )
+            if replica.initialization_latency_s is not None:
+                initialization_latency_ms = (
+                    replica.initialization_latency_s * 1000
+                )
+                self.replica_initialization_latency_histogram.observe(
+                    initialization_latency_ms, tags=metric_tags
+                )
+        elif original_state == ReplicaState.UPDATING:
+            if replica.reconfigure_start_time is not None:
+                reconfigure_latency_ms = (
+                    time.time() - replica.reconfigure_start_time
+                ) * 1000
+                self.replica_reconfigure_latency_histogram.observe(
+                    reconfigure_latency_ms, tags=metric_tags
+                )
+
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
     ) -> List[Tuple[DeploymentReplica, ReplicaStartupStatus]]:
@@ -3440,98 +3501,29 @@ class DeploymentState:
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
 
+        For gang-scheduled deployments, replicas are held in their startup
+        state until all members of a gang have succeeded, then the entire
+        gang transitions to RUNNING atomically.
+
         Args:
             stop_on_slow: If we consider a replica failed upon observing it's
                 slow to reach running state.
         """
         slow_replicas = []
         failed_gang_ids: Set[str] = set()
+        succeeded_gang_replicas: Dict[str, List[DeploymentReplica]] = (
+            defaultdict(list)
+        )
+        pending_gang_ids: Set[str] = set()
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
-                if original_state == ReplicaState.RECOVERING:
-                    # If the previous state was RECOVERING, that mean the replica
-                    # crashed and is now starting up again. We need to recover the rank
-                    # from the replica actor. The invariant is that the rank is assigned
-                    # during startup and before the replica is added to the replicas
-                    # data structure with RUNNING state.
-                    # Skip if the rank is already assigned (e.g., health-check failure
-                    # put the replica into RECOVERING without a controller crash, so the
-                    # rank was never released).
-                    replica_id = replica.replica_id.unique_id
-                    if not self._rank_manager.has_replica_rank(replica_id):
-                        self._rank_manager.recover_rank(
-                            replica_id, replica.actor_node_id, replica.rank
-                        )
-                # Register recovered gang replicas in the incremental
-                # bookkeeping (newly created gang replicas are already
-                # registered in _add_upscale_gang_replicas).
-                if (
-                    original_state == ReplicaState.RECOVERING
-                    and replica.gang_context is not None
-                ):
-                    self._register_gang_replica(
-                        replica.replica_id, replica.gang_context.gang_id
+                if replica.gang_context is not None:
+                    succeeded_gang_replicas[replica.gang_context.gang_id].append(
+                        replica
                     )
-                # This replica should be now be added to handle's replica
-                # set.
-                self._replicas.add(ReplicaState.RUNNING, replica)
-                self._deployment_scheduler.on_replica_running(
-                    replica.replica_id, replica.actor_node_id
-                )
-
-                # if replica version is the same as the target version,
-                # we update the docs path and route patterns
-                if replica.version == self._target_state.version:
-                    self._docs_path = replica.docs_path
-                    self._route_patterns = replica.route_patterns
-
-                # Log the startup latency.
-                e2e_replica_start_latency = time.time() - replica._start_time
-                replica_startup_message = (
-                    f"{replica.replica_id} started successfully "
-                    f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
-                )
-                if replica.initialization_latency_s is not None:
-                    # This condition should always be True. The initialization
-                    # latency is only None before the replica has initialized.
-                    replica_startup_message += (
-                        " Replica constructor, "
-                        "reconfigure method, and initial health check took "
-                        f"{replica.initialization_latency_s:.1f}s."
-                    )
-                logger.info(replica_startup_message, extra={"log_to_stderr": False})
-
-                # Record startup or reconfigure latency metrics.
-                metric_tags = {
-                    "replica": replica.replica_id.unique_id,
-                }
-                if original_state == ReplicaState.STARTING:
-                    # Record replica startup latency (end-to-end from creation to ready).
-                    # This includes the time taken from starting a node, scheduling the replica,
-                    # and the replica constructor.
-                    e2e_replica_start_latency_ms = e2e_replica_start_latency * 1000
-                    self.replica_startup_latency_histogram.observe(
-                        e2e_replica_start_latency_ms, tags=metric_tags
-                    )
-                    # Record replica initialization latency.
-                    if replica.initialization_latency_s is not None:
-                        initialization_latency_ms = (
-                            replica.initialization_latency_s * 1000
-                        )
-                        self.replica_initialization_latency_histogram.observe(
-                            initialization_latency_ms, tags=metric_tags
-                        )
-                elif original_state == ReplicaState.UPDATING:
-                    # Record replica reconfigure latency.
-                    if replica.reconfigure_start_time is not None:
-                        reconfigure_latency_ms = (
-                            time.time() - replica.reconfigure_start_time
-                        ) * 1000
-                        self.replica_reconfigure_latency_histogram.observe(
-                            reconfigure_latency_ms, tags=metric_tags
-                        )
+                else:
+                    self._transition_replica_to_running(replica, original_state)
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed.
@@ -3561,6 +3553,18 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
+                    if replica.gang_context is not None:
+                        pending_gang_ids.add(replica.gang_context.gang_id)
+
+        # Process gang replicas: transition complete gangs to RUNNING,
+        # hold incomplete gangs in their startup state.
+        for gang_id, replicas in succeeded_gang_replicas.items():
+            if gang_id in failed_gang_ids or gang_id in pending_gang_ids:
+                for replica in replicas:
+                    self._replicas.add(original_state, replica)
+            else:
+                for replica in replicas:
+                    self._transition_replica_to_running(replica, original_state)
 
         # If any gang member failed during startup, stop all other members of
         # that gang so partial gangs never exist.
