@@ -69,6 +69,7 @@ class SchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
+                             /*target_label_domain*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred node*/ "",
                              schedule_top_k_absolute,

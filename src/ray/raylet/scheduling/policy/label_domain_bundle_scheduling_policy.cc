@@ -17,6 +17,7 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+// TODO(#61778): Move this to the cluster resource manager.
 bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
