@@ -7,6 +7,7 @@ from ray.util.placement_group import (
     placement_group_table,
     remove_placement_group,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_placement_group_fallback_resources(ray_start_cluster):
@@ -223,6 +224,183 @@ def test_placement_group_fallback_validation(ray_start_cluster):
     ray.get(pg.ready())
     assert pg.bundle_specs[0].get("GPU") == 1
     assert pg.bundle_specs[0].get("CPU") is None
+
+    remove_placement_group(pg)
+    placement_group_assert_no_leak([pg])
+
+
+def test_pending_placement_group_index_validation(ray_start_cluster):
+    """
+    Test that when a PG is pending, index validation allows up to the
+    maximum number of bundles across all fallback strategies.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, num_gpus=0)  # keep PG pending
+    ray.init(address=cluster.address)
+
+    pg = placement_group(
+        name="pending_index_pg",
+        bundles=[{"CPU": 2}],
+        strategy="PACK",
+        fallback_strategy=[{"bundles": [{"CPU": 1}, {"CPU": 1}, {"CPU": 1}]}],
+    )
+
+    @ray.remote(num_cpus=1)
+    def dummy_task():
+        return "ok"
+
+    # Requesting index 2 shouldn't raise an error because max possible is 3.
+    try:
+        dummy_task.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=2
+            )
+        ).remote()
+    except ValueError as e:
+        pytest.fail(f"Pending PG incorrectly rejected valid fallback index: {e}")
+
+    # Requesting index 3 should fail immediately since no strategy has more than 3 bundles.
+    with pytest.raises(ValueError, match="Valid placement group indexes: 0 to 2"):
+        dummy_task.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=3
+            )
+        ).remote()
+
+    remove_placement_group(pg)
+
+
+def test_scheduled_placement_group_fallback_index_validation(ray_start_cluster):
+    """
+    Test that bundle_index validation strictly respects the active
+    strategy's bundle count once the PG is scheduled.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    # Infeasible primary strategy with 3 bundles, feasible fallback strategy with 1 bundle.
+    pg = placement_group(
+        name="index_validation_pg",
+        bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}],
+        strategy="STRICT_PACK",
+        fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+    )
+
+    # Wait for the PG to schedule using the fallback.
+    ray.get(pg.ready(), timeout=10)
+
+    @ray.remote(num_cpus=1)
+    def dummy_task():
+        return "ok"
+
+    # Requesting bundle_index=0 should work.
+    ref = dummy_task.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        )
+    ).remote()
+    assert ray.get(ref) == "ok"
+
+    # Requesting bundle_index=1 should fail immediately because the active strategy only has 1 bundle.
+    with pytest.raises(
+        ValueError, match="is invalid. Valid placement group indexes: 0 to 0"
+    ):
+        dummy_task.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=1
+            )
+        ).remote()
+
+    remove_placement_group(pg)
+    placement_group_assert_no_leak([pg])
+
+
+def test_pending_placement_group_shape_validation(ray_start_cluster):
+    """
+    Test that when a PG is pending, resource shape validation allows tasks that fit
+    into any of the possible scheduling strategies (primary or fallback).
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, num_gpus=0)  # keep PG pending
+    ray.init(address=cluster.address)
+
+    pg = placement_group(
+        name="pending_shape_pg",
+        bundles=[{"CPU": 2}],
+        strategy="PACK",
+        fallback_strategy=[{"bundles": [{"GPU": 1}]}],
+    )
+
+    @ray.remote(num_cpus=1)
+    def needs_cpu():
+        return "ok"
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def needs_gpu():
+        return "ok"
+
+    @ray.remote(num_cpus=3)
+    def needs_too_much_cpu():
+        return "ok"
+
+    # First task fits in primary option and should pass validation
+    try:
+        needs_cpu.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    except ValueError as e:
+        pytest.fail(f"Pending PG incorrectly rejected valid primary shape: {e}")
+
+    # Second task fits in fallback option and should pass validation
+    try:
+        needs_gpu.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    except ValueError as e:
+        pytest.fail(f"Pending PG incorrectly rejected valid fallback shape: {e}")
+
+    # Third task fits doesn't fit in any scheduling option
+    with pytest.raises(
+        ValueError, match="cannot fit into any bundles across all scheduling strategies"
+    ):
+        needs_too_much_cpu.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+
+    remove_placement_group(pg)
+
+
+def test_scheduled_placement_group_strict_shape_validation(ray_start_cluster):
+    """
+    Test that once a PG is scheduled, tasks are validated against the active
+    strategy, preventing tasks from hanging by requesting a shape from a fallback.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    # Feasible primary strategy uses CPU, infeasible
+    # fallback strategy uses GPU.
+    pg = placement_group(
+        name="strict_shape_pg",
+        bundles=[{"CPU": 1}],
+        strategy="PACK",
+        fallback_strategy=[{"bundles": [{"GPU": 1}]}],
+    )
+
+    # Wait for the PG to schedule using the primary strategy.
+    ray.get(pg.ready(), timeout=10)
+
+    @ray.remote(num_gpus=1)
+    def needs_gpu():
+        return "ok"
+
+    # The task requests a GPU and should fail immediately since the active stategy is CPU only.
+    with pytest.raises(ValueError, match="cannot fit into any bundles across"):
+        needs_gpu.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
 
     remove_placement_group(pg)
     placement_group_assert_no_leak([pg])

@@ -36,6 +36,7 @@ class PlacementGroup:
         self.id = id
         self.bundle_cache = bundle_cache
         self._scheduling_options_cache = None
+        self._active_strategy_index_cache = None
 
     @property
     def is_empty(self):
@@ -106,6 +107,33 @@ class PlacementGroup:
             options = _get_all_scheduling_options(self.id)
             if options:
                 self._scheduling_options_cache = options
+
+    def _get_active_strategy_index(self) -> int:
+        """
+        Returns the active scheduling strategy index.
+        Caches the result while the placement group is ready.
+        If the placement group reschedules, the cache is invalidated.
+        """
+        # Check if the PG is currently created and ready
+        is_ready = self.wait(timeout_seconds=0)
+
+        if not is_ready:
+            # Invalidate the stale cache.
+            self._active_strategy_index_cache = None
+            return -1
+
+        if self._active_strategy_index_cache is not None:
+            return self._active_strategy_index_cache
+
+        # Check the active strategy and cache it if it exists.
+        table = ray._private.state.state.placement_group_table(self.id)
+        if table:
+            active_index = table.get("active_scheduling_strategy_index", -1)
+            if active_index != -1:
+                self._active_strategy_index_cache = active_index
+            return active_index
+
+        return -1
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -360,21 +388,31 @@ def check_placement_group_index(
                 "If placement group is not set, "
                 "the value of bundle index must be -1."
             )
-    else:
-        # Fetch the updated scheduling options first.
-        all_bundles = placement_group._get_scheduling_options_bundles()
-        if not all_bundles:
-            # Since bundles must be non-empty (i.e. there must be at least 1 scheduling option),
-            # if there are no bundles to validate yet we return and allow GCS to synchronize.
-            return
-        primary_bundles_len = len(all_bundles[0])
+        return
 
-        if bundle_index >= primary_bundles_len or bundle_index < -1:
-            raise ValueError(
-                f"placement group bundle index {bundle_index} "
-                f"is invalid. Valid placement group indexes: "
-                f"0 to {primary_bundles_len - 1}."
-            )
+    # Fetch all possible scheduling options (list of lists of bundles)
+    all_bundles = placement_group._get_scheduling_options_bundles()
+    if not all_bundles:
+        # There must be at least one scheduling option - if not we return
+        # since GCS hasn't synchronized yet.
+        return
+
+    active_index = placement_group._get_active_strategy_index()
+
+    if active_index != -1:
+        # The PG has been scheduled. Validate strictly against the active strategy.
+        valid_len = len(all_bundles[active_index])
+    else:
+        # The PG is pending or rescheduling. We validate against the maximum
+        # possible bundles across all options so we don't reject a valid fallback.
+        valid_len = max(len(strategy_bundles) for strategy_bundles in all_bundles)
+
+    if bundle_index >= valid_len or bundle_index < -1:
+        raise ValueError(
+            f"placement group bundle index {bundle_index} "
+            f"is invalid. Valid placement group indexes: "
+            f"0 to {valid_len - 1}."
+        )
 
 
 def validate_placement_group(
@@ -575,6 +613,11 @@ def _validate_resource_shape(
         # Since bundles must be non-empty, if there are no scheduling options to validate yet
         # we return and allow GCS to synchronize.
         return
+
+    active_index = placement_group._get_active_strategy_index()
+    if active_index != -1:
+        # The PG is scheduled, so validate against the active strategy.
+        strategies = [strategies[active_index]]
 
     resources_valid = any(
         _valid_resource_shape(resources, strategy) for strategy in strategies

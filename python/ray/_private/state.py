@@ -370,6 +370,13 @@ class GlobalState:
         if not bundles_source and len(placement_group_info.scheduling_options) > 0:
             bundles_source = placement_group_info.scheduling_options[0].bundles
 
+        # Respect the optional field and default to -1 if not set.
+        active_index = (
+            placement_group_info.active_scheduling_strategy_index
+            if placement_group_info.HasField("active_scheduling_strategy_index")
+            else -1
+        )
+
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id
@@ -399,6 +406,7 @@ class GlobalState:
                 ].name,
             },
             "scheduling_options": scheduling_options,
+            "active_scheduling_strategy_index": active_index,
         }
 
     def _nanoseconds_to_microseconds(self, time_in_nanoseconds):
