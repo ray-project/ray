@@ -63,7 +63,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // domain assignment so a new domain can be selected. If only some bundles are
   // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
   if (label_domain.has_value()) {
-    const auto &all_bundles = placement_group->GetBundles();
+    const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
+        placement_group->GetBundles();
     bool is_total_failure = (bundles.size() == all_bundles.size());
     if (is_total_failure) {
       placement_group->ClearLabelDomainAssignments();
@@ -705,11 +706,12 @@ std::optional<std::string> GcsPlacementGroupScheduler::IsLabelDomainPlacementGro
   static const std::string kGB200 = "GB200";
   static const std::string kGB300 = "GB300";
 
-  const auto &all_bundles = pg.GetBundles();
+  const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
+      pg.GetBundles();
   RAY_CHECK(!all_bundles.empty());
-  const auto &bundle = all_bundles[0];
-  const auto &label_selector = bundle->GetRequiredResources().GetLabelSelector();
-  for (const auto &constraint : label_selector.GetConstraints()) {
+  const std::shared_ptr<const BundleSpecification> &bundle = all_bundles[0];
+  const LabelSelector &label_selector = bundle->GetRequiredResources().GetLabelSelector();
+  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
     if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
         (constraint.GetLabelValues().contains(kGB300) ||

@@ -21,11 +21,13 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
   // Check that each bundle is individually feasible on at least one node.
-  for (const auto &request : resource_request_list) {
-    bool bundle_feasible = std::any_of(
-        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &entry) {
-          return entry.second->GetLocalView().IsFeasible(*request);
-        });
+  for (const ResourceRequest *const &request : resource_request_list) {
+    bool bundle_feasible =
+        std::any_of(candidate_nodes.begin(),
+                    candidate_nodes.end(),
+                    [&](const std::pair<const scheduling::NodeID, const Node *> &entry) {
+                      return entry.second->GetLocalView().IsFeasible(*request);
+                    });
     if (!bundle_feasible) {
       return false;
     }
@@ -33,7 +35,7 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
 
   // Check that aggregate demand does not exceed aggregate capacity.
   ResourceSet aggregate_demand;
-  for (const auto *request : resource_request_list) {
+  for (const ResourceRequest *request : resource_request_list) {
     aggregate_demand += request->GetResourceSet();
   }
   for (auto resource_id : aggregate_demand.ResourceIds()) {
@@ -56,16 +58,17 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
     NodeScheduleFn node_schedule_fn) {
   RAY_CHECK(!resource_request_list.empty());
 
-  const auto &label_key = options.target_label_domain_.first;
+  const std::string &label_key = options.target_label_domain_.first;
   RAY_CHECK(!label_key.empty());
 
   // If a target label domain value is specified (partial failure rescheduling),
   // prune to only nodes in that domain and use the node-level scheduling callback to
   // schedule the bundles.
   if (!options.target_label_domain_.second.empty()) {
-    const auto &target = options.target_label_domain_.second;
+    const std::string &target = options.target_label_domain_.second;
     for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
-      const auto &labels = it->second->GetLocalView().labels;
+      const absl::flat_hash_map<std::string, std::string> &labels =
+          it->second->GetLocalView().labels;
       auto label_it = labels.find(label_key);
       if (label_it == labels.end() || label_it->second != target) {
         candidate_nodes.erase(it++);
@@ -90,7 +93,8 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   absl::flat_hash_map<std::string, absl::flat_hash_map<scheduling::NodeID, const Node *>>
       domain_groups;
   for (const auto &[node_id, node] : candidate_nodes) {
-    const auto &labels = node->GetLocalView().labels;
+    const absl::flat_hash_map<std::string, std::string> &labels =
+        node->GetLocalView().labels;
     auto it = labels.find(label_key);
     if (it != labels.end() && !it->second.empty()) {
       domain_groups[it->second].emplace(node_id, node);

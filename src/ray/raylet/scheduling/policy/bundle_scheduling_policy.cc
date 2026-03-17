@@ -368,10 +368,12 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 void BundleStrictSpreadSchedulingPolicy::ExcludeNodesAlreadyContainingBundles(
     absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
     const SchedulingContext *context) {
-  auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
+  const BundleSchedulingContext *bundle_scheduling_context =
+      dynamic_cast<const BundleSchedulingContext *>(context);
   if (bundle_scheduling_context &&
       bundle_scheduling_context->bundle_locations_.has_value()) {
-    const auto &bundle_locations = bundle_scheduling_context->bundle_locations_.value();
+    const std::shared_ptr<BundleLocations> &bundle_locations =
+        bundle_scheduling_context->bundle_locations_.value();
     if (bundle_locations != nullptr) {
       for (auto &bundle : *bundle_locations) {
         candidate_nodes.erase(scheduling::NodeID(bundle.second.first.Binary()));

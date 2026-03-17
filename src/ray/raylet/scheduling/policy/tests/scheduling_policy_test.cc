@@ -541,12 +541,12 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   req_list.push_back(&req);
   req_list.push_back(&req);
 
-  auto policy = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+  raylet_scheduling_policy::BundleStrictPackSchedulingPolicy policy(
       *cluster_resource_manager);
 
   // No target node.
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
-  auto to_schedule = policy.Schedule(
+  SchedulingResult to_schedule = policy.Schedule(
       req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
@@ -706,33 +706,34 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   std::vector<scheduling::NodeID> rack1_node_ids;
   for (int i = 0; i < 18; i++) {
-    auto node_id = scheduling::NodeID(i);
-    auto resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
     resources.labels = rack1_labels;
     nodes.emplace(node_id, resources);
     rack1_node_ids.push_back(node_id);
   }
   for (int i = 18; i < 20; i++) {
-    auto node_id = scheduling::NodeID(i);
-    auto resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
     resources.labels = rack2_labels;
     nodes.emplace(node_id, resources);
   }
   // Add nodes without rack labels to the cluster
   for (int i = 20; i < 40; i++) {
-    auto node_id = scheduling::NodeID(i);
-    auto resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
     nodes.emplace(node_id, resources);
   }
 
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
+      MockClusterResourceManager(nodes);
 
   ResourceRequest bundle_req =
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
-  auto options =
+  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  SchedulingOptions options =
       SchedulingOptions::BundlePack(std::make_pair(kDomainLabelKey, std::string()));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
@@ -744,7 +745,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       };
 
   // Schedule should return SUCCESS with 15 nodes all from rack-1
-  auto result_1 = label_domain_policy.Schedule(
+  SchedulingResult result_1 = label_domain_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result_1.status.IsSuccess());
@@ -753,9 +754,11 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   ASSERT_EQ(result_1.selected_label_domain->second, "rack-1");
   ASSERT_EQ(result_1.selected_nodes.size(), 15);
 
-  for (const auto &node_id : result_1.selected_nodes) {
-    const auto &node_resources = cluster_resource_manager->GetNodeResources(node_id);
-    auto it = node_resources.labels.find(kDomainLabelKey);
+  for (const scheduling::NodeID &node_id : result_1.selected_nodes) {
+    const NodeResources &node_resources =
+        cluster_resource_manager->GetNodeResources(node_id);
+    absl::flat_hash_map<std::string, std::string>::const_iterator it =
+        node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
     ASSERT_EQ(it->second, result_1.selected_label_domain->second);
   }
@@ -769,7 +772,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // Schedule the remaining 3 bundles on the remaining nodes in rack-1
   std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
 
-  auto result_2 =
+  SchedulingResult result_2 =
       label_domain_policy.Schedule(req_list_2,
                                    options,
                                    GetCandidateNodes(*cluster_resource_manager),
@@ -781,9 +784,11 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   ASSERT_EQ(result_2.selected_label_domain->second, "rack-1");
   ASSERT_EQ(result_2.selected_nodes.size(), 3);
 
-  for (const auto &node_id : result_2.selected_nodes) {
-    const auto &node_resources = cluster_resource_manager->GetNodeResources(node_id);
-    auto it = node_resources.labels.find(kDomainLabelKey);
+  for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
+    const NodeResources &node_resources =
+        cluster_resource_manager->GetNodeResources(node_id);
+    absl::flat_hash_map<std::string, std::string>::const_iterator it =
+        node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
     ASSERT_EQ(it->second, result_2.selected_label_domain->second);
   }
@@ -792,7 +797,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // bundles.
   absl::flat_hash_set<scheduling::NodeID> first_batch_nodes(
       result_1.selected_nodes.begin(), result_1.selected_nodes.end());
-  for (const auto &node_id : result_2.selected_nodes) {
+  for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
     ASSERT_FALSE(first_batch_nodes.contains(node_id))
         << "Node " << node_id.ToInt()
         << " was already used in the first batch (resources should be exhausted)";
@@ -809,20 +814,21 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       {kDomainLabelKey, "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
 
   for (int i = 0; i < 2; i++) {
-    auto node_id = scheduling::NodeID(i);
-    auto resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
+    scheduling::NodeID node_id = scheduling::NodeID(i);
+    NodeResources resources = CreateNodeResources(2, 2, 0, 0, 4, 4);
     resources.labels = rack2_labels;
     nodes.emplace(node_id, resources);
   }
 
-  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager =
+      MockClusterResourceManager(nodes);
 
   ResourceRequest bundle_req =
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
-  auto options =
+  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  SchedulingOptions options =
       SchedulingOptions::BundlePack(std::make_pair(kDomainLabelKey, std::string()));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
@@ -833,7 +839,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
         return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
       };
 
-  auto result = label_domain_policy.Schedule(
+  SchedulingResult result = label_domain_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result.status.IsInfeasible());
