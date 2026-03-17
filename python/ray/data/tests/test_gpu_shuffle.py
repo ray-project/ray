@@ -388,8 +388,7 @@ class TestGPUShuffleOperatorFinalization:
         )
         mock_actors = [MagicMock(name=f"actor_{i}") for i in range(nranks)]
         for actor in mock_actors:
-            actor.insert_finished.remote.return_value = MagicMock()
-            actor.extract_partitions.options.return_value.remote.return_value = (
+            actor.finish_and_extract.options.return_value.remote.return_value = (
                 MagicMock()
             )
         op._rank_pool._actors = mock_actors
@@ -419,7 +418,7 @@ class TestGPUShuffleOperatorFinalization:
 
         assert op._finalization_started
 
-    def test_insert_finished_called_on_all_ranks(self):
+    def test_finish_and_extract_called_on_all_ranks(self):
         op, mock_actors = self._make_op(nranks=2)
         op._inputs_complete = True
 
@@ -427,17 +426,7 @@ class TestGPUShuffleOperatorFinalization:
             op._try_finalize()
 
         for actor in mock_actors:
-            actor.insert_finished.remote.assert_called_once()
-
-    def test_extract_partitions_called_on_all_ranks(self):
-        op, mock_actors = self._make_op(nranks=2)
-        op._inputs_complete = True
-
-        with patch.object(op._reduce_metrics, "on_task_submitted"):
-            op._try_finalize()
-
-        for actor in mock_actors:
-            actor.extract_partitions.options.assert_called_once()
+            actor.finish_and_extract.options.assert_called_once()
 
     def test_try_finalize_idempotent(self):
         op, mock_actors = self._make_op(nranks=2)
@@ -447,9 +436,9 @@ class TestGPUShuffleOperatorFinalization:
             op._try_finalize()
             op._try_finalize()  # second call should be no-op
 
-        # insert_finished should only be called once per actor
+        # finish_and_extract should only be called once per actor
         for actor in mock_actors:
-            assert actor.insert_finished.remote.call_count == 1
+            assert actor.finish_and_extract.options.call_count == 1
 
     def test_has_next_false_initially(self):
         op, _ = self._make_op()
@@ -743,12 +732,15 @@ class TestGPUShuffleActorReal:
             offset += size
         ray.kill(actor)
 
-    def test_insert_finished_succeeds_after_inserts(self, ray_with_gpu):
-        """insert_finished() completes without error after a batch insert."""
+    def test_finish_and_extract_succeeds_after_inserts(self, ray_with_gpu):
+        """finish_and_extract() completes without error after a batch insert."""
         actor = self._make_setup_actor()
         table = pa.table({"id": [0, 1, 2], "v": [10, 20, 30]})
         ray.get(actor.insert_batch.remote(table))
-        ray.get(actor.insert_finished.remote())  # must not raise
+        gen = actor.finish_and_extract.options(num_returns="streaming").remote()
+        # Drain the generator to ensure it completes.
+        for ref in gen:
+            ray.get(ref)
         ray.kill(actor)
 
 
@@ -759,18 +751,18 @@ class TestGPUShuffleActorReal:
 
 @pytest.mark.gpu
 class TestGPUSingleRankRoundtrip:
-    """Full insert → insert_finished → extract_partitions roundtrip (1 GPU)."""
+    """Full insert → finish_and_extract roundtrip (1 GPU)."""
 
     @staticmethod
     def _collect_partitions(actor) -> List[pa.Table]:
-        """Drain a streaming extract_partitions generator.
+        """Drain a streaming finish_and_extract generator.
 
-        extract_partitions follows the Ray Data streaming protocol: each
+        finish_and_extract follows the Ray Data streaming protocol: each
         partition yields a block (pa.Table) followed by a BlockMetadataWithSchema.
         Collect only the blocks.
         """
 
-        gen = actor.extract_partitions.options(num_returns="streaming").remote()
+        gen = actor.finish_and_extract.options(num_returns="streaming").remote()
         return [
             item for ref in gen for item in [ray.get(ref)] if isinstance(item, pa.Table)
         ]
@@ -781,7 +773,7 @@ class TestGPUSingleRankRoundtrip:
         key_columns: List[str],
         total_nparts: int = 2,
     ):
-        """Create a single-rank actor, feed *table* into it, and signal done."""
+        """Create a single-rank actor, feed *table* into it, return ready actor."""
         actor = GPUShuffleActor.options(num_gpus=1).remote(
             nranks=1,
             total_nparts=total_nparts,
@@ -790,7 +782,6 @@ class TestGPUSingleRankRoundtrip:
         _, root_address = ray.get(actor.setup_root.remote())
         ray.get(actor.setup_worker.remote(root_address))
         ray.get(actor.insert_batch.remote(table))
-        ray.get(actor.insert_finished.remote())
         return actor
 
     def test_roundtrip_preserves_row_count(self, ray_with_gpu):
@@ -808,7 +799,7 @@ class TestGPUSingleRankRoundtrip:
         ray.kill(actor)
 
     def test_roundtrip_output_is_arrow_tables(self, ray_with_gpu):
-        """extract_partitions yields pyarrow.Table objects."""
+        """finish_and_extract yields pyarrow.Table objects."""
         table = pa.table({"id": [1, 2, 3, 4], "name": ["a", "b", "c", "d"]})
         actor = self._actor_with_data(table, ["id"], total_nparts=2)
         partitions = self._collect_partitions(actor)
@@ -831,7 +822,6 @@ class TestGPUSingleRankRoundtrip:
             ray.get(actor.insert_batch.remote(table))
             offset += size
 
-        ray.get(actor.insert_finished.remote())
         partitions = self._collect_partitions(actor)
         assert sum(t.num_rows for t in partitions) == sum(batch_sizes)
         ray.kill(actor)
@@ -915,8 +905,9 @@ class TestGPURankPoolReal:
         pool = self._make_pool(nranks=1, total_nparts=1)
         pool.start()
         actor = pool.actors[0]
-        # Actor is fully set up by pool.start(); insert_finished should work immediately
-        ray.get(actor.insert_finished.remote())
+        # Actor is fully set up by pool.start(); insert_batch should work immediately
+        table = pa.table({"k": [1], "v": [2]})
+        ray.get(actor.insert_batch.remote(table))
         pool.shutdown(force=True)
 
 

@@ -1,19 +1,6 @@
-"""GPU-native shuffle operator using RAPIDS MPF (rapidsmpf) + UCXX.
-
-This module provides an opt-in ``ShuffleStrategy.GPU_SHUFFLE`` strategy for
-Ray Data repartition operations that avoids the CPU/object-store round-trip
-incurred by the default hash-shuffle path.
-
-Dependencies (all optional at import time):
-    rapidsmpf  — RAPIDS Multi-GPU Partition Framework
-    cudf       — GPU DataFrame library
-    ucxx       — UCX Python bindings for point-to-point GPU transfer
-
-Import errors are deferred to actor construction so that CPU-only environments
-can still ``import ray.data`` without failure.
-"""
 import functools
 import logging
+import time
 import typing
 from collections import deque
 from typing import (
@@ -51,7 +38,6 @@ from ray.data.block import BlockStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
-    import cudf
 
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
@@ -83,6 +69,7 @@ class GPUShuffleActor:
         nranks: int,
         total_nparts: int,
         key_columns: List[str],
+        columns: Optional[List[str]] = None,
         rmm_pool_size: Union[int, str, None] = None,
         spill_memory_limit: Union[int, str, None] = "auto",
     ):
@@ -97,7 +84,7 @@ class GPUShuffleActor:
             rmm_pool_size=rmm_pool_size,
             spill_memory_limit=spill_memory_limit,
         )
-        self._columns: Optional[List[str]] = None
+        self._columns = columns
 
     # ------------------------------------------------------------------
     # UCXX communicator setup
@@ -109,7 +96,12 @@ class GPUShuffleActor:
         Only called on rank 0; the returned address is broadcast to all ranks
         via :meth:`setup_worker`.
         """
-        return self._shuffler.setup_root()
+        logger.info("UCXX setup_root starting on rank 0.")
+        t0 = time.perf_counter()
+        result = self._shuffler.setup_root()
+        elapsed = time.perf_counter() - t0
+        logger.info("UCXX setup_root completed in %.2fs (rank=%d).", elapsed, result[0])
+        return result
 
     def setup_worker(self, root_address: bytes) -> None:
         """Finish UCXX communicator setup and create the internal shuffler.
@@ -118,63 +110,97 @@ class GPUShuffleActor:
         :meth:`get_root_address` has been called on rank 0 and its result
         broadcast to all ranks.
         """
+        logger.info(
+            "UCXX setup_worker starting (root_address=%d bytes).",
+            len(root_address),
+        )
+        t0 = time.perf_counter()
         self._shuffler.setup_worker(root_address)
+        elapsed = time.perf_counter() - t0
+        logger.info("UCXX setup_worker completed in %.2fs.", elapsed)
 
     # ------------------------------------------------------------------
     # Insert / extract interface (called by GPUShuffleOperator)
     # ------------------------------------------------------------------
 
-    def insert_batch(self, batch: Union[pa.Table, "cudf.DataFrame"]) -> int:
-        """Hash-partition *batch* (Arrow Table or cuDF DataFrame) and route
-        shards to peers.
+    def insert_batch(self, batch: pa.Table) -> int:
+        """Hash-partition *batch* and route shards to peers.
 
         Returns the number of rows in the incoming batch so the driver can
         track throughput without serialising the data back.
         """
         import cudf
 
-        if isinstance(batch, pa.Table):
-            df = cudf.DataFrame.from_arrow(batch)
-        else:
-            # Already a cuDF DataFrame (e.g. when the upstream op is GPU-native)
-            df = batch
-
+        df = cudf.DataFrame.from_arrow(batch)
+        # This is a fallback in case `infer_schema` is None, we need to then
+        # infer from the first batch.
         if self._columns is None:
             self._columns = list(df.columns)
-
         self._shuffler.insert_chunk(table=df, column_names=self._columns)
         return len(df)
 
-    def insert_finished(self) -> None:
-        """Signal that no more batches will be inserted into this rank."""
-        self._shuffler.insert_finished()
+    def finish_and_extract(self) -> Iterator:
+        """Signal insertion is done, then yield one Arrow Table per output partition.
 
-    def extract_partitions(self) -> Iterator:
-        """Yield one Arrow Table per output partition assigned to this rank.
-
-        This is a streaming generator; it must be called *after*
-        :meth:`insert_finished` (Ray's per-actor task ordering guarantees
-        this when both calls are submitted to the same actor handle).
+        Combines insert-finished and extraction into a single actor call so
+        correctness does not depend on actor task ordering.
 
         Follows the Ray Data streaming generator protocol: yield block then
         BlockMetadataWithSchema for each output partition.
         """
+        self._shuffler.insert_finished()
+
         from rapidsmpf.utils.cudf import pylibcudf_to_cudf_dataframe
 
         from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
-        columns = self._columns or []
         for _, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
-            cdf = pylibcudf_to_cudf_dataframe(partition, column_names=columns).copy(
-                deep=True
-            )
+            cdf = pylibcudf_to_cudf_dataframe(
+                partition, column_names=self._columns
+            ).copy(deep=True)
+            # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
             block = cdf.to_arrow(preserve_index=False)
             exec_stats = exec_stats_builder.build()
             stats = yield block
             if stats:
                 exec_stats.block_ser_time_s = stats.object_creation_dur_s
             yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
+
+
+def _wait_for_refs_with_timeout(
+    refs: List[ray.ObjectRef],
+    timeout_s: float,
+    task_name: str,
+) -> None:
+    """Poll ``refs`` in a loop, raising on timeout or task failure.
+
+    Logs incremental progress as tasks complete and raises any exceptions
+    from completed tasks eagerly (via ``ray.get``).
+    """
+    total = len(refs)
+    pending = list(refs)
+    t_start = time.perf_counter()
+
+    while pending:
+        elapsed = time.perf_counter() - t_start
+        if elapsed >= timeout_s:
+            pending_indices = [i for i, ref in enumerate(refs) if ref in pending]
+            raise TimeoutError(
+                f"{task_name} did not complete on {len(pending)}/{total} "
+                f"rank(s) within {timeout_s}s "
+                f"(pending ranks: {pending_indices}). "
+                f"Check GPU/network health."
+            )
+        ready, pending = ray.wait(pending, num_returns=len(pending), timeout=1)
+        if ready:
+            ray.get(ready)
+            logger.info(
+                "GPURankPool: %d/%d rank(s) completed %s.",
+                total - len(pending),
+                total,
+                task_name,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -194,14 +220,18 @@ class GPURankPool:
         nranks: int,
         total_nparts: int,
         key_columns: List[str],
+        columns: Optional[List[str]],
         rmm_pool_size: Union[int, str, None],
         spill_memory_limit: Union[int, str, None],
+        setup_timeout_s: float,
     ):
         self._nranks = nranks
         self._total_nparts = total_nparts
         self._key_columns = key_columns
+        self._columns = columns
         self._rmm_pool_size = rmm_pool_size
         self._spill_memory_limit = spill_memory_limit
+        self._setup_timeout_s = setup_timeout_s
         self._actors: List[ActorHandle] = []
 
     @property
@@ -218,22 +248,72 @@ class GPURankPool:
         This call *blocks* until all actors have finished UCXX initialisation.
         It is invoked once from ``GPUShuffleOperator.start()`` before any data
         flows through the pipeline.
+
+        Raises:
+            TimeoutError: If UCXX setup does not complete within
+                ``gpu_shuffle_setup_timeout_s`` seconds.
         """
+        timeout = self._setup_timeout_s
+        t_start = time.perf_counter()
+
+        logger.info(
+            "GPURankPool: creating %d GPUShuffleActor(s) "
+            "(total_nparts=%d, key_columns=%s).",
+            self._nranks,
+            self._total_nparts,
+            self._key_columns,
+        )
         self._actors = [
             GPUShuffleActor.options(num_gpus=1, scheduling_strategy="SPREAD",).remote(
                 nranks=self._nranks,
                 total_nparts=self._total_nparts,
                 key_columns=self._key_columns,
+                columns=self._columns,
                 rmm_pool_size=self._rmm_pool_size,
                 spill_memory_limit=self._spill_memory_limit,
             )
             for _ in range(self._nranks)
         ]
+        t_actors = time.perf_counter()
+        logger.info(
+            "GPURankPool: %d actor(s) created in %.2fs.",
+            self._nranks,
+            t_actors - t_start,
+        )
 
         # Rank 0 establishes the root communicator; all ranks connect to it.
-        _, root_address_bytes = ray.get(self._actors[0].setup_root.remote())
-        ray.get(
-            [actor.setup_worker.remote(root_address_bytes) for actor in self._actors]
+        remaining = max(0, timeout - (time.perf_counter() - t_start))
+        logger.info("GPURankPool: calling setup_root on rank 0.")
+        try:
+            _, root_address_bytes = ray.get(
+                self._actors[0].setup_root.remote(), timeout=remaining
+            )
+        except ray.exceptions.GetTimeoutError:
+            raise TimeoutError(
+                f"UCXX setup_root on rank 0 did not complete within "
+                f"{timeout}s. Check GPU/network health."
+            )
+        t_root = time.perf_counter()
+        logger.info(
+            "GPURankPool: setup_root completed in %.2fs, "
+            "broadcasting root address (%d bytes) to %d worker(s).",
+            t_root - t_actors,
+            len(root_address_bytes),
+            self._nranks,
+        )
+
+        remaining = max(0, timeout - (time.perf_counter() - t_start))
+        worker_refs = [
+            actor.setup_worker.remote(root_address_bytes) for actor in self._actors
+        ]
+        _wait_for_refs_with_timeout(worker_refs, remaining, "setup_worker")
+        t_done = time.perf_counter()
+        logger.info(
+            "GPURankPool: all %d worker(s) setup completed in %.2fs "
+            "(total UCXX init: %.2fs).",
+            self._nranks,
+            t_done - t_root,
+            t_done - t_start,
         )
 
     def get_actor_for_block(self, block_idx: int) -> ActorHandle:
@@ -290,9 +370,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         [inputs_done()]            # called by the executor
         has_next() / _get_next_inner()   # streams output bundles
 
-    The ``insert_finished`` + ``extract_partitions`` actor tasks are submitted
-    as fire-and-forget once all inserts complete; Ray's per-actor task ordering
-    guarantees correct sequencing without blocking the driver.
+    The ``finish_and_extract`` actor task is submitted once all inserts
+    complete; it signals insertion done and streams output partitions in a
+    single call.
     """
 
     def __init__(
@@ -301,6 +381,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         data_context: DataContext,
         *,
         key_columns: Tuple[str, ...],
+        columns: Optional[List[str]] = None,
         num_partitions: Optional[int] = None,
     ):
         nranks = _derive_num_gpu_ranks(data_context)
@@ -326,8 +407,10 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             nranks=nranks,
             total_nparts=target_num_partitions,
             key_columns=list(key_columns),
+            columns=columns,
             rmm_pool_size=data_context.gpu_shuffle_rmm_pool_size,
             spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
+            setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
         )
 
         self._next_block_idx: int = 0
@@ -423,10 +506,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._extraction_tasks.pop(rank, None)
 
         for rank_idx, actor in enumerate(self._rank_pool.actors):
-            # Fire-and-forget: Ray serialises actor tasks per actor, so
-            # insert_finished is guaranteed to run before extract_partitions.
-            actor.insert_finished.remote()
-            block_gen = actor.extract_partitions.options(
+            block_gen = actor.finish_and_extract.options(
                 num_returns="streaming"
             ).remote()
 

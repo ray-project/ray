@@ -30,10 +30,14 @@ def _plan_gpu_shuffle_repartition(
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
 
+    schema = logical_op.infer_schema()
+    columns = list(schema.names) if schema is not None else None
+
     return GPUShuffleOperator(
         input_physical_op,
         data_context,
         key_columns=tuple(normalized_key_columns),
+        columns=columns,
         num_partitions=logical_op.num_outputs,
     )
 

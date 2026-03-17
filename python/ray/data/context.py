@@ -573,6 +573,9 @@ class DataContext:
         gpu_shuffle_spill_memory_limit: Device-to-host spill threshold per rank.
             ``"auto"`` uses 80% of ``gpu_shuffle_rmm_pool_size``; ``None`` disables
             spilling.
+        gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
+            communicator setup (actor creation + root/worker init) before raising
+            a ``TimeoutError``. Defaults to 120 seconds.
     """
 
     # `None` means the block size is infinite.
@@ -646,6 +649,10 @@ class DataContext:
     # Device→host spill threshold for each rank.
     # "auto" = 80% of rmm_pool_size; None = spilling disabled.
     gpu_shuffle_spill_memory_limit: Union[int, str, None] = "auto"
+
+    # Maximum seconds to wait for UCXX communicator setup before raising
+    # TimeoutError.
+    gpu_shuffle_setup_timeout_s: float = 120.0
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
