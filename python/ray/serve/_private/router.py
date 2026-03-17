@@ -892,22 +892,41 @@ class AsyncioRouter:
                 )
             # Always register callback to notify router when request completes
             # (needed for token release in queue-based routing, metrics tracking, etc.)
+            # NOTE: add_done_callback fires from a C++ worker thread (for actor
+            # ObjectRefs) or a gRPC callback thread. _process_finished_request
+            # and decrement_queue_len_cache both access shared router state
+            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
+            # schedule them on the router's event loop.
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
                 replica.actor_id,
             )
-            result.add_done_callback(callback)
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
             callback_registered = True
 
             if not with_rejection:
+                result.add_done_callback(
+                    lambda _: self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        replica.replica_id,
+                    )
+                )
                 return result
 
             queue_info = await result.get_rejection_response()
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
+                result.add_done_callback(
+                    lambda _: self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        replica.replica_id,
+                    )
+                )
                 return result
 
         except asyncio.CancelledError:
