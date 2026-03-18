@@ -123,4 +123,9 @@ message RayEvent {
   AutoscalerConfigDefinitionEvent autoscaler_config_definition_event = 21;
   AutoscalerScalingDecisionEvent autoscaler_scaling_decision_event = 22;
   AutoscalerNodeProvisioningEvent autoscaler_node_provisioning_event = 23;
+
+  // Hostname of the process that emitted this event.
+  string source_hostname = 24;
+  // PID of the process that emitted this event.
+  int32 source_pid = 25;
 }
