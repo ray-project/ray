@@ -471,8 +471,8 @@ def test_groupby_tabular_sum(
 
     expected = pd.DataFrame(
         {
-            "A": [0, 1, 2],
-            "sum(B)": pd.Series([None, None, None], dtype="object"),
+            "A": pd.array([0, 1, 2], dtype=pd.ArrowDtype(pa.int64())),
+            "sum(B)": pd.array([None, None, None], dtype=pd.ArrowDtype(pa.null())),
         },
     )
     result = nan_agg_ds.sort("A").to_pandas()
@@ -652,6 +652,7 @@ def test_groupby_arrow_multi_agg(
 
     agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
     expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
+    expected_df = expected_df.convert_dtypes(dtype_backend="pyarrow")
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
@@ -1003,7 +1004,11 @@ def test_groupby_map_groups_for_pandas(
     # aggregate rows, so we still have 3 rows.
     assert mapped.count() == 3
     expected = pd.DataFrame(
-        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
+        {
+            "A": pd.array(["a", "a", "b"], dtype=pd.ArrowDtype(pa.string())),
+            "B": pd.array([0.5, 0.5, 1.000000], dtype=pd.ArrowDtype(pa.float64())),
+            "C": pd.array([0.4, 0.6, 1.0], dtype=pd.ArrowDtype(pa.float64())),
+        }
     )
 
     result = mapped.sort(["A", "C"]).to_pandas()
