@@ -6,6 +6,7 @@ transfer latency for one-sided transports like NIXL.
 
 These tests run without a Ray cluster and require only CPUs.
 """
+import re
 import sys
 from dataclasses import dataclass
 from typing import Any, List
@@ -200,11 +201,14 @@ def test_all_fetches_before_any_wait():
     )
 
 
-def test_each_object_fetched_and_waited_exactly_once():
-    """Each object ID triggers exactly one fetch and one wait."""
-    object_ids = ["aaa111", "bbb222"]
+def test_results_returned_and_each_object_fetched_and_waited_exactly_once():
+    """The returned dict contains an entry for every requested object ID,
+    and each object ID triggers exactly one fetch and one wait."""
+    object_ids = ["x1", "y2", "z3"]
     manager = _build_manager(object_ids)
-    manager.get_rdt_objects(object_ids)
+    result = manager.get_rdt_objects(object_ids)
+
+    assert set(result.keys()) == set(object_ids)
 
     call_log = _PipelineCheckingTransport.call_log
     fetched = [oid for kind, oid in call_log if kind == "fetch"]
@@ -212,15 +216,6 @@ def test_each_object_fetched_and_waited_exactly_once():
 
     assert sorted(fetched) == sorted(object_ids)
     assert sorted(waited) == sorted(object_ids)
-
-
-def test_results_returned_for_all_objects():
-    """The returned dict contains an entry for every requested object ID."""
-    object_ids = ["x1", "y2", "z3"]
-    manager = _build_manager(object_ids)
-    result = manager.get_rdt_objects(object_ids)
-
-    assert set(result.keys()) == set(object_ids)
 
 
 def test_primary_copy_objects_skip_fetch():
@@ -257,7 +252,13 @@ def test_two_sided_transport_raises_on_get_rdt_objects():
     obj_id = "two_sided_obj"
     manager = _build_manager([obj_id], backend=_TWO_SIDED_BACKEND_NAME)
 
-    with pytest.raises(ValueError, match="use_object_store=True"):
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"ray.get is not allowed on RDT objects using the two-sided transport {_TWO_SIDED_BACKEND_NAME}. "
+            "Either use a one-sided RDT transport or pass _use_object_store=True to ray.get to fetch the object through the object store instead."
+        ),
+    ):
         manager.get_rdt_objects([obj_id], use_object_store=False)
 
 

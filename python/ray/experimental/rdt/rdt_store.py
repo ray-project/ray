@@ -31,14 +31,6 @@ def __ray_send__(
 
     tensors = rdt_store.get_object(obj_id)
 
-    device = tensor_transport_meta.tensor_device
-    tensor_meta = tensor_transport_meta.tensor_meta
-
-    if tensor_meta and not device_match_transport(device, backend):
-        raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-        )
-
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.send_multiple_tensors(
         tensors,
@@ -93,14 +85,6 @@ def __ray_recv__(
 
     rdt_store = global_worker.rdt_manager.rdt_store
     try:
-        device = tensor_transport_meta.tensor_device
-        tensor_meta = tensor_transport_meta.tensor_meta
-
-        if tensor_meta and not device_match_transport(device, backend):
-            raise ValueError(
-                f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-            )
-
         tensor_transport_manager = get_tensor_transport_manager(backend)
         if target_buffers:
             # Currently only torch tensors are supported as target buffers. We could make this
@@ -257,6 +241,15 @@ class RDTStore:
         tensor_transport_meta = (
             tensor_transport_manager.extract_tensor_transport_metadata(obj_id, tensors)
         )
+
+        if tensor_transport_meta.tensor_meta and not device_match_transport(
+            tensor_transport_meta.tensor_device, tensor_transport
+        ):
+            raise ValueError(
+                f"Tensor transport backend {tensor_transport} does not support "
+                f"tensor transfer on device {tensor_transport_meta.tensor_device}."
+            )
+
         return tensor_transport_meta
 
     def is_primary_copy(self, obj_id: str) -> bool:

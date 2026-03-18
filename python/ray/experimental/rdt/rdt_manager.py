@@ -545,16 +545,9 @@ class RDTManager:
 
             if target_buffers is not None:
                 from ray.experimental.rdt.rdt_store import validate_tensor_buffers
-                from ray.experimental.rdt.util import device_match_transport
 
                 device = tensor_transport_meta.tensor_device
                 tensor_meta = tensor_transport_meta.tensor_meta
-
-                if tensor_meta and not device_match_transport(device, tensor_transport):
-                    raise ValueError(
-                        f"Tensor transport backend {tensor_transport} does not "
-                        f"support tensor transfer on device {device}."
-                    )
                 validate_tensor_buffers(target_buffers, tensor_meta, device)
 
             return tensor_transport_manager.fetch_multiple_tensors(
@@ -806,8 +799,9 @@ class RDTManager:
             # In this case, we should not remove the RDT object after it is consumed once,
             # because the RDT object reference may be used again.
             # Instead, we should wait for the GC callback to clean it up.
-            # TODO(swang): Timeout should start at the beginning of the get
-            # function. At this point, fetches should have already completed.
+            # TODO(swang): Timeout for the ray.get codepath should start at the
+            # beginning of the get function, before any fetch requests are
+            # triggered. At this point, fetches should have already completed.
             pop_object = not rdt_store.is_primary_copy(object_id)
             if pop_object:
                 result[object_id] = rdt_store.wait_and_pop_object(
