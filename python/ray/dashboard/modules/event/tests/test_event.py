@@ -788,6 +788,7 @@ async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
     assert [(row["severity"], row["message"]) for row in dashboard_rows] == [
         ("INFO", "Adding 1 node(s) of type type-1."),
         ("INFO", "Resized to 1 CPUs."),
+        ("DEBUG", "Current cluster resources: {'CPU': 1.0}."),
     ]
 
 
@@ -865,6 +866,7 @@ async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
         "legacy global",
         "Adding 1 node(s) of type a.",
         "Resized to 1 CPUs.",
+        "Current cluster resources: {'CPU': 1.0}.",
     }
 
     response = await event_head.get_event(_FakeEventQueryRequest("global"))
@@ -876,6 +878,7 @@ async def test_get_event_includes_autoscaler_cached_events_in_global_bucket():
         "legacy global",
         "Adding 1 node(s) of type a.",
         "Resized to 1 CPUs.",
+        "Current cluster resources: {'CPU': 1.0}.",
     }
 
 
@@ -931,6 +934,7 @@ def test_autoscaler_events_storage_replaces_duplicate_event_id():
     assert [(row["severity"], row["message"]) for row in rows] == [
         ("INFO", "Adding 1 node(s) of type b."),
         ("INFO", "Resized to 2 CPUs."),
+        ("DEBUG", "Current cluster resources: {'CPU': 2.0}."),
     ]
 
 
@@ -988,10 +992,12 @@ async def test_list_cluster_events_includes_autoscaler_cached_events():
         "legacy",
         "01:0",
         "01:1",
+        "01:2",
     ]
     assert [event["message"] for event in result.result[1:]] == [
         "Adding 1 node(s) of type type-1.",
         "Resized to 1 CPUs.",
+        "Current cluster resources: {'CPU': 1.0}.",
     ]
     assert "time" not in event_head._autoscaler_events_storage.get_event_values()[0]
 

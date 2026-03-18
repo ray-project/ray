@@ -67,6 +67,12 @@ def build_autoscaler_scheduling_update_rows(
         if "TPU" in cluster_resources:
             resize_message += f", {int(cluster_resources['TPU'])} TPUs"
         rows.append({"severity": "INFO", "message": f"{resize_message}."})
+        rows.append(
+            {
+                "severity": "DEBUG",
+                "message": (f"Current cluster resources: {dict(cluster_resources)}."),
+            }
+        )
 
     if infeasible_resource_requests:
         log_str = "No available node types can fulfill resource requests "

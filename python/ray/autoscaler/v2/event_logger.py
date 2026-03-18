@@ -256,15 +256,12 @@ class AutoscalerEventLogger:
         ):
             if row["severity"] == "WARNING":
                 self._export_event_logger.warning(row["message"])
+            elif row["severity"] == "DEBUG":
+                self._export_event_logger.debug(row["message"])
             else:
                 self._export_event_logger.info(row["message"])
                 if row.get("log_to_logger"):
                     logger.info(row["message"])
-
-        if launch_actions or terminate_actions:
-            self._export_event_logger.debug(
-                f"Current cluster resources: {dict(cluster_resources)}."
-            )
 
     # ------------------------------------------------------------------
     # ONE-event structured emission
