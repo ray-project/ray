@@ -1119,19 +1119,13 @@ def start(
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # Check version compatibility and clean up node processes on mismatch.
-        try:
-            node.check_version_info()
-        except RuntimeError:
-            try:
-                node.kill_all_processes(check_alive=False, allow_graceful=True, wait=True)
-            except Exception as e:
-                cli_logger.warning(f"Failed to clean up processes on version mismatch: {e}")
-            raise
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
