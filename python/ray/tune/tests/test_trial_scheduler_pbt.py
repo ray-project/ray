@@ -26,10 +26,10 @@ from ray.tune import (
 )
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
+from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
