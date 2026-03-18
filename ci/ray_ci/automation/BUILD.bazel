@@ -314,9 +314,27 @@ py_binary(
     srcs = ["get_contributors.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
+        "//release:github_client",
         ci_require("click"),
-        ci_require("pygithub"),
         ci_require("tqdm"),
+    ],
+)
+
+py_test(
+    name = "test_get_contributors",
+    size = "small",
+    srcs = ["test_get_contributors.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":get_contributors",
+        "//release:github_client",
+        ci_require("click"),
+        ci_require("pytest"),
+        ci_require("responses"),
     ],
 )
 

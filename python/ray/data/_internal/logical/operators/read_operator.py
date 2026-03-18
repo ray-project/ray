@@ -87,6 +87,10 @@ class Read(
     def _estimate_num_outputs(self) -> Optional[int]:
         metadata = self._cached_output_metadata.metadata
 
+        # Handle edge-case of empty dataset
+        if metadata.size_bytes == 0:
+            return 0
+
         target_max_block_size = DataContext.get_current().target_max_block_size
 
         # In either case of
@@ -110,14 +114,19 @@ class Read(
         # Legacy datasources might not implement `get_read_tasks`.
         if self.datasource.should_create_reader:
             empty_meta = BlockMetadata(None, None, None, None)
-            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+            return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self.datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
-            empty_meta = BlockMetadata(None, None, None, None)
-            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+            empty_meta = BlockMetadata(
+                num_rows=0,
+                size_bytes=0,
+                input_files=None,
+                exec_stats=None,
+            )
+            return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
@@ -163,7 +172,7 @@ class Read(
         schema = None
         if schemas:
             schema = unify_schemas_with_validation(schemas)
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+        return BlockMetadataWithSchema.from_metadata(meta, schema=schema)
 
     def supports_projection_pushdown(self) -> bool:
         return self.datasource.supports_projection_pushdown()
