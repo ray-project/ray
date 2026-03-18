@@ -777,7 +777,10 @@ class OpBufferQueueTest(unittest.TestCase):
         # Verify count, FIFO order per split
         for split_idx in range(num_splits):
             consumed = consumed_splits[split_idx]
-            expected = ref_bundles[split_idx::num_splits]
+            expected = [
+                replace(b, output_split_idx=split_idx)
+                for b in ref_bundles[split_idx::num_splits]
+            ]
             assert len(consumed) == num_per_split
             assert consumed == expected, f"Split {split_idx}: FIFO order violated"
 
