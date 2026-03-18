@@ -788,50 +788,47 @@ class RDTManager:
         rdt_store = self.rdt_store
         result: Dict[str, List[Any]] = {}
 
-        # Trigger fetches for the ray.get codepath: all objects where we have
-        # the metadata but not the primary copy. Each fetch request produces
+        # First, try to get objects that are already available in the store
+        # These are primary copies, or secondary copies created via
+        # __ray_recv__ that haven't been consumed yet.
+        if not use_object_store:
+            for object_id in object_ids:
+                try:
+                    result[object_id] = rdt_store.wait_and_get_object(
+                        object_id, timeout=0
+                    )
+                except TimeoutError:
+                    pass
+
+        # For remaining objects, trigger fetches. Each fetch request produces
         # exactly one secondary copy, even if another secondary copy of the
         # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
         trigger_exception = None
-        for object_id in object_ids:
-            if self.is_managed_object(object_id) and not rdt_store.is_primary_copy(object_id):
-                # TODO(swang): Check if there is already a secondary copy of the
-                # object in the store. If so, use that copy instead. Ensure that
-                # the secondary copy is only popped after its original fetcher
-                # plus this one have consumed the copy.
-                try:
-                    fetch_requests[object_id] = self._trigger_fetch(
-                        object_id, use_object_store
-                    )
-                except Exception as e:
-                    trigger_exception = e
-                    break
+        try:
+            for object_id in object_ids:
+                if object_id in result:
+                    continue
+                assert self.is_managed_object(object_id), f"No metadata found for {object_id}"
 
-        # Always wait for all in-flight fetches to complete, even if
-        # _trigger_fetch failed for some object. This cleans up any async
-        # transfers that were already started.
-        # TODO(swang): This will wait for other fetches to succeed or error.
-        # Ideally if an exception was already thrown, we should just cancel
-        # the remaining fetches.
-        for object_id, fetch_request in fetch_requests.items():
-            try:
-                result[object_id] = self._wait_fetch(object_id, fetch_request)
-            except Exception as e:
-                if trigger_exception is None:
-                    trigger_exception = e
-
-        if trigger_exception is not None:
-            raise trigger_exception
-
-        # For primary copies (intra-actor transfer), get directly from the store.
-        for object_id in object_ids:
-            if object_id not in result:
-                result[object_id] = rdt_store.wait_and_get_object(
-                    object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+                fetch_requests[object_id] = self._trigger_fetch(
+                    object_id, use_object_store
                 )
 
-        return result
+            # Always wait for all in-flight fetches to complete, even if
+            # _trigger_fetch failed for some object. This cleans up any async
+            # transfers that were already started.
+            while fetch_requests:
+                object_id, fetch_request = fetch_requests.popitem()
+                result[object_id] = self._wait_fetch(object_id, fetch_request)
+            return result
+        finally:
+            # Wait on remaining requests to ensure cleanup.
+            # TODO(swang): This will wait for other fetches to succeed or error.
+            # Ideally if an exception was already thrown, we should just cancel
+            # the remaining fetches.
+            for object_id, fetch_request in fetch_requests.items():
+                self._wait_fetch(object_id, fetch_request)
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """

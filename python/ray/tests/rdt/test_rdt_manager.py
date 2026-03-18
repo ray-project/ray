@@ -43,6 +43,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
     """
 
     call_log: List = []
+    fail_on_wait: set = set()
 
     def tensor_transport_backend(self) -> str:
         return _BACKEND_NAME
@@ -76,6 +77,8 @@ class _PipelineCheckingTransport(TensorTransportManager):
 
     def wait_fetch_complete(self, fetch_request: FetchRequest) -> List[Any]:
         self.__class__.call_log.append(("wait", fetch_request.obj_id))
+        if fetch_request.obj_id in self.__class__.fail_on_wait:
+            raise RuntimeError(f"wait failed for {fetch_request.obj_id}")
         return fetch_request.tensors
 
     def recv_multiple_tensors(self, obj_id, meta, comm_meta, target_buffers=None):
@@ -150,8 +153,9 @@ def register_test_transports():
 
 @pytest.fixture(autouse=True)
 def clear_call_log():
-    """Reset the pipeline transport's call log before each test."""
+    """Reset the pipeline transport's call log and error config before each test."""
     _PipelineCheckingTransport.call_log.clear()
+    _PipelineCheckingTransport.fail_on_wait.clear()
 
 
 def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTManager:
@@ -184,33 +188,28 @@ def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTMa
 # ---------------------------------------------------------------------------
 
 
-def test_all_fetches_before_any_wait():
-    """All fetch_multiple_tensors calls must precede all wait_fetch_complete calls."""
+def test_fetch_and_get():
     object_ids = ["obj1", "obj2", "obj3"]
     manager = _build_manager(object_ids)
-    manager.fetch_and_get_rdt_objects(object_ids)
+    result = manager.fetch_and_get_rdt_objects(object_ids)
 
     call_log = _PipelineCheckingTransport.call_log
     fetch_indices = [i for i, (kind, _) in enumerate(call_log) if kind == "fetch"]
     wait_indices = [i for i, (kind, _) in enumerate(call_log) if kind == "wait"]
 
+    # All fetch_multiple_tensors calls must precede all wait_fetch_complete
+    # calls.
     assert len(fetch_indices) == len(object_ids), f"call_log={call_log}"
     assert len(wait_indices) == len(object_ids), f"call_log={call_log}"
     assert max(fetch_indices) < min(wait_indices), (
         f"Expected all fetches before all waits, got call_log={call_log}"
     )
 
-
-def test_results_returned_and_each_object_fetched_and_waited_exactly_once():
-    """The returned dict contains an entry for every requested object ID,
-    and each object ID triggers exactly one fetch and one wait."""
-    object_ids = ["x1", "y2", "z3"]
-    manager = _build_manager(object_ids)
-    result = manager.fetch_and_get_rdt_objects(object_ids)
-
+    # One entry per requested object ID.
     assert set(result.keys()) == set(object_ids)
 
     call_log = _PipelineCheckingTransport.call_log
+    # Each object ID triggers exactly one fetch and one wait.
     fetched = [oid for kind, oid in call_log if kind == "fetch"]
     waited = [oid for kind, oid in call_log if kind == "wait"]
 
@@ -263,6 +262,22 @@ def test_two_sided_transport_raises_on_fetch_and_get_rdt_objects():
         ),
     ):
         manager.fetch_and_get_rdt_objects([obj_id], use_object_store=False)
+
+
+def test_wait_fetch_called_for_all_requests_on_exception():
+    """If _wait_fetch raises for one object, remaining fetches must still be waited on."""
+    object_ids = ["obj1", "obj2", "obj3"]
+    manager = _build_manager(object_ids)
+    _PipelineCheckingTransport.fail_on_wait.add("obj1")
+
+    with pytest.raises(RuntimeError, match="wait failed for obj1"):
+        manager.fetch_and_get_rdt_objects(object_ids)
+
+    call_log = _PipelineCheckingTransport.call_log
+    waited = [oid for kind, oid in call_log if kind == "wait"]
+    assert set(waited) == set(object_ids), (
+        f"All fetched objects must be waited on even if one fails; waited={waited}"
+    )
 
 
 if __name__ == "__main__":
