@@ -173,7 +173,7 @@ class Benchmark:
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.SPILLED_BYTES_TOTAL.value: _get_spilled_bytes_total(),
+            BenchmarkMetric.SPILLED_BYTES_TOTAL.value: spilled_bytes_total,
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
