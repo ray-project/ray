@@ -25,7 +25,6 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
-    DeploymentSnapshot,
     HandleMetricReport,
     NodeId,
     ReplicaMetricReport,
@@ -290,8 +289,7 @@ class ServeController:
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
-        # Caches for autoscaling observability
-        self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
+        self._last_autoscaling_snapshot_keys: Dict[DeploymentID, tuple] = {}
         self._autoscaling_enabled_deployment_ids: List[DeploymentID] = []
         self._refresh_autoscaling_deployments_cache()
 
@@ -501,9 +499,9 @@ class ServeController:
                 ):
                     result.append(dep_id)
         self._autoscaling_enabled_deployment_ids = result
-        self._last_autoscaling_snapshots = {
+        self._last_autoscaling_snapshot_keys = {
             k: v
-            for k, v in self._last_autoscaling_snapshots.items()
+            for k, v in self._last_autoscaling_snapshot_keys.items()
             if k in active_dep_ids
         }
 
@@ -515,18 +513,21 @@ class ServeController:
         snapshots_to_log: List[Dict[str, Any]] = []
 
         for dep_id in self._autoscaling_enabled_deployment_ids:
+            key = self.autoscaling_state_manager.get_cached_snapshot_key(dep_id)
+            if key is None:
+                continue
+
+            if key == self._last_autoscaling_snapshot_keys.get(dep_id):
+                continue
+
             deployment_snapshot = (
                 self.autoscaling_state_manager.get_deployment_snapshot(dep_id)
             )
             if deployment_snapshot is None:
                 continue
 
-            last = self._last_autoscaling_snapshots.get(dep_id)
-            if last is not None and last.is_scaling_equivalent(deployment_snapshot):
-                continue
-
             snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
-            self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
+            self._last_autoscaling_snapshot_keys[dep_id] = key
 
         if snapshots_to_log:
             # Single write per control-loop iteration
@@ -627,9 +628,13 @@ class ServeController:
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
             if any_recovering or any_target_state_changed:
                 self._refresh_autoscaling_deployments_cache()
-            self._emit_deployment_autoscaling_snapshots()
         except Exception:
             logger.exception("Exception updating application state.")
+
+        try:
+            self._emit_deployment_autoscaling_snapshots()
+        except Exception:
+            logger.exception("Exception emitting deployment autoscaling snapshots.")
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
         node_update_start_time = time.time()

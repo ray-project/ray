@@ -96,6 +96,8 @@ class DeploymentAutoscalingState:
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._cached_snapshot_key: Optional[tuple] = None
+        self._cached_snapshot_metrics: Optional[tuple] = None
         self._latest_metrics_timestamp: Optional[float] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
@@ -374,10 +376,18 @@ class DeploymentAutoscalingState:
 
         decision_num_replicas = self.apply_bounds(decision_num_replicas)
 
-        self._cached_deployment_snapshot = self._create_deployment_snapshot(
-            ctx=autoscaling_context,
-            target_replicas=decision_num_replicas,
+        self._cached_snapshot_key = (
+            decision_num_replicas,
+            autoscaling_context.current_num_replicas,
+            autoscaling_context.capacity_adjusted_min_replicas,
+            autoscaling_context.capacity_adjusted_max_replicas,
         )
+        self._cached_snapshot_metrics = (
+            float(autoscaling_context.total_queued_requests),
+            float(autoscaling_context.total_num_requests),
+        )
+        self._cached_deployment_snapshot = None
+
         return decision_num_replicas
 
     def get_autoscaling_context(
@@ -784,10 +794,63 @@ class DeploymentAutoscalingState:
         )
 
     def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
-        """
-        Return the cached deployment snapshot if available.
-        """
+        """Return the cached deployment snapshot, building it lazily if needed."""
+        if self._cached_deployment_snapshot is not None:
+            return self._cached_deployment_snapshot
+
+        if self._cached_snapshot_key is None:
+            return None
+
+        (
+            target_replicas,
+            current_replicas,
+            min_replicas,
+            max_replicas,
+        ) = self._cached_snapshot_key
+        queued_requests, ongoing_requests = self._cached_snapshot_metrics
+
+        if target_replicas > current_replicas:
+            scaling_status_raw = AutoscalingStatus.UPSCALE
+        elif target_replicas < current_replicas:
+            scaling_status_raw = AutoscalingStatus.DOWNSCALE
+        else:
+            scaling_status_raw = AutoscalingStatus.STABLE
+
+        if self._latest_metrics_timestamp is not None:
+            elapsed = time.time() - self._latest_metrics_timestamp
+        else:
+            elapsed = None
+
+        look_back_period_s = self._config.look_back_period_s
+        errors: List[str] = []
+        if elapsed is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
+
+        policy = self._config.policy.get_policy()
+
+        self._cached_deployment_snapshot = DeploymentSnapshot(
+            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            scaling_status=AutoscalingStatus.format_scaling_status(scaling_status_raw),
+            policy_name=f"{policy.__module__}.{policy.__name__}",
+            look_back_period_s=look_back_period_s,
+            queued_requests=queued_requests,
+            ongoing_requests=ongoing_requests,
+            metrics_health=DeploymentSnapshot.format_metrics_health_text(
+                time_since_last_collected_metrics_s=elapsed,
+                look_back_period_s=look_back_period_s,
+            ),
+            errors=errors,
+        )
         return self._cached_deployment_snapshot
+
+    def get_cached_snapshot_key(self) -> Optional[tuple]:
+        return self._cached_snapshot_key
 
     def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
@@ -1333,3 +1396,10 @@ class AutoscalingStateManager:
             return None
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
         return dep_state.get_deployment_snapshot() if dep_state else None
+
+    def get_cached_snapshot_key(self, deployment_id: DeploymentID) -> Optional[tuple]:
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if not app_state:
+            return None
+        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
+        return dep_state.get_cached_snapshot_key() if dep_state else None
