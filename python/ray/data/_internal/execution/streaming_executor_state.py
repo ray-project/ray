@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
@@ -23,7 +24,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -682,7 +682,7 @@ def select_operator_to_run(
     return next_op
 
 
-def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+def _actor_info_summary_str(info: ActorPoolInfo) -> str:
     total = info.running + info.pending + info.restarting
     base = f"Actors: {total}"
 

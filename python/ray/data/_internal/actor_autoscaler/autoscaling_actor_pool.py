@@ -30,6 +30,21 @@ class ActorPoolScalingRequest:
         return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 
 
+@dataclass(frozen=True)
+class ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
+
+
 @DeveloperAPI
 class AutoscalingActorPool(ABC):
     """Abstract interface of an autoscaling actor pool.
@@ -97,6 +112,7 @@ class AutoscalingActorPool(ABC):
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
+
         # If there are no running actors, we set the utilization to indicate that the pool should be scaled up immediately.
         if self.current_size() == 0:
             return float("inf")
