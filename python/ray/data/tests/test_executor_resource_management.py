@@ -361,7 +361,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     assert op.num_active_tasks() == 4
 
     assert op._actor_pool.num_pending_actors() == 0
-    assert len(op._actor_pool.running_actors()) == 2
+    assert op._actor_pool.num_running_actors() == 2
 
     assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
@@ -465,7 +465,7 @@ def test_actor_pool_scheduling_with_bundling(
 
     # Assert all actors are running
     assert op._actor_pool.num_pending_actors() == 0
-    assert len(op._actor_pool.running_actors()) == 2
+    assert op._actor_pool.num_running_actors() == 2
 
     # Add inputs
     for i in range(MIN_ROWS_PER_BUNDLE - 1):
