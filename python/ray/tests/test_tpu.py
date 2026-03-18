@@ -43,6 +43,7 @@ def test_empty_get_current_pod_name_returns_none():
         (4, "v5p-16", 2),
         (4, "v6e-4", 1),
         (8, "v6e-8", 1),
+        (4, "v6e-8", 2),
         (8, "v6e-16", 2),
         (4, "v7x-8", 1),
         (4, "v7x-16", 2),
@@ -98,6 +99,7 @@ def test_num_tpu_chips(mock_glob):
         ("v5litepod-16", "2x8", True),
         ("v5litepod-256", "16x16", True),
         ("v5litepod-4", "2x2", True),
+        ("v6e-8", "2x4", True),
         ("v6e-16", "4x4", True),
         ("v6e-64", "8x8", True),
         ("v6e-4", "4x16", False),
@@ -404,6 +406,265 @@ def test_get_tpu_num_slices_for_workers(
         resources_per_worker=resources_per_worker,
     )
     assert num_slices == expected_slices
+
+
+def _make_mock_tpu_node(
+    alive, pod_type, slice_name, worker_id, tpu_chips=4, node_id=None
+):
+    """Helper to mock a Ray Node dictionary returned by ray.nodes()."""
+    if node_id is None:
+        node_id = f"node_{slice_name}_{worker_id}"
+    return {
+        "NodeID": node_id,
+        "Alive": alive,
+        "Labels": {
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-slice-name": slice_name,
+            "ray.io/tpu-worker-id": str(worker_id),
+        },
+        "Resources": {"TPU": tpu_chips},
+    }
+
+
+@pytest.mark.parametrize(
+    "topology, accelerator_type, mock_nodes, mock_avail_resources, expected_ready",
+    [
+        # 1 fully intact and available v4 slice (2 physical hosts).
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
+            1,
+        ),
+        # 1 fully intact slice, but one node is using 2 TPUs (unavailable) -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 2},
+                "B": {"TPU": 4},
+            },
+            0,
+        ),
+        # Fractured slice (missing a physical host) -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                # Worker 1 is missing
+            ],
+            {
+                "A": {"TPU": 4},
+            },
+            0,
+        ),
+        # Correct number of hosts, but missing the head node (rank 0) -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 2, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
+            0,
+        ),
+        # Fractured slice (one physical host is dead) -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(False, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 4},
+            },
+            0,
+        ),
+        # 2 slices total: one intact & available, one fractured -> 1 ready slice.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-A", 0, node_id="A0"),
+                _make_mock_tpu_node(True, "v4-16", "slice-A", 1, node_id="A1"),
+                _make_mock_tpu_node(True, "v4-16", "slice-B", 0, node_id="B0"),
+                # slice-B worker 1 is missing
+            ],
+            {
+                "A0": {"TPU": 4},
+                "A1": {"TPU": 4},
+                "B0": {"TPU": 4},
+            },
+            1,
+        ),
+        # 1 fully intact and available v6e 2x4 slice (single-host).
+        (
+            "2x4",
+            "v6e",
+            [
+                _make_mock_tpu_node(
+                    True, "v6e-8", "slice-1", 0, tpu_chips=8, node_id="A"
+                ),
+            ],
+            {
+                "A": {"TPU": 8},
+            },
+            1,
+        ),
+        # 1 fully intact and available v6e 2x4 slice (2 physical hosts).
+        (
+            "2x4",
+            "v6e",
+            [
+                _make_mock_tpu_node(
+                    True, "v6e-8", "slice-1", 0, tpu_chips=4, node_id="A"
+                ),
+                _make_mock_tpu_node(
+                    True, "v6e-8", "slice-1", 1, tpu_chips=4, node_id="B"
+                ),
+            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
+            1,
+        ),
+        # 2 fully intact v6e slices.
+        (
+            "4x4",
+            "v6e",
+            [
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 0, node_id="S1_0"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 1, node_id="S1_1"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 2, node_id="S1_2"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 3, node_id="S1_3"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 0, node_id="S2_0"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 1, node_id="S2_1"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 2, node_id="S2_2"),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 3, node_id="S2_3"),
+            ],
+            {
+                "S1_0": {"TPU": 4},
+                "S1_1": {"TPU": 4},
+                "S1_2": {"TPU": 4},
+                "S1_3": {"TPU": 4},
+                "S2_0": {"TPU": 4},
+                "S2_1": {"TPU": 4},
+                "S2_2": {"TPU": 4},
+                "S2_3": {"TPU": 4},
+            },
+            2,
+        ),
+    ],
+)
+@patch("ray.is_initialized", return_value=True)
+@patch("ray._private.state.available_resources_per_node")
+@patch("ray.nodes")
+def test_get_num_ready_tpu_slices_calculation(
+    mock_nodes_call,
+    mock_avail_resources_call,
+    mock_is_initialized,
+    topology,
+    accelerator_type,
+    mock_nodes,
+    mock_avail_resources,
+    expected_ready,
+):
+    """Test that the TPU slice readiness utility correctly calculates the number of ready
+    slices in different mocked scenarios, including idle resource verification."""
+    mock_nodes_call.return_value = mock_nodes
+    mock_avail_resources_call.return_value = mock_avail_resources
+
+    actual_ready = ray.util.tpu.get_num_ready_tpu_slices(
+        topology=topology,
+        accelerator_type=accelerator_type,
+    )
+    assert actual_ready == expected_ready
+
+
+def test_get_num_ready_tpu_slices(ray_tpu_cluster):
+    """
+    Tests the get_num_ready_tpu_slices utility against a real Ray cluster.
+    The ray_tpu_cluster fixture provisions two v4-16 slices (2x2x2 topology).
+    """
+    ready_slices = ray.util.tpu.get_num_ready_tpu_slices(
+        topology="2x2x2", accelerator_type="v4"
+    )
+    assert ready_slices == 2
+
+
+@patch("ray.is_initialized", return_value=False)
+def test_get_num_ready_tpu_slices_uninitialized(mock_is_initialized):
+    """Test that the utility gracefully handles an uninitialized Ray context."""
+    assert ray.util.tpu.get_num_ready_tpu_slices("2x2x2", "v4") == 0
+
+
+@pytest.mark.parametrize(
+    "node_dict, expected_slice_name",
+    [
+        (_make_mock_tpu_node(True, "v4-16", "slice-1", 0), "slice-1"),
+        (_make_mock_tpu_node(True, "v6e-8", "slice-A", 1), "slice-A"),
+        (_make_mock_tpu_node(True, "v4-16", "", 0), ""),
+        ({"Alive": True, "Labels": {}}, None),  # Missing TPU slice name
+        ({"Alive": True}, None),  # Missing Node labels dict
+    ],
+)
+def test_get_tpu_slice_name_from_node(node_dict, expected_slice_name):
+    """Tests that the utility correctly extracts the TPU slice name from a node dictionary."""
+    assert ray.util.tpu.get_tpu_slice_name_from_node(node_dict) == expected_slice_name
+
+
+@patch("ray.is_initialized", return_value=True)
+@patch("ray.nodes")
+def test_get_tpu_nodes_for_slice(mock_nodes_call, mock_is_initialized):
+    """Tests that the utility correctly filters alive nodes for a specific slice."""
+    mock_nodes = [
+        _make_mock_tpu_node(True, "v4-16", "slice-A", 0),
+        _make_mock_tpu_node(True, "v4-16", "slice-A", 1),
+        _make_mock_tpu_node(False, "v4-16", "slice-A", 2),  # Dead node
+        _make_mock_tpu_node(True, "v4-16", "slice-B", 0),  # Wrong slice
+    ]
+    mock_nodes_call.return_value = mock_nodes
+
+    # Call ray.nodes() to fetch from GCS
+    nodes_a = ray.util.tpu.get_tpu_nodes_for_slice("slice-A")
+    assert len(nodes_a) == 2
+    assert nodes_a[0]["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
+    assert nodes_a[1]["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
+    assert mock_nodes_call.call_count == 1
+
+    # Pass cached nodes directly
+    nodes_b = ray.util.tpu.get_tpu_nodes_for_slice("slice-B", nodes=mock_nodes)
+    assert len(nodes_b) == 1
+    assert nodes_b[0]["Labels"][ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] == "slice-B"
+    assert mock_nodes_call.call_count == 1  # Call count remains 1
+
+    # Use non-existent slice
+    nodes_c = ray.util.tpu.get_tpu_nodes_for_slice("slice-C", nodes=mock_nodes)
+    assert len(nodes_c) == 0
+
+
+@patch("ray.is_initialized", return_value=False)
+def test_get_tpu_nodes_for_slice_uninitialized(mock_is_initialized):
+    """Test that the utility gracefully handles an uninitialized Ray context."""
+    assert ray.util.tpu.get_tpu_nodes_for_slice("slice-A") == []
 
 
 if __name__ == "__main__":

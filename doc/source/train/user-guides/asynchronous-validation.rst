@@ -6,14 +6,37 @@ Validating checkpoints asynchronously
 During training, you may want to validate the model periodically to monitor training progress.
 The standard way to do this is to periodically switch between training and validation within
 the training loop. Instead, Ray Train allows you to asynchronously validate the model in a
-separate Ray task, which has following benefits:
+separate Ray task, which does the following:
 
-* Running validation in parallel without blocking the training loop
-* Running validation on different hardware than training
-* Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
-* Letting training continue immediately after saving a checkpoint with partial metrics (for example, loss)
-  and then receiving validation metrics (for example, accuracy) as soon as they are available. If the initial
+* Runs validation in parallel without blocking the training loop
+* Runs validation on different, potentially cheaper hardware than training, since validation
+  doesn't require optimizer states or gradients and can use 2-4x less GPU memory
+* Leverages :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
+* Lets training continue immediately after saving a checkpoint with partial metrics (for example, loss)
+  and then receives validation metrics (for example, accuracy) as soon as they are available. If the initial
   and validated metrics share the same key, the validated metrics overwrite the initial metrics.
+
+When to use async validation
+----------------------------
+
+Asynchronous validation is preferable to alternating between training and validation within the
+same training loop in the following scenarios:
+
+* **Validation takes a large percentage of total training time.** If validation is a significant
+  fraction of your end-to-end training time, running it asynchronously can substantially reduce
+  wall clock time by overlapping validation with training.
+* **Cheaper GPUs are available for validation.** Validation doesn't require optimizer states or
+  gradients, so it can use 2-4x less GPU memory than training. If you have a pool of cheaper GPUs
+  or an autoscaling setup that can provision them, async validation lets you run validation on
+  those cheaper machines instead of occupying your expensive training GPUs.
+* **Training throughput stops scaling linearly with more workers.** As worker count increases,
+  allreduce overhead grows and limits training speed, so doubling workers no longer doubles
+  throughput. Validation, however, scales more linearly since it requires no gradient synchronization.
+  Asynchronous validation can therefore utilize otherwise idle cluster capacity without impacting
+  training.
+
+The best way to know if async validation helps your workload is to try it. Converting is
+straightforward (see the tutorial below), so you can run both approaches and compare.
 
 Tutorial
 --------
