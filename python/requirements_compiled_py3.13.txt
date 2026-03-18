@@ -1336,7 +1336,7 @@ oauth2client==4.1.3
     #   google-apitools
 oauthlib==3.2.2
     # via requests-oauthlib
-onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.19.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt

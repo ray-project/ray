@@ -270,7 +270,7 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
 
     # Install MuJoCo.
-    sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
+    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3 patchelf
     wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco
     mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
