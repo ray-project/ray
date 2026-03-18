@@ -280,7 +280,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         #   return None, falling back to their own to_pandas_dtype() hooks which
         #   produce TensorDtype / PythonObjectDtype as appropriate.
         def _types_mapper(t):
-            if isinstance(t, pyarrow.ExtensionType):
+            if isinstance(t, pyarrow.ExtensionType) or pyarrow.types.is_dictionary(t):
                 return None
             return pd.ArrowDtype(t)
 
