@@ -131,6 +131,7 @@ def _get_deployment_actor(actor_name: str):
     Raises:
         RayServeException: If not called from within a replica, or if the
             actor is not found.
+        ValueError: If the actor is not found.
     """
     internal_context = _get_internal_replica_context()
     if internal_context is None:

@@ -198,6 +198,7 @@ def get_deployment_actor(actor_name: str):
     Raises:
         RayServeException: If not called from within a replica, or if the
             actor is not found.
+        ValueError: If the actor is not found.
 
     Example:
 
