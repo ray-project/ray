@@ -384,7 +384,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         )
         self._maybe_send_resource_request()
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Clear the autoscaling request eagerly when the control loop shuts down.
         So that cluster can scale down more quickly before the request timeout.
         """
