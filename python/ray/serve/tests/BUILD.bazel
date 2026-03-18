@@ -207,14 +207,31 @@ py_test_module_list(
         "test_fastapi.py",
         "test_gang_scheduling.py",
         "test_grpc.py",
-        "test_logging.py",
-        "test_logging_2.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
         "test_telemetry.py",
         "test_telemetry_1.py",
         "test_telemetry_2.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Logging tests (with client IP logging enabled).
+py_test_module_list(
+    size = "enormous",
+    env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
+    files = [
+        "test_logging.py",
+        "test_logging_2.py",
     ],
     tags = [
         "exclusive",
