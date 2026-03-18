@@ -76,8 +76,8 @@ class KafkaDatasink(Datasink):
         topic: str,
         bootstrap_servers: str,
         key_field: Optional[str] = None,
-        key_serializer: str = SerializerFormat.STRING,
-        value_serializer: str = SerializerFormat.JSON,
+        key_serializer: SerializerFormat = SerializerFormat.STRING,
+        value_serializer: SerializerFormat = SerializerFormat.JSON,
         producer_config: Optional[dict[str, Any]] = None,
     ):
         """
@@ -271,8 +271,6 @@ class KafkaDatasink(Datasink):
             raise RuntimeError(
                 f"Failed to write to Kafka topic '{self.topic}': {e}"
             ) from e
-        finally:
-            producer.close()
 
         if remaining > 0:
             raise RuntimeError(

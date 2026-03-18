@@ -5524,6 +5524,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     def write_kafka(
         self,
         topic: str,
