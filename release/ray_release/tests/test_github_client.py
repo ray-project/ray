@@ -8,10 +8,14 @@ URL construction, headers, JSON parsing, and dataclass population.
 import sys
 
 import pytest
+import responses
 
 from ray_release.github_client import (
     GitHubClient,
     GitHubException,
+    GitHubIssue,
+    GitHubLabel,
+    GitHubPull,
     GitHubRepo,
 )
 
@@ -25,6 +29,403 @@ def _client() -> GitHubClient:
 
 def _repo(client: GitHubClient = None) -> GitHubRepo:
     return (_client() if client is None else client).get_repo(REPO)
+
+
+def _issue_json(**overrides) -> dict:
+    base = {
+        "number": 42,
+        "state": "open",
+        "title": "Flaky test in CI",
+        "html_url": f"https://github.com/{REPO}/issues/42",
+        "labels": [{"name": "bug"}, {"name": "core"}],
+    }
+    base.update(overrides)
+    return base
+
+
+# ---------------------------------------------------------------------------
+# GitHubClient — auth headers
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_auth_header_is_sent():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/1",
+        json={"number": 1, "user": {"login": "octocat"}},
+    )
+    client = GitHubClient("my-secret-token")
+    client.get_repo(REPO).get_pull(1)
+
+    sent_headers = responses.calls[0].request.headers
+    assert sent_headers["Authorization"] == "Bearer my-secret-token"
+    assert sent_headers["Accept"] == "application/vnd.github+json"
+    assert "X-GitHub-Api-Version" in sent_headers
+
+
+@responses.activate
+def test_token_not_leaked_on_api_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/1",
+        json={"message": "Bad credentials"},
+        status=401,
+    )
+    secret = "super-secret-token-xyz"
+    with pytest.raises(GitHubException) as exc_info:
+        GitHubClient(secret).get_repo(REPO).get_pull(1)
+
+    exc = exc_info.value
+    assert secret not in str(exc)
+    assert secret not in str(exc.data)
+    assert secret not in str(dict(exc.headers))
+
+
+# ---------------------------------------------------------------------------
+# GitHubRepo.get_issue
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_get_issue_returns_populated_issue():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(),
+    )
+    issue = _repo().get_issue(42)
+
+    assert isinstance(issue, GitHubIssue)
+    assert issue.number == 42
+    assert issue.state == "open"
+    assert issue.title == "Flaky test in CI"
+    assert issue.html_url == f"https://github.com/{REPO}/issues/42"
+
+
+@responses.activate
+def test_get_issue_populates_labels():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(
+            labels=[{"name": "weekly-release-blocker"}, {"name": "serve"}]
+        ),
+    )
+    issue = _repo().get_issue(42)
+    labels = issue.get_labels()
+
+    assert len(labels) == 2
+    assert labels[0].name == "weekly-release-blocker"
+    assert labels[1].name == "serve"
+
+
+@responses.activate
+def test_get_issue_with_no_labels():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(labels=[]),
+    )
+    issue = _repo().get_issue(42)
+    assert issue.get_labels() == []
+
+
+@responses.activate
+def test_get_issue_raises_github_exception_on_404():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/9999",
+        json={"message": "Not Found"},
+        status=404,
+    )
+    with pytest.raises(GitHubException) as exc_info:
+        _repo().get_issue(9999)
+
+    assert exc_info.value.status == 404
+    assert exc_info.value.data == {"message": "Not Found"}
+
+
+# ---------------------------------------------------------------------------
+# GitHubRepo.get_label + get_issues
+# ---------------------------------------------------------------------------
+
+
+def test_get_label_returns_label_with_name():
+    label = _repo().get_label("weekly-release-blocker")
+    assert isinstance(label, GitHubLabel)
+    assert label.name == "weekly-release-blocker"
+
+
+@responses.activate
+def test_get_issues_passes_state_and_label_params():
+    responses.add(responses.GET, f"{BASE}/repos/{REPO}/issues", json=[])
+
+    repo = _repo()
+    label = repo.get_label("weekly-release-blocker")
+    repo.get_issues(state="open", labels=[label])
+
+    qs = responses.calls[0].request.url
+    assert "state=open" in qs
+    assert "labels=weekly-release-blocker" in qs
+    assert "per_page=100" in qs
+
+
+@responses.activate
+def test_get_issues_returns_list_of_issues():
+    page1 = [_issue_json(number=1, title="A"), _issue_json(number=2, title="B")]
+    responses.add(responses.GET, f"{BASE}/repos/{REPO}/issues", json=page1)
+
+    issues = _repo().get_issues(state="open")
+
+    assert len(issues) == 2
+    assert issues[0].number == 1
+    assert issues[1].number == 2
+
+
+@responses.activate
+def test_get_issues_paginates():
+    page1 = [_issue_json(number=i) for i in range(100)]
+    page2 = [_issue_json(number=i) for i in range(100, 115)]
+    next_url = f"{BASE}/repos/{REPO}/issues?page=2&per_page=100"
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues",
+        json=page1,
+        headers={"Link": f'<{next_url}>; rel="next"'},
+    )
+    responses.add(responses.GET, next_url, json=page2)
+
+    issues = _repo().get_issues()
+    assert len(issues) == 115
+
+
+@responses.activate
+def test_get_issues_raises_on_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues",
+        json={"message": "Forbidden"},
+        status=403,
+    )
+    with pytest.raises(GitHubException) as exc_info:
+        _repo().get_issues()
+    assert exc_info.value.status == 403
+
+
+# ---------------------------------------------------------------------------
+# GitHubRepo.get_pull
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_get_pull_returns_number_and_user_login():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/99",
+        json={"number": 99, "user": {"login": "octocat"}},
+    )
+    pull = _repo().get_pull(99)
+
+    assert isinstance(pull, GitHubPull)
+    assert pull.number == 99
+    assert pull.user.login == "octocat"
+
+
+@responses.activate
+def test_get_pull_raises_on_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/9999",
+        json={"message": "Not Found"},
+        status=404,
+    )
+    with pytest.raises(GitHubException) as exc_info:
+        _repo().get_pull(9999)
+    assert exc_info.value.status == 404
+
+
+# ---------------------------------------------------------------------------
+# GitHubIssue.create_comment
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_create_comment_posts_to_correct_url():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(),
+    )
+    responses.add(
+        responses.POST,
+        f"{BASE}/repos/{REPO}/issues/42/comments",
+        json={"id": 1},
+        status=201,
+    )
+
+    issue = _repo().get_issue(42)
+    issue.create_comment("Test has been failing. Jailing.")
+
+    post_body = responses.calls[1].request.body
+    assert b"Test has been failing. Jailing." in post_body
+
+
+@responses.activate
+def test_create_comment_raises_on_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(),
+    )
+    responses.add(
+        responses.POST,
+        f"{BASE}/repos/{REPO}/issues/42/comments",
+        json={"message": "Unprocessable"},
+        status=422,
+    )
+
+    issue = _repo().get_issue(42)
+    with pytest.raises(GitHubException) as exc_info:
+        issue.create_comment("hi")
+    assert exc_info.value.status == 422
+
+
+# ---------------------------------------------------------------------------
+# GitHubIssue.edit
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_edit_state_sends_patch_and_updates_local_state():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(state="open"),
+    )
+    responses.add(
+        responses.PATCH,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(state="closed"),
+        status=200,
+    )
+
+    issue = _repo().get_issue(42)
+    assert issue.state == "open"
+
+    issue.edit(state="closed")
+
+    assert issue.state == "closed"
+    patch_body = responses.calls[1].request.body
+    assert b'"closed"' in patch_body
+
+
+@responses.activate
+def test_edit_labels_sends_patch_without_state():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(),
+    )
+    responses.add(
+        responses.PATCH,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(labels=[{"name": "jailed-test"}, {"name": "core"}]),
+        status=200,
+    )
+
+    issue = _repo().get_issue(42)
+    issue.edit(labels=["jailed-test", "core"])
+
+    patch_body = responses.calls[1].request.body
+    assert b"jailed-test" in patch_body
+    assert b"state" not in patch_body
+
+    labels = issue.get_labels()
+    assert len(labels) == 2
+    assert labels[0].name == "jailed-test"
+    assert labels[1].name == "core"
+
+
+@responses.activate
+def test_edit_title_sends_patch_and_updates_local_title():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(title="Old title"),
+    )
+    responses.add(
+        responses.PATCH,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(title="New title", state="open"),
+        status=200,
+    )
+
+    issue = _repo().get_issue(42)
+    issue.edit(title="New title", state="open")
+
+    patch_body = responses.calls[1].request.body
+    assert b"New title" in patch_body
+    assert issue.title == "New title"
+
+
+@responses.activate
+def test_edit_raises_on_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json=_issue_json(),
+    )
+    responses.add(
+        responses.PATCH,
+        f"{BASE}/repos/{REPO}/issues/42",
+        json={"message": "Not Found"},
+        status=404,
+    )
+
+    issue = _repo().get_issue(42)
+    with pytest.raises(GitHubException) as exc_info:
+        issue.edit(state="closed")
+    assert exc_info.value.status == 404
+
+
+# ---------------------------------------------------------------------------
+# GitHubRepo.create_issue
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_create_issue_posts_and_returns_issue():
+    responses.add(
+        responses.POST,
+        f"{BASE}/repos/{REPO}/issues",
+        json=_issue_json(number=99, title="New bug", state="open"),
+        status=201,
+    )
+
+    issue = _repo().create_issue(title="New bug", body="It broke.", labels=["bug"])
+
+    assert issue.number == 99
+    assert issue.title == "New bug"
+    assert issue.state == "open"
+    post_body = responses.calls[0].request.body
+    assert b"New bug" in post_body
+    assert b"It broke." in post_body
+    assert b"bug" in post_body
+
+
+@responses.activate
+def test_create_issue_raises_on_error():
+    responses.add(
+        responses.POST,
+        f"{BASE}/repos/{REPO}/issues",
+        json={"message": "Forbidden"},
+        status=403,
+    )
+
+    with pytest.raises(GitHubException) as exc_info:
+        _repo().create_issue(title="New bug", body="body")
+    assert exc_info.value.status == 403
 
 
 # ---------------------------------------------------------------------------
