@@ -238,6 +238,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             upsert_keys: PyArrow table containing upsert key columns
         """
         import functools
+        import time
 
         import pyarrow as pa
         from pyiceberg.table.upsert_util import create_match_filter
@@ -247,27 +248,68 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             # Filter out rows with any NULL values in join columns
             # (NULL != NULL in SQL semantics)
             upsert_cols = self._get_upsert_cols()
+            logger.info(
+                "[upsert commit] Filtering NULL keys from %d rows on cols %s",
+                len(upsert_keys),
+                upsert_cols,
+            )
+            t0 = time.perf_counter()
             masks = (pa.compute.is_valid(upsert_keys[col]) for col in upsert_cols)
             mask = functools.reduce(pa.compute.and_, masks)
             keys_table = upsert_keys.filter(mask)
+            logger.info(
+                "[upsert commit] NULL filter done in %.2fs: %d -> %d rows (dropped %d NULLs)",
+                time.perf_counter() - t0,
+                len(upsert_keys),
+                len(keys_table),
+                len(upsert_keys) - len(keys_table),
+            )
 
             # Only delete if we have non-NULL keys
             if len(keys_table) > 0:
+                logger.info(
+                    "[upsert commit] Building delete filter from %d keys (cols: %s) ...",
+                    len(keys_table),
+                    upsert_cols,
+                )
+                t0 = time.perf_counter()
                 # Use PyIceberg's helper to build delete filter
                 delete_filter = create_match_filter(keys_table, upsert_cols)
+                logger.info(
+                    "[upsert commit] create_match_filter done in %.2fs: filter type=%s",
+                    time.perf_counter() - t0,
+                    type(delete_filter).__name__,
+                )
 
                 # Prepare kwargs for delete
                 delete_kwargs = self._upsert_kwargs.copy()
                 delete_kwargs.pop(_UPSERT_COLS_ID, None)
 
+                logger.info("[upsert commit] Executing txn.delete() ...")
+                t0 = time.perf_counter()
                 txn.delete(
                     delete_filter=delete_filter,
                     snapshot_properties=self._snapshot_properties,
                     **delete_kwargs,
                 )
+                logger.info(
+                    "[upsert commit] txn.delete() done in %.2fs",
+                    time.perf_counter() - t0,
+                )
+        else:
+            logger.info("[upsert commit] No upsert keys — skipping delete phase")
 
         # Append new data files (includes updates and inserts) and commit
+        logger.info(
+            "[upsert commit] Appending %d data files and committing ...",
+            len(data_files),
+        )
+        t0 = time.perf_counter()
         self._append_and_commit(txn, data_files)
+        logger.info(
+            "[upsert commit] Append+commit done in %.2fs",
+            time.perf_counter() - t0,
+        )
 
     def _preserve_identifier_field_requirements(
         self, update: "UpdateSchema", table_schema: "Schema"
@@ -473,6 +515,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         (allowing type promotion), updates table schema if needed, then performs a single
         atomic commit.
         """
+        import time
+
+        t_start = time.perf_counter()
+        logger.info("[on_write_complete] Starting commit phase (mode=%s)", self._mode)
+
         # Collect all data files and schemas from all workers
         all_data_files: List["DataFile"] = []
         all_schemas: List["pa.Schema"] = []
@@ -488,13 +535,39 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 if write_return.upsert_keys is not None:
                     upsert_keys_tables.append(write_return.upsert_keys)
 
+        logger.info(
+            "[on_write_complete] Collected results: %d data files, %d schema blocks, "
+            "%d upsert key batches from workers (%.2fs)",
+            len(all_data_files),
+            len(all_schemas),
+            len(upsert_keys_tables),
+            time.perf_counter() - t_start,
+        )
+
         if not all_data_files:
+            logger.info("[on_write_complete] No data files written, nothing to commit")
             return
 
         # Concatenate all upsert keys from all workers into a single table
         from ray.data._internal.arrow_ops.transform_pyarrow import concat
 
-        upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
+        if upsert_keys_tables:
+            total_key_rows = sum(len(t) for t in upsert_keys_tables)
+            logger.info(
+                "[on_write_complete] Concatenating %d upsert key batches (%d total rows) ...",
+                len(upsert_keys_tables),
+                total_key_rows,
+            )
+            t0 = time.perf_counter()
+            upsert_keys = concat(upsert_keys_tables)
+            logger.info(
+                "[on_write_complete] upsert key concat done in %.2fs: %d rows, cols=%s",
+                time.perf_counter() - t0,
+                len(upsert_keys),
+                upsert_keys.column_names,
+            )
+        else:
+            upsert_keys = None
 
         # Reconcile all schemas from all blocks across all workers
         # Get table schema and union with reconciled schema using unify_schemas with promotion
@@ -502,9 +575,15 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
+        logger.info("[on_write_complete] Reconciling %d schemas ...", len(all_schemas))
+        t0 = time.perf_counter()
         table_schema = pyi_pa_io.schema_to_pyarrow(self._table.schema())
         final_reconciled_schema = unify_schemas(
             [table_schema] + all_schemas, promote_types=True
+        )
+        logger.info(
+            "[on_write_complete] Schema reconciliation done in %.2fs",
+            time.perf_counter() - t0,
         )
 
         # Create transaction and commit schema update + data files atomically
@@ -512,13 +591,29 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         # Update table schema within the transaction if it differs
         if not final_reconciled_schema.equals(table_schema):
+            logger.info(
+                "[on_write_complete] Schema changed — updating table schema ..."
+            )
+            t0 = time.perf_counter()
             current_table_schema = self._table.metadata.schema()
             with txn.update_schema() as update:
                 self._update_schema_with_union(
                     update, final_reconciled_schema, current_table_schema
                 )
+            logger.info(
+                "[on_write_complete] Schema update done in %.2fs",
+                time.perf_counter() - t0,
+            )
+        else:
+            logger.info("[on_write_complete] Schema unchanged, skipping update")
 
         # Create transaction and commit based on mode
+        logger.info(
+            "[on_write_complete] Starting %s commit for %d data files ...",
+            self._mode,
+            len(all_data_files),
+        )
+        t0 = time.perf_counter()
         if self._mode == SaveMode.APPEND:
             self._append_and_commit(txn, all_data_files)
         elif self._mode == SaveMode.OVERWRITE:
@@ -527,3 +622,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             self._commit_upsert(txn, all_data_files, upsert_keys)
         else:
             raise ValueError(f"Unsupported mode: {self._mode}")
+        logger.info(
+            "[on_write_complete] Commit complete in %.2fs (total on_write_complete=%.2fs)",
+            time.perf_counter() - t0,
+            time.perf_counter() - t_start,
+        )

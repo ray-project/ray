@@ -1,5 +1,5 @@
-import copy
 from collections import deque
+from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
@@ -57,9 +57,11 @@ class LimitOperator(OneToOneOperator):
                     block = BlockAccessor.for_block(block).slice(
                         0, num_rows, copy=False
                     )
-                    metadata = copy.deepcopy(metadata)
-                    metadata.num_rows = num_rows
-                    metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                    metadata = replace(
+                        metadata,
+                        num_rows=num_rows,
+                        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+                    )
                     return block, metadata
 
                 block, metadata_ref = cached_remote_fn(
