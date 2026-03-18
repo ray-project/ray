@@ -302,6 +302,7 @@ def test_dict_to_human_readable_struct_max_depth():
         "nested": {"inner": "..."},
         "obj": "CustomObj",
         "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
     }
 
     # max_depth=3: all dict nesting fits within depth; full output
@@ -312,6 +313,7 @@ def test_dict_to_human_readable_struct_max_depth():
         "nested": {"inner": {"deep": 99}},
         "obj": "CustomObj",
         "sequence": [1, "CustomObj"],
+        "inf_float": "inf",
     }
 
 
