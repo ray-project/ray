@@ -53,7 +53,6 @@ from ray.train.v2._internal.execution.worker_group.placement_group_handle import
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
-    WorldRankToOngoingPoll,
 )
 from ray.train.v2._internal.execution.worker_group.state import (
     WorkerGroupContext,
@@ -158,7 +157,7 @@ class WorkerGroup(ExecutionGroup):
         # Maps world rank to replica group index.
         self._worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
         # Tracks ongoing poll tasks by world rank.
-        self._world_rank_to_ongoing_poll = WorldRankToOngoingPoll()
+        self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
         # Environment variables
@@ -346,7 +345,6 @@ class WorkerGroup(ExecutionGroup):
                     # TODO: change after we support replica groups of size > 1.
                     [worker],
                     worker_group_context.resources_per_worker,
-                    self._world_rank_to_ongoing_poll,
                     self._replica_group_callbacks,
                 )
                 for worker in workers
@@ -761,7 +759,7 @@ class WorkerGroup(ExecutionGroup):
             done_rank = poll_task_to_world_rank[done_poll]
 
             # Remove the ongoing poll task for the worker.
-            self._world_rank_to_ongoing_poll.pop(done_rank)
+            self._world_rank_to_ongoing_poll.pop(done_rank, None)
 
             try:
                 poll_result: WorkerStatus = ray.get(done_poll)
@@ -833,6 +831,13 @@ class WorkerGroup(ExecutionGroup):
         # It can be inactive if we failed to initialize the workers in the previous attempt.
         old_replica_group.shutdown()
 
+        # Remove old workers from ongoing poll tracking.
+        for w in old_workers:
+            if w.distributed_context is not None:
+                self._world_rank_to_ongoing_poll.pop(
+                    w.distributed_context.world_rank, None
+                )
+
         # Create new workers with old replica group state.
         pg = self._worker_group_state.placement_group_handle.placement_group
         new_workers = self._create_workers(
@@ -863,7 +868,6 @@ class WorkerGroup(ExecutionGroup):
         new_replica_group = ReplicaGroup(
             new_workers,
             self._worker_group_context.resources_per_worker,
-            self._world_rank_to_ongoing_poll,
             self._replica_group_callbacks,
         )
         self._replica_groups[replica_group_index] = new_replica_group

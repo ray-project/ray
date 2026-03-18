@@ -9,9 +9,6 @@ from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.callback import ReplicaGroupCallback
-    from ray.train.v2._internal.execution.worker_group.poll import (
-        WorldRankToOngoingPoll,
-    )
     from ray.train.v2._internal.execution.worker_group.state import WorkerGroupContext
 
 T = TypeVar("T")
@@ -77,12 +74,10 @@ class ReplicaGroup(ExecutionGroup):
         self,
         workers: List[Worker],
         resources_per_worker: dict,
-        world_rank_to_ongoing_poll: Optional["WorldRankToOngoingPoll"] = None,
         callbacks: Optional[List["ReplicaGroupCallback"]] = None,
     ):
         self._workers = workers
         self._resources_per_worker = resources_per_worker
-        self._world_rank_to_ongoing_poll = world_rank_to_ongoing_poll
         self._callbacks = callbacks or []
         # An inactive ReplicaGroup still needs to keep track of workers
         # so we can replace them later.
@@ -106,14 +101,6 @@ class ReplicaGroup(ExecutionGroup):
         if self.is_active():
             for cb in self._callbacks:
                 cb.before_replica_group_shutdown(self)
-            # Remove workers from ongoing poll tracking before shutdown.
-            if self._world_rank_to_ongoing_poll is not None:
-                ranks = [
-                    w.distributed_context.world_rank
-                    for w in self._workers
-                    if w.distributed_context is not None
-                ]
-                self._world_rank_to_ongoing_poll.remove_ranks(ranks)
 
             _shutdown_workers(self._workers)
             self._active = False
