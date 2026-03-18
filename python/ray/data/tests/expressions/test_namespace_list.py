@@ -287,6 +287,27 @@ class TestListNamespace:
         results = [row["union"] for row in result.take_all()]
         assert self._to_list(results[0]) == [1, 2, 3]
 
+    def test_list_set_operations_fixed_size_list(
+        self, ray_start_regular_shared, dataset_format
+    ):
+        """Test set operations on fixed size lists dynamically convert to variable length lists."""
+        if dataset_format != "arrow":
+            pytest.skip("FixedSizeList is specific to Arrow backend.")
+
+        # Create FixedSizeList(2) arrays
+        arr1 = pa.array([[1, 2], [3, 4]], type=pa.list_(pa.int64(), 2))
+        arr2 = pa.array([[2, 3], [4, 5]], type=pa.list_(pa.int64(), 2))
+        table = pa.Table.from_arrays([arr1, arr2], names=["list1", "list2"])
+
+        ds = _create_dataset(None, dataset_format, arrow_table=table)
+
+        # Union will result in 3 elements, which would crash a FixedSizeList
+        result = ds.with_column("union", col("list1").list.union(col("list2")))
+
+        results = [row["union"] for row in result.take_all()]
+        assert self._to_list(results[0]) == [1, 2, 3]
+        assert self._to_list(results[1]) == [3, 4, 5]
+
 
 if __name__ == "__main__":
     import sys

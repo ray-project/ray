@@ -394,11 +394,21 @@ class _ListNamespace:
         """
         return_dtype = self._expr.data_type
 
+        # Set operations change list lengths, so FixedSizeList must become a standard List
+        if return_dtype.is_arrow_type():
+            arrow_type = return_dtype.to_arrow_dtype()
+            if pyarrow.types.is_fixed_size_list(arrow_type):
+                return_dtype = DataType.from_arrow(pyarrow.list_(arrow_type.value_type))
+
         @pyarrow_udf(return_dtype=return_dtype)
         def _list_set_op(arr1: pyarrow.Array, arr2: pyarrow.Array) -> pyarrow.Array:
             # TODO: Optimize with native Arrow compute kernels (e.g., using
             # pc.list_flatten + pc.is_in) to avoid this to_pylist() round-trip overhead.
             pa_type = arr1.type
+
+            # Ensure the PyArrow array constructor also uses a standard variable-length list
+            if pyarrow.types.is_fixed_size_list(pa_type):
+                pa_type = pyarrow.list_(pa_type.value_type)
 
             result = []
             for l1, l2 in zip(arr1.to_pylist(), arr2.to_pylist()):
@@ -416,7 +426,6 @@ class _ListNamespace:
                         try:
                             res_list = sorted(op_set)
                         except TypeError:
-                            # Fallback to arbitrary ordering if elements are non-comparable
                             res_list = list(op_set)
                     else:
                         res_list = list(op_set)
