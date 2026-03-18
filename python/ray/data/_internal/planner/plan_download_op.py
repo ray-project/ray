@@ -302,6 +302,11 @@ async def _download_uris_with_obstore(
     fs_kwargs = _extract_credentials_from_filesystem(filesystem)
 
     def _get_store(store_url: str):
+        # Cache one ObjectStore per (scheme, netloc). For cloud storage this
+        # means one store per bucket (e.g. s3://bucket-a and s3://bucket-b get
+        # separate stores sharing the same credentials). For HTTP(S) each host
+        # gets its own store. The cache avoids re-initialising the Rust HTTP
+        # client and credential chain for every URI in the batch.
         if store_url not in store_cache:
             store_cache[store_url] = from_url(
                 store_url, retry_config=retry_config, **fs_kwargs
@@ -444,6 +449,11 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
+        # Intentionally check only the first URI to determine the download backend.
+        # Checking every URI would add O(n) overhead per batch for negligible practical benefit.
+        #
+        # NOTE: asyncio.run() creates and tears down a new event loop per batch.
+        # This will raise RuntimeError if called from within an already-running event loop.
         if use_obstore and _is_obstore_supported_url(uris[0]):
             uri_bytes = asyncio.run(
                 _download_uris_with_obstore(
@@ -547,9 +557,17 @@ class PartitionActor:
         nrows_per_partition = math.floor(
             target_nbytes_per_partition / avg_nbytes_per_row
         )
-        # max(1, ...) guards against files larger than target_max_block_size
-        # producing nrows=0, which would crash _arrow_batcher.
-        return max(1, nrows_per_partition)
+        if nrows_per_partition == 0:
+            # A single file exceeds target_max_block_size. Fall back to one row
+            # per partition so _arrow_batcher doesn't crash on a zero step size.
+            logger.warning(
+                f"Estimated average file size ({avg_nbytes_per_row:.0f} bytes) "
+                f"exceeds target_max_block_size ({target_nbytes_per_partition} bytes). "
+                "Falling back to one row per partition; output blocks may be larger "
+                "than the configured target."
+            )
+            return 1
+        return nrows_per_partition
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""

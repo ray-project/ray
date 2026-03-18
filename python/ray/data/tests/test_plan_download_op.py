@@ -215,6 +215,13 @@ class TestObstoreDownloadPath:
     def require_obstore(self):
         pytest.importorskip("obstore")
 
+    def test_empty_uris_returns_empty_list(self):
+        # asyncio.gather on an empty task list returns [] — verify this holds
+        # end-to-end so the obstore path is consistent with the PyArrow path's
+        # len(uris) == 0 early-exit.
+        results = asyncio.run(_download_uris_with_obstore([], "uri"))
+        assert results == []
+
     def test_downloads_files(self, tmp_path):
         content1, content2 = b"hello obstore", b"world obstore"
         (tmp_path / "f1.bin").write_bytes(content1)
