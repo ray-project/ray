@@ -39,7 +39,9 @@ from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V10
 class _SchemaTestDummyActor:
     """Dummy actor class for deployment_actors schema tests."""
 
-    pass
+    def ping(self):
+        """Dummy method to verify class is deserialized correctly."""
+        return "pong"
 
 
 def get_valid_runtime_envs() -> List[Dict]:
@@ -465,12 +467,53 @@ class TestDeploymentSchema:
         schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.gang_scheduling_config is DEFAULT.VALUE
 
-    def test_gang_scheduling_config_auto_replicas_rejected(self):
+    def test_gang_scheduling_config_auto_replicas_accepted(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 4,
+            "max_replicas": 8,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.gang_scheduling_config.gang_size == 4
+        assert schema.num_replicas == "auto"
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+    @pytest.mark.parametrize(
+        "autoscaling_config,invalid_field",
+        [
+            ({"min_replicas": 3, "max_replicas": 8}, "min_replicas"),
+            ({"min_replicas": 4, "max_replicas": 9}, "max_replicas"),
+            (
+                {"min_replicas": 4, "max_replicas": 8, "initial_replicas": 5},
+                "initial_replicas",
+            ),
+        ],
+    )
+    def test_gang_scheduling_config_auto_replicas_invalid_bounds(
+        self, autoscaling_config, invalid_field
+    ):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+        deployment_schema["autoscaling_config"] = autoscaling_config
+        with pytest.raises(
+            ValueError, match=f"autoscaling_config.{invalid_field}.*must be a multiple"
+        ):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 0,
+            "max_replicas": 9,
+        }
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang scheduling",
+        ):
             DeploymentSchema.model_validate(deployment_schema)
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
@@ -1164,6 +1207,11 @@ def test_deployment_actors_deployment_schema_roundtrip():
     resolved_name = resolved.__ray_actor_class__.__name__
     assert resolved_name == "_SchemaTestDummyActor"
 
+    # Verify we can instantiate and invoke methods (class serialized properly)
+    underlying = resolved.__ray_actor_class__
+    instance = underlying()
+    assert instance.ping() == "pong"
+
 
 def test_schema_to_deployment_deployment_actors_from_dict():
     """Ensure schema_to_deployment works when deployment_actors comes from a parsed dict."""
@@ -1233,6 +1281,40 @@ def test_get_app_code_version_includes_deployment_actors():
         ServeApplicationSchema.model_validate(changed_actors)
     )
     assert actors_version != changed_actors_version
+
+    # Adding a deployment actor changes version
+    added_actor = copy.deepcopy(with_actors)
+    added_actor["deployments"][0]["deployment_actors"].append(
+        {
+            "name": "cache",
+            "actor_class": "my_module:CacheActor",
+            "init_kwargs": {},
+        }
+    )
+    added_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(added_actor)
+    )
+    assert actors_version != added_version
+
+    # Removing a deployment actor changes version
+    removed_actor = copy.deepcopy(added_actor)
+    removed_actor["deployments"][0]["deployment_actors"].pop()
+    removed_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(removed_actor)
+    )
+    assert actors_version == removed_version  # back to single-actor config
+    assert added_version != removed_version
+
+    # Reordering deployment_actors changes version
+    two_actors = copy.deepcopy(added_actor)
+    reordered_actors = copy.deepcopy(added_actor)
+    reordered_actors["deployments"][0]["deployment_actors"] = list(
+        reversed(two_actors["deployments"][0]["deployment_actors"])
+    )
+    reordered_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(reordered_actors)
+    )
+    assert added_version != reordered_version
 
 
 def test_serve_instance_details_is_json_serializable():

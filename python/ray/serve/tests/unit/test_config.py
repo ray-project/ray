@@ -56,6 +56,7 @@ class FakeRequestRouter:
     ...
 
 
+@ray.remote
 class _TestDummyActor:
     """Used for deployment_actors import path test."""
 
@@ -66,7 +67,9 @@ class _TestDummyActor:
 class _TestRayActor:
     """Used for deployment_actors proto roundtrip test (needs __ray_actor_class__)."""
 
-    pass
+    def ping(self):
+        """Dummy method to verify class is deserialized correctly."""
+        return "pong"
 
 
 def test_autoscaling_config_validation():
@@ -273,6 +276,7 @@ class TestDeploymentConfig:
     def test_deployment_actors_config(self):
         """Test deployment_actors config and proto roundtrip."""
 
+        @ray.remote
         class DummyActor:
             pass
 
@@ -291,7 +295,10 @@ class TestDeploymentConfig:
         assert config.deployment_actors[0].name == "prefix_tree"
         assert isinstance(config.deployment_actors[0].actor_class, str)
         assert config.deployment_actors[0]._serialized_actor_class
-        assert config.deployment_actors[0].get_actor_class().__name__ == "DummyActor"
+        assert (
+            config.deployment_actors[0].get_actor_class().__ray_actor_class__.__name__
+            == "DummyActor"
+        )
         assert config.deployment_actors[0].init_kwargs == {"max_depth": 100}
 
         deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
@@ -301,13 +308,36 @@ class TestDeploymentConfig:
         assert isinstance(deserialized.deployment_actors[0].actor_class, str)
         assert deserialized.deployment_actors[0]._serialized_actor_class
         assert (
-            deserialized.deployment_actors[0].get_actor_class().__name__ == "DummyActor"
+            deserialized.deployment_actors[0]
+            .get_actor_class()
+            .__ray_actor_class__.__name__
+            == "DummyActor"
         )
         assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
 
-        # Test with import path string — actor_class stays as string until
-        # _serialize_actor_class() is called (happens in the build task where
-        # user code is importable).
+    def test_deployment_actors_config_duplicate_names_raise(self):
+        """Test that duplicate deployment_actor names raise ValueError."""
+        with pytest.raises(ValueError, match="unique names"):
+            DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                ],
+            )
+
+    def test_deployment_actors_config_import_path(self):
+        """actor_class stays as string until _serialize_actor_class() is called
+        (happens in the build task where user code is importable).
+        """
         actor_config_str = DeploymentActorConfig(
             name="actor_from_path",
             actor_class="ray.serve.tests.unit.test_config._TestDummyActor",
@@ -333,25 +363,11 @@ class TestDeploymentConfig:
             config_str.to_proto_bytes()
         )
         resolved_str = deserialized_str.deployment_actors[0].get_actor_class()
-        assert resolved_str.__name__ == _TestDummyActor.__name__
 
-        # Test duplicate names raise
-        with pytest.raises(ValueError, match="unique names"):
-            DeploymentConfig(
-                num_replicas=1,
-                deployment_actors=[
-                    DeploymentActorConfig(
-                        name="dup",
-                        actor_class=DummyActor,
-                        init_kwargs={},
-                    ),
-                    DeploymentActorConfig(
-                        name="dup",
-                        actor_class=DummyActor,
-                        init_kwargs={},
-                    ),
-                ],
-            )
+        assert (
+            resolved_str.__ray_actor_class__.__name__
+            == _TestDummyActor.__ray_actor_class__.__name__
+        )
 
     def test_proto_roundtrip_preserves_actor_class(self):
         """DeploymentActorConfig survives proto serialization and can
@@ -372,6 +388,11 @@ class TestDeploymentConfig:
 
         resolved = actor_cfg.get_actor_class()
         assert resolved.__ray_actor_class__.__name__ == "_TestRayActor"
+
+        # Verify we can instantiate and invoke methods (class serialized properly)
+        underlying = resolved.__ray_actor_class__
+        instance = underlying()
+        assert instance.ping() == "pong"
 
 
 class TestReplicaConfig:
@@ -933,20 +954,39 @@ class TestGangSchedulingConfig:
             def f():
                 return "test"
 
-    def test_gang_scheduling_config_auto_num_replicas(self):
-        """Test that num_replicas='auto' is rejected with gang_scheduling_config."""
-
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        """Test that min_replicas=0 is rejected with gang_scheduling_config."""
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang-scheduled deployments",
+        ):
 
             @serve.deployment(
                 num_replicas="auto",
-                gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+                gang_scheduling_config=GangSchedulingConfig(gang_size=3),
+                autoscaling_config={"min_replicas": 0, "max_replicas": 9},
             )
             def f():
                 return "test"
 
+    def test_gang_scheduling_config_auto_num_replicas(self):
+        """Test that num_replicas='auto' is allowed with gang_scheduling_config."""
+
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        def f():
+            return "test"
+
+        assert f._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f._deployment_config.autoscaling_config.min_replicas == 4
+        assert f._deployment_config.autoscaling_config.max_replicas == 8
+
     def test_gang_scheduling_config_auto_num_replicas_via_options(self):
-        """Test that num_replicas='auto' is rejected via .options() with gang config."""
+        """Test that num_replicas='auto' works via .options() with gang config."""
 
         @serve.deployment(
             num_replicas=4,
@@ -955,8 +995,14 @@ class TestGangSchedulingConfig:
         def f():
             return "test"
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
-            f.options(num_replicas="auto")
+        f2 = f.options(
+            num_replicas="auto",
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        assert f2._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f2._deployment_config.autoscaling_config.min_replicas == 4
+        assert f2._deployment_config.autoscaling_config.max_replicas == 8
 
     def test_gang_scheduling_config_proto_roundtrip(self):
         """Test roundtrip serialization of GangSchedulingConfig through protobuf."""

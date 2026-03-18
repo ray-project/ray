@@ -47,6 +47,7 @@ class ReplicaContext:
         - rank: the rank of the replica.
         - world_size: the number of replicas in the deployment.
         - gang_context: context information for the gang the replica is part of.
+        - code_version: code version of the deployment (for get_deployment_actor).
     """
 
     replica_id: ReplicaID
@@ -57,6 +58,7 @@ class ReplicaContext:
     code_version: str
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
+    code_version: Optional[str] = None
 
     @property
     def app_name(self) -> str:
@@ -157,7 +159,7 @@ def _set_internal_replica_context(
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
     gang_context: Optional[GangContext] = None,
-    code_version: str,
+    code_version: Optional[str] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
