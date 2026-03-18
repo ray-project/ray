@@ -2524,7 +2524,7 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
         # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S (default 30s).
         wait_for_condition(
             lambda: "stuck-requests-deployment" not in serve.status().applications,
-            timeout=40,
+            timeout=10,
         )
 
         # The stuck requests should fail (connection closed or similar)
