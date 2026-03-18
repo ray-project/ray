@@ -3,13 +3,15 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class Normalizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.normalizer")
+class Normalizer(SerializablePreprocessorBase):
     r"""Scales each sample to have unit norm.
 
     This preprocessor works by dividing each sample (i.e., row) by the sample's norm.
@@ -114,8 +116,10 @@ class Normalizer(Preprocessor):
                 f"Supported values are: {self._norm_fns.keys()}"
             )
 
-        self._output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
     @property
@@ -143,6 +147,19 @@ class Normalizer(Preprocessor):
             f"norm={self._norm!r}, "
             f"output_columns={self._output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "norm": self._norm,
+            "output_columns": self._output_columns,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._norm = fields["norm"]
+        self._output_columns = fields["output_columns"]
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)

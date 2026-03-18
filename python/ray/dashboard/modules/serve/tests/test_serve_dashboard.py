@@ -190,7 +190,11 @@ def test_put_duplicate_apps(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    assert (
+        put_response.status_code == 400
+        and "validation error" in put_response.text.lower()
+    )
 
 
 @pytest.mark.skipif(
@@ -216,7 +220,11 @@ def test_put_duplicate_routes(ray_start_stop):
         ],
     }
     put_response = requests.put(SERVE_HEAD_URL, json=config, timeout=5)
-    assert put_response.status_code == 400 and "ValidationError" in put_response.text
+    # Check for validation error in response (case-insensitive for Pydantic v1/v2 compat)
+    assert (
+        put_response.status_code == 400
+        and "validation error" in put_response.text.lower()
+    )
 
 
 @pytest.mark.skipif(
@@ -437,7 +445,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     # CHECK: application details
     for i, app in enumerate(["app1", "app2"]):
         assert (
-            app_details[app].deployed_app_config.dict(exclude_unset=True)
+            app_details[app].deployed_app_config.model_dump(exclude_unset=True)
             == config["applications"][i]
         )
         assert app_details[app].last_deployed_time_s > 0
@@ -457,7 +465,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                 == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
             )
             # Route prefix should be app level options eventually
-            assert "route_prefix" not in deployment.deployment_config.dict(
+            assert "route_prefix" not in deployment.deployment_config.model_dump(
                 exclude_unset=True
             )
             if isinstance(deployment.deployment_config.num_replicas, int):
@@ -576,7 +584,7 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop):
                 == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
             )
             # Route prefix should be app level options eventually
-            assert "route_prefix" not in deployment.deployment_config.dict(
+            assert "route_prefix" not in deployment.deployment_config.model_dump(
                 exclude_unset=True
             )
             if isinstance(deployment.deployment_config.num_replicas, int):

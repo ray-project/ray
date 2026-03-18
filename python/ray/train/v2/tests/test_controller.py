@@ -270,7 +270,7 @@ async def test_poll_frequency(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_controller_callback():
+async def test_controller_callback(monkeypatch):
     """Check that all controller callback hooks are called."""
 
     class AssertCallback(ControllerCallback):
@@ -280,6 +280,7 @@ async def test_controller_callback():
             self.failure_decision_called = False
             self.resize_decision_called = False
             self.shutdown_called = False
+            self.before_abort_called = False
 
         def after_controller_start(self, train_run_context: TrainRunContext):
             self.start_called = True
@@ -306,6 +307,9 @@ async def test_controller_callback():
         def before_controller_shutdown(self):
             self.shutdown_called = True
 
+        def before_controller_abort(self):
+            self.before_abort_called = True
+
     callback = AssertCallback()
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
@@ -322,6 +326,16 @@ async def test_controller_callback():
 
     controller._start()
     assert callback.start_called
+
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    await controller.abort()
+    assert callback.before_abort_called
+    assert isinstance(callback.latest_state_update[1], AbortedState)
+
+    # Reset the state to InitializingState to test the control loop
+    controller._set_state(InitializingState())
 
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})

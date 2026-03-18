@@ -308,18 +308,35 @@ class PathPartitionParser:
             evaluator = NativeExpressionEvaluator(partition_table)
             result = evaluator.visit(predicate)
 
-            # Extract boolean result from array-like types
-            # Check for specific array types to avoid issues with strings (which are iterable)
-            if isinstance(result, (pa.Array, pa.ChunkedArray, np.ndarray)):
+            # Extract boolean result from array-like types.
+            # NOTE: We must use ``.as_py()`` for PyArrow scalars because
+            #       ``bool(pa.BooleanScalar(False))`` returns ``True`` (it
+            #       checks validity/not-null, not the boolean value).
+            if isinstance(result, (pa.Array, pa.ChunkedArray)):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
+                return bool(result[0].as_py())
+
+            if isinstance(result, np.ndarray):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
                 return bool(result[0])
 
             # Import pandas here to avoid circular dependencies
             import pandas as pd
 
             if isinstance(result, pd.Series):
+                assert (
+                    len(result) == 1
+                ), f"Result expected to be of length 1 (got {result})"
                 return bool(result.iloc[0])
 
-            # Scalar result (shouldn't happen with table evaluation, but handle conservatively)
+            # Scalar result
+            if isinstance(result, pa.Scalar):
+                return bool(result.as_py())
+
             return bool(result)
         except Exception:
             logger.debug(
