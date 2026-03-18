@@ -38,13 +38,7 @@ class MemoryWatermarkBackpressurePolicy(BackpressurePolicy):
       executor runs as a daemon thread.
     """
 
-    # Overridable via environment variables and DataContext.
-    DEFAULT_HIGH_WATERMARK: float = env_float(
-        "RAY_DATA_MEMORY_WATERMARK_HIGH", 0.85
-    )
-    DEFAULT_LOW_WATERMARK: float = env_float(
-        "RAY_DATA_MEMORY_WATERMARK_LOW", 0.65
-    )
+    # TTL for GCS resource queries, overridable via env var.
     RESOURCE_QUERY_INTERVAL_S: float = env_float(
         "RAY_DATA_MEMORY_WATERMARK_QUERY_INTERVAL_S", 1.0
     )
@@ -61,12 +55,8 @@ class MemoryWatermarkBackpressurePolicy(BackpressurePolicy):
     ):
         super().__init__(data_context, topology, resource_manager)
 
-        self._high_watermark: float = getattr(
-            data_context, "memory_watermark_high", self.DEFAULT_HIGH_WATERMARK
-        )
-        self._low_watermark: float = getattr(
-            data_context, "memory_watermark_low", self.DEFAULT_LOW_WATERMARK
-        )
+        self._high_watermark: float = data_context.memory_watermark_high
+        self._low_watermark: float = data_context.memory_watermark_low
 
         # Validate: 0 < LOW < HIGH < 1
         if not (0.0 < self._low_watermark < self._high_watermark < 1.0):
@@ -102,6 +92,12 @@ class MemoryWatermarkBackpressurePolicy(BackpressurePolicy):
         if now - self._last_query_time < self.RESOURCE_QUERY_INTERVAL_S:
             return self._cached_utilization  # within TTL
 
+        # Update _last_query_time *before* the RPC so that failures also
+        # respect the TTL.  Without this, a persistent GCS outage would
+        # cause every scheduling-cycle call (~100 ms) to retry the failing
+        # RPC, adding load to an already-struggling GCS.
+        self._last_query_time = now
+
         try:
             import ray
 
@@ -115,7 +111,6 @@ class MemoryWatermarkBackpressurePolicy(BackpressurePolicy):
 
             util = max(0.0, min(1.0, 1.0 - (avail / total)))
             self._cached_utilization = util
-            self._last_query_time = now
             return util
         except Exception as e:
             logger.warning(
