@@ -1416,7 +1416,7 @@ ormsgpack==1.7.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
-ortools==9.15.6755
+ortools==9.14.6206
     # via -r python/requirements.txt
 overrides==7.7.0
     # via jupyter-server

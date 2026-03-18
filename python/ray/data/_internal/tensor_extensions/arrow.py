@@ -53,6 +53,8 @@ MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
+PYARROW_VERSION = get_pyarrow_version()
+
 
 class _SerializationFormat(Enum):
     # JSON format is legacy and inefficient, only kept for backward compatibility

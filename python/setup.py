@@ -239,7 +239,7 @@ if setup_spec.type == SetupType.RAY:
             pandas_dep,
             *pyarrow_deps,
             "fsspec",
-            "ortools",
+            "ortools<9.15",
         ],
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,

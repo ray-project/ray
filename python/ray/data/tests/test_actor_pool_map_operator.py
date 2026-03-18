@@ -664,11 +664,9 @@ class TestActorPool(unittest.TestCase):
         original_method = RefBundle.get_preferred_object_locations
         RefBundle.get_preferred_object_locations = lambda self: preferred_locs[id(self)]
         try:
-            task_selector = self._create_task_selector(pool)
-            results = list(
-                task_selector.select_actors(
-                    bundle_queue, actor_locality_enabled=True, strict=True
-                )
+            results = pool.select_actors_batch(
+                bundles=list(bundle_queue),
+                actor_locality_enabled=True,
             )
         finally:
             RefBundle.get_preferred_object_locations = original_method
