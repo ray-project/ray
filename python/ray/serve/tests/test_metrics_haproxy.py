@@ -886,8 +886,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_replica_num_ongoing_requests"),
-            wait=False,
+            get_metric_dictionaries(
+                "ray_serve_replica_num_ongoing_requests", wait=False
+            ),
         )
         == 2
     )
