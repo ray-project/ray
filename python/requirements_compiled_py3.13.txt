@@ -1358,7 +1358,7 @@ openlineage-python==1.40.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.34.1
+opentelemetry-api==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1369,33 +1369,33 @@ opentelemetry-api==1.34.1
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.55b1
+opentelemetry-exporter-prometheus==0.60b0
     # via -r python/requirements.txt
-opentelemetry-instrumentation==0.55b1
+opentelemetry-instrumentation==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.55b1
+opentelemetry-instrumentation-asgi==0.60b0
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.55b1
+opentelemetry-instrumentation-fastapi==0.60b0
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.34.1
+opentelemetry-proto==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-sdk==1.34.1
+opentelemetry-sdk==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.55b1
+opentelemetry-semantic-conventions==0.60b0
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.55b1
+opentelemetry-util-http==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
