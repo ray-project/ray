@@ -13,7 +13,8 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 import pyarrow as pa
 import pandas as pd
 
-def _get_spilled_bytes_total(self) -> float:
+
+def _get_spilled_bytes_total() -> float:
     """Get the total number of spilled bytes across the cluster."""
     memory_info = get_memory_info_reply(
         get_state_from_address(ray.get_runtime_context().gcs_address)
