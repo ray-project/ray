@@ -85,6 +85,7 @@ class TaskPoolMapOperator(MapOperator):
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
 
         self._max_concurrency = max_concurrency
+        self._current_logical_usage = ExecutionResources.zero()
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
@@ -109,6 +110,7 @@ class TaskPoolMapOperator(MapOperator):
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
+        logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -132,18 +134,20 @@ class TaskPoolMapOperator(MapOperator):
             **self.get_map_task_kwargs(),
         )
 
-        self._submit_data_task(gen, bundle)
+        self._current_logical_usage = self._current_logical_usage.add(logical_usage)
+
+        def task_done_callback():
+            self._current_logical_usage = self._current_logical_usage.subtract(
+                logical_usage
+            )
+
+        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
 
     def progress_str(self) -> str:
         return ""
 
     def current_logical_usage(self) -> ExecutionResources:
-        num_active_workers = self.num_active_tasks()
-        return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
-        )
+        return self._current_logical_usage
 
     def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
