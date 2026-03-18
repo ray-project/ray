@@ -1,6 +1,5 @@
 import sys
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from typing import Tuple
 from urllib.parse import urljoin
 
 import httpx
@@ -64,32 +63,42 @@ def test_http_backpressure(serve_instance):
 
     serve.run(Deployment.bind())
 
-    @ray.remote(num_cpus=0)
-    def do_request(msg: str) -> Tuple[int, str]:
+    def send_request(msg: str = "hi"):
         application_url = get_application_url()
         r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
         return r.status_code, r.text
 
-    # First response should block. Until the signal is sent, all subsequent requests
-    # will be queued in the handle.
-    first_ref = do_request.remote("hi-1")
-    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
-    _, pending = ray.wait([first_ref], timeout=0.1)
-    assert len(pending) == 1
+    # Use ThreadPoolExecutor to send requests from the same process (like
+    # test_model_composition_backpressure). This avoids Ray worker latency that
+    # can cause the third request to arrive before the second is queued.
+    with ThreadPoolExecutor(max_workers=5) as exc:
+        # First response should block. Until the signal is sent, all subsequent
+        # requests will be queued in the handle.
+        first_fut = exc.submit(send_request, "hi-1")
+        wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
+        done, _ = wait([first_fut], timeout=0.1, return_when=FIRST_COMPLETED)
+        assert len(done) == 0
 
-    # Check that beyond the 1st queued request, others are dropped due to backpressure.
-    second_ref = do_request.remote("hi-2")
-    _, pending = ray.wait([second_ref], timeout=0.1)
-    for _ in range(10):
-        status_code, text = ray.get(do_request.remote(("hi-err")))
-        assert status_code == 503
-        assert text.startswith("Request dropped due to backpressure")
+        # Second request should get queued.
+        second_fut = exc.submit(send_request, "hi-2")
+        done, _ = wait(
+            [first_fut, second_fut], timeout=0.1, return_when=FIRST_COMPLETED
+        )
+        assert len(done) == 0
 
-    # Send the signal; the first request will be unblocked and the second should
-    # subsequently get scheduled and executed.
-    ray.get(signal_actor.send.remote())
-    assert ray.get(first_ref) == (200, "hi-1")
-    assert ray.get(second_ref) == (200, "hi-2")
+        # Check that beyond the 1st queued request, others are dropped due to
+        # backpressure.
+        for _ in range(10):
+            rejected_fut = exc.submit(send_request, "hi-err")
+            status_code, text = rejected_fut.result()
+            assert status_code == 503
+            assert text.startswith("Request dropped due to backpressure")
+
+        # Send the signal; the first request will be unblocked and the second
+        # should subsequently get scheduled and executed.
+        ray.get(signal_actor.send.remote())
+        assert first_fut.result() == (200, "hi-1")
+        assert second_fut.result() == (200, "hi-2")
 
     ray.get(signal_actor.send.remote(clear=True))
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 0)
