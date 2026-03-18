@@ -1,3 +1,4 @@
+import copy
 import sys
 import time
 import unittest
@@ -35,6 +36,20 @@ TEST_CLUSTER_COMPUTE = {
             "min_workers": 0,
             "max_workers": 0,
             "use_spot": False,
+        }
+    ],
+}
+
+TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
+    "cloud": "test_cloud",
+    "head_node": {
+        "instance_type": "m5.4xlarge",
+    },
+    "worker_nodes": [
+        {
+            "instance_type": "m5.xlarge",
+            "min_nodes": 0,
+            "max_nodes": 4,
         }
     ],
 }
@@ -301,6 +316,42 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.cluster_manager.cluster_compute["advanced_configurations_json"],
             target_cluster_compute["advanced_configurations_json"],
         )
+
+    def testClusterComputeExtraTagsNewSchema(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_schema",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+
+        cluster_compute = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_manager.set_cluster_compute(cluster_compute, extra_tags={"foo": "bar"})
+
+        top_level_aic = cluster_manager.cluster_compute["advanced_instance_config"]
+        self.assertIn("TagSpecifications", top_level_aic)
+
+        head_aic = cluster_manager.cluster_compute["head_node"][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", head_aic)
+
+        worker_aic = cluster_manager.cluster_compute["worker_nodes"][0][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", worker_aic)
+
+        for aic in [top_level_aic, head_aic, worker_aic]:
+            tag_specs = aic["TagSpecifications"]
+            instance_tags = [ts for ts in tag_specs if ts["ResourceType"] == "instance"]
+            self.assertEqual(len(instance_tags), 1)
+            self.assertIn({"Key": "foo", "Value": "bar"}, instance_tags[0]["Tags"])
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):
