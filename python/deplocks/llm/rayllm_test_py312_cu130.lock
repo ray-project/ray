@@ -3363,8 +3363,8 @@ opentelemetry-api==1.39.0 \
     #   opentelemetry-semantic-conventions
     #   vllm
 opentelemetry-exporter-otlp==1.39.0 \
-    --hash=sha256:71c9ad342d665d9e4235898d205db17c5764cd7a69acb8a5dcd6d5e04c4c9988 \
-    --hash=sha256:f4a453e9cde7f6362fd4a090d8acf7881d1dc585540c7b65cbd63e36644238d4
+    --hash=sha256:b405da0287b895fe4e2450dedb2a5b072debba1dfcfed5bdb3d1d183d8daa296 \
+    --hash=sha256:fe155d6968d581b325574ad6dc267c8de299397b18d11feeda2206d0a47928a9
     # via vllm
 opentelemetry-exporter-otlp-proto-common==1.39.0 \
     --hash=sha256:3d77be7c4bdf90f1a76666c934368b8abed730b5c6f0547a2ec57feb115849ac \
