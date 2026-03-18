@@ -229,7 +229,7 @@ py_test_module_list(
 
 # Logging tests with client IP logging enabled.
 py_test_module_list(
-    size = "medium",
+    size = "enormous",
     env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
     files = [
         "test_logging.py",
