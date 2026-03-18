@@ -1,7 +1,7 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
 aioboto3
-anyscale >= 0.26.14
+anyscale >= 0.26.91
 azure-identity
 azure-storage-blob
 bazel-runfiles
@@ -36,7 +36,6 @@ h11>=0.16.0
 google-cloud-logging
 packaging==25.0
 
-# Last anyscale CLI/SDK release before Ray summit 2025
-# This should have a recent version of the new SDK where still having
-# the old SDK.
-anyscale>=0.26.74
+# Anyscale SDK version with support for new compute config API
+# (anyscale.compute_config module) alongside legacy SDK.
+anyscale>=0.26.91

@@ -15,7 +15,7 @@ setup(
     install_requires=[
         # Keep this in sync with requirements_py310.in
         "aioboto3",
-        "anyscale >= 0.26.1",
+        "anyscale >= 0.26.91",
         "aws_requests_auth",
         "azure-identity",
         "azure-storage-blob",
