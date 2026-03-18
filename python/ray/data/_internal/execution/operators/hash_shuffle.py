@@ -231,7 +231,7 @@ def _shuffle_block(
     block_transformer: Optional[BlockTransformer] = None,
     send_empty_blocks: bool = False,
     override_partition_id: Optional[int] = None,
-) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"]]:
+) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"], Dict[int, ObjectRef]]:
     """Shuffles provided block following the algorithm:
 
     1. Hash-partitions provided block into N partitions (where N is determined by
@@ -258,7 +258,9 @@ def _shuffle_block(
         A tuple of
             - Metadata for the block being shuffled
             - Map of partition ids to partition shard stats produced from the
-            shuffled block
+              shuffled block
+            - Map of partition ids to their ObjectRefs in the object store,
+              used for replay-based recovery if an aggregator crashes
     """
     stats = BlockExecStats.builder()
     assert (len(key_columns) > 0) ^ (override_partition_id is not None), (
@@ -279,7 +281,7 @@ def _shuffle_block(
         empty = BlockAccessor.for_block(block).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
-        return (empty, {})
+        return (empty, {}, {})
 
     num_partitions = pool.num_partitions
 
@@ -300,6 +302,8 @@ def _shuffle_block(
 
     partition_shards_stats = {}
     awaitable_to_partition_map = {}
+    # Track partition ObjectRefs for replay-based recovery on actor crash.
+    partition_refs_map: Dict[int, ObjectRef] = {}
 
     for partition_id in range(num_partitions):
         partition_shard = block_partitions.get(partition_id)
@@ -327,6 +331,8 @@ def _shuffle_block(
         # Put target partition shard into the Object Store to make sure partition shards
         # are managed t/h Object Store irrespective of their size
         partition_ref = ray.put(partition_shard)
+        # Record the ObjectRef so the operator can replay it on aggregator failure.
+        partition_refs_map[partition_id] = partition_ref
         # NOTE: Shuffling task is only considered completed upon target aggregator
         #       accepting its respective partition shard
         awaitable = aggregator.submit.remote(input_index, partition_id, partition_ref)
@@ -346,6 +352,14 @@ def _shuffle_block(
         ready, unready = ray.wait(
             pending_submissions, num_returns=len(pending_submissions), timeout=1
         )
+
+        # Surface any RayActorError from submit() calls so the operator can
+        # detect the crash and trigger aggregator restart + replay.
+        for ref in ready:
+            try:
+                ray.get(ref)
+            except ray.exceptions.RayActorError:
+                raise
 
         pending_submissions = unready
         i += 1
@@ -372,8 +386,9 @@ def _shuffle_block(
             f"bytes={'/'.join(map(str, byte_sizes_quantiles))})"
         )
 
-    # Return metadata for the original, shuffled block
-    return original_block_metadata, partition_shards_stats
+    # Return metadata for the original, shuffled block, and the partition ObjectRefs
+    # for replay-based recovery.
+    return original_block_metadata, partition_shards_stats, partition_refs_map
 
 
 @dataclass
@@ -744,9 +759,22 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 # NOTE: We set timeout equal to 1m here as an upper-bound to make
                 #       sure that `ray.get(...)` invocation couldn't stall the pipeline
                 #       indefinitely
-                input_block_metadata, partition_shards_stats = ray.get(
-                    task.get_waitable(), timeout=60
+                input_block_metadata, partition_shards_stats, partition_refs_map = (
+                    ray.get(task.get_waitable(), timeout=60)
                 )
+
+                # Record each submitted partition shard ObjectRef so we can
+                # replay them to a restarted aggregator if the actor crashes
+                # later during the finalization phase.
+                for partition_id, partition_ref in partition_refs_map.items():
+                    aggregator_id = (
+                        self._aggregator_pool._get_aggregator_id_for_partition(
+                            partition_id
+                        )
+                    )
+                    self._aggregator_pool.record_submission(
+                        aggregator_id, input_index, partition_id, partition_ref
+                    )
 
                 self._handle_shuffled_block_metadata(
                     input_index, input_block_metadata, partition_shards_stats
@@ -909,11 +937,25 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 )
 
                 if exc:
-                    logger.error(
-                        f"Aggregation of the {partition_id} partition "
-                        f"failed with: {exc}",
-                        exc_info=exc,
-                    )
+                    if isinstance(exc, ray.exceptions.RayActorError):
+                        # The aggregator actor hosting this partition crashed
+                        # (e.g. node failure).  Restart the actor, replay all
+                        # previously submitted shards so its in-memory state is
+                        # restored, then re-add the partition to the pending set
+                        # so _try_finalize() will re-schedule it.
+                        aggregator_id = (
+                            self._aggregator_pool._get_aggregator_id_for_partition(
+                                partition_id
+                            )
+                        )
+                        self._aggregator_pool.restart_aggregator(aggregator_id)
+                        self._pending_finalization_partition_ids.add(partition_id)
+                    else:
+                        logger.error(
+                            f"Aggregation of the {partition_id} partition "
+                            f"failed with: {exc}",
+                            exc_info=exc,
+                        )
 
         # NOTE: Unless explicitly set finalization batch size defaults to the #
         #       of shuffle aggregators
@@ -1426,6 +1468,14 @@ class AggregatorPool:
             min_max_shards_compaction_thresholds
         )
 
+        # Replay log for crash recovery: maps aggregator_id ->
+        # list of (seq_id, partition_id, block_ref) tuples that have been
+        # successfully submitted.  On aggregator restart these are replayed
+        # in order so the new actor rebuilds its in-memory state.
+        self._submitted_records: DefaultDict[
+            int, List[Tuple[int, int, ObjectRef]]
+        ] = defaultdict(list)
+
     def start(self):
         # Check cluster resources before starting aggregators
         self._check_cluster_resources()
@@ -1593,6 +1643,70 @@ class AggregatorPool:
 
         self._aggregators.clear()
 
+    def record_submission(
+        self,
+        aggregator_id: int,
+        seq_id: int,
+        partition_id: int,
+        block_ref: ObjectRef,
+    ) -> None:
+        """Record a successfully delivered partition shard for crash recovery.
+
+        Called by the operator after each ``_shuffle_block`` task completes.
+        The recorded ``(seq_id, partition_id, block_ref)`` tuples are replayed
+        to a freshly spawned aggregator actor if the original crashes.
+        """
+        self._submitted_records[aggregator_id].append((seq_id, partition_id, block_ref))
+
+    def restart_aggregator(self, aggregator_id: int) -> None:
+        """Restart a crashed aggregator and replay all previously submitted shards.
+
+        When a node hosting an aggregator dies the actor's in-memory partition
+        buckets are lost.  This method:
+          1. Spawns a replacement actor with the same configuration.
+          2. Replays every shard that was recorded via ``record_submission`` so
+             the new actor reconstructs the identical in-memory state.
+
+        The ObjectRefs in ``_submitted_records`` point to data that still lives
+        in the Ray Object Store (on surviving nodes), so replay succeeds as long
+        as the nodes holding those objects are still alive.
+
+        Args:
+            aggregator_id: Index of the failed aggregator to restart.
+        """
+        target_partition_ids = self._aggregator_partition_map[aggregator_id]
+        num_replays = len(self._submitted_records[aggregator_id])
+
+        logger.warning(
+            f"HashShuffleAggregator {aggregator_id} crashed. "
+            f"Restarting and replaying {num_replays} submitted shards..."
+        )
+
+        new_aggregator = HashShuffleAggregator.options(
+            **self._aggregator_ray_remote_args
+        ).remote(
+            aggregator_id,
+            self._num_input_seqs,
+            target_partition_ids,
+            self._aggregation_factory_ref,
+            self._target_max_block_size,
+            self._min_max_shards_compaction_thresholds,
+        )
+        self._aggregators[aggregator_id] = new_aggregator
+
+        # Replay all previously accepted shards to rebuild in-memory state.
+        replay_futures = [
+            new_aggregator.submit.remote(seq_id, partition_id, block_ref)
+            for seq_id, partition_id, block_ref in self._submitted_records[aggregator_id]
+        ]
+        if replay_futures:
+            ray.get(replay_futures)
+
+        logger.info(
+            f"HashShuffleAggregator {aggregator_id} restarted and "
+            f"replayed {num_replays} shards successfully."
+        )
+
     def check_aggregator_health(self) -> Optional[AggregatorHealthInfo]:
         """Get health information about aggregators for issue detection.
 
@@ -1647,7 +1761,11 @@ class AggregatorPool:
 
 @ray.remote(
     # Make sure tasks are retried indefinitely
-    max_task_retries=-1
+    max_task_retries=-1,
+    # Allow the actor to be automatically restarted on node failure so that
+    # the operator's restart_aggregator() method can replay shards to the new
+    # instance and resume finalization without failing the whole job.
+    max_restarts=-1,
 )
 class HashShuffleAggregator:
     """Actor handling of the assigned partitions during hash-shuffle operation.
