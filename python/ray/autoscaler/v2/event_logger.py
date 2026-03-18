@@ -431,14 +431,19 @@ class AutoscalerEventLogger:
                     }
                 )
 
-        # Convert infeasible ResourceRequest protos to resource dicts
-        # with label constraints preserved.
+        # Convert infeasible ResourceRequest protos to grouped resource dicts
+        # with label constraints preserved. Grouping by count (same as the
+        # legacy path) normalizes order so the downstream hash is stable.
         infeasible_resource_dicts = []
         if infeasible_requests:
-            for req in infeasible_requests:
-                entry = {"resources": ResourceRequestUtil.to_resource_map(req)}
+            requests_by_count = ResourceRequestUtil.group_by_count(infeasible_requests)
+            for req_count in requests_by_count:
+                entry = {
+                    "resources": ResourceRequestUtil.to_resource_map(req_count.request),
+                    "count": req_count.count,
+                }
                 label_constraints = []
-                for selector in req.label_selectors:
+                for selector in req_count.request.label_selectors:
                     for constraint in selector.label_constraints:
                         label_constraints.append(
                             {
@@ -453,15 +458,24 @@ class AutoscalerEventLogger:
                     entry["label_constraints"] = label_constraints
                 infeasible_resource_dicts.append(entry)
 
-        # Convert infeasible gang requests.
+        # Convert infeasible gang requests, grouping bundles within each gang.
         infeasible_gang_dicts = []
         if infeasible_gang_requests:
             for gang in infeasible_gang_requests:
-                bundles = [
-                    ResourceRequestUtil.to_resource_map(r) for r in gang.requests
-                ]
+                requests_by_count = ResourceRequestUtil.group_by_count(gang.requests)
                 infeasible_gang_dicts.append(
-                    {"bundles": bundles, "details": gang.details}
+                    {
+                        "bundles": [
+                            {
+                                "resources": ResourceRequestUtil.to_resource_map(
+                                    req_count.request
+                                ),
+                                "count": req_count.count,
+                            }
+                            for req_count in requests_by_count
+                        ],
+                        "details": gang.details,
+                    }
                 )
 
         # Convert infeasible cluster resource constraints.

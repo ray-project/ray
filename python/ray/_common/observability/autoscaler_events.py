@@ -173,6 +173,7 @@ class AutoscalerScalingDecisionEventBuilder(InternalEventBuilder):
             bundle = event.infeasible_resource_requests.add()
             for k, v in req.get("resources", {}).items():
                 bundle.resources[k] = v
+            bundle.count = req.get("count", 1)
             for label_constraint in req.get("label_constraints", []):
                 constraint = bundle.label_constraints.add()
                 constraint.label_key = label_constraint.get("label_key", "")
@@ -184,8 +185,9 @@ class AutoscalerScalingDecisionEventBuilder(InternalEventBuilder):
             gang_msg = event.infeasible_gang_resource_requests.add()
             for b in gang.get("bundles", []):
                 bundle = gang_msg.bundles.add()
-                for k, v in b.items():
+                for k, v in b.get("resources", {}).items():
                     bundle.resources[k] = v
+                bundle.count = b.get("count", 1)
             gang_msg.details = gang.get("details", "")
 
         for constraint in self._infeasible_cluster_resource_constraints:
