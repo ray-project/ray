@@ -2978,6 +2978,10 @@ class DeploymentState:
         Stop replicas with versions that require the actor to be restarted, and
         reconfigure replicas that require refreshing deployment config values.
 
+        For gang-scheduled deployments, replicas that need restarting are
+        grouped by gang_id and stopped in complete gangs so that we never
+        leave a gang partially torn down.
+
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
@@ -2993,6 +2997,47 @@ class DeploymentState:
         replicas_changed = False
         code_version_changes = 0
         reconfigure_changes = 0
+
+        # Process gang-grouped replicas
+        gang_config = self.get_gang_config()
+        if gang_config is not None:
+            need_restart: List[DeploymentReplica] = []
+            remaining: List[DeploymentReplica] = []
+            for replica in replicas_to_update:
+                if replica.version.requires_actor_restart(self._target_state.version):
+                    need_restart.append(replica)
+                else:
+                    remaining.append(replica)
+
+            # Group restart-candidates by gang_id.
+            gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
+            for replica in need_restart:
+                gangs[replica.gang_context.gang_id].append(replica)
+
+            # Stop complete gangs atomically within the budget
+            for _, gang_replicas in gangs.items():
+                expected_size = gang_replicas[0].gang_context.world_size
+                if len(gang_replicas) != expected_size:
+                    # Gang is incomplete (members may be RECOVERING/UPDATING);
+                    # wait for them to stabilize before tearing down.
+                    for replica in gang_replicas:
+                        self._replicas.add(replica.actor_details.state, replica)
+                elif code_version_changes + len(gang_replicas) <= max_to_stop:
+                    for replica in gang_replicas:
+                        code_version_changes += 1
+                        # Forcefully stop siblings to avoid partial gangs
+                        self._stop_replica(replica, graceful_stop=False)
+                        replicas_changed = True
+                else:
+                    # Not enough budget for this gang; put replicas back
+                    for replica in gang_replicas:
+                        self._replicas.add(replica.actor_details.state, replica)
+
+            # In gang deployments, replicas that only require reconfiguration are processed below.
+            # All gang replicas that require actor restart and fit within the max_to_stop budget have already been stopped.
+            replicas_to_update = remaining
+
+        # Per-replica restart/reconfigure handling
         for replica in replicas_to_update:
             if (code_version_changes + reconfigure_changes) >= max_to_stop:
                 self._replicas.add(replica.actor_details.state, replica)
@@ -3100,6 +3145,15 @@ class DeploymentState:
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
         rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
+
+        # For gang deployments, ensure rollout_size is at least a multiple of
+        # gang_size so that we always stop and start complete gangs.
+        gang_config = self.get_gang_config()
+        if gang_config is not None:
+            gs = gang_config.gang_size
+            rollout_size = max(rollout_size, gs)
+            rollout_size = math.ceil(rollout_size / gs) * gs
+
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
@@ -3401,11 +3455,14 @@ class DeploymentState:
                     # from the replica actor. The invariant is that the rank is assigned
                     # during startup and before the replica is added to the replicas
                     # data structure with RUNNING state.
-                    # Recover rank from the replica actor during controller restart
+                    # Skip if the rank is already assigned (e.g., health-check failure
+                    # put the replica into RECOVERING without a controller crash, so the
+                    # rank was never released).
                     replica_id = replica.replica_id.unique_id
-                    self._rank_manager.recover_rank(
-                        replica_id, replica.actor_node_id, replica.rank
-                    )
+                    if not self._rank_manager.has_replica_rank(replica_id):
+                        self._rank_manager.recover_rank(
+                            replica_id, replica.actor_node_id, replica.rank
+                        )
                 # Register recovered gang replicas in the incremental
                 # bookkeeping (newly created gang replicas are already
                 # registered in _add_upscale_gang_replicas).

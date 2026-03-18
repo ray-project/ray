@@ -1,9 +1,7 @@
-import abc
 import logging
 import time
 import uuid
 import warnings
-from abc import abstractmethod
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -17,6 +15,8 @@ from typing import (
     Union,
 )
 
+from typing_extensions import override
+
 if TYPE_CHECKING:
     import pyarrow as pa
 
@@ -29,11 +29,11 @@ from ray.data._internal.actor_autoscaler import (
     AutoscalingActorPool,
 )
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     ActorPoolScalingRequest,
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
-    QueueWithRemoval,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -45,7 +45,6 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
@@ -66,6 +65,9 @@ from ray.data.context import (
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+# Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
+LogicalActorId = str
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -155,14 +157,6 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
             ray_actor_task_remote_args, self.data_context
         )
-
-        per_actor_resource_usage = ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus"),
-            gpu=self._ray_remote_args.get("num_gpus"),
-            memory=self._ray_remote_args.get("memory"),
-        )
-
-        max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
         map_worker_cls_name = f"MapWorker({self.name})"
         # We set the actor class name to include operator name to disambiguate
         # logs in the Actor Pool
@@ -172,27 +166,7 @@ class ActorPoolMapOperator(MapOperator):
         # class per operator with a unique name.
         self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
 
-        self._actor_pool = _ActorPool(
-            self._start_actor,
-            per_actor_resource_usage,
-            min_size=compute_strategy.min_size,
-            max_size=compute_strategy.max_size,
-            initial_size=compute_strategy.initial_size,
-            max_actor_concurrency=max_actor_concurrency,
-            max_tasks_in_flight_per_actor=(
-                # Unless explicitly overridden by the user, max tasks-in-flight config
-                # will fall back to be:
-                #
-                #   DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR * max_concurrency,
-                compute_strategy.max_tasks_in_flight_per_actor
-                or data_context.max_tasks_in_flight_per_actor
-                or max_actor_concurrency
-                * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
-            ),
-            map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
-        )
-        self._actor_task_selector = self._create_task_selector(self._actor_pool)
+        self._actor_pool = self._create_actor_pool(compute_strategy)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
@@ -203,9 +177,32 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
-    @staticmethod
-    def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
-        return _ActorTaskSelectorImpl(actor_pool)
+    def _create_actor_pool(
+        self, compute_strategy: ActorPoolStrategy
+    ) -> "AutoscalingActorPool":
+        per_actor_resource_usage = ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus"),
+            gpu=self._ray_remote_args.get("num_gpus"),
+            memory=self._ray_remote_args.get("memory"),
+        )
+        max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
+        max_tasks_in_flight_per_actor = (
+            compute_strategy.max_tasks_in_flight_per_actor
+            or self.data_context.max_tasks_in_flight_per_actor
+            or max_actor_concurrency
+            * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
+        )
+        return _ActorPool(
+            create_actor_fn=self._start_actor,
+            min_size=compute_strategy.min_size,
+            max_size=compute_strategy.max_size,
+            initial_size=compute_strategy.initial_size,
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+            max_actor_concurrency=max_actor_concurrency,
+            per_actor_resource_usage=per_actor_resource_usage,
+            map_worker_cls_name=self._map_worker_cls_name,
+            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+        )
 
     @staticmethod
     def _apply_default_actor_task_remote_args(
@@ -295,10 +292,10 @@ class ActorPoolMapOperator(MapOperator):
             should be able to launch a task.
 
         """
-        return self._actor_task_selector.can_schedule_task()
+        return self._actor_pool.can_schedule_task()
 
     def _start_actor(
-        self, labels: Dict[str, str], logical_actor_id: str
+        self, labels: Dict[str, str], logical_actor_id: LogicalActorId
     ) -> Tuple[ActorHandle, ObjectRef]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
@@ -329,7 +326,7 @@ class ActorPoolMapOperator(MapOperator):
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
             # active actor pool.
-            has_actor = self._actor_pool.pending_to_running(res_ref)
+            has_actor = self._actor_pool.pending_to_running(res_ref) is not None
             if not has_actor:
                 # Actor has already been killed.
                 return
@@ -355,24 +352,36 @@ class ActorPoolMapOperator(MapOperator):
             assert self.can_add_input(), f"Operator {self} can not handle input!"
 
         # Try to dispatch new tasks
-        submitted = self._try_schedule_tasks_internal(strict=strict)
+        submitted = self._try_schedule_tasks_internal()
 
         if strict:
             assert (
                 submitted >= 1
             ), f"Expected at least 1 task launched (launched {submitted})"
 
-    def _try_schedule_tasks_internal(self, strict: bool) -> int:
-        """Try to dispatch tasks from the internal queue"""
+    def _try_schedule_tasks_internal(self) -> int:
+        """Try to dispatch tasks from the internal queue. Returns the # of tasks submitted"""
+
+        # Collect all pending bundles for batch assignment.
+        pending_bundles = list(self._bundle_queue)
+        if not pending_bundles:
+            return 0
+
+        # Batch-assign bundles to actors via min-cost flow (locality) or
+        # heap-based least-loaded (no locality).
+        assignments = self._actor_pool.select_actors_batch(
+            bundles=pending_bundles,
+            actor_locality_enabled=self._actor_locality_enabled,
+        )
+
+        if not assignments:
+            return 0
+
+        from functools import partial
 
         num_submitted_tasks = 0
-
-        for bundle, actor in self._actor_task_selector.select_actors(
-            self._bundle_queue,
-            self._actor_locality_enabled,
-            strict=strict,
-        ):
-            # Submit the map task.
+        for bundle, actor in assignments:
+            self._bundle_queue.remove(bundle)
             self._metrics.on_input_dequeued(bundle, input_index=0)
             input_blocks = [block for block, _ in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
@@ -400,8 +409,6 @@ class ActorPoolMapOperator(MapOperator):
                 # Return the actor that was running the task to the pool.
                 self._actor_pool.on_task_completed(actor_to_return)
 
-            from functools import partial
-
             self._submit_data_task(
                 gen, bundle, partial(_task_done_callback, actor_to_return=actor)
             )
@@ -410,7 +417,7 @@ class ActorPoolMapOperator(MapOperator):
 
             # Update locality metrics
             if (
-                self._actor_pool.running_actors()[actor].actor_location
+                self._actor_pool._get_actor_node_id(actor)
                 in bundle.get_preferred_object_locations()
             ):
                 self._locality_hits += 1
@@ -450,7 +457,7 @@ class ActorPoolMapOperator(MapOperator):
                 )
 
             # Schedule tasks handling remaining bundles
-            self._try_schedule_tasks_internal(strict=False)
+            self._try_schedule_tasks_internal()
 
         return super().has_next()
 
@@ -607,14 +614,13 @@ class ActorPoolMapOperator(MapOperator):
     def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
 
-    def update_resource_usage(self) -> None:
+    def refresh_state(self):
         """Updates internal state"""
 
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
-        self._actor_task_selector.refresh_state()
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
         return self._actor_pool.get_actor_info()
 
@@ -630,8 +636,8 @@ class _MapWorker:
         ctx: DataContext,
         src_fn_name: str,
         map_transformer: MapTransformer,
-        logical_actor_id: str,
-        actor_location_tracker: ray.actor.ActorHandle[ActorLocationTracker],
+        logical_actor_id: LogicalActorId,
+        actor_location_tracker: ActorHandle[ActorLocationTracker],
     ):
         self.src_fn_name: str = src_fn_name
         self._map_transformer = map_transformer
@@ -738,7 +744,9 @@ class _FlowEdges:
 
 @dataclass
 class _ActorState:
-    """Actor state"""
+    """Actor state. Not to be confused with Ray Core actor state that tracks
+    DEAD, RESTARTING, or ALIVE statuses, but rather, tracks additional info
+    in order to inform Ray Data scheduling decisions."""
 
     # Number of tasks in flight per actor
     num_tasks_in_flight: int
@@ -748,303 +756,6 @@ class _ActorState:
 
     # Is Actor state restarting or alive
     is_restarting: bool
-
-
-class _ActorTaskSelector(abc.ABC):
-    def __init__(self, actor_pool: "_ActorPool"):
-        """Initialize the actor task selector.
-
-        Args:
-            actor_pool: The actor pool to select tasks from.
-        """
-        self._actor_pool = actor_pool
-
-    def refresh_state(self):
-        """Callback to refresh selector's state that might depend on external data
-
-        NOTE: This data has to be snapshotted inside the selector, and
-              can only change upon this method invocation"""
-        pass
-
-    @abstractmethod
-    def can_schedule_task(self) -> bool:
-        """Checks whether there are actors available to schedule at least 1 task
-
-        NOTE: This method has to be consistent with `select_actors(...)` method, ie
-
-            - If `can_schedule_task` returns `True`, then
-            - `select_actors` must return at least 1 actor
-
-        TODO deduplicate with select_actors
-        """
-        ...
-
-    @abstractmethod
-    def select_actors(
-        self,
-        input_queue: QueueWithRemoval,
-        actor_locality_enabled: bool,
-        strict: bool,
-    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
-        """Select actors for bundles in the input queue.
-
-        Args:
-            input_queue: The input queue to select actors for.
-            actor_locality_enabled: Whether actor locality is enabled.
-            strict: Controls whether strict input handling protocol is enforced,
-                requiring at least 1 bundle to be matched with an actor
-
-        Returns:
-            Iterator of tuples of the bundle and the selected actor for that bundle.
-            Iteration stops when there are no more bundles to be selected in the input queue
-        """
-        pass
-
-
-class _ActorTaskSelectorImpl(_ActorTaskSelector):
-    def __init__(self, actor_pool: "_ActorPool"):
-        super().__init__(actor_pool)
-
-    def can_schedule_task(self) -> bool:
-        available_actors = self._actor_pool.schedulable_actors()
-
-        return len(available_actors) > 0
-
-    def select_actors(
-        self,
-        input_queue: QueueWithRemoval,
-        actor_locality_enabled: bool,
-        strict: bool,
-    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
-        assert (
-            not strict or self.can_schedule_task()
-        ), "select_actors(...) might not be invoked unless can_schedule_task(...) returns true"
-
-        if not input_queue:
-            return
-
-        available_actors = self._actor_pool.schedulable_actors()
-        if not available_actors:
-            return
-
-        if actor_locality_enabled:
-            yield from self._select_actors_min_cost_flow(input_queue, available_actors)
-        else:
-            yield from self._select_actors_no_locality(input_queue, available_actors)
-
-    def _select_actors_min_cost_flow(
-        self,
-        input_queue: QueueWithRemoval,
-        available_actors: List[ActorHandle],
-    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
-        """Select actors using min-cost max-flow to minimize total data movement.
-
-        Models the assignment as a flow network where edge costs on
-        bundle->actor arcs represent bytes that must transfer over the network,
-        and actor->sink edge limits encode remaining task slots per actor.
-
-        Example with 3 bundles, 2 actors (actor_0 on node_0, actor_1 on node_1)::
-
-                          max_flow=1          max_flow=1              max_flow=remaining_slots
-                          cost=0              cost=movement           cost=0
-
-                          +---------+       cost=50     +---------+
-                    +---->| bundle_0|-------+---------->| actor_0 |------+
-                    |     +---------+       |           | (node_0)|      |
-                    |          |            |           +---------+      |
-            +------+          |  cost=100   |               ^            |   +------+
-            |source|          +-------------)---------------+            +-->| sink |
-            +------+                        |                            |   +------+
-                    |     +---------+       |           +---------+      |
-                    +---->| bundle_1|-------+---------->| actor_1 |------+
-                    |     +---------+--+                | (node_1)|      |
-                    |                  |                +---------+      |
-                    |     +---------+  |  cost=0            ^            |
-                    +---->| bundle_2|--+--------------------+            |
-                          +---------+                                    |
-
-            Each bundle connects to every actor. The solver finds the
-            assignment that minimizes total data movement.
-
-        Edge semantics:
-            source -> bundle_i :  max_flow=1, cost=0
-                Each bundle can be assigned at most once.
-            bundle_i -> actor_j : max_flow=1, cost=locality_cost * scale + load
-                Data movement cost of this particular assignment.
-            actor_j -> sink :     max_flow=remaining_task_slots, cost=0
-                Limits how many bundles each actor can accept.
-        """
-        import numpy as np
-        from ortools.graph.python import min_cost_flow
-
-        bundles: List[RefBundle] = list(input_queue)
-        actor_states: Dict[ActorHandle, _ActorState] = self._actor_pool.running_actors()
-        max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
-
-        num_bundles = len(bundles)
-        num_actors = len(available_actors)
-
-        # Compute remaining task slots per actor.
-        actor_remaining_slots = [
-            max_in_flight - actor_states[actor].num_tasks_in_flight
-            for actor in available_actors
-        ]
-        total_slots = sum(actor_remaining_slots)
-        max_assignable = min(num_bundles, total_slots)
-        if max_assignable == 0:
-            return
-
-        # Flow network node layout:
-        #   0                                       = source
-        #   1 .. num_bundles                        = one node per bundle
-        #   num_bundles+1 .. num_bundles+num_actors = one node per actor
-        #   num_bundles+num_actors+1                = sink
-        source_node = 0
-        sink_node = num_bundles + num_actors + 1
-        num_flow_nodes = num_bundles + num_actors + 2
-
-        bundle_nodes = np.arange(1, num_bundles + 1, dtype=np.int32)
-        actor_nodes = np.arange(
-            num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
-        )
-
-        def _build_bundle_actor_edges() -> _FlowEdges:
-            """Build bipartite bundle->actor edges with locality-aware costs.
-
-            Edge costs encode two objectives:
-              Primary: maximize local data (prefer co-located actors)
-              Secondary: prefer least-loaded actors (tiebreaker)
-
-            The locality cost is (max_local_bytes - local_bytes_on_actor_node),
-            which is 0 for the best-located actor and positive for others. This
-            gives the same optimal assignment as (total_bytes - local_bytes)
-            since the per-bundle offset doesn't affect the flow solution.
-
-            We combine them into a single cost:
-              cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
-
-            load_tiebreaker_scale > max possible num_tasks_in_flight, so any
-            locality difference always dominates the load tiebreaker.
-            """
-            num_edges = num_bundles * num_actors
-
-            actor_locations = [
-                actor_states[actor].actor_location for actor in available_actors
-            ]
-            actor_tasks_in_flight = [
-                actor_states[actor].num_tasks_in_flight for actor in available_actors
-            ]
-            load_tiebreaker_scale = max_in_flight + 1
-
-            costs = np.empty(num_edges, dtype=np.int64)
-            for bundle_idx, bundle in enumerate(bundles):
-                preferred_locs = bundle.get_preferred_object_locations()
-                max_local = max(preferred_locs.values(), default=0)
-                offset = bundle_idx * num_actors
-                for actor_idx, actor_location in enumerate(actor_locations):
-                    local_bytes = preferred_locs.get(actor_location, 0)
-                    locality_cost = max_local - local_bytes
-                    costs[offset + actor_idx] = (
-                        locality_cost * load_tiebreaker_scale
-                        + actor_tasks_in_flight[actor_idx]
-                    )
-
-            return _FlowEdges(
-                starts=np.repeat(bundle_nodes, num_actors),
-                ends=np.tile(actor_nodes, num_bundles),
-                max_flows=np.ones(num_edges, dtype=np.int64),
-                unit_costs=costs,
-            )
-
-        # --- Build the three edge sections ---
-
-        # Source -> each bundle: each bundle assigned at most once.
-        count = len(bundle_nodes)
-        source_edges = _FlowEdges(
-            starts=np.full(count, source_node, dtype=np.int32),
-            ends=bundle_nodes,
-            max_flows=np.full(count, 1, dtype=np.int64),
-            unit_costs=np.zeros(count, dtype=np.int64),
-        )
-
-        # Bundle -> actor: bipartite edges with locality-aware costs.
-        bundle_actor_edges = _build_bundle_actor_edges()
-
-        # Actor -> sink: limits how many bundles each actor can accept.
-        # Each actor has a different max_flow (remaining task slots).
-        sink_edges = _FlowEdges(
-            starts=actor_nodes,
-            ends=np.full(num_actors, sink_node, dtype=np.int32),
-            max_flows=np.array(actor_remaining_slots, dtype=np.int64),
-            unit_costs=np.zeros(num_actors, dtype=np.int64),
-        )
-
-        # Concatenate all sections and build the solver.
-        all_flow_edges = _FlowEdges.concatenate(
-            source_edges, bundle_actor_edges, sink_edges
-        )
-        solver = min_cost_flow.SimpleMinCostFlow()
-        all_arcs = solver.add_arcs_with_capacity_and_unit_cost(
-            all_flow_edges.starts,
-            all_flow_edges.ends,
-            all_flow_edges.max_flows,
-            all_flow_edges.unit_costs,
-        )
-
-        # Source produces flow, sink consumes it.
-        supplies = np.zeros(num_flow_nodes, dtype=np.int64)
-        supplies[source_node] = max_assignable
-        supplies[sink_node] = -max_assignable
-        solver.set_nodes_supplies(np.arange(num_flow_nodes, dtype=np.int32), supplies)
-
-        status = solver.solve()
-        if status != solver.OPTIMAL:
-            return
-
-        # Extract assignments from bundle->actor arcs where the solver
-        # pushed flow (flow > 0 means this bundle is assigned to this actor).
-        num_source_arcs = len(source_edges.starts)
-        num_bundle_actor_arcs = len(bundle_actor_edges.starts)
-        bundle_actor_arc_ids = all_arcs[
-            num_source_arcs : num_source_arcs + num_bundle_actor_arcs
-        ]
-        edge_flows = solver.flows(bundle_actor_arc_ids)
-
-        for arc_id, flow in zip(bundle_actor_arc_ids, edge_flows):
-            if flow > 0:
-                # Recover bundle/actor indices from the flow node ids.
-                # Bundle nodes are 1-indexed, actor nodes start at num_bundles+1.
-                bundle_idx = solver.tail(arc_id) - 1
-                actor_idx = solver.head(arc_id) - (num_bundles + 1)
-                input_queue.remove(bundles[bundle_idx])
-                yield bundles[bundle_idx], available_actors[actor_idx]
-
-    def _select_actors_no_locality(
-        self,
-        input_queue: QueueWithRemoval,
-        available_actors: List[ActorHandle],
-    ) -> Iterator[Tuple[RefBundle, ActorHandle]]:
-        """When locality is disabled, assign bundles to least-loaded actors."""
-        import heapq
-
-        actor_states = self._actor_pool.running_actors()
-        max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
-
-        # Max-heap by remaining task slots (negate for min-heap).
-        heap = []
-        for actor in available_actors:
-            remaining = max_in_flight - actor_states[actor].num_tasks_in_flight
-            if remaining > 0:
-                heapq.heappush(heap, (-remaining, id(actor), actor))
-
-        while input_queue and heap:
-            bundle = input_queue.peek_next()
-            neg_rem, _, actor = heapq.heappop(heap)
-            remaining = -neg_rem
-            input_queue.remove(bundle)
-            yield bundle, actor
-            if remaining - 1 > 0:
-                heapq.heappush(heap, (-(remaining - 1), id(actor), actor))
 
 
 class _ActorPool(AutoscalingActorPool):
@@ -1061,86 +772,61 @@ class _ActorPool(AutoscalingActorPool):
 
     def __init__(
         self,
-        create_actor_fn: "Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]]",
-        per_actor_resource_usage: ExecutionResources,
-        *,
+        create_actor_fn: Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]],
         min_size: int,
         max_size: int,
         initial_size: int,
-        max_actor_concurrency: int,
         max_tasks_in_flight_per_actor: int,
+        max_actor_concurrency: int,
+        per_actor_resource_usage: ExecutionResources,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
-        """Initialize the actor pool.
+        assert min_size >= 1
+        assert max_size >= min_size
+        assert initial_size <= max_size
+        assert initial_size >= min_size
+        assert max_tasks_in_flight_per_actor >= 1
 
-        Args:
-            create_actor_fn: This function should take key-value labels as input, and
-                create an actor with those labels. The function should return the actor
-                handle and a reference to the actor's node ID.
-            per_actor_resource_usage: The resource usage per actor.
-            min_size: The minimum number of running actors to be maintained
-                in the pool. Note, that this constraint could be violated when
-                no new work is available for scheduling in the actor pool (ie
-                when operator completes execution).
-            max_size: The maximum number of running actors to be maintained
-                in the pool.
-            initial_size: The initial number of actors to start with.
-            max_actor_concurrency: The maximum number of concurrent tasks a
-                single actor can execute (derived from `ray_remote_args`
-                passed to the operator).
-            max_tasks_in_flight_per_actor: The maximum number of tasks that can
-                be submitted to a single actor at any given time.
-            map_worker_cls_name: Name of the map worker class for logging purposes.
-            debounce_period_s: Debounce period for scaling down after scaling up
-            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
-                on exit hook.
-        """
-
-        self._min_size: int = min_size
-        self._max_size: int = max_size
-        self._initial_size: int = initial_size
-        self._max_actor_concurrency: int = max_actor_concurrency
-        self._max_tasks_in_flight: int = max_tasks_in_flight_per_actor
-        self._map_worker_cls_name = map_worker_cls_name
-        self._debounce_period_s = debounce_period_s
-        self._create_actor_fn = create_actor_fn
+        self._min_size = min_size
+        self._max_size = max_size
+        self._initial_size = initial_size
+        self._max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+        self._max_actor_concurrency = max_actor_concurrency
         self._per_actor_resource_usage = per_actor_resource_usage
 
-        assert self._min_size >= 1
-        assert self._max_size >= self._min_size
-        assert self._initial_size <= self._max_size
-        assert self._initial_size >= self._min_size
-        assert self._max_tasks_in_flight >= 1
-        assert self._create_actor_fn is not None
-
+        self._create_actor_fn = create_actor_fn
+        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
+        self._map_worker_cls_name = map_worker_cls_name
+        self._debounce_period_s = debounce_period_s
         # Timestamp of the last scale up action
         self._last_upscaled_at: Optional[float] = None
         self._last_downscaling_debounce_warning_ts: Optional[float] = None
         # Actors that have started running, including alive and restarting actors.
-        self._running_actors: Dict[ray.actor.ActorHandle, _ActorState] = {}
+        self._running_actors: Dict[ActorHandle, _ActorState] = {}
         # Actors that are not yet ready (still pending creation).
-        self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
+        self._pending_actors: Dict[ObjectRef, ActorHandle] = {}
         # Map from actor handle to its logical ID.
-        self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
-        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
+        self._actor_to_logical_id: Dict[ActorHandle, LogicalActorId] = {}
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
 
-    # === Overriding methods of AutoscalingActorPool ===
-
+    @override
     def min_size(self) -> int:
         return self._min_size
 
+    @override
     def max_size(self) -> int:
         return self._max_size
 
+    @override
     def current_size(self) -> int:
         return self.num_pending_actors() + self.num_running_actors()
 
+    @override
     def num_running_actors(self) -> int:
         return len(self._running_actors)
 
@@ -1148,23 +834,28 @@ class _ActorPool(AutoscalingActorPool):
         """Restarting actors are all the running actors not in ALIVE state."""
         return self._num_restarting_actors
 
+    @override
     def num_active_actors(self) -> int:
         """Active actors are all the running actors with inflight tasks."""
         return self._num_active_actors
 
     def num_alive_actors(self) -> int:
         """Alive actors are all the running actors in ALIVE state."""
-        return len(self._running_actors) - self._num_restarting_actors
+        return self.num_running_actors() - self.num_restarting_actors()
 
+    @override
     def num_pending_actors(self) -> int:
         return len(self._pending_actors)
 
+    @override
     def max_tasks_in_flight_per_actor(self) -> int:
-        return self._max_tasks_in_flight
+        return self._max_tasks_in_flight_per_actor
 
+    @override
     def max_actor_concurrency(self) -> int:
         return self._max_actor_concurrency
 
+    @override
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
 
@@ -1175,13 +866,16 @@ class _ActorPool(AutoscalingActorPool):
     def map_worker_cls_name(self) -> str:
         return self._map_worker_cls_name
 
-    def get_actor_id(self, actor: ActorHandle) -> str:
+    def _get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
         return self._actor_to_logical_id[actor]
 
-    def _can_apply(self, config: ActorPoolScalingRequest) -> bool:
+    def _get_actor_node_id(self, actor: ActorHandle):
+        return self._running_actors[actor].actor_location
+
+    def _can_apply(self, req: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""
 
-        if config.delta < 0:
+        if req.delta < 0:
             # To prevent bouncing back and forth, we disallow scale down for
             # a "cool-off" period after the most recent scaling up, with an intention
             # to allow application to actually utilize newly provisioned resources
@@ -1191,7 +885,7 @@ class _ActorPool(AutoscalingActorPool):
             # scaling up, ie if actor pool just scaled down, it'd still be able
             # to scale back up immediately.
             if (
-                not config.force
+                not req.force
                 and self._last_upscaled_at is not None
                 and (time.time() <= self._last_upscaled_at + self._debounce_period_s)
             ):
@@ -1199,7 +893,7 @@ class _ActorPool(AutoscalingActorPool):
                 #       per upscaling event
                 if self._last_upscaled_at != self._last_downscaling_debounce_warning_ts:
                     logger.debug(
-                        f"Ignoring scaling down request (request={config}; reason=debounced from scaling up at {self._last_upscaled_at})"
+                        f"Ignoring scaling down request (request={req}; reason=debounced from scaling up at {self._last_upscaled_at})"
                     )
                     self._last_downscaling_debounce_warning_ts = self._last_upscaled_at
 
@@ -1207,6 +901,7 @@ class _ActorPool(AutoscalingActorPool):
 
         return True
 
+    @override
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         # Verify request could be applied
         if not self._can_apply(req):
@@ -1216,6 +911,7 @@ class _ActorPool(AutoscalingActorPool):
 
         if req.delta > 0:
             target_num_actors = req.delta
+
             logger.debug(
                 f"Scaling up {map_worker_cls_name} actor pool by {target_num_actors} (reason={req.reason}, "
                 f"{self.get_actor_info()})"
@@ -1223,7 +919,7 @@ class _ActorPool(AutoscalingActorPool):
 
             for _ in range(target_num_actors):
                 actor, ready_ref = self._create_actor()
-                self.add_pending_actor(actor, ready_ref)
+                self._add_pending_actor(actor, ready_ref)
 
             # Capture last scale up timestamp
             self._last_upscaled_at = time.time()
@@ -1248,19 +944,14 @@ class _ActorPool(AutoscalingActorPool):
 
         return None
 
-    def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef]:
+    def _create_actor(self) -> Tuple[ActorHandle, ObjectRef]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
         actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref
 
-    # === End of overriding methods of AutoscalingActorPool ===
-
-    def running_actors(self) -> Dict[ray.actor.ActorHandle, _ActorState]:
-        return self._running_actors
-
-    def schedulable_actors(self) -> List[ray.actor.ActorHandle]:
+    def _schedulable_actors(self) -> List[ActorHandle]:
         return [
             actor
             for actor, state in self._running_actors.items()
@@ -1268,50 +959,98 @@ class _ActorPool(AutoscalingActorPool):
             and not state.is_restarting
         ]
 
-    def on_task_submitted(self, actor: ray.actor.ActorHandle):
-        self._running_actors[actor].num_tasks_in_flight += 1
+    def can_schedule_task(self) -> bool:
+        """Returns `True` iff the actor pool has an available actor that can run a task."""
+        return len(self._schedulable_actors()) > 0
+
+    def select_actors_batch(
+        self,
+        bundles: List[RefBundle],
+        actor_locality_enabled: bool = False,
+    ) -> List[Tuple[RefBundle, ActorHandle]]:
+        """Select actors for a batch of bundles.
+
+        When locality is enabled, uses min-cost max-flow to find the globally
+        optimal assignment that minimizes total data movement. When locality is
+        disabled, assigns bundles to least-loaded actors using a heap.
+
+        Args:
+            bundles: The bundles to assign actors to.
+            actor_locality_enabled: Whether actor locality is enabled.
+
+        Returns:
+            List of (bundle, actor) pairs for the assigned bundles.
+        """
+        available_actors = self._schedulable_actors()
+        if not available_actors or not bundles:
+            return []
+
+        if actor_locality_enabled:
+            return self._select_actors_min_cost_flow(bundles, available_actors)
+        else:
+            return self._select_actors_no_locality(bundles, available_actors)
+
+    def select_actors(
+        self,
+        bundle: Optional[RefBundle] = None,
+        actor_locality_enabled: bool = False,
+    ) -> Optional[ActorHandle]:
+        """Select a single actor for the given bundle.
+
+        Convenience wrapper around select_actors_batch for single-bundle selection.
+        """
+        if bundle is None:
+            available = self._schedulable_actors()
+            return available[0] if available else None
+        result = self.select_actors_batch(
+            [bundle], actor_locality_enabled=actor_locality_enabled
+        )
+        return result[0][1] if result else None
+
+    def on_task_submitted(self, actor: ActorHandle):
+        state = self._running_actors[actor]
+        state.num_tasks_in_flight += 1
         self._total_num_tasks_in_flight += 1
 
-        if self._running_actors[actor].num_tasks_in_flight == 1:
+        if state.num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
     def refresh_actor_state(self):
-        for actor in self.get_running_actor_refs():
-            actor_state = actor._get_local_state()
-            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
-                # actor._get_local_state can return None if the state is Unknown
-                # If actor_state is None or dead, there is nothing to do.
-                continue
-            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
-                # The actors can be either ALIVE or RESTARTING here because they will
-                # be restarted indefinitely until execution finishes.
-                assert (
-                    actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-                ), actor_state
-                self._update_running_actor_state(actor, True)
-            else:
-                self._update_running_actor_state(actor, False)
+        for actor in self._running_actors:
+            self._update_running_actor_state(actor)
 
-    def _update_running_actor_state(
-        self, actor: ray.actor.ActorHandle, is_restarting: bool
-    ) -> None:
-        """Update running actor state.
+    def _update_running_actor_state(self, actor: ActorHandle) -> _ActorState:
+        """Update running actor state. This is called for every actor
+        in `refresh_actor_state`.
 
         Args:
             actor: The running actor that needs state update.
-            is_restarting: Whether running actor is restarting or alive.
+
+        Returns:
+            The new actor state
         """
-        assert actor in self._running_actors
-        if self._running_actors[actor].is_restarting == is_restarting:
-            return
-
-        self._running_actors[actor].is_restarting = is_restarting
-        if is_restarting:
-            self._num_restarting_actors += 1
+        actor_state = actor._get_local_state()
+        running_actor_state = self._running_actors[actor]
+        if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+            # actor._get_local_state can return None if the state is Unknown
+            # If actor_state is None or dead, there is nothing to do.
+            return running_actor_state
+        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+            # The actors can be either ALIVE or RESTARTING here because they will
+            # be restarted indefinitely until execution finishes.
+            assert (
+                actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+            ), actor_state
+            if not running_actor_state.is_restarting:
+                self._num_restarting_actors += 1
+                running_actor_state.is_restarting = True
         else:
-            self._num_restarting_actors -= 1
+            if running_actor_state.is_restarting:
+                self._num_restarting_actors -= 1
+                running_actor_state.is_restarting = False
+        return running_actor_state
 
-    def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
+    def _add_pending_actor(self, actor: ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
 
         This actor won't be pickable until it is marked as running via a
@@ -1323,7 +1062,7 @@ class _ActorPool(AutoscalingActorPool):
         """
         self._pending_actors[ready_ref] = actor
 
-    def pending_to_running(self, ready_ref: ray.ObjectRef) -> bool:
+    def pending_to_running(self, ready_ref: ray.ObjectRef) -> Optional[ActorHandle]:
         """Mark the actor corresponding to the provided ready future as running, making
         the actor pickable.
 
@@ -1331,8 +1070,8 @@ class _ActorPool(AutoscalingActorPool):
             ready_ref: The ready future for the actor that we wish to mark as running.
 
         Returns:
-            Whether the actor was still pending. This can return False if the actor had
-            already been killed.
+            The actor handle of the pending/now ready actor. Otherwise, returns `None`
+            if actor has already been killed
 
         Raises:
             RayError: If the actor initialization failed. The actor is cleaned up
@@ -1340,7 +1079,7 @@ class _ActorPool(AutoscalingActorPool):
         """
         if ready_ref not in self._pending_actors:
             # The actor has been removed from the pool before becoming running.
-            return False
+            return None
         actor = self._pending_actors.pop(ready_ref)
         try:
             actor_location = ray.get(ready_ref)
@@ -1355,28 +1094,25 @@ class _ActorPool(AutoscalingActorPool):
             actor_location=actor_location,
             is_restarting=False,
         )
-        return True
+        return actor
 
-    def on_task_completed(self, actor: ray.actor.ActorHandle):
+    def on_task_completed(self, actor: ActorHandle):
         """Called when a task completes. Returns the provided actor to the pool."""
-        assert actor in self._running_actors
-        assert self._running_actors[actor].num_tasks_in_flight > 0
-        self._running_actors[actor].num_tasks_in_flight -= 1
+        state = self._running_actors[actor]
+        assert state.num_tasks_in_flight > 0
+        state.num_tasks_in_flight -= 1
         self._total_num_tasks_in_flight -= 1
-        if not self._running_actors[actor].num_tasks_in_flight:
+        if not state.num_tasks_in_flight:
             self._num_active_actors -= 1
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
 
-    def get_running_actor_refs(self) -> List[ActorHandle]:
-        return list(self._running_actors.keys())
-
-    def get_logical_ids(self) -> List[str]:
+    def _get_logical_ids(self) -> List[LogicalActorId]:
         """Get the logical IDs for pending and running actors in the actor pool.
 
-        We can’t use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren’t available until
+        We can't use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren't available until
         after.
         """
         return list(self._actor_to_logical_id.values())
@@ -1390,7 +1126,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
-        return len(self._running_actors) - self._num_active_actors
+        return self.num_running_actors() - self.num_active_actors()
 
     def _remove_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
@@ -1464,9 +1200,7 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(
-        self, actor: ray.actor.ActorHandle
-    ) -> Optional[ObjectRef]:
+    def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
         """Remove the given actor from the pool and trigger its `on_exit` callback.
 
         This method returns a ``ref`` to the result
@@ -1504,14 +1238,230 @@ class _ActorPool(AutoscalingActorPool):
 
         return ref
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
-        return _ActorPoolInfo(
+        return ActorPoolInfo(
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
         )
 
+    @override
     def per_actor_resource_usage(self) -> ExecutionResources:
-        """Per actor resource usage."""
         return self._per_actor_resource_usage
+
+    def _select_actors_min_cost_flow(
+        self,
+        bundles: List[RefBundle],
+        available_actors: List[ActorHandle],
+    ) -> List[Tuple[RefBundle, ActorHandle]]:
+        """Select actors using min-cost max-flow to minimize total data movement.
+
+        Models the assignment as a flow network where edge costs on
+        bundle->actor arcs represent bytes that must transfer over the network,
+        and actor->sink edge limits encode remaining task slots per actor.
+
+        Example with 3 bundles, 2 actors (actor_0 on node_0, actor_1 on node_1)::
+
+                          max_flow=1          max_flow=1              max_flow=remaining_slots
+                          cost=0              cost=movement           cost=0
+
+                          +---------+       cost=50     +---------+
+                    +---->| bundle_0|-------+---------->| actor_0 |------+
+                    |     +---------+       |           | (node_0)|      |
+                    |          |            |           +---------+      |
+            +------+          |  cost=100   |               ^            |   +------+
+            |source|          +-------------)---------------+            +-->| sink |
+            +------+                        |                            |   +------+
+                    |     +---------+       |           +---------+      |
+                    +---->| bundle_1|-------+---------->| actor_1 |------+
+                    |     +---------+--+                | (node_1)|      |
+                    |                  |                +---------+      |
+                    |     +---------+  |  cost=0            ^            |
+                    +---->| bundle_2|--+--------------------+            |
+                          +---------+                                    |
+
+            Each bundle connects to every actor. The solver finds the
+            assignment that minimizes total data movement.
+
+        Edge semantics:
+            source -> bundle_i :  max_flow=1, cost=0
+                Each bundle can be assigned at most once.
+            bundle_i -> actor_j : max_flow=1, cost=locality_cost * scale + load
+                Data movement cost of this particular assignment.
+            actor_j -> sink :     max_flow=remaining_task_slots, cost=0
+                Limits how many bundles each actor can accept.
+        """
+        from ortools.graph.python import min_cost_flow
+
+        max_in_flight = self._max_tasks_in_flight_per_actor
+
+        num_bundles = len(bundles)
+        num_actors = len(available_actors)
+
+        # Compute remaining task slots per actor.
+        actor_remaining_slots = [
+            max_in_flight - self._running_actors[actor].num_tasks_in_flight
+            for actor in available_actors
+        ]
+        total_slots = sum(actor_remaining_slots)
+        max_assignable = min(num_bundles, total_slots)
+        if max_assignable == 0:
+            return []
+
+        # Flow network node layout:
+        #   0                                       = source
+        #   1 .. num_bundles                        = one node per bundle
+        #   num_bundles+1 .. num_bundles+num_actors = one node per actor
+        #   num_bundles+num_actors+1                = sink
+        source_node = 0
+        sink_node = num_bundles + num_actors + 1
+        num_flow_nodes = num_bundles + num_actors + 2
+
+        bundle_nodes = np.arange(1, num_bundles + 1, dtype=np.int32)
+        actor_nodes = np.arange(
+            num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
+        )
+
+        def _build_bundle_actor_edges() -> _FlowEdges:
+            """Build bipartite bundle->actor edges with locality-aware costs.
+
+            Edge costs encode two objectives:
+              Primary: maximize local data (prefer co-located actors)
+              Secondary: prefer least-loaded actors (tiebreaker)
+
+            The locality cost is (max_local_bytes - local_bytes_on_actor_node),
+            which is 0 for the best-located actor and positive for others. This
+            gives the same optimal assignment as (total_bytes - local_bytes)
+            since the per-bundle offset doesn't affect the flow solution.
+
+            We combine them into a single cost:
+              cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
+
+            load_tiebreaker_scale > max possible num_tasks_in_flight, so any
+            locality difference always dominates the load tiebreaker.
+            """
+            num_edges = num_bundles * num_actors
+
+            actor_locations = [
+                self._running_actors[actor].actor_location for actor in available_actors
+            ]
+            actor_tasks_in_flight = [
+                self._running_actors[actor].num_tasks_in_flight
+                for actor in available_actors
+            ]
+            load_tiebreaker_scale = max_in_flight + 1
+
+            costs = np.empty(num_edges, dtype=np.int64)
+            for bundle_idx, bundle in enumerate(bundles):
+                preferred_locs = bundle.get_preferred_object_locations()
+                max_local = max(preferred_locs.values(), default=0)
+                offset = bundle_idx * num_actors
+                for actor_idx, actor_location in enumerate(actor_locations):
+                    local_bytes = preferred_locs.get(actor_location, 0)
+                    locality_cost = max_local - local_bytes
+                    costs[offset + actor_idx] = (
+                        locality_cost * load_tiebreaker_scale
+                        + actor_tasks_in_flight[actor_idx]
+                    )
+
+            return _FlowEdges(
+                starts=np.repeat(bundle_nodes, num_actors),
+                ends=np.tile(actor_nodes, num_bundles),
+                max_flows=np.ones(num_edges, dtype=np.int64),
+                unit_costs=costs,
+            )
+
+        # --- Build the three edge sections ---
+
+        # Source -> each bundle: each bundle assigned at most once.
+        count = len(bundle_nodes)
+        source_edges = _FlowEdges(
+            starts=np.full(count, source_node, dtype=np.int32),
+            ends=bundle_nodes,
+            max_flows=np.full(count, 1, dtype=np.int64),
+            unit_costs=np.zeros(count, dtype=np.int64),
+        )
+
+        # Bundle -> actor: bipartite edges with locality-aware costs.
+        bundle_actor_edges = _build_bundle_actor_edges()
+
+        # Actor -> sink: limits how many bundles each actor can accept.
+        # Each actor has a different max_flow (remaining task slots).
+        sink_edges = _FlowEdges(
+            starts=actor_nodes,
+            ends=np.full(num_actors, sink_node, dtype=np.int32),
+            max_flows=np.array(actor_remaining_slots, dtype=np.int64),
+            unit_costs=np.zeros(num_actors, dtype=np.int64),
+        )
+
+        # Concatenate all sections and build the solver.
+        all_flow_edges = _FlowEdges.concatenate(
+            source_edges, bundle_actor_edges, sink_edges
+        )
+        solver = min_cost_flow.SimpleMinCostFlow()
+        all_arcs = solver.add_arcs_with_capacity_and_unit_cost(
+            all_flow_edges.starts,
+            all_flow_edges.ends,
+            all_flow_edges.max_flows,
+            all_flow_edges.unit_costs,
+        )
+
+        # Source produces flow, sink consumes it.
+        supplies = np.zeros(num_flow_nodes, dtype=np.int64)
+        supplies[source_node] = max_assignable
+        supplies[sink_node] = -max_assignable
+        solver.set_nodes_supplies(np.arange(num_flow_nodes, dtype=np.int32), supplies)
+
+        status = solver.solve()
+        if status != solver.OPTIMAL:
+            return []
+
+        # Extract assignments from bundle->actor arcs where the solver
+        # pushed flow (flow > 0 means this bundle is assigned to this actor).
+        num_source_arcs = len(source_edges.starts)
+        num_bundle_actor_arcs = len(bundle_actor_edges.starts)
+        bundle_actor_arc_ids = all_arcs[
+            num_source_arcs : num_source_arcs + num_bundle_actor_arcs
+        ]
+        edge_flows = solver.flows(bundle_actor_arc_ids)
+
+        assignments = []
+        for arc_id, flow in zip(bundle_actor_arc_ids, edge_flows):
+            if flow > 0:
+                # Recover bundle/actor indices from the flow node ids.
+                # Bundle nodes are 1-indexed, actor nodes start at num_bundles+1.
+                bundle_idx = solver.tail(arc_id) - 1
+                actor_idx = solver.head(arc_id) - (num_bundles + 1)
+                assignments.append((bundles[bundle_idx], available_actors[actor_idx]))
+
+        return assignments
+
+    def _select_actors_no_locality(
+        self,
+        bundles: List[RefBundle],
+        available_actors: List[ActorHandle],
+    ) -> List[Tuple[RefBundle, ActorHandle]]:
+        """When locality is disabled, assign bundles to least-loaded actors."""
+        import heapq
+
+        max_in_flight = self._max_tasks_in_flight_per_actor
+
+        # Max-heap by remaining task slots (negate for min-heap).
+        heap = []
+        for actor in available_actors:
+            remaining = max_in_flight - self._running_actors[actor].num_tasks_in_flight
+            if remaining > 0:
+                heapq.heappush(heap, (-remaining, id(actor), actor))
+
+        assignments = []
+        for bundle in bundles:
+            if not heap:
+                break
+            neg_rem, _, actor = heapq.heappop(heap)
+            remaining = -neg_rem
+            assignments.append((bundle, actor))
+            if remaining - 1 > 0:
+                heapq.heappush(heap, (-(remaining - 1), id(actor), actor))
+
+        return assignments

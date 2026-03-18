@@ -80,6 +80,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
@@ -1813,7 +1814,7 @@ class Dataset:
     def random_shuffle(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1827,17 +1828,34 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds = ray.data.range(100)
             >>> ds.random_shuffle().take(3)  # doctest: +SKIP
-            {'id': 41}, {'id': 21}, {'id': 92}]
+            [{'id': 41}, {'id': 21}, {'id': 92}]
             >>> ds.random_shuffle(seed=42).take(3)  # doctest: +SKIP
-            {'id': 77}, {'id': 21}, {'id': 63}]
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Fully deterministic across executions:
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 29}, {'id': 79}, {'id': 39}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 40}, {'id': 7}, {'id': 90}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same shuffle order across executions). If None, the shuffle
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on seed behavior.
             num_blocks: This parameter is deprecated. It was previously intended to
                 specify the number of output blocks in the shuffled dataset, but is no
                 longer supported. To control the number of output blocks, use
@@ -1856,10 +1874,18 @@ class Dataset:
                 "does not support to change the number of output blocks. Use "
                 "repartition() instead.",  # noqa: E501
             )
+
+        # We set use_timestamp_as_default=True to pin the seed at plan time
+        # so that retried shuffle tasks produce the same output.
+        # See https://github.com/ray-project/ray/pull/50924.
+        seed_config = RandomSeedConfig.create_seed_config(
+            seed, use_timestamp_as_default=True
+        )
+
         plan = self._plan.copy()
         op = RandomShuffle(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
@@ -1870,7 +1896,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -1885,28 +1911,46 @@ class Dataset:
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
             >>> ds.randomize_block_order().take(5)  # doctest: +SKIP
             {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 40}, {'id': 41}, {'id': 42}, {'id': 43}, {'id': 28}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 92}, {'id': 93}, {'id': 94}, {'id': 95}, {'id': 88}]
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same block order across executions). If None, the block
+                order is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             The block-shuffled :class:`Dataset`.
         """  # noqa: E501
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         plan = self._plan.copy()
         op = RandomizeBlocks(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int] = None
+        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
+        In other words, this method "randomly filters" the rows of the dataset without
+        shuffling (i.e., changing the order of the rows).
 
         .. note::
 
@@ -1915,18 +1959,29 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds1 = ray.data.range(100)
             >>> ds1.random_sample(0.1).count()  # doctest: +SKIP
             10
+            >>> # Deterministic across executions
             >>> ds2 = ray.data.range(1000)
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
+            >>> # Different sample each execution
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 2}, {'id': 9}]
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 15}, {'id': 23}]
 
         Args:
-            fraction: The fraction of elements to sample.
-            seed: Seeds the python random pRNG generator.
+            fraction: The fraction of elements to sample. It must be between 0 and 1 (inclusive).
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same sample across executions). If None, the sample
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             Returns a :class:`Dataset` containing the sampled rows.
@@ -1940,18 +1995,24 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        def random_sample(batch: DataBatch, seed: Optional[int]):
+        def random_sample(
+            batch: DataBatch, seed_config: RandomSeedConfig, data_context: DataContext
+        ):
             ctx = TaskContext.get_current()
+
+            seed_result = seed_config.get_seed_tuple(data_context=data_context)
 
             if "rng" in ctx.kwargs:
                 rng = ctx.kwargs["rng"]
-            elif seed is None:
+            elif seed_result is None:
                 rng = np.random.default_rng()
                 ctx.kwargs["rng"] = rng
             else:
-                rng = np.random.default_rng([ctx.task_idx, seed])
+                rng = np.random.default_rng(seed_result.to_rng_args(ctx.task_idx))
                 ctx.kwargs["rng"] = rng
 
             mask_idx = np.where(rng.random(len(batch)) < fraction)[0]
@@ -1964,7 +2025,7 @@ class Dataset:
 
         return self.map_batches(
             random_sample,
-            fn_args=[seed],
+            fn_args=(seed_config, self.context),
             batch_format=None,
             batch_size=None,
         )
@@ -4016,7 +4077,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return list(set(self._plan.input_files()))
+        return self._plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)

@@ -20,6 +20,7 @@ import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -332,21 +333,6 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
-
-
-@dataclass
-class _ActorPoolInfo:
-    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
-
-    running: int
-    pending: int
-    restarting: int
-
-    def __str__(self):
-        return (
-            f"running={self.running}, restarting={self.restarting}, "
-            f"pending={self.pending}"
-        )
 
 
 class PhysicalOperator(Operator):
@@ -917,18 +903,22 @@ class PhysicalOperator(Operator):
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
 
-    def update_resource_usage(self) -> None:
-        """Updates resource usage of this operator at runtime.
+    def refresh_state(self):
+        """Refreshes the state of the operator at runtime.
 
         This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for dynamic resource usage updates due to
-        restarting actors, retrying tasks, lost objects, etc.
+        Subclasses can override it to account for asynchronous updates, like restarting
+        actors, retrying tasks, or lost objects which are NOT transparent to the
+        StreamingExecutor.
+
+        TODO: Currently this method is synchronous. We should consider making this async,
+        or calling it in an asynchronous context.
         """
         pass
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return _ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()
