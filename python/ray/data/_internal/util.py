@@ -1601,16 +1601,22 @@ def is_nan(value) -> bool:
 
 
 def is_null(value: Any) -> bool:
-    """This generalization of ``is_nan`` util qualifying both None and np.nan
-    as null values"""
-    return value is None or is_nan(value)
+    """This generalization of ``is_nan`` util qualifying both None, np.nan,
+    and pd.NA as null values"""
+    return value is None or is_nan(value) or value is pd.NA
 
 
 def keys_equal(keys1, keys2):
     if len(keys1) != len(keys2):
         return False
     for k1, k2 in zip(keys1, keys2):
-        if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
+        k1_null = is_null(k1)
+        k2_null = is_null(k2)
+        if k1_null and k2_null:
+            continue
+        if k1_null or k2_null:
+            return False
+        if k1 != k2:
             return False
     return True
 
