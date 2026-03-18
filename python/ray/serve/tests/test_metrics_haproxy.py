@@ -432,7 +432,7 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
                 http_error_count == 2
             ), f"Expected at least 2 HTTP 500 errors, got {http_error_count}"
             assert (
-                deployment_error_count >= 2
+                deployment_error_count == 2
             ), f"Expected at least 2 deployment 500 errors, got {deployment_error_count}"
 
         return http_error_count == 2 and deployment_error_count == 2
