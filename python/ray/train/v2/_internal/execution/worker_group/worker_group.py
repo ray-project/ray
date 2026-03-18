@@ -867,10 +867,6 @@ class WorkerGroup(ExecutionGroup):
             self._replica_group_callbacks,
         )
         self._replica_groups[replica_group_index] = new_replica_group
-        for w in new_workers:
-            self._worker_rank_to_replica_group_rank[
-                w.distributed_context.world_rank
-            ] = replica_group_index
 
         # Start training.
         new_replica_group.start_training(self._worker_group_context)

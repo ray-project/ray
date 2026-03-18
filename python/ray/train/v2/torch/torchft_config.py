@@ -1,7 +1,7 @@
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import ray
 from ray.train.torch.config import (
@@ -64,12 +64,10 @@ class _TorchftBackend(_TorchBackend):
         self.lighthouse_actor = None
         self.lighthouse_address = None
 
-    def _maybe_create_lighthouse_actor(
-        self, backend_config: TorchftConfig
-    ) -> Optional[str]:
+    def _maybe_create_lighthouse_actor(self, backend_config: TorchftConfig) -> str:
         """Create lighthouse actor if it doesn't exist and return its address."""
         if self.lighthouse_actor is not None:
-            return self.lighthouse_address
+            return ray.get(self.lighthouse_actor.address.remote())
 
         # Let the OS pick a free port by default
         if "bind" in backend_config.lighthouse_kwargs:
