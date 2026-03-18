@@ -137,6 +137,12 @@ class TestIsFilesystemCompatibleWithScheme:
         wrapped_fs = self._make_mock_fsspec_fs("s3")
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "gs") is False
 
+    def test_fsspec_s3_not_compatible_with_http(self):
+        """fsspec S3FileSystem should NOT be compatible with http/https schemes."""
+        wrapped_fs = self._make_mock_fsspec_fs("s3")
+        assert _is_filesystem_compatible_with_scheme(wrapped_fs, "http") is False
+        assert _is_filesystem_compatible_with_scheme(wrapped_fs, "https") is False
+
     def test_unknown_scheme_trusts_filesystem(self):
         """Unknown schemes should always return True (trust user's filesystem)."""
         wrapped_fs = self._make_mock_fsspec_fs("s3")

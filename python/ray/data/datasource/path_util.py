@@ -188,11 +188,9 @@ def _is_filesystem_compatible_with_scheme(
     # Get the actual filesystem type
     fs_type = filesystem.type_name
 
-    # Direct match for native PyArrow filesystems
-    if fs_type in expected_types:
-        return True
-
     # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
+    # rather than relying on type_name alone, since all fsspec wrappers
+    # share type_name "py" regardless of the underlying protocol.
     if fs_type == "py" or fs_type.startswith("py::"):
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
@@ -219,7 +217,10 @@ def _is_filesystem_compatible_with_scheme(
         if scheme in ("http", "https"):
             return _is_http_filesystem(filesystem)
 
-    return False
+        return False
+
+    # Direct match for native PyArrow filesystems (s3, gcs, local, hdfs, etc.)
+    return fs_type in expected_types
 
 
 def _resolve_single_path_with_fallback(
