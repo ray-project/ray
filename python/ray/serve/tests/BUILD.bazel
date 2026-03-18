@@ -207,6 +207,8 @@ py_test_module_list(
         "test_fastapi.py",
         "test_gang_scheduling.py",
         "test_grpc.py",
+        "test_logging.py",
+        "test_logging_2.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
@@ -225,7 +227,7 @@ py_test_module_list(
     ],
 )
 
-# Logging tests (with client IP logging enabled).
+# Logging tests with client IP logging enabled.
 py_test_module_list(
     size = "medium",
     env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
@@ -233,6 +235,7 @@ py_test_module_list(
         "test_logging.py",
         "test_logging_2.py",
     ],
+    name_suffix = "_with_client_address_logging",
     tags = [
         "exclusive",
         "team:serve",
