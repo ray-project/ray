@@ -850,17 +850,6 @@ class WorkerGroup(ExecutionGroup):
             world_size=len(self._replica_groups),
         )
 
-        # Initialize train context on new workers.
-        sync_actor = self._worker_group_state.sync_actor
-        try:
-            self._init_train_context(new_workers, sync_actor)
-        except RayActorError as actor_error:
-            error_msg = (
-                "At least one replacement worker failed to initialize "
-                f"in replica group {replica_group_index}."
-            )
-            raise WorkerGroupStartupFailedError(error_msg) from actor_error
-
         # Update internal tracking.
         self._worker_group_state = self._worker_group_state.replace_workers(
             old_workers, new_workers
@@ -871,6 +860,17 @@ class WorkerGroup(ExecutionGroup):
             self._replica_group_callbacks,
         )
         self._replica_groups[replica_group_index] = new_replica_group
+
+        # Initialize train context on new workers.
+        sync_actor = self._worker_group_state.sync_actor
+        try:
+            self._init_train_context(new_workers, sync_actor)
+        except RayActorError as actor_error:
+            error_msg = (
+                "At least one replacement worker failed to initialize "
+                f"in replica group {replica_group_index}."
+            )
+            raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
         # Start training.
         new_replica_group.start_training(self._worker_group_context)
