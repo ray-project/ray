@@ -1,0 +1,15 @@
+load("//bazel:python.bzl", "py_test_module_list")
+
+py_test_module_list(
+    size = "small",
+    files = [
+        "test_dashboard_head_event_publisher.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        "//:ray_lib",
+    ],
+)

@@ -1,0 +1,92 @@
+"""Base class for building internal Ray events.
+
+This module provides the base class for creating event builders that can
+emit events to dashboard-agents aggregator agent service.
+"""
+
+from abc import ABC, abstractmethod
+
+from ray._raylet import RayEvent
+from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
+
+
+class InternalEventBuilder(ABC):
+    """Abstract base class for building internal Ray events.
+
+    Subclasses implement specific event types
+    and must implement get_entity_id() and serialize_event_data().
+    """
+
+    def __init__(
+        self,
+        source_type: int,
+        event_type: int,
+        nested_event_field_number: int,
+        severity: int = RayEventProto.Severity.INFO,
+        message: str = "",
+        session_name: str = "",
+    ):
+        """Initialize the event builder.
+
+        Args:
+            source_type: RayEvent.SourceType enum value. Use
+                RayEventProto.SourceType.<NAME> constants (e.g.,
+                RayEventProto.SourceType.JOBS,
+                RayEventProto.SourceType.GCS).
+            event_type: RayEvent.EventType enum value. Use
+                RayEventProto.EventType.<NAME> constants (e.g.,
+                RayEventProto.EventType.SUBMISSION_JOB_DEFINITION_EVENT,
+                RayEventProto.EventType.DRIVER_JOB_LIFECYCLE_EVENT).
+            nested_event_field_number: The field number in RayEvent proto for the
+                nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER
+                constants (e.g.,
+                RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
+            severity: RayEvent.Severity enum value (default INFO).
+            message: Optional message associated with the event.
+            session_name: The Ray session name.
+        """
+        self._source_type = source_type
+        self._event_type = event_type
+        self._nested_event_field_number = nested_event_field_number
+        self._severity = severity
+        self._message = message
+        self._session_name = session_name
+
+    @abstractmethod
+    def get_entity_id(self) -> str:
+        """Return the unique entity ID for this event.
+
+        The entity ID is used to associate related events (e.g., definition
+        and lifecycle events for the same job).
+
+        Returns:
+            A string identifier unique to this entity (e.g., node_id/task_id/actor_id/job_id).
+        """
+        pass
+
+    @abstractmethod
+    def serialize_event_data(self) -> bytes:
+        """Serialize the event-specific protobuf data to bytes.
+
+        Returns:
+            Serialized protobuf bytes of the nested event message
+            (e.g., SubmissionJobDefinitionEvent.SerializeToString()).
+        """
+        pass
+
+    def build(self) -> RayEvent:
+        """Build the Cython RayEvent object for submission.
+
+        Returns:
+            A RayEvent object.
+        """
+        return RayEvent(
+            source_type=self._source_type,
+            event_type=self._event_type,
+            severity=self._severity,
+            entity_id=self.get_entity_id(),
+            message=self._message,
+            session_name=self._session_name,
+            serialized_data=self.serialize_event_data(),
+            nested_event_field_number=self._nested_event_field_number,
+        )

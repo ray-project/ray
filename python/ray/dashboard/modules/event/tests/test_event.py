@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pprint import pprint
 
+import aiohttp
 import numpy as np
 import pytest
 import requests
@@ -37,10 +38,11 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
+    events_base_event_pb2,
     export_submission_job_event_pb2,
 )
 from ray.dashboard.modules.event import event_consts
-from ray.dashboard.modules.event.event_head import _list_cluster_events_impl
+from ray.dashboard.modules.event.event_head import EventHead, _list_cluster_events_impl
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
@@ -48,6 +50,14 @@ from ray.util.state import list_cluster_events
 from ray.util.state.common import ClusterEventState
 
 logger = logging.getLogger(__name__)
+
+
+class _FakeRequest:
+    def __init__(self, payload):
+        self._payload = payload
+
+    async def json(self):
+        return self._payload
 
 
 def _get_event(msg="empty message", job_id=None, source_type=None):
@@ -657,6 +667,38 @@ async def test_list_cluster_events_impl():
         option=create_api_options(filters=[("severity", "=", "INFO")]),
     )
     assert len(result.result) == 1
+
+
+@pytest.mark.asyncio
+async def test_report_external_ray_events_rejects_invalid_payload():
+    event_head = EventHead.__new__(EventHead)
+
+    with pytest.raises(aiohttp.web.HTTPBadRequest):
+        await event_head.report_external_ray_events(_FakeRequest({"not": "a-list"}))
+
+
+@pytest.mark.asyncio
+async def test_report_external_ray_events_rejects_disallowed_event_types(monkeypatch):
+    event_head = EventHead.__new__(EventHead)
+    event = events_base_event_pb2.RayEvent(
+        event_id=b"1",
+        source_type=events_base_event_pb2.RayEvent.SourceType.JOBS,
+        event_type=events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT,
+        severity=events_base_event_pb2.RayEvent.Severity.INFO,
+        message="hello",
+    )
+    payload = [
+        message_to_dict(
+            event,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=False,
+            use_integers_for_enums=False,
+        )
+    ]
+    monkeypatch.setattr(EventHead, "_get_external_ray_event_allowlist", lambda: set())
+
+    with pytest.raises(aiohttp.web.HTTPBadRequest):
+        await event_head.report_external_ray_events(_FakeRequest(payload))
 
 
 def test_export_event_logger(tmp_path):

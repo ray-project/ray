@@ -1022,6 +1022,10 @@ RAY_CONFIG(bool, enable_core_worker_task_event_to_gcs, true)
 // event aggregator.
 RAY_CONFIG(bool, enable_core_worker_ray_event_to_aggregator, false)
 
+// Comma-separated list of RayEvent event types accepted by the dashboard head's
+// external event ingestion endpoint.
+RAY_CONFIG(std::vector<std::string>, external_ray_event_allowlist, {})
+
 // Configuration for pipe logger buffer size.
 RAY_CONFIG(uint64_t, pipe_logger_read_buf_size, 1024)
 

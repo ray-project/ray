@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -9,13 +10,23 @@ from itertools import islice
 from typing import Dict, List, Union
 
 import aiohttp.web
+from google.protobuf.json_format import ParseDict, ParseError as ProtobufParseError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.network_utils import build_address
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
+from ray._private import ray_constants
+from ray._private.grpc_utils import init_grpc_channel
 from ray._private.ray_constants import env_integer
+from ray.core.generated import (
+    events_base_event_pb2,
+    events_event_aggregator_service_pb2,
+    events_event_aggregator_service_pb2_grpc,
+)
+from ray.dashboard import consts as dashboard_consts
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -106,6 +117,8 @@ class EventHead(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
             thread_name_prefix="event_head_executor",
         )
+        self._head_aggregator_stub = None
+        self._head_node_id = None
 
         # To init gcs_client in internal_kv for record_extra_usage_tag.
         assert self.gcs_client is not None
@@ -147,6 +160,100 @@ class EventHead(
                 while len(job_events) > MAX_EVENTS_TO_CACHE:
                     job_events.popitem(last=False)
 
+    @staticmethod
+    def _parse_external_ray_events(
+        request_body,
+    ) -> List[events_base_event_pb2.RayEvent]:
+        if not isinstance(request_body, list):
+            raise ValueError("Request body must be a list of RayEvent JSON objects.")
+
+        events = []
+        for index, event_json in enumerate(request_body):
+            if not isinstance(event_json, dict):
+                raise ValueError(
+                    f"Event at index {index} must be a JSON object, got {type(event_json).__name__}."
+                )
+            event = events_base_event_pb2.RayEvent()
+            ParseDict(event_json, event)
+            events.append(event)
+        return events
+
+    @staticmethod
+    def _get_external_ray_event_allowlist() -> set[str]:
+        return {
+            event_type
+            for event_type in ray._config.external_ray_event_allowlist()
+            if event_type
+        }
+
+    @classmethod
+    def _validate_external_ray_events(
+        cls, events: List[events_base_event_pb2.RayEvent]
+    ) -> None:
+        allowlist = cls._get_external_ray_event_allowlist()
+        for event in events:
+            event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
+                event.event_type
+            )
+            if event_type_name not in allowlist:
+                raise ValueError(
+                    f"Event type {event_type_name} is not allowed on /api/v0/external/ray_events."
+                )
+
+    async def _get_head_node_id(self) -> Union[str, None]:
+        if self._head_node_id is not None:
+            return self._head_node_id
+
+        head_node_id = await self.gcs_client.async_internal_kv_get(
+            ray_constants.KV_HEAD_NODE_ID_KEY,
+            namespace=ray_constants.KV_NAMESPACE_JOB,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if head_node_id is None:
+            return None
+
+        self._head_node_id = head_node_id.decode()
+        return self._head_node_id
+
+    async def _get_head_aggregator_stub(self):
+        if self._head_aggregator_stub is not None:
+            return self._head_aggregator_stub
+
+        head_node_id = await self._get_head_node_id()
+        if head_node_id is None:
+            return None
+
+        agent_addr_json = await self.gcs_client.async_internal_kv_get(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{head_node_id}".encode(),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        )
+        if agent_addr_json is None:
+            return None
+
+        ip, _, grpc_port = json.loads(agent_addr_json)
+        channel = init_grpc_channel(
+            build_address(ip, grpc_port),
+            options=ray_constants.GLOBAL_GRPC_OPTIONS,
+            asynchronous=True,
+        )
+        self._head_aggregator_stub = (
+            events_event_aggregator_service_pb2_grpc.EventAggregatorServiceStub(channel)
+        )
+        return self._head_aggregator_stub
+
+    async def _forward_external_ray_events(
+        self, events: List[events_base_event_pb2.RayEvent]
+    ) -> None:
+        stub = await self._get_head_aggregator_stub()
+        if stub is None:
+            raise RuntimeError("Head node aggregator agent is not available.")
+
+        request = events_event_aggregator_service_pb2.AddEventsRequest(
+            events_data=events_event_aggregator_service_pb2.RayEventsData(events=events)
+        )
+        await stub.AddEvents(request)
+
     @routes.post("/report_events")
     async def report_events(self, request):
         """
@@ -167,6 +274,31 @@ class EventHead(
         self._update_events(events)
         self.total_report_events_count += 1
         self.total_events_received += len(events)
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="",
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+        )
+
+    @routes.post("/api/v0/external/ray_events")
+    async def report_external_ray_events(self, request):
+        try:
+            request_body = await request.json()
+            events = self._parse_external_ray_events(request_body)
+            self._validate_external_ray_events(events)
+        except (ValueError, ProtobufParseError) as e:
+            logger.warning("Invalid external Ray event payload: %s", e)
+            raise aiohttp.web.HTTPBadRequest(reason=str(e))
+        except Exception as e:
+            logger.warning("Failed to parse external Ray event payload: %s", e)
+            raise aiohttp.web.HTTPBadRequest()
+
+        try:
+            await self._forward_external_ray_events(events)
+        except Exception:
+            logger.exception("Failed to forward external Ray events to aggregator.")
+            raise aiohttp.web.HTTPInternalServerError()
+
         return dashboard_optional_utils.rest_response(
             success=True,
             message="",
