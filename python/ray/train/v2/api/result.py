@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
-    """The final result of a ML training run or a Tune trial."""
+    """The output of a Ray Train run."""
 
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
