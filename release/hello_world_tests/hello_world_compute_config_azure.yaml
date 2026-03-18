@@ -1,8 +1,8 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+region: westus2
 
 head_node_type:
     name: head_node
-    instance_type: 4CPU-16GB
+    instance_type: Standard_D2s_v3
 
 worker_node_types: []
