@@ -53,6 +53,9 @@ def _get_pip_hash(pip_dict: Dict) -> str:
             file_path = pkg[2:].lstrip()
         elif pkg.startswith("--requirement"):
             file_path = pkg[len("--requirement"):].lstrip()
+            # Handle --requirement=file.txt format
+            if file_path.startswith("="):
+                file_path = file_path[1:].lstrip()
         else:
             expanded_packages.append(pkg)
             continue
