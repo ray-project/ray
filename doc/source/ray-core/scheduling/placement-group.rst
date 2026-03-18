@@ -226,6 +226,10 @@ The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to 
 If the Autoscaler can't provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups.
 You can observe the scheduling state of the placement group from the :ref:`dashboard or state APIs <ray-placement-group-observability-ref>`.
 
+.. note::
+  When a placement group with GPUs is reserved successfully, the bundles are not necessarily ordered by GPU physical rank.
+  That is, adjacent bundles don't necessarily map to adjacent physical GPUs.
+
 .. _ray-placement-group-schedule-tasks-actors-ref:
 
 Schedule Tasks and Actors to Placement Groups (Use Reserved Resources)

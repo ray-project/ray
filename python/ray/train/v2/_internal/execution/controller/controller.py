@@ -482,9 +482,10 @@ class TrainController:
         for a non-running worker group.
 
         This method handles the complete flow of:
-        1. Getting a scaling decision for a non-running worker group
-        2. Determining the next state based on the decision type
-        3. Creating and returning the iteration result
+        1. Shutting down the non-running worker group if it still exists.
+        2. Getting a scaling decision for a non-running worker group
+        3. Determining the next state based on the decision type
+        4. Creating and returning the iteration result
 
         Args:
             controller_state: The current controller state
@@ -492,6 +493,12 @@ class TrainController:
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
         """
+        # If we are in a non-running state we should ensure the old worker group
+        # is shut down and its resources before we ask the scaling policy to
+        # calculate newly available resources.
+        if self._worker_group:
+            self._shutdown_worker_group()
+
         scaling_decision = (
             self._scaling_policy.make_decision_for_non_running_worker_group()
         )
@@ -639,6 +646,10 @@ class TrainController:
         # Do not abort run if it's already finished.
         if self.get_state().is_terminal():
             return
+
+        for callback in self._controller_callbacks:
+            callback.before_controller_abort()
+
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
         if self._worker_group:
