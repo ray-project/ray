@@ -40,6 +40,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -5579,6 +5580,59 @@ class Dataset:
 
         self.write_datasink(
             datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_kafka(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        key_field: Optional[str] = None,
+        key_serializer: str = "string",
+        value_serializer: str = "json",
+        producer_config: Optional[Dict[str, Any]] = None,
+        *,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """
+        Convenience method to write Ray Dataset to Kafka.
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_kafka("my-topic", "localhost:9092")
+
+        Args:
+            topic: Kafka topic name
+            bootstrap_servers: Comma-separated Kafka broker addresses
+            key_field: Optional field name to use as message key
+            key_serializer: Key serialization format ('json', 'string', or 'bytes')
+            value_serializer: Value serialization format ('json', 'string', or 'bytes')
+            producer_config: Additional Kafka producer configuration (confluent-kafka/librdkafka format)
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """
+        sink = KafkaDatasink(
+            topic=topic,
+            bootstrap_servers=bootstrap_servers,
+            key_field=key_field,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+            producer_config=producer_config,
+        )
+        self.write_datasink(
+            sink,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
