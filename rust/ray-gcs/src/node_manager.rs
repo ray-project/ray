@@ -37,6 +37,10 @@ pub struct GcsNodeManager {
     /// Cluster ID (raw 28-byte binary, matching C++ ClusterID::Binary()).
     /// Write-once, read on every client connect — ArcSwap for lock-free reads.
     cluster_id: ArcSwap<Vec<u8>>,
+    /// Lock-free snapshot for GetAllNodeInfo — avoids DashMap iteration
+    /// contention under concurrent read+write pressure (node churn).
+    /// Rebuilt after every register/unregister; readers get O(1) Arc load.
+    all_nodes_snapshot: ArcSwap<Vec<Arc<ray_proto::ray::rpc::GcsNodeInfo>>>,
     /// Listeners.
     node_added_listeners: RwLock<Vec<NodeAddedCallback>>,
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
@@ -53,11 +57,27 @@ impl GcsNodeManager {
             dead_nodes: DashMap::new(),
             draining_nodes: DashMap::new(),
             cluster_id: ArcSwap::from_pointee(Vec::new()),
+            all_nodes_snapshot: ArcSwap::from_pointee(Vec::new()),
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
             table_storage,
             pubsub_handler: OnceLock::new(),
         }
+    }
+
+    /// Rebuild the lock-free all-nodes snapshot from the DashMaps.
+    /// Called after every register/unregister to keep the snapshot fresh.
+    /// Only collects Arc pointers (cheap) — proto cloning deferred to readers.
+    fn rebuild_all_nodes_snapshot(&self) {
+        let mut snapshot =
+            Vec::with_capacity(self.alive_nodes.len() + self.dead_nodes.len());
+        for entry in self.alive_nodes.iter() {
+            snapshot.push(Arc::clone(entry.value()));
+        }
+        for entry in self.dead_nodes.iter() {
+            snapshot.push(Arc::clone(entry.value()));
+        }
+        self.all_nodes_snapshot.store(Arc::new(snapshot));
     }
 
     /// Set the pubsub handler (called once during server initialization).
@@ -101,6 +121,7 @@ impl GcsNodeManager {
                 self.alive_nodes.insert(node_id, node);
             }
         }
+        self.rebuild_all_nodes_snapshot();
         Ok(())
     }
 
@@ -149,6 +170,9 @@ impl GcsNodeManager {
             listener(&node);
         }
 
+        // Rebuild lock-free snapshot for GetAllNodeInfo
+        self.rebuild_all_nodes_snapshot();
+
         tracing::info!(?node_id, "Node registered");
         Ok(())
     }
@@ -190,6 +214,9 @@ impl GcsNodeManager {
                 listener(&dead_node);
             }
 
+            // Rebuild lock-free snapshot for GetAllNodeInfo
+            self.rebuild_all_nodes_snapshot();
+
             tracing::info!(?node_id, "Node removed");
         }
         Ok(())
@@ -204,15 +231,14 @@ impl GcsNodeManager {
     }
 
     /// Handle GetAllNodeInfo RPC.
+    ///
+    /// Reads from a lock-free ArcSwap snapshot instead of iterating DashMaps.
+    /// This eliminates read-write contention under concurrent node churn:
+    /// writers (register/unregister) rebuild the snapshot after mutating the
+    /// DashMaps, while readers load the snapshot with a single atomic op.
     pub fn handle_get_all_node_info(&self) -> Vec<ray_proto::ray::rpc::GcsNodeInfo> {
-        let mut result = Vec::with_capacity(self.alive_nodes.len() + self.dead_nodes.len());
-        for entry in self.alive_nodes.iter() {
-            result.push((**entry.value()).clone());
-        }
-        for entry in self.dead_nodes.iter() {
-            result.push((**entry.value()).clone());
-        }
-        result
+        let snapshot = self.all_nodes_snapshot.load();
+        snapshot.iter().map(|node| (**node).clone()).collect()
     }
 
     /// Handle GetClusterId RPC — returns raw 28-byte cluster ID.
