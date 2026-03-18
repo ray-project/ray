@@ -742,9 +742,11 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
     from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
         ResourceRequestPriority,
     )
-    from ray.train.v2._internal.execution.scaling_policy.fixed import (
+    from ray.train.v2._internal.execution.scaling_policy import (
         AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         AUTOSCALING_REQUESTS_INTERVAL_S,
+    )
+    from ray.train.v2._internal.execution.scaling_policy.fixed import (
         FixedScalingPolicy,
     )
 
