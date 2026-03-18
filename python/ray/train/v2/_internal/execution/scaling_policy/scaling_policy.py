@@ -48,6 +48,13 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
 
     Recovery decisions are made when workers are in an inactive or unhealthy state.
     Upscale decisions are optional and are made when workers are healthy.
+
+    Note: When adding new scaling policies, revisit the shared defaults- particularly if:
+    - AutoscalingCoordinator integration is not needed or a different interface
+      becomes available
+    - Timeout/expiry constants need to diverge between policies
+    - _get_num_workers_for_resource_request() needs variable worker counts
+    - Controller lifecycle behavior diverges
     """
 
     # TODO: Restructure these APIs to consider different TrainControllerStates
