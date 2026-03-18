@@ -128,7 +128,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install "torch>=2.4" transformers datasets "deepspeed>=0.18.6"
+pip install torch==2.9 transformers==4.44.2 datasets==2.21.0 deepspeed==0.18.8
 ```
 
 
