@@ -1123,9 +1123,15 @@ def start(
         )
         temp_dir = node.get_temp_dir_path()
 
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
+        # Check version compatibility and clean up node processes on mismatch.
+        try:
+            node.check_version_info()
+        except RuntimeError:
+            # Version mismatch detected after the node has already started.
+            # Kill all node processes to unregister the raylet from the
+            # cluster before propagating the error.
+            node.kill_all_processes(check_alive=False, allow_graceful=True, wait=True)
+            raise
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
