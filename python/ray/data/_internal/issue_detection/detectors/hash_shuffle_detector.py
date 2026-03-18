@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 from ray.data._internal.execution.operators.hash_shuffle import (
@@ -29,75 +29,101 @@ class HashShuffleAggregatorIssueDetectorConfig:
     min_wait_time_s: float = 300.0
 
 
+# ---------------------------------------------------------------------------
+# Snapshot type
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HashShuffleOpSnapshot:
+    op_id: str
+    dataset_id: str
+    aggregator_health_info: Optional[AggregatorHealthInfo]
+
+    @classmethod
+    def from_operator(
+        cls,
+        op: "PhysicalOperator",
+        dataset_id: str,
+    ) -> Optional["HashShuffleOpSnapshot"]:
+        """Build a snapshot from a live HashShuffleOperator. Returns None for other ops."""
+        if not isinstance(op, HashShuffleOperator):
+            return None
+        if op._aggregator_pool is None:
+            return None
+        return cls(
+            op_id=op.id,
+            dataset_id=dataset_id,
+            aggregator_health_info=op._aggregator_pool.check_aggregator_health(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Detector
+# ---------------------------------------------------------------------------
+
+
 class HashShuffleAggregatorIssueDetector(IssueDetector):
     """Detector for hash shuffle aggregator health issues."""
 
     def __init__(
         self,
-        dataset_id: str,
-        operators: List["PhysicalOperator"],
         config: HashShuffleAggregatorIssueDetectorConfig,
+        dataset_id: str = "",
+        operators: Optional[List["PhysicalOperator"]] = None,
     ):
         self._dataset_id = dataset_id
-        self._operators = operators
+        self._operators = operators or []
         self._detector_cfg = config
-        self._last_warning_times = {}  # Track per-operator warning times
+        self._last_warning_times: Dict[str, float] = {}
 
     @classmethod
     def from_executor(
         cls, executor: "StreamingExecutor"
     ) -> "HashShuffleAggregatorIssueDetector":
-        """Factory method to create a HashShuffleAggregatorIssueDetector from a StreamingExecutor.
-
-        Args:
-            executor: The StreamingExecutor instance to extract dependencies from.
-
-        Returns:
-            An instance of HashShuffleAggregatorIssueDetector.
-        """
         operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
+            config=ctx.issue_detectors_config.hash_shuffle_detector_config,
             dataset_id=executor._dataset_id,
             operators=operators,
-            config=ctx.issue_detectors_config.hash_shuffle_detector_config,
         )
 
     def detect(self) -> List[Issue]:
-        issues = []
+        """Sync entry point — builds snapshots from live operators and delegates."""
+        snapshots = []
+        for op in self._operators:
+            snap = HashShuffleOpSnapshot.from_operator(op, self._dataset_id)
+            if snap is not None:
+                snapshots.append(snap)
+        return self.detect_from_snapshots(snapshots)
+
+    def detect_from_snapshots(
+        self, snapshots: List[HashShuffleOpSnapshot]
+    ) -> List[Issue]:
+        """Core detection logic operating on serializable snapshots."""
+        issues: List[Issue] = []
         current_time = time.time()
 
-        # Find all hash shuffle operators in the topology
-        for op in self._operators:
-            if not isinstance(op, HashShuffleOperator):
+        for snap in snapshots:
+            if snap.aggregator_health_info is None:
                 continue
 
-            # Skip if operator doesn't have aggregator pool yet
-            if op._aggregator_pool is None:
-                continue
-
-            pool = op._aggregator_pool
-            aggregator_info = pool.check_aggregator_health()
-
-            if aggregator_info is None:
-                continue
-
-            # Check if we should emit a warning for this operator
             should_warn = self._should_emit_warning(
-                op.id, current_time, aggregator_info
+                snap.op_id, current_time, snap.aggregator_health_info
             )
 
             if should_warn:
-                message = self._format_health_warning(aggregator_info)
+                message = self._format_health_warning(snap.aggregator_health_info)
                 issues.append(
                     Issue(
-                        dataset_name=self._dataset_id,
-                        operator_id=op.id,
+                        dataset_name=snap.dataset_id,
+                        operator_id=snap.op_id,
                         issue_type=IssueType.HANGING,
                         message=message,
                     )
                 )
-                self._last_warning_times[op.id] = current_time
+                self._last_warning_times[snap.op_id] = current_time
 
         return issues
 
@@ -107,17 +133,13 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
     def _should_emit_warning(
         self, op_id: str, current_time: float, info: AggregatorHealthInfo
     ) -> bool:
-        """Check if we should emit a warning for this operator."""
         if not info.has_unready_aggregators:
-            # Clear warning time if all aggregators are healthy
             self._last_warning_times.pop(op_id, None)
             return False
 
-        # Check if enough time has passed since start
         if current_time - info.started_at < self._detector_cfg.min_wait_time_s:
             return False
 
-        # Check if enough time has passed since last warning
         last_warning = self._last_warning_times.get(op_id)
         if last_warning is None:
             return True
@@ -125,7 +147,6 @@ class HashShuffleAggregatorIssueDetector(IssueDetector):
         return current_time - last_warning >= self.detection_time_interval_s()
 
     def _format_health_warning(self, info: AggregatorHealthInfo) -> str:
-        """Format the health warning message."""
         available_resources = ray.available_resources()
         available_cpus = available_resources.get("CPU", 0)
         cluster_resources = ray.cluster_resources()

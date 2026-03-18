@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
 from concurrent import futures
@@ -24,7 +25,12 @@ class AsyncServiceTask(ABC, Generic[InputT, OutputT]):
 
     Subclasses implement ``run()`` to perform expensive computation (CPU-bound)
     or concurrent I/O (via the provided ThreadPoolExecutor).
+
+    Set ``min_interval_s`` to throttle how often the task is submitted.
+    The ``AsyncServiceHandle`` enforces this on the scheduling thread.
     """
+
+    min_interval_s: float = 0
 
     @abstractmethod
     def run(self, obj: InputT, tpe: futures.ThreadPoolExecutor) -> OutputT:
@@ -104,20 +110,32 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
     def __init__(
         self,
         task: AsyncServiceTask,
-        key: ServiceKeyT,
         error_policy: ErrorPolicy = ErrorPolicy.LOG_AND_RETRY,
     ):
 
         self._key = ray.get(get_or_create_async_service_actor().register.remote(task))
+        self._min_interval_s = task.min_interval_s
         self._error_policy = error_policy
         self._pending_ref: Optional[ray.ObjectRef] = None
+        self._last_submit_time: float = 0
+
+    def should_submit(self) -> bool:
+        """True if no request is in-flight and the minimum interval has elapsed."""
+        if self._pending_ref is not None:
+            print("pending ref is None")
+            return False
+        if self._min_interval_s > 0:
+            print(f"delta is {time.monotonic() - self._last_submit_time}")
+            return time.monotonic() - self._last_submit_time >= self._min_interval_s
+        return True
 
     def request_refresh(self, state: InputT) -> None:
         """Submit state to the actor for async computation.
 
-        Only call when no request is currently in flight.
+        Only call when ``should_submit()`` returns True.
         """
         assert self._pending_ref is None, "Previous refresh still in flight"
+        self._last_submit_time = time.monotonic()
         self._pending_ref = get_or_create_async_service_actor().update.remote(
             self._key, state
         )

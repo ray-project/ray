@@ -86,9 +86,7 @@ class TestHangingExecutionIssueDetector:
         )
         ctx.issue_detectors_config.hanging_detector_config = custom_config
 
-        detector = HangingExecutionIssueDetector(
-            dataset_id="id", operators=[], config=custom_config
-        )
+        detector = HangingExecutionIssueDetector(config=custom_config, dataset_id="id")
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
@@ -151,7 +149,7 @@ class TestHangingExecutionIssueDetector:
         )
         op = FakeOperator("TestOperator", DataContext.get_current())
         detector = HangingExecutionIssueDetector(
-            dataset_id="test_dataset", operators=[op], config=config
+            config=config, dataset_id="test_dataset", operators=[op]
         )
 
         # Create a simple RefBundle for testing

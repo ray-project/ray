@@ -1,6 +1,6 @@
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import memory_string
@@ -36,23 +36,64 @@ class HighMemoryIssueDetectorConfig:
     detection_time_interval_s: float = 30
 
 
+# ---------------------------------------------------------------------------
+# Snapshot type
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HighMemoryOpSnapshot:
+    op_id: str
+    op_name: str
+    dataset_id: str
+    average_max_uss_per_task: Optional[int]
+    num_cpus_per_task: float
+    initial_memory_request: int
+    detection_time_interval_s: float
+
+    @classmethod
+    def from_operator(
+        cls,
+        op: "PhysicalOperator",
+        dataset_id: str,
+        initial_memory_request: int,
+        detection_time_interval_s: float,
+    ) -> Optional["HighMemoryOpSnapshot"]:
+        """Build a snapshot from a live MapOperator. Returns None for non-map ops."""
+        if not isinstance(op, MapOperator):
+            return None
+        remote_args = op._get_dynamic_ray_remote_args()
+        return cls(
+            op_id=op.id,
+            op_name=op.name,
+            dataset_id=dataset_id,
+            average_max_uss_per_task=op.metrics.average_max_uss_per_task,
+            num_cpus_per_task=remote_args.get("num_cpus", 1),
+            initial_memory_request=initial_memory_request,
+            detection_time_interval_s=detection_time_interval_s,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Detector
+# ---------------------------------------------------------------------------
+
+
 class HighMemoryIssueDetector(IssueDetector):
-    # Many nodes have a 4 GiB : 1 core ratio, but this isn't always the case (e.g., for
-    # high memory nodes).
     _MEMORY_PER_CORE_ESTIMATE = 4 * 1024**3
 
     def __init__(
         self,
-        dataset_id: str,
-        operators: List["PhysicalOperator"],
         config: HighMemoryIssueDetectorConfig,
+        dataset_id: str = "",
+        operators: Optional[List["PhysicalOperator"]] = None,
     ):
         self._dataset_id = dataset_id
         self._detector_cfg = config
-        self._operators = operators
+        self._operators = operators or []
 
         self._initial_memory_requests: Dict[MapOperator, int] = {}
-        for op in operators:
+        for op in self._operators:
             if isinstance(op, MapOperator):
                 self._initial_memory_requests[op] = (
                     op._get_dynamic_ray_remote_args().get("memory") or 0
@@ -60,56 +101,59 @@ class HighMemoryIssueDetector(IssueDetector):
 
     @classmethod
     def from_executor(cls, executor: "StreamingExecutor") -> "HighMemoryIssueDetector":
-        """Factory method to create a HighMemoryIssueDetector from a StreamingExecutor.
-
-        Args:
-            executor: The StreamingExecutor instance to extract dependencies from.
-
-        Returns:
-            An instance of HighMemoryIssueDetector.
-        """
         operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
+            config=ctx.issue_detectors_config.high_memory_detector_config,
             dataset_id=executor._dataset_id,
             operators=operators,
-            config=ctx.issue_detectors_config.high_memory_detector_config,
         )
 
     def detect(self) -> List[Issue]:
-        issues = []
+        """Sync entry point — builds snapshots from live operators and delegates."""
+        snapshots = []
         for op in self._operators:
-            if not isinstance(op, MapOperator):
+            snap = HighMemoryOpSnapshot.from_operator(
+                op,
+                self._dataset_id,
+                self._initial_memory_requests.get(op, 0),
+                self.detection_time_interval_s(),
+            )
+            if snap is not None:
+                snapshots.append(snap)
+        return self.detect_from_snapshots(snapshots)
+
+    def detect_from_snapshots(
+        self, snapshots: List[HighMemoryOpSnapshot]
+    ) -> List[Issue]:
+        """Core detection logic operating on serializable snapshots."""
+        issues: List[Issue] = []
+        for snap in snapshots:
+            if snap.average_max_uss_per_task is None:
                 continue
 
-            if op.metrics.average_max_uss_per_task is None:
-                continue
-
-            remote_args = op._get_dynamic_ray_remote_args()
-            num_cpus_per_task = remote_args.get("num_cpus", 1)
-            max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
+            max_memory_per_task = (
+                self._MEMORY_PER_CORE_ESTIMATE * snap.num_cpus_per_task
+            )
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
-                and op.metrics.average_max_uss_per_task >= max_memory_per_task
+                snap.average_max_uss_per_task > snap.initial_memory_request
+                and snap.average_max_uss_per_task >= max_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
-                    op_name=op.name,
-                    memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
-                    initial_memory_request=memory_string(
-                        self._initial_memory_requests[op]
-                    ),
-                    detection_time_interval_s=self.detection_time_interval_s(),
+                    op_name=snap.op_name,
+                    memory_per_task=memory_string(snap.average_max_uss_per_task),
+                    initial_memory_request=memory_string(snap.initial_memory_request),
+                    detection_time_interval_s=snap.detection_time_interval_s,
                 )
                 issues.append(
                     Issue(
-                        dataset_name=self._dataset_id,
-                        operator_id=op.id,
+                        dataset_name=snap.dataset_id,
+                        operator_id=snap.op_id,
                         issue_type=IssueType.HIGH_MEMORY,
                         message=_format_message(message),
                     )
                 )
-
         return issues
 
     def detection_time_interval_s(self) -> float:
@@ -117,7 +161,6 @@ class HighMemoryIssueDetector(IssueDetector):
 
 
 def _format_message(message: str) -> str:
-    # Apply some formatting to make the message look nicer when printed.
     formatted_paragraphs = []
     for paragraph in message.split("\n\n"):
         formatted_paragraph = textwrap.fill(paragraph, break_long_words=False).strip()

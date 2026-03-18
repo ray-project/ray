@@ -389,8 +389,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
 
                 for callback in self._callbacks:
-                    if callback not in self._async_handles:
-                        callback.on_execution_step(self)
+                    callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
         except Exception as e:
@@ -552,7 +551,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._export_operator_schema(op)
 
             if not op.has_completed():
-                if op not in self._async_handles:
+                if not self._uses_async_service(op):
                     op.refresh_state()
             elif not self._has_op_completed[op]:
                 log_str = (
@@ -595,6 +594,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             self._async_handles[cb] = AsyncServiceHandle(task=task)
 
+    def _uses_async_service(self, refreshable: "AsyncRefreshable") -> bool:
+        """True if the refreshable is registered with the async service."""
+        return refreshable in self._async_handles
+
     def _poll_and_submit_async_refreshes(self) -> None:
         """Poll all async handles for results and submit new work."""
         for refreshable, handle in self._async_handles.items():
@@ -603,7 +606,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 if result is None:
                     continue
                 refreshable.apply_refresh_result(result)
-            else:
+            elif handle.should_submit():
                 snapshot = refreshable.build_refresh_input()
                 handle.request_refresh(snapshot)
 

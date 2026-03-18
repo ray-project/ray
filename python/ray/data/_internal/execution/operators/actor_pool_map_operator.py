@@ -609,10 +609,30 @@ class ActorPoolMapOperator(MapOperator):
         return self._actor_pool.per_actor_resource_usage()
 
     def refresh_state(self):
-        """Updates internal state"""
-
-        # Trigger Actor Pool's state refresh
+        """Sync fallback — used only when async task is not registered."""
         self._actor_pool.refresh_actor_state()
+
+    def create_async_task(self):
+        from ray.data._internal.execution.interfaces.async_service import (
+            AsyncServiceTask,
+        )
+
+        class ActorStateRefreshTask(AsyncServiceTask):
+            """Queries GCS for actor states in the async service process."""
+
+            def run(self, actor_handles, tpe):
+                return {
+                    handle._actor_id.hex(): handle._get_local_state()
+                    for handle in actor_handles
+                }
+
+        return ActorStateRefreshTask()
+
+    def build_refresh_input(self):
+        return list(self._actor_pool._running_actors.keys())
+
+    def apply_refresh_result(self, result):
+        self._actor_pool.apply_actor_states(result)
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""
@@ -955,28 +975,26 @@ class _ActorPool(AutoscalingActorPool):
         for actor in self._running_actors:
             self._update_running_actor_state(actor)
 
-    def _update_running_actor_state(self, actor: ActorHandle) -> _ActorState:
-        """Update running actor state. This is called for every actor
-        in `refresh_actor_state`.
+    def _update_running_actor_state(
+        self, actor: ActorHandle, gcs_state: Optional[int] = None
+    ) -> _ActorState:
+        """Update a running actor's restart state from a GCS state value.
 
         Args:
-            actor: The running actor that needs state update.
+            actor: The running actor to update.
+            gcs_state: Pre-fetched GCS state enum value. If None, fetches
+                it via ``actor._get_local_state()``.
 
         Returns:
-            The new actor state
+            The updated actor state.
         """
-        actor_state = actor._get_local_state()
+        if gcs_state is None:
+            gcs_state = actor._get_local_state()
         running_actor_state = self._running_actors[actor]
-        if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
-            # actor._get_local_state can return None if the state is Unknown
-            # If actor_state is None or dead, there is nothing to do.
+        if gcs_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
             return running_actor_state
-        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
-            # The actors can be either ALIVE or RESTARTING here because they will
-            # be restarted indefinitely until execution finishes.
-            assert (
-                actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-            ), actor_state
+        elif gcs_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+            assert gcs_state == gcs_pb2.ActorTableData.ActorState.RESTARTING, gcs_state
             if not running_actor_state.is_restarting:
                 self._num_restarting_actors += 1
                 running_actor_state.is_restarting = True
@@ -985,6 +1003,19 @@ class _ActorPool(AutoscalingActorPool):
                 self._num_restarting_actors -= 1
                 running_actor_state.is_restarting = False
         return running_actor_state
+
+    def apply_actor_states(self, states: Dict[str, int]) -> None:
+        """Apply pre-fetched GCS actor states to the pool.
+
+        Called from ``ActorPoolMapOperator.apply_refresh_result()`` on the
+        scheduling thread after the async service returns.
+
+        Args:
+            states: Mapping of actor_id hex string to GCS state enum value.
+        """
+        for actor in list(self._running_actors):
+            gcs_state = states.get(actor._actor_id.hex())
+            self._update_running_actor_state(actor, gcs_state=gcs_state)
 
     def _add_pending_actor(self, actor: ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.

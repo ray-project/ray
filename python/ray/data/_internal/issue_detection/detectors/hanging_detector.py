@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional, Union
 import requests
 
 import ray
-from ray.data._internal.execution.interfaces.op_runtime_metrics import RunningTaskInfo
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueDetector,
@@ -46,6 +45,61 @@ def _format_timestamp(epoch: float) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Snapshot types — the common currency for both sync and async detection
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RunningTaskSnapshot:
+    task_id: ray.TaskID
+    bytes_output: int
+    time_since_last_update: float
+
+
+@dataclass(frozen=True)
+class OpDetectionSnapshot:
+    op_id: str
+    op_name: str
+    dataset_id: str
+    has_execution_finished: bool
+    running_tasks: Dict[TaskIdx, RunningTaskSnapshot]
+    task_stats_count: int
+    task_stats_mean: float
+    task_stats_stddev: float
+
+    @classmethod
+    def from_operator(
+        cls, op: "PhysicalOperator", dataset_id: str
+    ) -> "OpDetectionSnapshot":
+        """Build a snapshot from a live operator on the scheduling thread."""
+        now = time.perf_counter()
+        metrics = op.metrics
+        running_tasks: Dict[TaskIdx, RunningTaskSnapshot] = {}
+        for task_idx, task_info in metrics._running_tasks.items():
+            running_tasks[task_idx] = RunningTaskSnapshot(
+                task_id=task_info.task_id,
+                bytes_output=task_info.bytes_output,
+                time_since_last_update=now - task_info.last_updated,
+            )
+        stats = metrics._op_task_duration_stats
+        return cls(
+            op_id=op.id,
+            op_name=op.name,
+            dataset_id=dataset_id,
+            has_execution_finished=op.has_execution_finished(),
+            running_tasks=running_tasks,
+            task_stats_count=stats.count(),
+            task_stats_mean=stats.mean(),
+            task_stats_stddev=stats.stddev(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Internal state types
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class TaskMetadata:
     """Subset of TaskState fields relevant for hanging detection."""
@@ -70,11 +124,7 @@ class HangingExecutionState:
     task_id: ray.TaskID
     task_metadata: Optional[TaskMetadata]
     bytes_output: int
-    # NOTE This is from perf_couinter()
-    start_time_hanging: float
-
-    def hanging_time(self):
-        return time.perf_counter() - self.start_time_hanging
+    time_since_last_update: float
 
 
 @dataclass
@@ -87,12 +137,12 @@ class HangingExecutionIssueDetectorConfig:
 class HangingExecutionIssueDetector(IssueDetector):
     def __init__(
         self,
-        dataset_id: str,
-        operators: List["PhysicalOperator"],
         config: HangingExecutionIssueDetectorConfig,
+        dataset_id: str = "",
+        operators: Optional[List["PhysicalOperator"]] = None,
     ):
         self._dataset_id = dataset_id
-        self._operators = operators
+        self._operators = operators or []
         self._detector_cfg = config
 
         self._op_task_stats_min_count = self._detector_cfg.op_task_stats_min_count
@@ -100,56 +150,42 @@ class HangingExecutionIssueDetector(IssueDetector):
             self._detector_cfg.op_task_stats_std_factor
         )
 
-        # Map of operator id to Dict[task index, state]
         self._hanging_op_tasks: HangingOpTasks = defaultdict(dict)
 
     @classmethod
     def from_executor(
         cls, executor: "StreamingExecutor"
     ) -> "HangingExecutionIssueDetector":
-        """Factory method to create a HangingExecutionIssueDetector from a StreamingExecutor.
-
-        Args:
-            executor: The StreamingExecutor instance to extract dependencies from.
-
-        Returns:
-            An instance of HangingExecutionIssueDetector.
-        """
+        """Factory method to create a HangingExecutionIssueDetector from a StreamingExecutor."""
         operators = list(executor._topology.keys()) if executor._topology else []
         ctx = executor._data_context
         return cls(
+            config=ctx.issue_detectors_config.hanging_detector_config,
             dataset_id=executor._dataset_id,
             operators=operators,
-            config=ctx.issue_detectors_config.hanging_detector_config,
         )
 
     def _create_issue(
         self,
-        operator: "PhysicalOperator",
-        hanging_execution_state: HangingExecutionState,
+        snap: OpDetectionSnapshot,
+        hes: HangingExecutionState,
     ) -> Issue:
-
-        hes = hanging_execution_state
-        op_task_stats = operator.metrics._op_task_duration_stats
-        avg_duration = op_task_stats.mean()
-        stdev = op_task_stats.stddev()
-
         meta = hes.task_metadata
         task_info = ""
         if meta is not None:
             task_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
-        hanging_time = hes.hanging_time()
+        hanging_time = hes.time_since_last_update
         hanging_since = _format_timestamp(time.time() - hanging_time)
 
         message = (
             f"A task (task_id={hes.task_id}) of operator "
-            f"{operator.name} {task_info}has been running or stuck in scheduling for "
+            f"{snap.op_name} {task_info}has been running or stuck in scheduling for "
             f"{hanging_time:.2f}s, which is longer than the average task "
             f"duration + z-score * stddev of this operator "
-            f"({avg_duration:.2f} + "
+            f"({snap.task_stats_mean:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
-            f"{stdev:.2f}s). "
+            f"{snap.task_stats_stddev:.2f}s). "
             f"Last time task produced output or made any progress was {hanging_since}. "
             f"If this message persists, please check "
             f"the stack trace of the task for potential hanging "
@@ -160,87 +196,73 @@ class HangingExecutionIssueDetector(IssueDetector):
         )
 
         return Issue(
-            dataset_name=self._dataset_id,
+            dataset_name=snap.dataset_id,
             operator_id=hes.operator_id,
             issue_type=IssueType.HANGING,
             message=message,
         )
 
-    def _refresh_state(
-        self,
-        operator: "PhysicalOperator",
-        task_idx: TaskIdx,
-        old_state: Optional[HangingExecutionState],
-        task_info: RunningTaskInfo,
-    ) -> HangingExecutionState:
-        """Build a HangingExecutionState, fetching task metadata lazily.
-
-        Task metadata (pid, node_id, attempt) is fetched from the Ray
-        State API only when unknown or potentially stale (e.g. after the
-        task made progress then stalled again).
-        """
-        task_metadata: Optional[TaskMetadata] = None
-        if old_state is not None:
-            task_metadata = old_state.task_metadata
-        else:
-            task_metadata = get_latest_state_for_task(task_info.task_id)
-
-        return HangingExecutionState(
-            operator_id=operator.id,
-            task_idx=task_idx,
-            task_id=task_info.task_id,
-            task_metadata=task_metadata,
-            bytes_output=task_info.bytes_output,
-            start_time_hanging=task_info.last_updated,
-        )
-
     def detect(self) -> List[Issue]:
+        """Sync entry point — builds snapshots from live operators and delegates."""
+        snapshots = [
+            OpDetectionSnapshot.from_operator(op, self._dataset_id)
+            for op in self._operators
+            if not op.has_execution_finished()
+        ]
+        return self.detect_from_snapshots(snapshots)
 
+    def detect_from_snapshots(
+        self, snapshots: List[OpDetectionSnapshot]
+    ) -> List[Issue]:
+        """Core detection logic operating on serializable snapshots.
+
+        Used by both the sync ``detect()`` path and the async service task.
+        """
         issues: List[Issue] = []
-        # Build fresh maps each cycle so that tasks which finished or
-        # dropped below the threshold are automatically pruned.
         hanging_op_tasks: HangingOpTasks = defaultdict(dict)
 
-        for operator in self._operators:
-            if operator.has_execution_finished():
+        for snap in snapshots:
+            if snap.has_execution_finished:
                 continue
 
-            op_metrics = operator.metrics
-            op_task_stats = op_metrics._op_task_duration_stats
-            # 1) Skip if not reached minimum task count
-            if op_task_stats.count() < self._op_task_stats_min_count:
+            if snap.task_stats_count < self._op_task_stats_min_count:
                 continue
 
-            # 2) Skip if under threshold of mean + z-score * stddev
-            mean = op_task_stats.mean()
-            stddev = op_task_stats.stddev()
-            threshold = mean + self._op_task_stats_std_factor_threshold * stddev
+            threshold = (
+                snap.task_stats_mean
+                + self._op_task_stats_std_factor_threshold * snap.task_stats_stddev
+            )
 
-            for task_idx, task_info in op_metrics._running_tasks.items():
-
-                time_since_last_update = time.perf_counter() - task_info.last_updated
-                if time_since_last_update <= threshold:
+            for task_idx, task_snap in snap.running_tasks.items():
+                if task_snap.time_since_last_update <= threshold:
                     continue
 
-                old_state = self._hanging_op_tasks[operator.id].get(task_idx)
+                old_state = self._hanging_op_tasks.get(snap.op_id, {}).get(task_idx)
 
-                new_state = self._refresh_state(
-                    operator=operator,
+                task_metadata: Optional[TaskMetadata] = None
+                if old_state is not None:
+                    task_metadata = old_state.task_metadata
+                else:
+                    task_metadata = get_latest_state_for_task(task_snap.task_id)
+
+                new_state = HangingExecutionState(
+                    operator_id=snap.op_id,
                     task_idx=task_idx,
-                    old_state=old_state,
-                    task_info=task_info,
+                    task_id=task_snap.task_id,
+                    task_metadata=task_metadata,
+                    bytes_output=task_snap.bytes_output,
+                    time_since_last_update=task_snap.time_since_last_update,
                 )
 
-                hanging_op_tasks[operator.id][task_idx] = new_state
+                hanging_op_tasks[snap.op_id][task_idx] = new_state
 
-                if old_state == new_state:
+                if (
+                    old_state is not None
+                    and old_state.bytes_output == new_state.bytes_output
+                ):
                     continue
 
-                issues.append(
-                    self._create_issue(
-                        operator=operator, hanging_execution_state=new_state
-                    )
-                )
+                issues.append(self._create_issue(snap, new_state))
 
         self._hanging_op_tasks = hanging_op_tasks
         return issues
