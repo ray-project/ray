@@ -66,13 +66,18 @@ class DashboardHead:
         minimal: bool,
         serve_frontend: bool,
         modules_to_load: Optional[Set[str]] = None,
+        proxy_server_url: Optional[str] = None,
     ):
         """
+        Dashboard head
+
         Args:
             http_host: The host address for the Http server.
             http_port: The port for the Http server.
             http_port_retries: The maximum retry to bind ports for the Http server.
             gcs_address: The GCS address in the {address}:{port} format.
+            cluster_id_hex: Cluster ID in hex
+            node_ip_address: The IP address of the dashboard
             log_dir: The log directory. E.g., /tmp/session_latest/logs.
             logging_level: The logging level (e.g. logging.INFO, logging.DEBUG)
             logging_format: The format string for log messages
@@ -88,6 +93,8 @@ class DashboardHead:
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
                 minimal flags.
+            proxy_server_url: The proxy url to redirect api requests to
+                Ex: proxy_server_url=http://historyserver:8080
         """
         self.minimal = minimal
         self.serve_frontend = serve_frontend
@@ -125,6 +132,7 @@ class DashboardHead:
         self.ip = node_ip_address
         self.pid = os.getpid()
         self.dashboard_proc = psutil.Process()
+        self.proxy_server_url = proxy_server_url
 
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
@@ -145,6 +153,7 @@ class DashboardHead:
             self.gcs_address,
             self.session_name,
             self.metrics,
+            self.proxy_server_url,
         )
         await self.http_server.run(dashboard_head_modules, subprocess_module_handles)
 
