@@ -109,17 +109,6 @@ def _apply_delay_logic(
     return decision_num_replicas, policy_state
 
 
-def _apply_bounds(
-    num_replicas: int,
-    capacity_adjusted_min_replicas: int,
-    capacity_adjusted_max_replicas: int,
-) -> int:
-    """Clip replica count to be within capacity-adjusted min/max bounds."""
-    return max(
-        capacity_adjusted_min_replicas,
-        min(capacity_adjusted_max_replicas, num_replicas),
-    )
-
 
 def _apply_default_params(
     desired_num_replicas: Union[int, float],

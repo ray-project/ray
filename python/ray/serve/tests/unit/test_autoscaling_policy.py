@@ -12,7 +12,6 @@ from ray.serve._private.gang_scheduling_autoscaling_policy import (
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
-    _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
@@ -790,16 +789,6 @@ class TestAutoscalingConfigParameters:
         )
         # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The logic then adjusts it to 9.
         assert result == 9
-
-    def test_apply_bounds(self):
-        num_replicas = 5
-        capacity_adjusted_min_replicas = 1
-        capacity_adjusted_max_replicas = 10
-        result = _apply_bounds(
-            num_replicas, capacity_adjusted_min_replicas, capacity_adjusted_max_replicas
-        )
-        # Expected: max(1, min(10, 5)) = 5
-        assert result == 5
 
     def test_apply_delay_logic_upscale(self):
         """Test upscale delay requires consecutive periods."""
