@@ -20,7 +20,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -215,9 +214,6 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to

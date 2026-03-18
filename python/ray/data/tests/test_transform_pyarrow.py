@@ -15,10 +15,10 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions import (
+    ArrowConversionError,
     ArrowPythonObjectType,
     ArrowTensorArray,
     ArrowTensorType,
-    _object_extension_type_allowed,
 )
 
 
@@ -45,10 +45,6 @@ def test_pyarrow(ray_start_regular_shared):
     assert ds.filter(lambda x: x["id"] == 0).flat_map(
         lambda x: [{"b": x["id"] + 2}, {"b": x["id"] + 20}]
     ).take() == [{"b": 2}, {"b": 20}]
-
-
-class UnsupportedType:
-    pass
 
 
 def _create_dataset(op, data):
@@ -81,29 +77,38 @@ def _create_dataset(op, data):
     return ds
 
 
-@pytest.mark.skipif(
-    _object_extension_type_allowed(), reason="Arrow table supports pickled objects"
-)
-@pytest.mark.parametrize(
-    "op, data",
-    [
-        ("map", [UnsupportedType(), 1]),
-        ("map_batches", [None, 1]),
-        ("map_batches", [{"a": 1}, {"a": 2}]),
-    ],
-)
-def test_fallback_to_pandas_on_incompatible_data(
-    op,
-    data,
+def test_map_batches_fallback_to_pandas_on_incompatible_data(
     ray_start_regular_shared,
+    restore_data_context,
 ):
-    # Test if the first UDF output is incompatible with Arrow,
+    # For map_batches, if the first UDF output is incompatible with Arrow,
     # Ray Data will fall back to using Pandas.
-    ds = _create_dataset(op, data)
+    class UnsupportedType:
+        pass
+
+    data = [UnsupportedType(), 1]
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+    ds = _create_dataset("map_batches", data)
     ds = ds.materialize()
     bundles = ds.iter_internal_ref_bundles()
     block = ray.get(next(bundles).block_refs[0])
     assert isinstance(block, pd.DataFrame)
+
+
+def test_map_raises_on_incompatible_data(
+    ray_start_regular_shared,
+    restore_data_context,
+):
+    # For row-based map, the output buffer builds Arrow blocks eagerly, so
+    # incompatible data raises ArrowConversionError when object fallback is disabled.
+    class UnsupportedType:
+        pass
+
+    data = [UnsupportedType(), 1]
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+    ds = _create_dataset("map", data)
+    with pytest.raises(ArrowConversionError):
+        ds.materialize()
 
 
 _PYARROW_SUPPORTS_TYPE_PROMOTION = (
