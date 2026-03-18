@@ -171,9 +171,6 @@ def _is_filesystem_compatible_with_scheme(
     This prevents silently using the wrong filesystem for a URI, which can result
     in malformed paths or incorrect behavior.
 
-    For fsspec filesystems wrapped in PyFileSystem, the inner fsspec protocol
-    is checked against the URI scheme to determine compatibility.
-
     Args:
         filesystem: The PyArrow filesystem to check.
         scheme: The URI scheme (e.g., 's3', 'gs', 'http', 'file', '').

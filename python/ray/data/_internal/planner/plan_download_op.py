@@ -232,7 +232,7 @@ def download_bytes_threaded(
                     with fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
-                    logger.warning(
+                    logger.debug(
                         f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
                     )
                 except Exception as e:
