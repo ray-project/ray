@@ -1,7 +1,10 @@
 import logging
 from collections import OrderedDict
 
-from ray.autoscaler.v2.event_logger import build_autoscaler_scheduling_update_rows
+from ray._common.observability.autoscaler_event_utils import (
+    build_autoscaler_scheduling_update_rows,
+    group_resource_bundle_dicts,
+)
 from ray.core.generated import events_base_event_pb2
 
 logger = logging.getLogger(__name__)
@@ -102,13 +105,18 @@ class AutoscalerEventsStorage:
                 }
                 for action in scaling_event.terminate_actions
             ],
-            infeasible_resource_requests=self._group_resource_bundles(
-                scaling_event.infeasible_resource_requests
+            infeasible_resource_requests=group_resource_bundle_dicts(
+                [
+                    self._resource_bundle_to_dict(b)
+                    for b in scaling_event.infeasible_resource_requests
+                ]
             ),
             infeasible_gang_resource_requests=[
                 {
                     "details": gang_request.details,
-                    "bundles": self._group_resource_bundles(gang_request.bundles),
+                    "bundles": group_resource_bundle_dicts(
+                        [self._resource_bundle_to_dict(b) for b in gang_request.bundles]
+                    ),
                 }
                 for gang_request in scaling_event.infeasible_gang_resource_requests
             ],
@@ -137,36 +145,9 @@ class AutoscalerEventsStorage:
             for index, row in enumerate(rendered_rows)
         ]
 
-    def _group_resource_bundles(self, bundles) -> list[dict]:
-        grouped: "OrderedDict[tuple, dict]" = OrderedDict()
-        for bundle in bundles:
-            bundle_dict = self._resource_bundle_to_dict(bundle)
-            bundle_key = (
-                tuple(sorted(bundle_dict["resources"].items())),
-                tuple(
-                    (
-                        constraint["label_key"],
-                        constraint["operator"],
-                        tuple(constraint["values"]),
-                    )
-                    for constraint in bundle_dict["label_constraints"]
-                ),
-            )
-            if bundle_key not in grouped:
-                grouped[bundle_key] = {
-                    "resources": bundle_dict["resources"],
-                    "count": 0,
-                }
-                if bundle_dict["label_constraints"]:
-                    grouped[bundle_key]["label_constraints"] = bundle_dict[
-                        "label_constraints"
-                    ]
-            grouped[bundle_key]["count"] += 1
-        return list(grouped.values())
-
     @staticmethod
     def _resource_bundle_to_dict(bundle) -> dict:
-        return {
+        d = {
             "resources": dict(bundle.resources),
             "label_constraints": [
                 {
@@ -177,3 +158,6 @@ class AutoscalerEventsStorage:
                 for constraint in bundle.label_constraints
             ],
         }
+        if bundle.count:
+            d["count"] = bundle.count
+        return d
