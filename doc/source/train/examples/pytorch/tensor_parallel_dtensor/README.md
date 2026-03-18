@@ -105,7 +105,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch transformers datasets
+pip install torch "transformers==4.44.2" "datasets==2.21.0"
 ```
 
 
