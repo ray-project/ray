@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import pyarrow as pa
 import pytest
-from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
@@ -390,35 +390,42 @@ def test_read_tfrecords(
     )
 
     df = ds.to_pandas()
+    dtypes = dict(df.dtypes)
     # Protobuf serializes features in a non-deterministic order.
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["int_item"])
+        assert dtypes["int_item"] == pd.ArrowDtype(pa.list_(pa.int64()))
     else:
-        assert is_int64_dtype(dict(df.dtypes)["int_item"])
-    assert is_object_dtype(dict(df.dtypes)["int_list"])
-    assert is_object_dtype(dict(df.dtypes)["int_partial"])
-    assert is_object_dtype(dict(df.dtypes)["int_empty"])
+        assert dtypes["int_item"] == pd.ArrowDtype(pa.int64())
+    assert dtypes["int_list"] == pd.ArrowDtype(pa.list_(pa.int64()))
+    assert dtypes["int_partial"] == pd.ArrowDtype(pa.list_(pa.null()))
+    assert dtypes["int_empty"] == pd.ArrowDtype(pa.list_(pa.null()))
 
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["float_item"])
-        assert is_object_dtype(dict(df.dtypes)["float_partial"])
+        assert dtypes["float_item"] == pd.ArrowDtype(pa.list_(pa.float32()))
+        assert dtypes["float_partial"] == pd.ArrowDtype(pa.list_(pa.float32()))
     else:
-        assert is_float_dtype(dict(df.dtypes)["float_item"])
-        assert is_float_dtype(dict(df.dtypes)["float_partial"])
-    assert is_object_dtype(dict(df.dtypes)["float_list"])
-    assert is_object_dtype(dict(df.dtypes)["float_empty"])
+        assert dtypes["float_item"] == pd.ArrowDtype(pa.float32())
+        assert dtypes["float_partial"] == pd.ArrowDtype(pa.float32())
+    assert dtypes["float_list"] == pd.ArrowDtype(pa.list_(pa.float32()))
+    assert dtypes["float_empty"] == pd.ArrowDtype(pa.list_(pa.null()))
 
-    # In both cases, bytes are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["bytes_item"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_partial"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
+    # bytes columns: scalar when schema=False (single value unwrapped), list when schema=True
+    if with_tf_schema:
+        assert dtypes["bytes_item"] == pd.ArrowDtype(pa.list_(pa.binary()))
+    else:
+        assert dtypes["bytes_item"] == pd.ArrowDtype(pa.binary())
+    assert dtypes["bytes_partial"] == pd.ArrowDtype(pa.list_(pa.null()))
+    assert dtypes["bytes_list"] == pd.ArrowDtype(pa.list_(pa.binary()))
+    assert dtypes["bytes_empty"] == pd.ArrowDtype(pa.list_(pa.null()))
 
-    # strings are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["string_item"])
-    assert is_object_dtype(dict(df.dtypes)["string_partial"])
-    assert is_object_dtype(dict(df.dtypes)["string_list"])
-    assert is_object_dtype(dict(df.dtypes)["string_empty"])
+    # string columns (stored as bytes in TF): same pattern as bytes
+    if with_tf_schema:
+        assert dtypes["string_item"] == pd.ArrowDtype(pa.list_(pa.binary()))
+    else:
+        assert dtypes["string_item"] == pd.ArrowDtype(pa.binary())
+    assert dtypes["string_partial"] == pd.ArrowDtype(pa.list_(pa.null()))
+    assert dtypes["string_list"] == pd.ArrowDtype(pa.list_(pa.binary()))
+    assert dtypes["string_empty"] == pd.ArrowDtype(pa.list_(pa.null()))
 
     # If the schema is specified, we should not perform the
     # automatic unwrapping of single-element lists.

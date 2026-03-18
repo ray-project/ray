@@ -25,8 +25,18 @@ class TestBatchBlocks:
         if batch_format == "pandas":
             assert isinstance(batches[0], pd.DataFrame)
             assert isinstance(batches[1], pd.DataFrame)
-            pd.testing.assert_frame_equal(batches[0], pd.DataFrame({"foo": [0, 1, 2]}))
-            pd.testing.assert_frame_equal(batches[1], pd.DataFrame({"foo": [3, 4, 5]}))
+            pd.testing.assert_frame_equal(
+                batches[0],
+                pd.DataFrame({"foo": [0, 1, 2]}).convert_dtypes(
+                    dtype_backend="pyarrow"
+                ),
+            )
+            pd.testing.assert_frame_equal(
+                batches[1],
+                pd.DataFrame({"foo": [3, 4, 5]}).convert_dtypes(
+                    dtype_backend="pyarrow"
+                ),
+            )
         elif batch_format == "numpy":
             assert isinstance(batches[0], dict)
             assert isinstance(batches[1], dict)
