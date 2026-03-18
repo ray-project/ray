@@ -1127,10 +1127,10 @@ def start(
         try:
             node.check_version_info()
         except RuntimeError:
-            # Version mismatch detected after the node has already started.
-            # Kill all node processes to unregister the raylet from the
-            # cluster before propagating the error.
-            node.kill_all_processes(check_alive=False, allow_graceful=True, wait=True)
+            try:
+                node.kill_all_processes(check_alive=False, allow_graceful=True, wait=True)
+            except Exception as e:
+                cli_logger.warning(f"Failed to clean up processes on version mismatch: {e}")
             raise
 
         cli_logger.newline()
