@@ -210,7 +210,6 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
-            op.update_resource_usage()
             op_usage = op.current_logical_usage()
             op_running_usage = op.running_logical_usage()
             op_pending_usage = op.pending_logical_usage()
