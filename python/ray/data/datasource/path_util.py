@@ -171,6 +171,9 @@ def _is_filesystem_compatible_with_scheme(
     This prevents silently using the wrong filesystem for a URI, which can result
     in malformed paths or incorrect behavior.
 
+    For fsspec filesystems wrapped in PyFileSystem, the inner fsspec protocol
+    is checked against the URI scheme to determine compatibility.
+
     Args:
         filesystem: The PyArrow filesystem to check.
         scheme: The URI scheme (e.g., 's3', 'gs', 'http', 'file', '').
@@ -188,11 +191,38 @@ def _is_filesystem_compatible_with_scheme(
     # Get the actual filesystem type
     fs_type = filesystem.type_name
 
-    # For PyFileSystem (fsspec wrappers), also check if it's HTTP
-    if fs_type == "py" and scheme in ("http", "https"):
-        return _is_http_filesystem(filesystem)
+    # Direct match for native PyArrow filesystems
+    if fs_type in expected_types:
+        return True
 
-    return fs_type in expected_types
+    # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
+    if fs_type == "py" or fs_type.startswith("py::"):
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+        actual_fs = filesystem
+        if isinstance(actual_fs, RetryingPyFileSystem):
+            actual_fs = actual_fs.unwrap()
+
+        if isinstance(actual_fs, PyFileSystem) and isinstance(
+            actual_fs.handler, FSSpecHandler
+        ):
+            inner_fs = actual_fs.handler.fs
+            protocol = getattr(inner_fs, "protocol", None)
+            if protocol is not None:
+                if isinstance(protocol, str):
+                    protocol = (protocol,)
+                # Match scheme against fsspec protocol(s)
+                if scheme in protocol:
+                    return True
+                # For bare paths (empty scheme), trust user-provided filesystem
+                if scheme == "":
+                    return True
+
+        # Fallback: check HTTP
+        if scheme in ("http", "https"):
+            return _is_http_filesystem(filesystem)
+
+    return False
 
 
 def _resolve_single_path_with_fallback(
