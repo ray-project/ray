@@ -185,21 +185,12 @@ def _is_filesystem_compatible_with_scheme(
         # This preserves backward compatibility for custom filesystems
         return True
 
-    # Unwrap RetryingPyFileSystem to get the underlying filesystem's type
-    from ray.data._internal.util import RetryingPyFileSystem
-
-    unwrapped = (
-        filesystem.unwrap()
-        if isinstance(filesystem, RetryingPyFileSystem)
-        else filesystem
-    )
-
     # Get the actual filesystem type
-    fs_type = unwrapped.type_name
+    fs_type = filesystem.type_name
 
     # For PyFileSystem (fsspec wrappers), also check if it's HTTP
     if fs_type == "py" and scheme in ("http", "https"):
-        return _is_http_filesystem(unwrapped)
+        return _is_http_filesystem(filesystem)
 
     return fs_type in expected_types
 
