@@ -13,6 +13,7 @@ _requirements_py310_args = [
     "$(rootpath :requirements_py310.in)",
     "$(rootpath :requirements_py310.txt)",
     "//release:requirements_py310.update",
+    "--no-upgrade",
 ]
 
 _requirements_py310_data = [
