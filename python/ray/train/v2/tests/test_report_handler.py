@@ -54,6 +54,7 @@ def generate_worker_group_poll_status(num_workers, num_ckpt, num_dummy, num_none
     return WorkerGroupPollStatus(dict(enumerate(worker_statuses)))
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "num_workers, num_ckpt, num_dummy, num_none, expected",
     [
