@@ -9,6 +9,7 @@ from typing import Any, Dict, Generic, Optional, TypeVar
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from tensorflow._api.v2.errors import UnimplementedError
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +53,21 @@ class AsyncRefreshable(ABC):
 
     def create_async_task(self) -> Optional["AsyncServiceTask"]:
         """Return the task to register with the async service, or None to skip."""
-        return None
+        raise NotImplementedError
 
     def build_refresh_input(self) -> Any:
         """Build a serializable input snapshot for the async task.
 
         Called on the scheduling thread. Has access to live internal state.
         """
-        return None
+        raise NotImplementedError
 
     def apply_refresh_result(self, result: Any) -> None:
         """Apply the result from the async task back to internal state.
 
         Called on the scheduling thread when the result is ready.
         """
-        pass
+        raise NotImplementedError
 
 
 class ErrorPolicy(Enum):
