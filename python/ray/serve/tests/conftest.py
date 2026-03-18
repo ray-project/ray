@@ -156,6 +156,9 @@ def _shared_serve_instance():
         },
     )
     yield _get_global_client()
+    # Shutdown Serve and Ray when the session ends so that proxy actors
+    # (e.g. HAProxyManager) run their shutdown logic and stop subprocesses.
+    serve.shutdown()
 
 
 @pytest_asyncio.fixture
