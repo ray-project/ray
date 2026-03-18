@@ -583,13 +583,8 @@ class StreamingExecutor(Executor, threading.Thread):
     def _setup_async_refreshables(self) -> None:
         """Discover and register async tasks from operators and callbacks."""
 
-        for op in self._topology:
-            task = op.create_async_task()
-            if task is None:
-                continue
-            self._async_handles[op] = AsyncServiceHandle(task=task)
-        for cb in self._callbacks:
-            task = cb.create_async_task()
+        for refreshable in list(self._topology) + self._callbacks:
+            task = refreshable.create_async_task()
             if task is None:
                 continue
             self._async_handles[cb] = AsyncServiceHandle(task=task)
