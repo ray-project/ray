@@ -10,7 +10,7 @@ from ray._private.authentication.http_token_authentication import (
 )
 from ray._raylet import RayEvent, serialize_events_to_ray_events_data_json
 
-_DEFAULT_TIMEOUT_S = 10
+_DEFAULT_TIMEOUT_S = 0.5
 _EXTERNAL_RAY_EVENTS_PATH = "/api/v0/external/ray_events"
 
 

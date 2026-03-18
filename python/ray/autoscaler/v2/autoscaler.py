@@ -248,17 +248,27 @@ class Autoscaler:
             # Emit a node provisioning event when the provisioning state
             # changes (new pending requests, allocations, or failures).
             if autoscaling_state is not None and self._event_logger is not None:
-                # Hash only the repeated fields; exclude
-                # autoscaler_state_version and
-                # last_seen_cluster_resource_state_version which change
-                # every iteration and would defeat deduplication.
-                state_for_hash = AutoscalingState()
-                state_for_hash.CopyFrom(autoscaling_state)
-                state_for_hash.ClearField("autoscaler_state_version")
-                state_for_hash.ClearField("last_seen_cluster_resource_state_version")
-                provisioning_hash = hashlib.sha256(
-                    state_for_hash.SerializeToString()
-                ).hexdigest()
+                # Hash only the three provisioning-relevant fields.
+                # The full AutoscalingState also contains infeasible request
+                # fields that are unrelated to provisioning and would cause
+                # false-positive change detections here.
+                provisioning_bytes = (
+                    b"".join(
+                        r.SerializeToString()
+                        for r in autoscaling_state.pending_instance_requests
+                    )
+                    + b"|"
+                    + b"".join(
+                        i.SerializeToString()
+                        for i in autoscaling_state.pending_instances
+                    )
+                    + b"|"
+                    + b"".join(
+                        f.SerializeToString()
+                        for f in autoscaling_state.failed_instance_requests
+                    )
+                )
+                provisioning_hash = hashlib.sha256(provisioning_bytes).hexdigest()
                 if provisioning_hash != self._last_provisioning_hash:
                     self._last_provisioning_hash = provisioning_hash
                     try:
