@@ -253,17 +253,17 @@ class Autoscaler:
                 # fields that are unrelated to provisioning and would cause
                 # false-positive change detections here.
                 provisioning_bytes = (
-                    b"".join(
+                    b"\x00".join(
                         r.SerializeToString()
                         for r in autoscaling_state.pending_instance_requests
                     )
                     + b"|"
-                    + b"".join(
+                    + b"\x00".join(
                         i.SerializeToString()
                         for i in autoscaling_state.pending_instances
                     )
                     + b"|"
-                    + b"".join(
+                    + b"\x00".join(
                         f.SerializeToString()
                         for f in autoscaling_state.failed_instance_requests
                     )
