@@ -55,12 +55,12 @@ class TorchGLOOGroup(BaseGroup):
         world_size: int,
         rank: int,
         group_name: str,
-        gloo_timeout: Optional[int] = None,
+        rendezvous_timeout: Optional[int] = None,
     ):
         # Initialize the default process group only once per process.
         if not dist.is_initialized():
             # Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
-            self._rendezvous(group_name, rank, gloo_timeout)
+            self._rendezvous(group_name, rank, rendezvous_timeout)
 
             metadata_key = get_master_address_metadata_key(group_name)
             try:
@@ -116,11 +116,11 @@ class TorchGLOOGroup(BaseGroup):
                 return self._timeout_ms
 
         self._gloo_context = _GlooCompatContext(
-            gloo_timeout if gloo_timeout is not None else 30000
+            rendezvous_timeout if rendezvous_timeout is not None else 30000
         )
 
     def _rendezvous(
-        self, group_name: str, rank: int, gloo_timeout: Optional[int]
+        self, group_name: str, rank: int, rendezvous_timeout: Optional[int]
     ) -> None:
         """Rendezvous: ensure a MASTER_ADDR:MASTER_PORT is published in internal_kv.
 
@@ -132,7 +132,9 @@ class TorchGLOOGroup(BaseGroup):
             internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
         else:
             # Wait until rank 0 publishes the metadata or timeout.
-            deadline_s = time.time() + (gloo_timeout / 1000.0 if gloo_timeout else 30.0)
+            deadline_s = time.time() + (
+                rendezvous_timeout / 1000.0 if rendezvous_timeout else 30.0
+            )
             while True:
                 meta = internal_kv._internal_kv_get(metadata_key)
                 if meta is not None:

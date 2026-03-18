@@ -75,7 +75,7 @@ class GroupManager(object):
         self._name_group_map = {}
 
     def create_collective_group(
-        self, backend, world_size, rank, group_name, gloo_timeout
+        self, backend, world_size, rank, group_name, rendezvous_timeout
     ):
         """The entry to create new collective groups in the manager.
 
@@ -87,7 +87,7 @@ class GroupManager(object):
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
+            g = TorchGLOOGroup(world_size, rank, group_name, rendezvous_timeout)
         elif backend == types.Backend.NCCL:
             _check_backend_availability(backend)
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
@@ -148,7 +148,7 @@ def init_collective_group(
     rank: int,
     backend=types.Backend.NCCL,
     group_name: str = "default",
-    gloo_timeout: int = 30000,
+    rendezvous_timeout: int = 30000,
 ):
     """Initialize a collective group inside an actor process.
 
@@ -157,6 +157,7 @@ def init_collective_group(
         rank: the rank of the current process.
         backend: the CCL backend to use, NCCL or GLOO.
         group_name: the name of the collective group.
+        rendezvous_timeout: timeout in milliseconds for GLOO rendezvous.
 
     Returns:
         None
@@ -179,7 +180,7 @@ def init_collective_group(
         assert rank >= 0
         assert rank < world_size
         _group_mgr.create_collective_group(
-            backend, world_size, rank, group_name, gloo_timeout
+            backend, world_size, rank, group_name, rendezvous_timeout
         )
 
 
@@ -189,7 +190,7 @@ def create_collective_group(
     ranks: List[int],
     backend=types.Backend.NCCL,
     group_name: str = "default",
-    gloo_timeout: int = 30000,
+    rendezvous_timeout: int = 30000,
 ):
     """Declare a list of actors as a collective group.
 
@@ -201,6 +202,7 @@ def create_collective_group(
         ranks (List[int]): the rank of each actor.
         backend: the CCL backend to use, NCCL or GLOO.
         group_name: the name of the collective group.
+        rendezvous_timeout: timeout in milliseconds for GLOO rendezvous.
 
     Returns:
         None
@@ -245,7 +247,13 @@ def create_collective_group(
     actors_id = [a._ray_actor_id for a in actors]
     # TODO (Dacheng): how do we recycle this name actor?
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend, gloo_timeout)])
+    ray.get(
+        [
+            info.set_info.remote(
+                actors_id, world_size, ranks, backend, rendezvous_timeout
+            )
+        ]
+    )
 
 
 # TODO (we need a declarative destroy() API here.)
@@ -733,14 +741,14 @@ def get_group_handle(group_name: str = "default"):
                 # get and create the group.
                 name = "info_" + group_name
                 mgr = ray.get_actor(name=name)
-                ids, world_size, rank, backend, gloo_timeout = ray.get(
+                ids, world_size, rank, backend, rendezvous_timeout = ray.get(
                     mgr.get_info.remote()
                 )
                 worker = ray._private.worker.global_worker
                 id_ = worker.core_worker.get_actor_id()
                 r = rank[ids.index(id_)]
                 _group_mgr.create_collective_group(
-                    backend, world_size, r, group_name, gloo_timeout
+                    backend, world_size, r, group_name, rendezvous_timeout
                 )
             except ValueError as exc:
                 # check if this group is initialized using options()
@@ -751,9 +759,11 @@ def get_group_handle(group_name: str = "default"):
                     rank = int(os.environ["collective_rank"])
                     world_size = int(os.environ["collective_world_size"])
                     backend = os.environ["collective_backend"]
-                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                    rendezvous_timeout = os.getenv(
+                        "collective_rendezvous_timeout", 30000
+                    )
                     _group_mgr.create_collective_group(
-                        backend, world_size, rank, group_name, gloo_timeout
+                        backend, world_size, rank, group_name, rendezvous_timeout
                     )
                 else:
                     raise RuntimeError(
