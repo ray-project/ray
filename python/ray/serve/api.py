@@ -190,7 +190,7 @@ def get_deployment_actor(actor_name: str):
 
     Args:
         actor_name: Name of the deployment-scoped actor (as specified in
-            deployment_actors dict).
+            deployment_actors list).
 
     Returns:
         Ray ActorHandle to the deployment-scoped actor.

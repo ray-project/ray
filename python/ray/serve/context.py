@@ -55,7 +55,6 @@ class ReplicaContext:
     _deployment_config: DeploymentConfig
     rank: ReplicaRank
     world_size: int
-    code_version: str
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
     code_version: Optional[str] = None
