@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import sys
 from typing import Callable, List, Optional
 
 import yaml
@@ -118,6 +119,8 @@ class SessionFileHandler(logging.Handler):
     Args:
         filename: The name of the log file. The file is created in the 'logs' directory
             of the Ray session directory.
+        platform: The platform to use for the log file. Defaults to the value of
+            ``sys.platform``.
         get_log_directory: A function that returns the directory where log files
             should be written. Defaults to the module-level `get_log_directory`.
     """
@@ -126,11 +129,14 @@ class SessionFileHandler(logging.Handler):
         self,
         filename: str,
         *,
+        platform: str = sys.platform,
         get_log_directory: Callable[[], Optional[str]] = get_log_directory,
     ):
         super().__init__()
         self._filename = filename
+        self._platform = platform
         self._get_log_directory = get_log_directory
+
         self._handler = None
         self._formatter = None
         self._path = None
@@ -165,7 +171,7 @@ class SessionFileHandler(logging.Handler):
         # On Windows, defaulting to UTF-8 prevents UnicodeEncodeError when Ray Data
         # logs non-cp1252 characters (e.g., checkmarks). Check
         # https://github.com/ray-project/ray/issues/49527 for more details.
-        encoding = "utf-8" if os.name == "nt" else None
+        encoding = "utf-8" if self._platform == "win32" else None
         self._handler = logging.FileHandler(self._path, encoding=encoding)
         if self._formatter is not None:
             self._handler.setFormatter(self._formatter)
