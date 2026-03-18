@@ -269,15 +269,25 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        import pandas as pd
 
-        # We specify ignore_metadata=True because pyarrow will use the metadata
-        # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
-        df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
-        if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
-        return df
+
+        # types_mapper preserves Arrow dtypes through the pandas round-trip:
+        # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
+        #   can reconstruct them exactly without lossy numpy conversion.
+        # - Ray extension types (ArrowTensorType, ArrowPythonObjectType, etc.)
+        #   return None, falling back to their own to_pandas_dtype() hooks which
+        #   produce TensorDtype / PythonObjectDtype as appropriate.
+        def _types_mapper(t):
+            if isinstance(t, pyarrow.ExtensionType):
+                return None
+            return pd.ArrowDtype(t)
+
+        return self._table.to_pandas(
+            ignore_metadata=ctx.pandas_block_ignore_metadata,
+            types_mapper=_types_mapper,
+        )
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
