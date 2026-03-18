@@ -4029,11 +4029,11 @@ class DeploymentState:
         return min(member_deadlines) if member_deadlines else float("inf")
 
     @staticmethod
-    def _group_max_shutdown_timeout_ms(
+    def _group_shutdown_timeout_ms(
         group: List[DeploymentReplica],
     ) -> float:
-        """Return the longest graceful shutdown timeout (in ms) across the group."""
-        return max(r._actor.graceful_shutdown_timeout_s * 1000 for r in group)
+        """Return the graceful shutdown timeout (in ms) for the group."""
+        return group[0]._actor.graceful_shutdown_timeout_s * 1000
 
     def _choose_pending_migration_replicas_to_stop(
         self,
@@ -4054,6 +4054,15 @@ class DeploymentState:
         groups = [[r] for r in replicas]
         return self._partition_groups_to_stop(groups, deadlines, min_replicas_to_stop)
 
+    def _group_replicas_by_gang_id(
+        self, replicas: List[DeploymentReplica]
+    ) -> Dict[str, List[DeploymentReplica]]:
+        """Group replicas by their gang_id."""
+        gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
+        for replica in replicas:
+            gangs[replica.gang_context.gang_id].append(replica)
+        return gangs
+
     def _choose_pending_migration_gangs_to_stop(
         self,
         replicas: List[DeploymentReplica],
@@ -4066,9 +4075,7 @@ class DeploymentState:
         For excess stopping, gangs are sorted by their earliest member
         deadline.
         """
-        gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
-        for replica in replicas:
-            gangs[replica.gang_context.gang_id].append(replica)
+        gangs = self._group_replicas_by_gang_id(replicas)
         return self._partition_groups_to_stop(
             list(gangs.values()), deadlines, min_replicas_to_stop
         )
@@ -4093,14 +4100,17 @@ class DeploymentState:
         curr_timestamp_ms = time.time() * 1000
         for group in groups:
             effective_deadline = self._group_effective_deadline(group, deadlines)
-            max_timeout_ms = self._group_max_shutdown_timeout_ms(group)
+            timeout_ms = self._group_shutdown_timeout_ms(group)
 
-            if curr_timestamp_ms >= effective_deadline - max_timeout_ms:
+            if curr_timestamp_ms >= effective_deadline - timeout_ms:
                 to_stop.extend(group)
             else:
                 remaining_groups.append((effective_deadline, group))
 
         # Stop excess groups, earliest deadline first.
+        # NOTE: num_excess can be negative when deadline-forced stops in the
+        # loop above already exceed min_replicas_to_stop. That's fine — no
+        # extra groups are stopped because of the guard num_excess >= len(group).
         remaining_groups.sort(key=lambda x: x[0])
         num_excess = min_replicas_to_stop - len(to_stop)
 
@@ -4123,32 +4133,39 @@ class DeploymentState:
 
         gang_config = self.get_gang_config()
 
-        if gang_config is not None:
-            # Only move a gang back to RUNNING if ALL members' nodes are no longer draining
-            gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
-            for replica in self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]):
-                gangs[replica.gang_context.gang_id].append(replica)
+        # Move replicas back to RUNNING if they are no longer on a draining node.
+        # If this causes the number of replicas to exceed the target state,
+        # they will be scaled down because `scale_deployment_replicas` is called on
+        # each deployment after this.
+        pending_migration_replicas = self._replicas.pop(
+            states=[ReplicaState.PENDING_MIGRATION]
+        )
 
-            for gang_replicas in gangs.values():
-                any_draining = any(
+        if gang_config is not None:
+            # For gangs, only move back to RUNNING if ALL members' nodes are no
+            # longer draining.
+            gangs = self._group_replicas_by_gang_id(pending_migration_replicas)
+
+            gangs_still_draining: Set[str] = set()
+            for gang_id, gang_replicas in gangs.items():
+                if any(
                     replica.actor_node_id in draining_nodes for replica in gang_replicas
-                )
-                if any_draining:
-                    for replica in gang_replicas:
-                        self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
-                else:
-                    for replica in gang_replicas:
-                        self._replicas.add(ReplicaState.RUNNING, replica)
+                ):
+                    gangs_still_draining.add(gang_id)
+
+            def still_draining(r):
+                return r.gang_context.gang_id in gangs_still_draining
+
         else:
-            # Move replicas back to running if they are no longer on a draining node.
-            # If this causes the number of replicas to exceed the target state,
-            # they will be scaled down because `scale_deployment_replicas` is called on
-            # each deployment after this
-            for replica in self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]):
-                if replica.actor_node_id not in draining_nodes:
-                    self._replicas.add(ReplicaState.RUNNING, replica)
-                else:
-                    self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+
+            def still_draining(r):
+                return r.actor_node_id in draining_nodes
+
+        for replica in pending_migration_replicas:
+            if still_draining(replica):
+                self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            else:
+                self._replicas.add(ReplicaState.RUNNING, replica)
 
         # Migrate replicas on draining nodes
         all_replicas = self._replicas.pop(
