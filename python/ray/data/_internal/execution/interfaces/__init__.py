@@ -1,3 +1,4 @@
+from .async_service import AsyncService
 from .common import NodeIdStr
 from .execution_options import ExecutionOptions, ExecutionResources
 from .executor import Executor, OutputIterator
@@ -18,4 +19,5 @@ __all__ = [
     "BlockSlice",
     "ReportsExtraResourceUsage",
     "TaskContext",
+    "AsyncService",
 ]

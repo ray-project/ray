@@ -22,6 +22,10 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.async_service import (
+    AsyncRefreshable,
+    AsyncServiceHandle,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -96,6 +100,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
         self._callbacks: List["ExecutionCallback"] = []
+        self._async_handles: Dict[AsyncRefreshable, AsyncServiceHandle] = {}
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -257,6 +262,8 @@ class StreamingExecutor(Executor, threading.Thread):
         for callback in self._callbacks:
             callback.before_execution_starts(self)
 
+        self._setup_async_refreshables()
+
         self.start()
         self._execution_started = True
 
@@ -333,6 +340,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 f" (min/max/total={min_}/{max_}/{total}s)"
             )
 
+            for handle in self._async_handles.values():
+                handle.shutdown()
+            self._async_handles.clear()
+
             if exception is None:
                 for callback in self._callbacks:
                     callback.after_execution_succeeds(self)
@@ -378,7 +389,8 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
 
                 for callback in self._callbacks:
-                    callback.on_execution_step(self)
+                    if callback not in self._async_handles:
+                        callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
         except Exception as e:
@@ -531,15 +543,17 @@ class StreamingExecutor(Executor, threading.Thread):
             _debug_dump_topology(topology, self._resource_manager)
             self._last_debug_log_time = time.time()
 
+        self._poll_and_submit_async_refreshes()
+
         for op, state in topology.items():
             # Export operator schema if it's updated
             if state._schema is not None and self._op_schema.get(op) != state._schema:
                 self._op_schema[op] = state._schema
                 self._export_operator_schema(op)
 
-            # Log metrics of newly completed operators.
             if not op.has_completed():
-                op.refresh_state()
+                if op not in self._async_handles:
+                    op.refresh_state()
             elif not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
@@ -566,6 +580,32 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _setup_async_refreshables(self) -> None:
+        """Discover and register async tasks from operators and callbacks."""
+
+        for op in self._topology:
+            task = op.create_async_task()
+            if task is None:
+                continue
+            self._async_handles[op] = AsyncServiceHandle(task=task)
+        for cb in self._callbacks:
+            task = cb.create_async_task()
+            if task is None:
+                continue
+            self._async_handles[cb] = AsyncServiceHandle(task=task)
+
+    def _poll_and_submit_async_refreshes(self) -> None:
+        """Poll all async handles for results and submit new work."""
+        for refreshable, handle in self._async_handles.items():
+            if handle.has_in_flight_request():
+                result = handle.try_get_result()
+                if result is None:
+                    continue
+                refreshable.apply_refresh_result(result)
+            else:
+                snapshot = refreshable.build_refresh_input()
+                handle.request_refresh(snapshot)
 
     def _export_operator_schema(self, op: PhysicalOperator) -> None:
         schema = self._op_schema.get(op)

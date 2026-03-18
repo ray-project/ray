@@ -36,6 +36,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.interfaces.async_service import AsyncServiceTask
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -906,13 +907,32 @@ class PhysicalOperator(Operator):
     def refresh_state(self):
         """Refreshes the state of the operator at runtime.
 
-        This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for asynchronous updates, like restarting
-        actors, retrying tasks, or lost objects which are NOT transparent to the
-        StreamingExecutor.
+        This method will be called at runtime in each StreamingExecutor iteration
+        for operators that have NOT registered an async task.
+        """
+        pass
 
-        TODO: Currently this method is synchronous. We should consider making this async,
-        or calling it in an asynchronous context.
+    # -- AsyncRefreshable protocol --
+    # Operators that need per-step state refresh should override these
+    # instead of refresh_state(). The executor manages the async lifecycle.
+
+    def create_async_task(self) -> Optional["AsyncServiceTask"]:
+        """Return an ``AsyncServiceTask`` to register with the async service,
+        or ``None`` to fall back to synchronous ``refresh_state()``.
+        """
+        return None
+
+    def build_refresh_input(self) -> Any:
+        """Build a serializable snapshot for the async task.
+
+        Called on the scheduling thread. Has access to live operator state.
+        """
+        return None
+
+    def apply_refresh_result(self, result: Any) -> None:
+        """Apply the async task's result back to operator state.
+
+        Called on the scheduling thread when the result is ready.
         """
         pass
 

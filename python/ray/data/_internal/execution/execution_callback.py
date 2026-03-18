@@ -1,10 +1,11 @@
 import importlib
 import os
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.async_service import AsyncServiceTask
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 EXECUTION_CALLBACKS_CONFIG_KEY = "execution_callbacks"
@@ -13,7 +14,15 @@ ENV_CALLBACKS_INITIALIZED_KEY = "_env_callbacks_initialized"
 
 
 class ExecutionCallback:
-    """Callback interface for execution events."""
+    """Callback interface for execution events.
+
+    Callbacks can participate in async state refresh by implementing the
+    ``AsyncRefreshable`` protocol (``create_async_task``,
+    ``build_refresh_input``, ``apply_refresh_result``).  The executor
+    manages the submit/poll lifecycle automatically.
+    """
+
+    # -- Sync lifecycle hooks (called once) --
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
         """Called before the Dataset execution starts."""
@@ -30,6 +39,30 @@ class ExecutionCallback:
     def after_execution_fails(self, executor: "StreamingExecutor", error: Exception):
         """Called after the Dataset execution fails."""
         ...
+
+    # -- AsyncRefreshable protocol --
+    # Callbacks that need per-step state refresh should override these
+    # instead of on_execution_step(). The executor manages the async lifecycle.
+
+    def create_async_task(self) -> Optional["AsyncServiceTask"]:
+        """Return an ``AsyncServiceTask`` to register with the async service,
+        or ``None`` to fall back to synchronous ``on_execution_step()``.
+        """
+        return None
+
+    def build_refresh_input(self) -> Any:
+        """Build a serializable snapshot for the async task.
+
+        Called on the scheduling thread. Has access to live state.
+        """
+        return None
+
+    def apply_refresh_result(self, result: Any) -> None:
+        """Apply the async task's result back to internal state.
+
+        Called on the scheduling thread when the result is ready.
+        """
+        pass
 
 
 def _initialize_env_callbacks(context: DataContext) -> None:
