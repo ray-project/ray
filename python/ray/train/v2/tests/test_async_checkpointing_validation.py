@@ -764,6 +764,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
         if ray.train.get_context().get_world_rank() == 0:
             # Assert that we get committed checkpoints
             with create_dict_checkpoint({}) as cp1:
+                # The validation check will hang until signal_actor.send.remote() is called
                 ray.train.report(
                     metrics={"training_score": 1},
                     checkpoint=cp1,
@@ -781,7 +782,7 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
             )
             assert reported_checkpoints[0].metrics == {"training_score": 1}
 
-            # Check with ConsistencyMode.VALIDATED with timeout to preventing hanging
+            # Check with ConsistencyMode.VALIDATED with timeout as the validation is hanging currently
             reported_checkpoints = ray.train.get_all_reported_checkpoints(
                 consistency_mode=CheckpointConsistencyMode.VALIDATED,
                 timeout_s=2,
