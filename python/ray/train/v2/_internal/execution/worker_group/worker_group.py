@@ -347,6 +347,7 @@ class WorkerGroup(ExecutionGroup):
                     [worker],
                     worker_group_context.resources_per_worker,
                     self._world_rank_to_ongoing_poll,
+                    self._replica_group_callbacks,
                 )
                 for worker in workers
             ]
@@ -828,12 +829,9 @@ class WorkerGroup(ExecutionGroup):
         old_workers = old_replica_group.get_workers()
         old_placement_group_bundle_indices = [w.bundle_index for w in old_workers]
 
-        # Shutdown old replica group if it is active.
+        # Shutdown old replica group.
         # It can be inactive if we failed to initialize the workers in the previous attempt.
-        if old_replica_group.is_active():
-            for cb in self._replica_group_callbacks:
-                cb.before_replica_group_shutdown(old_replica_group)
-            old_replica_group.shutdown()
+        old_replica_group.shutdown()
 
         # Create new workers with old replica group state.
         pg = self._worker_group_state.placement_group_handle.placement_group
@@ -866,6 +864,7 @@ class WorkerGroup(ExecutionGroup):
             new_workers,
             self._worker_group_context.resources_per_worker,
             self._world_rank_to_ongoing_poll,
+            self._replica_group_callbacks,
         )
         self._replica_groups[replica_group_index] = new_replica_group
         for w in new_workers:
@@ -874,15 +873,7 @@ class WorkerGroup(ExecutionGroup):
             ] = replica_group_index
 
         # Start training.
-        for cb in self._replica_group_callbacks:
-            cb.after_replica_group_start(new_replica_group)
-        worker_group_context = self._worker_group_context
-        ray.get(
-            [
-                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
-                for worker in new_workers
-            ]
-        )
+        new_replica_group.start_training(self._worker_group_context)
 
         workers_info = "\n".join(
             [
