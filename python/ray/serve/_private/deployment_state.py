@@ -3677,20 +3677,6 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        # Deployment-scoped actor failed after threshold exceeded (consistent
-        # with replica startup: transition only when retries exhausted).
-        if self.deployment_actor_terminally_failed():
-            msg = self._deployment_actor_failed or "Unknown error"
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
-                message=(
-                    "The deployment failed to start deployment actors "
-                    f"{self._deployment_actor_retry_counter} times "
-                    "in a row. See controller logs for details. Error:\n"
-                    f"{msg}"
-                ),
-            )
-
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
@@ -4519,7 +4505,6 @@ class DeploymentState:
         Consistent with record_replica_startup_failure: status stays UPDATING
         during retries; transition to DEPLOY_FAILED only when threshold exceeded.
         """
-
         deployment_actors_configs = self._get_deployment_actors_configs()
         if not deployment_actors_configs:
             return
@@ -4554,7 +4539,6 @@ class DeploymentState:
         version = self._target_state.version
         if version is None:
             return
-
         deployment_actors_configs = self._get_deployment_actors_configs(version)
         if not deployment_actors_configs:
             return
@@ -4614,7 +4598,6 @@ class DeploymentState:
         ready_count = self._deployment_actors.count(
             code_ver, states=[DeploymentActorState.RUNNING]
         )
-
         pending_count = self._deployment_actors.count(
             code_ver,
             states=[DeploymentActorState.STARTING, DeploymentActorState.RECOVERING],

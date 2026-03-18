@@ -363,7 +363,6 @@ class TestDeploymentConfig:
             config_str.to_proto_bytes()
         )
         resolved_str = deserialized_str.deployment_actors[0].get_actor_class()
-
         assert (
             resolved_str.__ray_actor_class__.__name__
             == _TestDummyActor.__ray_actor_class__.__name__
