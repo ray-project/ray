@@ -13,8 +13,8 @@ from ray._common.utils import env_float
 from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
-    COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-    DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
+    CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
@@ -265,12 +265,12 @@ class TrainContext:
         def slow_upload_warning(
             stop_event: threading.Event, func_name: str, checkpoint_dir_name: str
         ) -> None:
-            # Log a warning that the upload `func_name` for `checkpoint_dir_name`
-            #   every `DEFAULT_COLLECTIVE_WARN_INTERVAL_S` seconds until `stop_event` is set.
+            # Log a warning for the checkpoint upload every `DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S`
+            #   seconds until `stop_event` is set.
             elapsed = 0.0
             interval = env_float(
-                COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-                DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
+                CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+                DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
             )
             while not stop_event.wait(interval):
                 elapsed += interval
