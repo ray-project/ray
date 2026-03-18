@@ -109,7 +109,6 @@ def _apply_delay_logic(
     return decision_num_replicas, policy_state
 
 
-
 def _apply_default_params(
     desired_num_replicas: Union[int, float],
     ctx: AutoscalingContext,
