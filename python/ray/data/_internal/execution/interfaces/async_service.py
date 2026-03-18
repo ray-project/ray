@@ -85,7 +85,7 @@ class AsyncServiceActor:
 
     def __init__(self):
         self._tasks: Dict[ServiceKeyT, AsyncServiceTask] = {}
-        self._tpe = futures.ThreadPoolExecutor()
+        self._tpe = futures.ThreadPoolExecutor(max_workers=1)
 
     def register(self, task: AsyncServiceTask) -> ServiceKeyT:
         service_key = uuid.uuid4()
