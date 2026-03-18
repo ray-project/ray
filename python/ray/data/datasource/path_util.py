@@ -191,7 +191,7 @@ def _is_filesystem_compatible_with_scheme(
     # For PyFileSystem (fsspec wrappers), check the inner fsspec protocol
     # rather than relying on type_name alone, since all fsspec wrappers
     # share type_name "py" regardless of the underlying protocol.
-    if fs_type == "py" or fs_type.startswith("py::"):
+    if fs_type in ("py", "RetryingPyFileSystem") or fs_type.startswith("py::"):
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
         actual_fs = filesystem
