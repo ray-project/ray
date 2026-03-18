@@ -192,6 +192,12 @@ def _extract_credentials_from_filesystem(
     Maps PyArrow filesystem configuration to obstore keyword arguments.
     See obstore docs for available options per store type.
 
+    Only native PyArrow filesystems (S3FileSystem, GcsFileSystem,
+    AzureFileSystem) are recognized. fsspec-backed filesystems arrive here as
+    a PyArrow ``PyFileSystem`` wrapper and are **not** handled — their
+    credentials are silently ignored and obstore will use its own credential
+    chain (environment variables, instance metadata, etc.) instead.
+
     Args:
         filesystem: A PyArrow filesystem instance.
 
