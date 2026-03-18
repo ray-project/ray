@@ -187,7 +187,11 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """
         return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
-    def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
+    def to_directory(
+        self,
+        path: Optional[Union[str, os.PathLike]] = None,
+        include: Optional[List[str]] = None,
+    ) -> str:
         """Write checkpoint data to a local directory.
 
         *If multiple processes on the same node call this method simultaneously,*
@@ -198,6 +202,11 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Args:
             path: Target directory to download data to. If not specified,
                 this method will use a temporary directory.
+            include: An optional list of filename patterns (fnmatch-style) to include.
+                Only files whose names match at least one pattern are downloaded.
+                If None, all files are downloaded. Example: ["model.pt", "*.json"]
+                to download model.pt and all JSON files. Only applies when
+                `fs_path` points to a directory.
 
         Returns:
             str: Directory containing checkpoint data.
@@ -214,7 +223,10 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             # the file lock. If it cannot be acquired, throw a TimeoutError
             with TempFileLock(local_path, timeout=0):
                 _download_from_fs_path(
-                    fs=self.filesystem, fs_path=self.path, local_path=local_path
+                    fs=self.filesystem,
+                    fs_path=self.path,
+                    local_path=local_path,
+                    include=include,
                 )
         except TimeoutError:
             # if the directory is already locked, then wait but do not do anything.
@@ -231,7 +243,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         return local_path
 
     @contextlib.contextmanager
-    def as_directory(self) -> Iterator[str]:
+    def as_directory(self, include: Optional[List[str]] = None) -> Iterator[str]:
         """Returns checkpoint contents in a local directory as a context.
 
         This function makes checkpoint data available as a directory while avoiding
@@ -279,6 +291,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             # At this point, if a temporary directory was created, it will have
             # been deleted.
 
+        Args:
+            include: An optional list of filename patterns (fnmatch-style) to include.
+                Only files whose names match at least one pattern are downloaded.
+                If None, all files are downloaded.
+                Ex: ["model.pt", "*.json"] to download model.pt and all JSON files.
+                Only applies when fs_path points to a directory.
         """
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
@@ -286,7 +304,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
             open(del_lock_path, "a").close()
 
-            temp_dir = self.to_directory()
+            temp_dir = self.to_directory(include=include)
             try:
                 yield temp_dir
             finally:

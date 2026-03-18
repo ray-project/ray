@@ -142,12 +142,14 @@ def _download_from_fs_path(
     fs_path: str,
     local_path: str,
     filelock: bool = True,
+    include: Optional[List[str]] = None,
 ):
     """Downloads a directory or file from (fs, fs_path) to a local path.
 
     If fs_path points to a directory:
     - The full directory contents are downloaded directly into `local_path`,
-      rather than to a subdirectory of `local_path`.
+      rather than to a subdirectory of `local_path`. `include` can be used to
+      filter which files in the directory are downloaded.
 
     If fs_path points to a file:
     - The file is downloaded to `local_path`, which is expected to be a file path.
@@ -165,6 +167,11 @@ def _download_from_fs_path(
         local_path: The local path to download to.
         filelock: Whether to require a file lock before downloading, useful for
             multiple downloads to the same directory that may be happening in parallel.
+        include: An optional list of filename patterns (fnmatch-style) to include.
+            Only files whose names match at least one pattern are downloaded.
+            If None, all files are downloaded. Example: ["model.pt", "*.json"]
+            to download model.pt and all JSON files. Only applies when
+            `fs_path` points to a directory.
 
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
@@ -177,12 +184,40 @@ def _download_from_fs_path(
     else:
         _local_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def _pyarrow_fs_include_copy_files():
+        # Filter the files based on the `include` list of glob patterns,
+        # matched against each file's relative path within the checkpoint directory.
+        selector = pyarrow.fs.FileSelector(fs_path, recursive=True)
+        file_infos = fs.get_file_info(selector)
+        downloaded_count = 0
+        for file_info in file_infos:
+            if file_info.type != pyarrow.fs.FileType.File:
+                continue
+            rel_path = os.path.relpath(file_info.path, fs_path)
+            if any(fnmatch.fnmatch(rel_path, pattern) for pattern in include):
+                local_dest = os.path.join(local_path, rel_path)
+                os.makedirs(os.path.dirname(local_dest), exist_ok=True)
+                _pyarrow_fs_copy_files(file_info.path, local_dest, source_filesystem=fs)
+                downloaded_count += 1
+
+        if downloaded_count == 0:
+            raise FileNotFoundError(
+                f"No files matched the `include` patterns {include} "
+                f"in checkpoint at {fs_path!r}."
+            )
+
     try:
         if filelock:
             with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-                _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+                if include is None:
+                    _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+                else:
+                    _pyarrow_fs_include_copy_files()
         else:
-            _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+            if include is None:
+                _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
+            else:
+                _pyarrow_fs_include_copy_files()
     except Exception as e:
         # Clean up the directory if downloading was unsuccessful
         if not exists_before:

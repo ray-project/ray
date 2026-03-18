@@ -16,6 +16,7 @@ from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
 
 _CHECKPOINT_CONTENT_FILE = "dummy.txt"
+_CHECKPOINT_CONTENT_FILE_2 = "foo.txt"
 
 
 @pytest.fixture(params=["local", "mock", "custom_fs"])
@@ -26,6 +27,7 @@ def checkpoint(request, tmp_path):
     checkpoint_path = tmp_path / "ckpt_dir"
     checkpoint_path.mkdir(exist_ok=True)
     (checkpoint_path / _CHECKPOINT_CONTENT_FILE).write_text("dummy")
+    (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).write_text("foo")
 
     if checkpoint_fs_type == "local":
         yield Checkpoint.from_directory(str(checkpoint_path))
@@ -70,6 +72,27 @@ def test_to_directory_with_user_specified_path(checkpoint: Checkpoint, tmp_path)
     assert checkpoint_path.name == "special_dir"
 
 
+def test_to_directory_with_include(checkpoint: Checkpoint):
+    checkpoint_path = Path(checkpoint.to_directory(include=[_CHECKPOINT_CONTENT_FILE]))
+
+    assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+    assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
+
+
+def test_to_directory_with_include_glob_pattern(checkpoint: Checkpoint):
+    checkpoint_path = Path(checkpoint.to_directory(include=["*.txt"]))
+
+    assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+    assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
+
+
+def test_to_directory_with_include_no_match(checkpoint: Checkpoint):
+    with pytest.raises(
+        FileNotFoundError, match="No files matched the `include` patterns"
+    ):
+        checkpoint.to_directory(include=["bar.txt"])
+
+
 def test_multiprocess_to_directory(checkpoint: Checkpoint):
     """Test the case where multiple processes are trying to checkpoint.
 
@@ -107,6 +130,19 @@ def test_as_directory(checkpoint: Checkpoint):
     else:
         # Should have been deleted, if the checkpoint downloaded to a temp dir.
         assert not checkpoint_path.exists()
+
+
+def test_as_directory_with_include(checkpoint: Checkpoint):
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip(
+            "Local filesystem checkpoints don't download to a temp dir, so include filtering doesn't apply."
+        )
+
+    with checkpoint.as_directory(include=[_CHECKPOINT_CONTENT_FILE]) as checkpoint_path:
+        checkpoint_path = Path(checkpoint_path)
+
+        assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+        assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
 
 
 def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):
