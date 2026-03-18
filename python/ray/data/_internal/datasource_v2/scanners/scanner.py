@@ -3,14 +3,14 @@ from typing import Generic, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource_v2 import InputBucket
+from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class Scanner(ABC, Generic[InputBucket]):
+class Scanner(ABC, Generic[InputSplit]):
     """Abstract base class for configured scanners.
 
     A Scanner represents the logical result of reading data, including applied
@@ -38,10 +38,10 @@ class Scanner(ABC, Generic[InputBucket]):
     @abstractmethod
     def plan(
         self,
-        manifest: InputBucket,
+        manifest: InputSplit,
         parallelism: int,
         data_context: Optional["DataContext"] = None,
-    ) -> List[InputBucket]:
+    ) -> List[InputSplit]:
         """Split the input into parallel work units.
 
         This method determines how to divide the work for parallel execution.
@@ -53,12 +53,12 @@ class Scanner(ABC, Generic[InputBucket]):
             data_context: Optional data context for configuration.
 
         Returns:
-            List of InputBucket objects, one per parallel task.
+            List of InputSplit objects, one per parallel task.
         """
         ...
 
     @abstractmethod
-    def create_reader(self) -> Reader[InputBucket]:
+    def create_reader(self) -> Reader[InputSplit]:
         """Create a Reader configured for this scanner.
 
         The returned Reader will have all pushdowns (columns, predicates, limits)

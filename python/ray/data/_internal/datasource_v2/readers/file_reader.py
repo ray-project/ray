@@ -40,14 +40,14 @@ class FileReader(Reader[FileManifest]):
         self._limit = limit
         self._filesystem = filesystem
 
-    def read(self, input_bucket: FileManifest) -> Iterator[pa.Table]:
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
         This method is called on workers to perform the actual read operation.
         It should respect all pushdowns configured on this reader.
 
         Args:
-            input_bucket: Work unit describing what data to read.
+            input_split: Work unit describing what data to read.
 
         Returns:
             Iterator[pa.Table]: Iterator of PyArrow Tables containing the read data.

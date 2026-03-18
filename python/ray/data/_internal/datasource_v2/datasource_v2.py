@@ -26,7 +26,7 @@ from typing import (
 
 import pyarrow as pa
 
-from ray.data._internal.datasource_v2 import InputBucket
+from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.util.annotations import DeveloperAPI
 
@@ -61,7 +61,7 @@ class DatasourceCategory(Enum):
 
 
 @DeveloperAPI
-class DataSourceV2(ABC, Generic[InputBucket]):
+class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
     DataSourceV2 is the entry point for reading data from a source. It provides:
@@ -129,7 +129,7 @@ class DataSourceV2(ABC, Generic[InputBucket]):
         return None
 
     @abstractmethod
-    def infer_schema(self, sample: InputBucket) -> pa.Schema:
+    def infer_schema(self, sample: InputSplit) -> pa.Schema:
         """Infer schema from a sample of data.
 
         Args:
@@ -149,7 +149,7 @@ class DataSourceV2(ABC, Generic[InputBucket]):
         schema: pa.Schema,
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
-    ) -> Scanner[InputBucket]:
+    ) -> Scanner[InputSplit]:
         """Create a Scanner for reading data.
 
         Args:
