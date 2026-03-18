@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -955,6 +956,71 @@ def _read_batches_from(
                     )
 
                 yield table
+
+        except pa.lib.ArrowNotImplementedError as e:
+            if (
+                "Nested data conversions not implemented for chunked array outputs"
+                not in str(e)
+            ):
+                raise
+
+            # Fallback for Parquet files with nested column types (list<struct>,
+            # map, struct with nested fields) whose binary/string data in a single
+            # row group exceeds PyArrow's internal chunking threshold (~2GB).
+            # fragment.to_batches() uses the Arrow Dataset Scanner which cannot
+            # handle chunked binary arrays when reconstructing nested types
+            # (ArrowNotImplementedError in WrapIntoListArray).
+            # We fall back to pyarrow.parquet direct reading per row-group and
+            # call combine_chunks() to produce contiguous arrays.
+            # See: https://github.com/apache/arrow/issues/21526
+            import pyarrow.parquet as pq
+
+            warnings.warn(
+                f"Encountered ArrowNotImplementedError while reading "
+                f"'{fragment.path}' due to nested column types (e.g. "
+                f"list<struct>) exceeding PyArrow's internal chunking "
+                f"threshold. Falling back to pyarrow.parquet direct reading. "
+                f"Consider writing Parquet files with smaller row group sizes "
+                f"to avoid this. "
+                f"See: https://github.com/apache/arrow/issues/21526",
+                UserWarning,
+            )
+
+            pf = pq.ParquetFile(fragment.path)
+            # Determine which row groups belong to this fragment.
+            if fragment.row_groups is not None:
+                row_group_indices = [rg.id for rg in fragment.row_groups]
+            else:
+                row_group_indices = list(range(pf.metadata.num_row_groups))
+
+            read_kwargs: Dict[str, Any] = {}
+            if data_columns is not None:
+                read_kwargs["columns"] = data_columns
+
+            for rg_idx in row_group_indices:
+                rg_table = pf.read_row_group(rg_idx, **read_kwargs)
+                # combine_chunks() converts ChunkedArrays to contiguous Arrays,
+                # resolving ArrowNotImplementedError for nested types.
+                rg_table = rg_table.combine_chunks()
+
+                if filter_expr is not None:
+                    rg_table = rg_table.filter(filter_expr)
+
+                if partition_col_values:
+                    rg_table = _add_partitions_to_table(partition_col_values, rg_table)
+
+                if include_path:
+                    rg_table = ArrowBlockAccessor.for_block(rg_table).fill_column(
+                        "path", fragment.path
+                    )
+
+                if rg_table.num_columns == 0 and rg_table.num_rows > 0:
+                    rg_table = rg_table.append_column(
+                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                        pa.nulls(rg_table.num_rows),
+                    )
+
+                yield rg_table
 
         except pa.lib.ArrowInvalid as e:
             error_message = str(e)
