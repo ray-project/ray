@@ -71,6 +71,10 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
+    "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -578,6 +582,9 @@ class DataContext:
         gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
             communicator setup (actor creation + root/worker init) before raising
             a ``TimeoutError``. Defaults to 120 seconds.
+        batch_to_block_arrow_format: Whether to convert pandas DataFrame batches
+            returned by UDFs into Arrow blocks by default, keeping Arrow as the
+            internal block format throughout the pipeline.
     """
 
     # `None` means the block size is infinite.
@@ -745,6 +752,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
