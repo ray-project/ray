@@ -68,9 +68,6 @@ def test_http_backpressure(serve_instance):
         r = httpx.request("GET", application_url, json={"msg": msg}, timeout=30.0)
         return r.status_code, r.text
 
-    # Use ThreadPoolExecutor to send requests from the same process (like
-    # test_model_composition_backpressure). This avoids Ray worker latency that
-    # can cause the third request to arrive before the second is queued.
     with ThreadPoolExecutor(max_workers=5) as exc:
         # First response should block. Until the signal is sent, all subsequent
         # requests will be queued in the handle.
