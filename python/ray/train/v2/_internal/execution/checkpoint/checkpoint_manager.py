@@ -183,7 +183,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._notify()
 
     def update_checkpoints_with_metrics(
-        self, checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]]
+        self,
+        checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]],
+        checkpoint_to_status: Optional[Dict[Checkpoint, ReportedCheckpointStatus]] = None,
     ):
         """Update the checkpoints with the metrics."""
         for checkpoint, metrics in checkpoint_to_metrics.items():
@@ -207,7 +209,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
             self._pending_training_results.pop(checkpoint)
-            self._validated_checkpoints.add(checkpoint)
+            status = (checkpoint_to_status or {}).get(
+                checkpoint, ReportedCheckpointStatus.VALIDATED
+            )
+            if status == ReportedCheckpointStatus.VALIDATION_TIMEOUT:
+                self._timed_out_validation_checkpoints.add(checkpoint)
+            elif status == ReportedCheckpointStatus.VALIDATION_FAILED:
+                self._failed_validation_checkpoints.add(checkpoint)
+            else:
+                self._validated_checkpoints.add(checkpoint)
 
         self._save_state_and_delete_old_checkpoints()
         self._notify()
@@ -543,6 +553,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         """Get ReportedCheckpoint's status."""
         if checkpoint in self._pending_training_results:
             return ReportedCheckpointStatus.PENDING_VALIDATION
+        elif checkpoint in self._timed_out_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        elif checkpoint in self._failed_validation_checkpoints:
+            return ReportedCheckpointStatus.VALIDATION_FAILED
         elif checkpoint in self._validated_checkpoints:
             return ReportedCheckpointStatus.VALIDATED
         else:

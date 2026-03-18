@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import OrderedDict, deque
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import ray
 from ray.train._checkpoint import Checkpoint
@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 
 if TYPE_CHECKING:
@@ -109,6 +110,16 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
     def _poll_validations(self) -> int:
         """Poll/process validations, update checkpoint manager, return num pending validations."""
+        # Check for timed-out tasks and cancel them
+        now = time.monotonic()
+        for task, (checkpoint, start_time, timeout_s) in list(
+            self._pending_validations.items()
+        ):
+            if timeout_s is not None and timeout_s != -1 and (now - start_time) > timeout_s:
+                ray.cancel(task)
+                self._timed_out_validations[task] = checkpoint
+                logger.warning(f"Validation timed out for checkpoint {checkpoint}")
+
         # Move pending validations to finished validations
         validation_tasks = list(self._pending_validations.keys())
         done, _ = ray.wait(
@@ -116,13 +127,14 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         )
         done_checkpoints = []
         for task in done:
-            done_checkpoints.append(self._pending_validations[task])
-            self._finished_validations[task] = self._pending_validations[task]
+            checkpoint, _, _ = self._pending_validations[task]
+            done_checkpoints.append(checkpoint)
+            self._finished_validations[task] = checkpoint
             self._pending_validations.pop(task)
         if done_checkpoints:
             logger.info(
                 f"Finished async validation task(s) for checkpoint(s): {done_checkpoints}.\n"
-                f"Running validations for checkpoint(s): {list(self._pending_validations.values())}.\n"
+                f"Running validations for checkpoint(s): {[v[0] for v in self._pending_validations.values()]}.\n"
                 f"Staged validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}."
             )
 
@@ -131,9 +143,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         if self._finished_validations:
             task, checkpoint = next(iter(self._finished_validations.items()))
             self._finished_validations.pop(task)
-            checkpoint_to_metrics = self._process_finished_validation(task, checkpoint)
+            checkpoint_to_metrics, checkpoint_to_status = self._process_finished_validation(task, checkpoint)
             self._checkpoint_manager.update_checkpoints_with_metrics(
-                checkpoint_to_metrics
+                checkpoint_to_metrics, checkpoint_to_status
             )
         return len(self._pending_validations)
 
@@ -176,29 +188,41 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
     def _process_finished_validation(
         self, task: ray.ObjectRef, checkpoint: Checkpoint
-    ) -> Dict[Checkpoint, Dict[str, Any]]:
-        """Process finished validation, update checkpoint manager, return metrics."""
+    ) -> Tuple[Dict[Checkpoint, Dict[str, Any]], Dict[Checkpoint, ReportedCheckpointStatus]]:
+        """Process finished validation, return (metrics, status) dicts."""
         checkpoint_to_metrics = {}
+        checkpoint_to_status = {}
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
-        except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+            checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATED
+        except ray.exceptions.TaskCancelledError:
             checkpoint_to_metrics[checkpoint] = {}
-            logger.exception(f"Validation failed for checkpoint {checkpoint}")
-            # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
-        return checkpoint_to_metrics
+            if task in self._timed_out_validations:
+                self._timed_out_validations.pop(task)
+                checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_TIMEOUT
+                logger.warning(f"Validation timed out for checkpoint {checkpoint}")
+            else:
+                checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_FAILED
+                logger.warning(f"Validation cancelled for checkpoint {checkpoint}")
+        except ray.exceptions.RayTaskError:
+            checkpoint_to_metrics[checkpoint] = {}
+            checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_FAILED
+            logger.warning(f"Validation failed for checkpoint {checkpoint}")
+        return checkpoint_to_metrics, checkpoint_to_status
 
     def before_controller_shutdown(self):
         while self._poll_validations() != 0 or self._kick_off_validations() != 0:
             time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
+        checkpoint_to_status = {}
         tasks = list(self._finished_validations.keys())
         for task in tasks:
             checkpoint = self._finished_validations[task]
             self._finished_validations.pop(task)
-            checkpoint_to_metrics.update(
-                self._process_finished_validation(task, checkpoint)
-            )
-        self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics)
+            metrics, status = self._process_finished_validation(task, checkpoint)
+            checkpoint_to_metrics.update(metrics)
+            checkpoint_to_status.update(status)
+        self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics, checkpoint_to_status)
 
     def before_controller_abort(self):
         for task in self._pending_validations.keys():

@@ -16,6 +16,7 @@ from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
 from ray.train.v2._internal.execution.worker_group.worker import Worker
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 from ray.train.v2.tests.util import create_dummy_training_reports
 
@@ -44,9 +45,9 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
         validation_config=ValidationConfig(fn=lambda x: None),
     )
     vm._pending_validations = {
-        task1: checkpoint1,
-        task2: checkpoint2,
-        task3: checkpoint3,
+        task1: (checkpoint1, 0.0, None),
+        task2: (checkpoint2, 0.0, None),
+        task3: (checkpoint3, 0.0, None),
     }
     mock_wait.side_effect = [([], [task1, task2, task3]), ([task1, task2, task3], [])]
     monkeypatch.setattr(ray, "get", lambda x: {"score": 1})
@@ -55,8 +56,17 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     vm.before_controller_shutdown()
     assert mock_wait.call_count == 2
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
-        unittest.mock.call({checkpoint1: {"score": 1}}),
-        unittest.mock.call({checkpoint2: {"score": 1}, checkpoint3: {"score": 1}}),
+        unittest.mock.call(
+            {checkpoint1: {"score": 1}},
+            {checkpoint1: ReportedCheckpointStatus.VALIDATED},
+        ),
+        unittest.mock.call(
+            {checkpoint2: {"score": 1}, checkpoint3: {"score": 1}},
+            {
+                checkpoint2: ReportedCheckpointStatus.VALIDATED,
+                checkpoint3: ReportedCheckpointStatus.VALIDATED,
+            },
+        ),
     ]
 
 
@@ -124,7 +134,8 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {low_initial_high_final_training_result.checkpoint: {"score": 200}}
+        {low_initial_high_final_training_result.checkpoint: {"score": 200}},
+        {low_initial_high_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED},
     )
     ray.wait(
         list(vm._pending_validations.keys()),
@@ -133,7 +144,8 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
-        {high_initial_low_final_training_result.checkpoint: {"score": 100}}
+        {high_initial_low_final_training_result.checkpoint: {"score": 100}},
+        {high_initial_low_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED},
     )
 
 
@@ -172,7 +184,8 @@ def test_checkpoint_validation_management_failure(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {failing_training_result.checkpoint: {}}
+        {failing_training_result.checkpoint: {}},
+        {failing_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_FAILED},
     )
 
 
@@ -228,11 +241,12 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {training_result.checkpoint: {"score": 100}}
+        {training_result.checkpoint: {"score": 100}},
+        {training_result.checkpoint: ReportedCheckpointStatus.VALIDATED},
     )
 
 
-def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
+def test_checkpoint_validation_management_slow_validation_fn(tmp_path, monkeypatch):
     checkpoint_manager = create_autospec(CheckpointManager, instance=True)
 
     def infinite_waiting_validation_fn(checkpoint):
@@ -241,7 +255,10 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
 
     vm = validation_manager.ValidationManager(
         checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(fn=infinite_waiting_validation_fn),
+        validation_config=ValidationConfig(
+            fn=infinite_waiting_validation_fn,
+            task_config=ValidationTaskConfig(timeout_s=1),
+        ),
     )
     timing_out_training_result = create_dummy_training_reports(
         num_results=1,
@@ -262,19 +279,19 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 1
 
-    # Finish the task by cancelling it
-    timing_out_task = next(iter(vm._pending_validations))
-    ray.cancel(timing_out_task)
-    with pytest.raises(ray.exceptions.TaskCancelledError):
-        ray.get(timing_out_task)
+    # Advance time past the timeout so the next poll cancels the task.
+    monkeypatch.setattr(time, "monotonic", lambda: float("inf"))
+    # This poll detects the timeout and calls ray.cancel internally.
+    vm._poll_validations()
+    # Wait for the cancellation to propagate.
+    ray.wait(list(vm._pending_validations.keys()), num_returns=1, timeout=10)
 
-    # Verify that poll processes finished task
+    # This poll moves the cancelled task to finished and processes it as VALIDATION_TIMEOUT.
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {
-            timing_out_training_result.checkpoint: {},
-        }
+        {timing_out_training_result.checkpoint: {}},
+        {timing_out_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_TIMEOUT},
     )
 
 
@@ -331,7 +348,8 @@ def test_checkpoint_validation_management_resume(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {training_reports[0].checkpoint: {"score": 1}}
+        {training_reports[0].checkpoint: {"score": 1}},
+        {training_reports[0].checkpoint: ReportedCheckpointStatus.VALIDATED},
     )
     ray.wait(
         list(vm._pending_validations.keys()),
@@ -340,8 +358,41 @@ def test_checkpoint_validation_management_resume(tmp_path):
     assert vm._poll_validations() == 0
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
-        {training_reports[2].checkpoint: {"score": 2}}
+        {training_reports[2].checkpoint: {"score": 2}},
+        {training_reports[2].checkpoint: ReportedCheckpointStatus.VALIDATED},
     )
+
+
+def test_timeout_overrides_config_default(tmp_path):
+    """Per-task timeout_s should override ValidationConfig.task_config.timeout_s."""
+    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager,
+        validation_config=ValidationConfig(
+            fn=lambda checkpoint: {},
+            task_config=ValidationTaskConfig(timeout_s=100),
+        ),
+    )
+    training_result = create_dummy_training_reports(
+        num_results=1,
+        storage_context=StorageContext(
+            storage_path=tmp_path,
+            experiment_dir_name="test_timeout_overrides_config_default",
+        ),
+    )[0]
+
+    vm.after_report(
+        training_report=_TrainingReport(
+            metrics=training_result.metrics,
+            checkpoint=training_result.checkpoint,
+            validation=ValidationTaskConfig(timeout_s=5),
+        ),
+        metrics={},
+    )
+    vm._kick_off_validations()
+    task = next(iter(vm._pending_validations))
+    _, _, effective_timeout_s = vm._pending_validations[task]
+    assert effective_timeout_s == 5
 
 
 if __name__ == "__main__":

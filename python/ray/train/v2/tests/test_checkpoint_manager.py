@@ -13,6 +13,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.tests.util import create_dummy_training_reports
 
 
@@ -75,9 +76,22 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         return False
     if not _checkpoint_to_report_indices_equal(cm1, cm2):
         return False
+
+    def _checkpoint_set_paths_equal(attr: str) -> bool:
+        return {cp.path for cp in getattr(cm1, attr)} == {
+            cp.path for cp in getattr(cm2, attr)
+        }
+
+    if not _checkpoint_set_paths_equal("_validated_checkpoints"):
+        return False
+    if not _checkpoint_set_paths_equal("_timed_out_validation_checkpoints"):
+        return False
+    if not _checkpoint_set_paths_equal("_failed_validation_checkpoints"):
+        return False
     return True
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "checkpoint_config",
     [
@@ -129,6 +143,37 @@ async def test_save_load_state_equivalence(
         )
         assert _checkpoint_managers_equal(checkpoint_manager, loaded_checkpoint_manager)
 
+    # Add checkpoints that end up in the timed-out and failed sets, and verify round-trip.
+    timed_out_reports = create_dummy_training_reports(
+        num_results=1,
+        storage_context=storage_context,
+        include_validation=True,
+        starting_checkpoint_index=3,
+    )
+    failed_reports = create_dummy_training_reports(
+        num_results=1,
+        storage_context=storage_context,
+        include_validation=True,
+        starting_checkpoint_index=4,
+    )
+    for tr in timed_out_reports + failed_reports:
+        checkpoint_manager.register_checkpoint(tr)
+
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {timed_out_reports[0].checkpoint: {}},
+        {timed_out_reports[0].checkpoint: ReportedCheckpointStatus.VALIDATION_TIMEOUT},
+    )
+    checkpoint_manager.update_checkpoints_with_metrics(
+        {failed_reports[0].checkpoint: {}},
+        {failed_reports[0].checkpoint: ReportedCheckpointStatus.VALIDATION_FAILED},
+    )
+
+    loaded_checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=checkpoint_config,
+    )
+    assert _checkpoint_managers_equal(checkpoint_manager, loaded_checkpoint_manager)
+
 
 @pytest.mark.parametrize(
     "json_state,match",
@@ -161,6 +206,7 @@ def test_load_state_error(tmp_path, json_state, match):
         checkpoint_manager._load_state(json_state)
 
 
+@pytest.mark.asyncio
 async def test_before_init_train_context(tmp_path):
 
     storage_context = StorageContext(
@@ -188,6 +234,7 @@ async def test_before_init_train_context(tmp_path):
     }
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -241,6 +288,7 @@ async def test_pending_checkpoint_management(tmp_path):
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
@@ -279,6 +327,7 @@ async def test_pending_checkpoint_management_break_ties_by_report_index(tmp_path
     ]
 
 
+@pytest.mark.asyncio
 async def test_pending_checkpoint_management_finalized_checkpoint(tmp_path):
     storage_context = StorageContext(
         storage_path=tmp_path,
