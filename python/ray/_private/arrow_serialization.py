@@ -266,7 +266,9 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         # Array.from_buffers() doesn't work for DictionaryArrays.
         assert len(children) == 2, len(children)
         indices, dictionary = children
-        return pa.DictionaryArray.from_arrays(indices, dictionary)
+        return pa.DictionaryArray.from_arrays(
+            indices, dictionary, ordered=payload.type.ordered
+        )
     elif pa.types.is_map(payload.type) and len(children) > 1:
         # In pyarrow<7.0.0, the underlying map child array is not exposed, so we work
         # with the key and item arrays.
