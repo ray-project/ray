@@ -14,7 +14,10 @@ from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.rollout_worker import (
+    RolloutWorker,
+    _update_env_seed_if_necessary,
+)
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.envs.classes.mock_env import (
     MockEnv,
@@ -91,6 +94,20 @@ class FailOnStepEnv(gym.Env):
         raise ValueError("kaboom")
 
 
+class SeedRecordingEnv(gym.Env):
+    def __init__(self):
+        self.observation_space = gym.spaces.Discrete(1)
+        self.action_space = gym.spaces.Discrete(1)
+        self.last_seed = None
+
+    def reset(self, *, seed=None, options=None):
+        self.last_seed = seed
+        return 0, {}
+
+    def step(self, action):
+        return 0, 0.0, True, False, {}
+
+
 class TestRolloutWorker(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -165,6 +182,23 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertTrue(len(unroll_ids_1) > 1)
         self.assertTrue(len(unroll_ids_2) > 1)
         ev.stop()
+
+    def test_update_env_seed_accepts_max_worker_idx_with_valid_vector_idx(self):
+        env = SeedRecordingEnv()
+
+        _update_env_seed_if_necessary(env, seed=7, worker_idx=1000, vector_idx=999)
+
+        self.assertEqual(env.last_seed, 1000 * 1000 + 999 + 7)
+
+    def test_update_env_seed_rejects_too_large_vector_idx(self):
+        env = SeedRecordingEnv()
+
+        with self.assertRaisesRegex(
+            AssertionError, "Too many envs per worker. Random seeds may collide."
+        ):
+            _update_env_seed_if_necessary(
+                env, seed=7, worker_idx=0, vector_idx=1000
+            )
 
     def test_global_vars_update(self):
         config = (

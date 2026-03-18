@@ -133,7 +133,7 @@ def _update_env_seed_if_necessary(
     # rollout workers.
     max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_env_runner
+        vector_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
     computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
