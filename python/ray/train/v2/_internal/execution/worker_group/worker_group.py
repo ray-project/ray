@@ -444,7 +444,7 @@ class WorkerGroup(ExecutionGroup):
         num_workers: int,
         placement_group: PlacementGroup,
         resources_per_worker: Dict[str, float],
-        bundle_indices: Optional[List[int]] = None,
+        placement_group_bundle_indices: Optional[List[int]] = None,
         starting_world_rank: int = 0,
         world_size: Optional[int] = None,
     ) -> List[Worker]:
@@ -454,7 +454,7 @@ class WorkerGroup(ExecutionGroup):
             num_workers: Number of workers to create.
             placement_group: The placement group to schedule workers in.
             resources_per_worker: Resources per worker.
-            bundle_indices: Optional explicit bundle indices to use.
+            placement_group_bundle_indices: Optional explicit bundle indices to use.
                 If None, uses range(num_workers).
             starting_world_rank: The starting world rank for this list of
                 workers. Note that world rank is global across replica groups
@@ -468,7 +468,9 @@ class WorkerGroup(ExecutionGroup):
             Sorted list of Workers.
         """
         indices = (
-            bundle_indices if bundle_indices is not None else list(range(num_workers))
+            placement_group_bundle_indices
+            if placement_group_bundle_indices is not None
+            else list(range(num_workers))
         )
 
         runtime_env = self._get_worker_runtime_env(
@@ -824,7 +826,7 @@ class WorkerGroup(ExecutionGroup):
         # Save old replica group state.
         old_replica_group = self._replica_groups[replica_group_index]
         old_workers = old_replica_group.get_workers()
-        old_bundle_indices = [w.bundle_index for w in old_workers]
+        old_placement_group_bundle_indices = [w.bundle_index for w in old_workers]
 
         # Shutdown old replica group if it is active.
         # It can be inactive if we failed to initialize the workers in the previous attempt.
@@ -839,7 +841,7 @@ class WorkerGroup(ExecutionGroup):
             num_workers=len(old_workers),
             placement_group=pg,
             resources_per_worker=self._worker_group_context.resources_per_worker,
-            bundle_indices=old_bundle_indices,
+            placement_group_bundle_indices=old_placement_group_bundle_indices,
             # TODO: change after we support replica groups of size > 1.
             starting_world_rank=replica_group_index,
             world_size=len(self._replica_groups),
