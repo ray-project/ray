@@ -911,6 +911,7 @@ class Worker:
         self,
         serialized_objects,
         object_refs,
+        fetch_rdt_objects: bool = False,
         use_object_store: bool = False,
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
@@ -941,7 +942,12 @@ class Worker:
                 rdt_ids.append(object_id)
 
         if rdt_ids:
-            rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids, use_object_store)
+            if fetch_rdt_objects:
+                rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
+                    rdt_ids, use_object_store
+                )
+            else:
+                rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids)
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
@@ -1015,7 +1021,10 @@ class Worker:
             return None, debugger_breakpoint
 
         values = self.deserialize_objects(
-            serialized_objects, object_refs, use_object_store
+            serialized_objects,
+            object_refs,
+            fetch_rdt_objects=True,
+            use_object_store=use_object_store,
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.

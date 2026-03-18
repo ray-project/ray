@@ -1,6 +1,6 @@
-"""Unit tests for get_rdt_objects pipelined fetch/wait ordering.
+"""Unit tests for fetch_and_get_rdt_objects pipelined fetch/wait ordering.
 
-Verifies that RDTManager.get_rdt_objects issues ALL fetch_multiple_tensors
+Verifies that RDTManager.fetch_and_get_rdt_objects issues ALL fetch_multiple_tensors
 calls before issuing ANY wait_fetch_complete call, eliminating serial
 transfer latency for one-sided transports like NIXL.
 
@@ -158,7 +158,7 @@ def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTMa
     """Return an RDTManager pre-populated with fake RDT metadata.
 
     Uses a real RDTStore so no Ray cluster is required.
-    All objects are non-primary copies (pop_object=True in get_rdt_objects).
+    All objects are non-primary copies (pop_object=True in fetch_and_get_rdt_objects).
     """
     manager = RDTManager()
 
@@ -188,7 +188,7 @@ def test_all_fetches_before_any_wait():
     """All fetch_multiple_tensors calls must precede all wait_fetch_complete calls."""
     object_ids = ["obj1", "obj2", "obj3"]
     manager = _build_manager(object_ids)
-    manager.get_rdt_objects(object_ids)
+    manager.fetch_and_get_rdt_objects(object_ids)
 
     call_log = _PipelineCheckingTransport.call_log
     fetch_indices = [i for i, (kind, _) in enumerate(call_log) if kind == "fetch"]
@@ -206,7 +206,7 @@ def test_results_returned_and_each_object_fetched_and_waited_exactly_once():
     and each object ID triggers exactly one fetch and one wait."""
     object_ids = ["x1", "y2", "z3"]
     manager = _build_manager(object_ids)
-    result = manager.get_rdt_objects(object_ids)
+    result = manager.fetch_and_get_rdt_objects(object_ids)
 
     assert set(result.keys()) == set(object_ids)
 
@@ -225,9 +225,9 @@ def test_primary_copy_objects_skip_fetch():
     manager = _build_manager(secondary_ids + [primary_id])
 
     # Add the primary-copy object to the store directly. Phase 1 of
-    # get_rdt_objects skips objects whose is_primary_copy() returns True.
+    # fetch_and_get_rdt_objects skips objects whose is_primary_copy() returns True.
     manager.rdt_store.add_object(primary_id, ["primary_value"], is_primary=True)
-    manager.get_rdt_objects(secondary_ids + [primary_id])
+    result = manager.fetch_and_get_rdt_objects(secondary_ids + [primary_id])
 
     call_log = _PipelineCheckingTransport.call_log
     fetched = [oid for kind, oid in call_log if kind == "fetch"]
@@ -236,18 +236,21 @@ def test_primary_copy_objects_skip_fetch():
     )
     # One fetch + one wait for each secondary object; zero for the primary one.
     assert len(call_log) == len(secondary_ids) * 2, f"call_log={call_log}"
+    # All objects should be returned in the results.
+    assert set(result.keys()) == set(secondary_ids + [primary_id])
+    assert result[primary_id] == ["primary_value"]
 
 
 def test_empty_object_list_returns_empty_dict():
-    """Calling get_rdt_objects with an empty list returns an empty dict."""
+    """Calling fetch_and_get_rdt_objects with an empty list returns an empty dict."""
     manager = _build_manager([])
-    result = manager.get_rdt_objects([])
+    result = manager.fetch_and_get_rdt_objects([])
 
     assert result == {}
     assert _PipelineCheckingTransport.call_log == []
 
 
-def test_two_sided_transport_raises_on_get_rdt_objects():
+def test_two_sided_transport_raises_on_fetch_and_get_rdt_objects():
     """ray.get (use_object_store=False) must raise ValueError for two-sided transports."""
     obj_id = "two_sided_obj"
     manager = _build_manager([obj_id], backend=_TWO_SIDED_BACKEND_NAME)
@@ -259,7 +262,7 @@ def test_two_sided_transport_raises_on_get_rdt_objects():
             "Either use a one-sided RDT transport or pass _use_object_store=True to ray.get to fetch the object through the object store instead."
         ),
     ):
-        manager.get_rdt_objects([obj_id], use_object_store=False)
+        manager.fetch_and_get_rdt_objects([obj_id], use_object_store=False)
 
 
 if __name__ == "__main__":
