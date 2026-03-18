@@ -519,14 +519,6 @@ class DeploymentAutoscalingState:
                 last_window_s=last_window_s,
                 window_start=window_start,
             )
-            # Cap by current snapshot to avoid double-counting from stale LOCF when
-            # merging replica running + handle queued (same request can appear in both
-            # due to different report timestamps). This can happen in direct ingress mode,
-            # and access through deployment handle, where queued requests are reported on the handle,
-            # while running requests are reported on the replicas.
-            if value is not None and len(non_empty_series) > 1:
-                current_snapshot_total = sum(ts[-1].value for ts in non_empty_series)
-                value = min(value, current_snapshot_total)
             return value if value is not None else 0.0
 
         return 0.0
