@@ -63,6 +63,16 @@ class FilenameProvider:
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ) -> None:
+        """Create a FilenameProvider.
+
+        Args:
+            dataset_uuid: An optional UUID to include as a prefix in generated
+                filenames. If provided, filenames will be formatted as
+                ``{dataset_uuid}_{write_uuid}_{task_index}``.
+            file_format: An optional file extension (without the leading dot)
+                to append to generated filenames, e.g. ``"parquet"`` or
+                ``"csv"``.
+        """
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
 

@@ -1187,8 +1187,6 @@ python/ray/data/datasource/file_meta_provider.py
     DOC103: Function `_expand_directory`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [ignore_missing_path: bool].
 --------------------
 python/ray/data/datasource/filename_provider.py
-    DOC101: Method `FilenameProvider.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `FilenameProvider.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset_uuid: Optional[str], file_format: Optional[str]].
     DOC201: Method `FilenameProvider.get_filename_for_block` does not have a return section in docstring
     DOC201: Method `FilenameProvider.get_filename_for_row` does not have a return section in docstring
 --------------------
