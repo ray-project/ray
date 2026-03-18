@@ -289,10 +289,12 @@ class AutoscalerEventLogger:
         # Convert LaunchRequest protos to dicts for the builder.
         launch_actions = []
         if launch_requests:
+            launch_type_count = defaultdict(int)
             for req in launch_requests:
-                launch_actions.append(
-                    {"instance_type": req.instance_type, "count": req.count}
-                )
+                launch_type_count[req.instance_type] += req.count
+            for instance_type, count in launch_type_count.items():
+                launch_actions.append({"instance_type": instance_type, "count": count})
+                logger.info(f"Adding {count} node(s) of type {instance_type}.")
 
         # Convert TerminationRequest protos to dicts for the builder.
         # TerminationRequest.Cause enum values match the
@@ -302,6 +304,17 @@ class AutoscalerEventLogger:
             termination_by_causes_and_type = defaultdict(int)
             for req in terminate_requests:
                 termination_by_causes_and_type[(req.cause, req.instance_type)] += 1
+
+            cause_reason_map = {
+                TerminationRequest.Cause.OUTDATED: "outdated",
+                TerminationRequest.Cause.MAX_NUM_NODES: (
+                    "max number of worker nodes reached"
+                ),
+                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE: (
+                    "max number of worker nodes per type reached"
+                ),
+                TerminationRequest.Cause.IDLE: "idle",
+            }
             for (cause, instance_type), count in termination_by_causes_and_type.items():
                 terminate_actions.append(
                     {
@@ -309,6 +322,11 @@ class AutoscalerEventLogger:
                         "instance_type": instance_type,
                         "count": count,
                     }
+                )
+                cause_reason = cause_reason_map.get(cause, "unknown")
+                logger.info(
+                    f"Removing {count} nodes of type "
+                    f"{instance_type} ({cause_reason})."
                 )
 
         # Convert infeasible ResourceRequest protos to grouped resource dicts
