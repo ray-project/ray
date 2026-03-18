@@ -387,6 +387,13 @@ class Node:
         if not connect_only:
             self._ray_params.update_pre_selected_port()
 
+        # For worker nodes, check version compatibility before spawning
+        # any processes.  If the check fails (e.g. Ray / Python version
+        # mismatch) we want to raise immediately rather than leave orphaned
+        # child processes behind.  See: https://github.com/ray-project/ray/issues/61836
+        if not head and not connect_only:
+            self.check_version_info()
+
         # Start processes.
         if head:
             self.start_head_processes()
