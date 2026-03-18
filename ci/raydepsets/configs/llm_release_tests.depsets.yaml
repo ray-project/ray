@@ -3,10 +3,10 @@ build_arg_sets:
     PYTHON_VERSION: py311
     PYTHON_VERSION_STR: "3.11"
     CUDA_CODE: cu128
-  cu129_py312:
+  cu130_py312:
     PYTHON_VERSION: py312
     PYTHON_VERSION_STR: "3.12"
-    CUDA_CODE: cu129
+    CUDA_CODE: cu130
 
 
 .common_settings: &common_settings
@@ -17,7 +17,7 @@ build_arg_sets:
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cu128
-    - cu129_py312
+    - cu130_py312
 
 depsets:
   - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}

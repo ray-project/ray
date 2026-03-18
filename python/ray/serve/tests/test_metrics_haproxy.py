@@ -17,6 +17,7 @@ Key differences from the default Serve proxy:
 import http
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Optional
 
 import httpx
@@ -36,12 +37,9 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import (
-    get_application_url,
-)
+from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
-from ray.serve.tests.test_metrics import get_metric_dictionaries
 from ray.util.state import list_actors
 
 
@@ -234,12 +232,12 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     handle = serve.run(A.bind(), name="app1")
     _ = handle.remote()
 
-    processing_requests = get_metric_dictionaries(
+    ongoing_requests = get_metric_dictionaries(
         "ray_serve_replica_num_ongoing_requests", timeout=5
     )
-    assert len(processing_requests) == 1
-    assert processing_requests[0]["deployment"] == "A"
-    assert processing_requests[0]["application"] == "app1"
+    assert len(ongoing_requests) == 1
+    assert ongoing_requests[0]["deployment"] == "A"
+    assert ongoing_requests[0]["application"] == "app1"
     print("ray_serve_replica_num_ongoing_requests exists.")
 
     # Deprecated metric 'ray_serve_replica_processing_queries' will be removed in Ray 3.0.
@@ -404,8 +402,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     app_name = "app"
     serve.run(A.bind(), name=app_name, route_prefix="/")
 
-    httpx.get("http://localhost:8000/", timeout=None)
-    httpx.get("http://localhost:8000/", timeout=None)
+    resp1 = httpx.get("http://localhost:8000/", timeout=None)
+    resp2 = httpx.get("http://localhost:8000/", timeout=None)
+    assert resp1.status_code == 500
+    assert resp2.status_code == 500
 
     # Ensure all expected metrics are present.
     try:
@@ -421,26 +421,39 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     def verify_error_count(do_assert=False):
         resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         resp = resp.split("\n")
+        http_error_count = 0
+        deployment_error_count = 0
+
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            if "ray_serve_num_http_error_requests_total" in metrics:
-                # route "/" should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert "2.0" in metrics
-                if "2.0" not in metrics:
-                    return False
-            elif "ray_serve_num_deployment_http_error_requests" in metrics:
-                # deployment A should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
-                    return False
-        return True
+            if (
+                "ray_serve_num_http_error_requests_total" in metrics
+                and 'route="/"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                http_error_count += int(float(metrics.split(" ")[-1]))
+            elif (
+                "ray_serve_num_deployment_http_error_requests" in metrics
+                and 'deployment="A"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                deployment_error_count += int(float(metrics.split(" ")[-1]))
+
+        # We expect 2 requests total, both should be 500 errors
+        if do_assert:
+            assert (
+                http_error_count == 2
+            ), f"Expected at least 2 HTTP 500 errors, got {http_error_count}"
+            assert (
+                deployment_error_count == 2
+            ), f"Expected at least 2 deployment 500 errors, got {deployment_error_count}"
+
+        return http_error_count == 2 and deployment_error_count == 2
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=30)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
@@ -619,6 +632,66 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
+def test_no_499_misclassification_after_successful_response(metrics_start_shutdown):
+    """Reproduce the race where response is sent (body without more_body) but
+    response_finished stays False, then disconnect arrives and we incorrectly log 499.
+
+    convert_object_to_asgi_messages omits more_body in the final body chunk (valid
+    per ASGI spec). The fix treats omitted more_body as final so we don't
+    misclassify successful responses as 499 when client disconnects after response.
+    """
+
+    @serve.deployment
+    async def fast_return(request: Request):
+        return "ok"
+
+    serve.run(
+        fast_return.bind(),
+        route_prefix="/race_test",
+        name="race_test",
+    )
+
+    http_url = get_application_url("HTTP", app_name="race_test")
+
+    def _request_then_close_immediately():
+        """Send request, read 1 byte of response, then close. This creates the race:
+        server has sent full response (body without more_body) but client closes
+        before request_task exits. Without the fix, response_finished stays False
+        and we incorrectly log 499."""
+        with httpx.Client() as client:
+            with client.stream("GET", http_url) as response:
+                next(
+                    response.iter_bytes(1)
+                )  # Read 1 byte, then exit - connection closes
+
+    # Run many times to hit the race (disconnect arrives before request_task exits)
+    num_requests = 500
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(_request_then_close_immediately)
+            for _ in range(num_requests)
+        ]
+        for f in as_completed(futures):
+            f.result()
+
+    # First assert all requests were processed
+    def check_request_count_and_no_499_errors():
+        check_sum_metric_eq(
+            "ray_serve_num_http_requests_total",
+            num_requests,
+            tags={"route": "/race_test"},
+        )
+        check_sum_metric_eq(
+            "ray_serve_num_http_error_requests_total",
+            0,
+            tags={"route": "/race_test", "error_code": "499"},
+        )
+        return True
+
+    wait_for_condition(check_request_count_and_no_499_errors, timeout=30)
+
+
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -757,7 +830,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+            get_metric_dictionaries(
+                "ray_serve_deployment_request_counter_total", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -789,7 +864,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries(
+                "ray_serve_deployment_processing_latency_ms_count", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -808,7 +885,10 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_num_ongoing_requests"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_num_ongoing_requests"),
+            wait=False,
+        )
         == 2
     )
     num_ongoing_requests = get_metric_dictionaries(
@@ -822,7 +902,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     # Deprecated metric 'ray_serve_replica_processing_queries' will be removed in Ray 3.0.
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
+        )
         == 2
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
@@ -840,7 +922,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_deployment_error_counter_total", wait=False
+            )
+        )
         == 1,
         timeout=40,
     )
@@ -854,7 +940,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     ) == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+        )
         == 3,
         timeout=40,
     )

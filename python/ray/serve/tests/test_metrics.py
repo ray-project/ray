@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
@@ -72,7 +73,9 @@ def check_sum_metric_eq(
         timeseries = PrometheusTimeseries()
 
     metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
@@ -822,7 +825,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+            get_metric_dictionaries(
+                "ray_serve_deployment_request_counter_total", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -854,7 +859,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries(
+                "ray_serve_deployment_processing_latency_ms_count", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -873,7 +880,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_num_ongoing_requests"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_replica_num_ongoing_requests", wait=False
+            )
+        )
         == 2
     )
     ongoing_requests = get_metric_dictionaries("ray_serve_replica_num_ongoing_requests")
@@ -885,7 +896,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     # Deprecated metric 'serve_replica_processing_queries' will be removed in Ray 3.0.
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
+        )
         == 2
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
@@ -903,7 +916,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_deployment_error_counter_total", wait=False
+            )
+        )
         == 1,
         timeout=40,
     )
@@ -918,7 +935,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+        )
         == 3,
         timeout=40,
     )
@@ -949,7 +968,7 @@ def test_deployment_error_counter_exception_type(metrics_start_shutdown):
 
     def check_metric():
         err_metrics = get_metric_dictionaries(
-            "ray_serve_deployment_error_counter_total"
+            "ray_serve_deployment_error_counter_total", wait=False
         )
         value_error_metrics = [
             m for m in err_metrics if m.get("exception_type") == "ValueError"
@@ -987,7 +1006,9 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     def check_queue_wait_time_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            wait=False,
         )
         if not metrics:
             return False
@@ -1043,7 +1064,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
         # Check that the router queue length metric appears with correct tags
         def check_router_queue_len():
             metrics = get_metric_dictionaries(
-                "ray_serve_request_router_queue_len", timeseries=timeseries
+                "ray_serve_request_router_queue_len", timeseries=timeseries, wait=False
             )
             if not metrics:
                 return False
@@ -1191,7 +1212,9 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
 
     # Wait for metrics to be updated
     def metrics_available():
-        metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
+        metrics = get_metric_dictionaries(
+            "ray_serve_num_http_requests_total", wait=False
+        )
         api_metrics = [m for m in metrics if m.get("application") == "api_app"]
         return len(api_metrics) >= 3
 
@@ -1288,7 +1311,7 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
     # This metric is recorded when the controller polls routing stats from replicas
     def check_routing_stats_delay_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries, wait=False
         )
         if not metrics:
             return False
@@ -1364,7 +1387,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="exception" is reported
     def check_exception_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1390,7 +1413,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="timeout" is reported
     def check_timeout_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1458,7 +1481,9 @@ def test_replica_utilization_metric(metrics_start_shutdown):
         # Wait for the utilization metric to be reported
         def check_utilization_metric_exists():
             metrics = get_metric_dictionaries(
-                "ray_serve_replica_utilization_percent", timeseries=timeseries
+                "ray_serve_replica_utilization_percent",
+                timeseries=timeseries,
+                wait=False,
             )
             if not metrics:
                 return False

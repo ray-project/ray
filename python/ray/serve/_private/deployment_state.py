@@ -22,6 +22,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -29,12 +30,14 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     DeploymentTargetInfo,
     Duration,
+    GangPlacementGroupRequest,
+    GangReservationResult,
     ReplicaID,
     ReplicaState,
     RequestRoutingInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
@@ -43,7 +46,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
@@ -66,12 +69,15 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
+    get_active_placement_group_ids,
     get_capacity_adjusted_num_replicas,
     get_random_string,
     msgpack_deserialize,
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.config import GangRuntimeFailurePolicy
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -184,9 +190,11 @@ class DeploymentTargetState:
             self.info.replica_config.max_replicas_per_node
             == other_target_state.info.replica_config.max_replicas_per_node
         )
-        deployment_config_match = self.info.deployment_config.dict(
+        deployment_config_match = self.info.deployment_config.model_dump(
             exclude={"num_replicas"}
-        ) == other_target_state.info.deployment_config.dict(exclude={"num_replicas"})
+        ) == other_target_state.info.deployment_config.model_dump(
+            exclude={"num_replicas"}
+        )
 
         # Backward compatibility check for older versions of Ray without these fields.
         current_bundle_label_selector = getattr(
@@ -319,6 +327,8 @@ class ActorReplicaWrapper:
         # Rank assigned to the replica.
         self._assign_rank_callback: Optional[Callable[[ReplicaID], ReplicaRank]] = None
         self._rank: Optional[ReplicaRank] = None
+        # Gang context for the replica.
+        self._gang_context: Optional[GangContext] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -395,6 +405,10 @@ class ActorReplicaWrapper:
     @property
     def rank(self) -> Optional[ReplicaRank]:
         return self._rank
+
+    @property
+    def gang_context(self) -> Optional[GangContext]:
+        return self._gang_context
 
     @property
     def app_name(self) -> str:
@@ -572,15 +586,31 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        gang_placement_group: Optional[PlacementGroup] = None,
+        gang_pg_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
+
+        Args:
+            deployment_info: Configuration info for the deployment.
+            assign_rank_callback: Callback to assign rank to the replica.
+            gang_placement_group: Pre-created gang PG to schedule this replica on.
+            gang_pg_index: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica.
+
+        Returns:
+            ReplicaSchedulingRequest: The scheduling request for the replica.
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
+        self._gang_placement_group = gang_placement_group
+        self._gang_pg_index = gang_pg_index
+        self._gang_context = gang_context
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
@@ -698,6 +728,8 @@ class ActorReplicaWrapper:
                 deployment_info.replica_config.max_replicas_per_node
             ),
             on_scheduled=self.on_scheduled,
+            gang_placement_group=self._gang_placement_group,
+            gang_pg_index=self._gang_pg_index,
         )
 
     def on_scheduled(
@@ -883,7 +915,7 @@ class ActorReplicaWrapper:
                     self._replica_id.unique_id, self._node_id
                 )
                 self._ready_obj_ref = replica_ready_check_func.remote(
-                    deployment_config, self._rank
+                    deployment_config, self._rank, self._gang_context
                 )
 
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
@@ -918,6 +950,7 @@ class ActorReplicaWrapper:
                         self._route_patterns,
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
+                        self._gang_context,
                     ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
@@ -981,7 +1014,14 @@ class ActorReplicaWrapper:
             # Remove the placement group both if the actor has already been deleted or
             # it was just killed above.
             if stopped and self._placement_group is not None:
-                ray.util.remove_placement_group(self._placement_group)
+                try:
+                    ray.util.remove_placement_group(self._placement_group)
+                except ValueError:
+                    # ValueError thrown from ray.util.remove_placement_group means the
+                    # placement group has already been removed.
+                    logger.debug(
+                        f"Placement group for {self._replica_id} was already removed."
+                    )
 
         return stopped
 
@@ -1359,12 +1399,29 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        gang_placement_group: Optional[PlacementGroup] = None,
+        gang_pg_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
+
+        Args:
+            deployment_info: Configuration info for the deployment.
+            assign_rank_callback: Callback to assign rank to the replica.
+            gang_placement_group: Pre-created gang PG to schedule this replica on.
+            gang_pg_index: Bundle index within the gang PG for this replica.
+            gang_context: Gang context for this replica.
+
+        Returns:
+            ReplicaSchedulingRequest: The scheduling request for the replica.
         """
         replica_scheduling_request = self._actor.start(
-            deployment_info, assign_rank_callback=assign_rank_callback
+            deployment_info,
+            assign_rank_callback=assign_rank_callback,
+            gang_placement_group=gang_placement_group,
+            gang_pg_index=gang_pg_index,
+            gang_context=gang_context,
         )
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
@@ -1407,6 +1464,11 @@ class DeploymentReplica:
     def rank(self) -> Optional[ReplicaRank]:
         """Get the rank assigned to the replica."""
         return self._actor.rank
+
+    @property
+    def gang_context(self) -> Optional[GangContext]:
+        """Get the gang context for this replica."""
+        return self._actor.gang_context
 
     def check_started(
         self,
@@ -1499,9 +1561,9 @@ class DeploymentReplica:
             for k, v in kwargs.items()
         ):
             return
-        # Use .copy(update=...) instead of .dict() + reconstruction to avoid
-        # full Pydantic serialization and validation on every update.
-        self._actor_details = self._actor_details.copy(update=kwargs)
+        # Use .model_copy(update=...) instead of .model_dump() + reconstruction
+        # to avoid full Pydantic serialization and validation on every update.
+        self._actor_details = self._actor_details.model_copy(update=kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -1538,9 +1600,18 @@ class DeploymentReplica:
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
 
-    def __init__(self):
+    def __init__(self, on_replica_state_change=None):
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
+        self._on_replica_state_change = on_replica_state_change
+
+    def __getstate__(self):
+        # Exclude the callback to keep the container picklable (the callback
+        # is a bound method on DeploymentState which holds unpicklable objects
+        # like asyncio futures).  Used by _dump_replica_states_for_testing.
+        state = self.__dict__.copy()
+        state["_on_replica_state_change"] = None
+        return state
 
     def add(self, state: ReplicaState, replica: DeploymentReplica):
         """Add the provided replica under the provided state.
@@ -1550,9 +1621,13 @@ class ReplicaStateContainer:
             replica: replica to add.
         """
         assert isinstance(state, ReplicaState), f"Type: {type(state)}"
+        actor_details = getattr(replica, "actor_details", None)
+        old_state = actor_details.state if actor_details is not None else None
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        if self._on_replica_state_change and state != old_state:
+            self._on_replica_state_change(old_state, state)
 
     def get(
         self, states: Optional[List[ReplicaState]] = None
@@ -2233,7 +2308,9 @@ class DeploymentState:
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
 
-        self._replicas: ReplicaStateContainer = ReplicaStateContainer()
+        self._replicas: ReplicaStateContainer = ReplicaStateContainer(
+            on_replica_state_change=self._on_replica_state_change
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -2253,6 +2330,11 @@ class DeploymentState:
         # changes or the cache entry is older than _HEALTH_GAUGE_REPORT_INTERVAL_S
         # (to ensure the metric is re-exported within each Prometheus scrape window).
         self._health_gauge_cache: Dict[str, Tuple[int, float]] = {}
+
+        # Maintain gang membership bookkeeping to avoid O(num_replicas) lookups when stopping gangs.
+        # Updated on replica creation during upscaling and permanent removal during downscaling.
+        self._gang_id_by_replica: Dict[ReplicaID, str] = {}
+        self._replicas_by_gang_id: Dict[str, Set[ReplicaID]] = defaultdict(set)
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -2350,12 +2432,42 @@ class DeploymentState:
         # time we checked.
         self._request_routing_info_updated = False
 
+        # Dirty flag: set when replicas transition state (start, stop, health
+        # check fail, migration) or when availability-related fields change.
+        # When False *and* _request_routing_info_updated is False, the
+        # broadcast_running_replicas_if_changed() method can skip all work.
+        self._broadcasted_replicas_set_changed = True
+
+        # Reconciliation flag: when False the deployment is in steady state
+        # (all replicas RUNNING at target version, status HEALTHY) and
+        # expensive per-tick work in check_curr_status(),
+        # scale_deployment_replicas(), and the startup/stopping sections of
+        # check_and_update_replicas() can be skipped.  Health checks on
+        # RUNNING/PENDING_MIGRATION replicas always run regardless.
+        # Cleared only when check_curr_status() confirms steady state.
+        self._in_transition = True
+
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
+
+    _BROADCAST_STATES = frozenset(
+        {ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION}
+    )
+
+    def _on_replica_state_change(
+        self, old_state: ReplicaState, new_state: ReplicaState
+    ) -> None:
+        """Called by ReplicaStateContainer.add() when a replica transitions."""
+        broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
+            new_state in self._BROADCAST_STATES
+        )
+        if broadcast_set_changed:
+            self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
 
     def should_autoscale(self) -> bool:
         """
@@ -2500,6 +2612,25 @@ class DeploymentState:
     def get_num_running_replicas(self, version: DeploymentVersion = None) -> int:
         return self._replicas.count(states=[ReplicaState.RUNNING], version=version)
 
+    def get_gang_config(self):
+        return (
+            self._target_state.info.deployment_config.gang_scheduling_config
+            if self._target_state is not None
+            else None
+        )
+
+    def _get_target_replica_delta(self) -> int:
+        """Calculate delta between target replicas and active replicas."""
+        current_replicas = self._replicas.count(
+            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
+        )
+        recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
+        return (
+            self._target_state.target_num_replicas
+            - current_replicas
+            - recovering_replicas
+        )
+
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
 
@@ -2532,17 +2663,33 @@ class DeploymentState:
 
         The set will also be broadcast if any replicas have an updated set of
         multiplexed model IDs.
+
+        Uses a dirty flag (_broadcasted_replicas_set_changed) to skip all work in steady state
+        when no replicas have transitioned and no routing info has been updated.
+        RunningReplicaInfo objects are only constructed when a broadcast may
+        actually be needed.
         """
+        # Fast path: nothing could have changed, skip entirely.
+        if (
+            not self._broadcasted_replicas_set_changed
+            and not self._request_routing_info_updated
+        ):
+            return
+
         running_replica_infos = self.get_running_replica_infos()
         is_available = not self._terminally_failed()
 
-        running_replicas_changed = (
+        running_broadcasted_replicas_set_changed = (
             set(self._last_broadcasted_running_replica_infos)
             != set(running_replica_infos)
             or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
-        if not running_replicas_changed and not availability_changed:
+
+        # Clear the dirty flag now that we've done the comparison.
+        self._broadcasted_replicas_set_changed = False
+
+        if not running_broadcasted_replicas_set_changed and not availability_changed:
             return
 
         deployment_metadata = DeploymentTargetInfo(
@@ -2597,6 +2744,8 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
         logger.info(
             f"Deleting {self._id}",
             extra={"log_to_stderr": False},
@@ -2637,6 +2786,8 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         self._target_state = new_target_state
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
 
         # Emit target replicas metric
         self.target_replicas_gauge.set(target_num_replicas)
@@ -2827,6 +2978,10 @@ class DeploymentState:
         Stop replicas with versions that require the actor to be restarted, and
         reconfigure replicas that require refreshing deployment config values.
 
+        For gang-scheduled deployments, replicas that need restarting are
+        grouped by gang_id and stopped in complete gangs so that we never
+        leave a gang partially torn down.
+
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
@@ -2842,6 +2997,47 @@ class DeploymentState:
         replicas_changed = False
         code_version_changes = 0
         reconfigure_changes = 0
+
+        # Process gang-grouped replicas
+        gang_config = self.get_gang_config()
+        if gang_config is not None:
+            need_restart: List[DeploymentReplica] = []
+            remaining: List[DeploymentReplica] = []
+            for replica in replicas_to_update:
+                if replica.version.requires_actor_restart(self._target_state.version):
+                    need_restart.append(replica)
+                else:
+                    remaining.append(replica)
+
+            # Group restart-candidates by gang_id.
+            gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
+            for replica in need_restart:
+                gangs[replica.gang_context.gang_id].append(replica)
+
+            # Stop complete gangs atomically within the budget
+            for _, gang_replicas in gangs.items():
+                expected_size = gang_replicas[0].gang_context.world_size
+                if len(gang_replicas) != expected_size:
+                    # Gang is incomplete (members may be RECOVERING/UPDATING);
+                    # wait for them to stabilize before tearing down.
+                    for replica in gang_replicas:
+                        self._replicas.add(replica.actor_details.state, replica)
+                elif code_version_changes + len(gang_replicas) <= max_to_stop:
+                    for replica in gang_replicas:
+                        code_version_changes += 1
+                        # Forcefully stop siblings to avoid partial gangs
+                        self._stop_replica(replica, graceful_stop=False)
+                        replicas_changed = True
+                else:
+                    # Not enough budget for this gang; put replicas back
+                    for replica in gang_replicas:
+                        self._replicas.add(replica.actor_details.state, replica)
+
+            # In gang deployments, replicas that only require reconfiguration are processed below.
+            # All gang replicas that require actor restart and fit within the max_to_stop budget have already been stopped.
+            replicas_to_update = remaining
+
+        # Per-replica restart/reconfigure handling
         for replica in replicas_to_update:
             if (code_version_changes + reconfigure_changes) >= max_to_stop:
                 self._replicas.add(replica.actor_details.state, replica)
@@ -2863,6 +3059,8 @@ class DeploymentState:
                     self._target_state.version
                 ):
                     replicas_changed = True
+                    self._broadcasted_replicas_set_changed = True
+                    self._in_transition = True
                 # Get current rank for the replica
                 current_rank = self._rank_manager.get_replica_rank(
                     replica.replica_id.unique_id
@@ -2947,14 +3145,41 @@ class DeploymentState:
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
         rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
+
+        # For gang deployments, ensure rollout_size is at least a multiple of
+        # gang_size so that we always stop and start complete gangs.
+        gang_config = self.get_gang_config()
+        if gang_config is not None:
+            gs = gang_config.gang_size
+            rollout_size = max(rollout_size, gs)
+            rollout_size = math.ceil(rollout_size / gs) * gs
+
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
 
     def scale_deployment_replicas(
         self,
+        gang_placement_groups: Optional[
+            Dict[DeploymentID, GangReservationResult]
+        ] = None,
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
-        """Scale the given deployment to the number of replicas."""
+        """Scale the given deployment to the number of replicas.
+
+        Args:
+            gang_placement_groups: Reserved gang placement groups.
+                If this deployment uses gang scheduling and PGs were reserved,
+                replicas will be scheduled onto these PGs.
+
+        Returns:
+            Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
+                The scheduling requests for the new replicas and the downscale request.
+        """
+
+        # Fast path: already at target count with all replicas at target
+        # version — no scaling or version updates needed.
+        if not self._in_transition:
+            return [], None
 
         assert (
             self._target_state.target_num_replicas >= 0
@@ -2965,48 +3190,166 @@ class DeploymentState:
 
         self._check_and_stop_outdated_version_replicas()
 
-        current_replicas = self._replicas.count(
-            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
-        )
-        recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
-
-        delta_replicas = (
-            self._target_state.target_num_replicas
-            - current_replicas
-            - recovering_replicas
-        )
+        delta_replicas = self._get_target_replica_delta()
         if delta_replicas == 0:
             return (upscale, downscale)
 
         elif delta_replicas > 0:
             to_add = delta_replicas
-            if to_add > 0 and not self._terminally_failed():
-                logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
-                for _ in range(to_add):
-                    replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
-
-                    new_deployment_replica = DeploymentReplica(
-                        replica_id,
-                        self._target_state.version,
-                    )
-                    scheduling_request = new_deployment_replica.start(
-                        self._target_state.info,
-                        assign_rank_callback=self._rank_manager.assign_rank,
-                    )
-
-                    upscale.append(scheduling_request)
-
-                    self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+            upscale = self._get_upscale_replicas(
+                to_add=to_add, gang_placement_groups=gang_placement_groups
+            )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
+            gang_config = self.get_gang_config()
+            gang_id_by_replica = None
+            replicas_by_gang_id = None
+
+            if gang_config is not None:
+                gang_id_by_replica = self._gang_id_by_replica
+                replicas_by_gang_id = self._replicas_by_gang_id
+
             removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
             logger.info(f"Removing {removed_replicas} from {self._id}.")
             downscale = DeploymentDownscaleRequest(
-                deployment_id=self._id, num_to_stop=to_remove
+                deployment_id=self._id,
+                num_to_stop=to_remove,
+                gang_id_by_replica=gang_id_by_replica,
+                replicas_by_gang_id=replicas_by_gang_id,
+                gang_size=gang_config.gang_size if gang_config else None,
             )
 
         return upscale, downscale
+
+    def _get_upscale_replicas(
+        self,
+        to_add: int,
+        gang_placement_groups: Optional[
+            Dict[DeploymentID, GangReservationResult]
+        ] = None,
+    ) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for this deployment, using gang scheduling when configured."""
+        upscale = []
+        if to_add <= 0 or self._terminally_failed():
+            return upscale
+
+        gang_config = self.get_gang_config()
+        if gang_config is None:
+            return self._add_upscale_replicas(to_add)
+
+        gang_reservation_result = (
+            gang_placement_groups.get(self._id) if gang_placement_groups else None
+        )
+        return self._add_upscale_gang_replicas(gang_config, gang_reservation_result)
+
+    def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
+        upscale = []
+        logger.info(f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}.")
+        for _ in range(to_add):
+            replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
+
+            new_deployment_replica = DeploymentReplica(
+                replica_id,
+                self._target_state.version,
+            )
+            scheduling_request = new_deployment_replica.start(
+                self._target_state.info,
+                assign_rank_callback=self._rank_manager.assign_rank,
+            )
+            upscale.append(scheduling_request)
+
+            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+
+        return upscale
+
+    def _add_upscale_gang_replicas(
+        self,
+        gang_config: GangSchedulingConfig,
+        gang_reservation_result: Optional[GangReservationResult],
+    ) -> List[ReplicaSchedulingRequest]:
+        """Add replicas using gang scheduling with reserved placement groups.
+
+        Args:
+            gang_config: Gang scheduling configuration.
+            gang_reservation_result: Gang reservation result with reserved PGs.
+
+        Returns:
+            List of ReplicaSchedulingRequests for the new replicas.
+        """
+        upscale = []
+
+        if gang_reservation_result is None:
+            logger.info(
+                f"Gang placement group reservation was skipped for {self._id}. "
+                "Will retry in the next reconciliation loop."
+            )
+            return upscale
+
+        if not gang_reservation_result.success:
+            logger.error(
+                f"Gang scheduling failed for {self._id}: {gang_reservation_result.error_message}. "
+                "Skipping replica creation."
+            )
+            self.record_replica_startup_failure(
+                f"Gang scheduling failed: {gang_reservation_result.error_message} "
+                "See Serve controller logs for more details."
+            )
+            return upscale
+
+        gang_pgs = gang_reservation_result.gang_pgs
+        gang_ids = gang_reservation_result.gang_ids
+        gang_pg_names = gang_reservation_result.gang_pg_names
+        gang_size = gang_config.gang_size
+        num_gangs = len(gang_pgs)
+        replicas_to_add = num_gangs * gang_size
+
+        # When per-replica PG bundles are defined, each replica occupies multiple
+        # consecutive bundles in the gang PG.  The actor for replica i is placed at
+        # bundle i * bundles_per_replica.
+        pg_bundles = self._target_state.info.replica_config.placement_group_bundles
+        bundles_per_replica = len(pg_bundles) if pg_bundles else 1
+
+        logger.info(
+            f"Adding {replicas_to_add} replica{'s' * (replicas_to_add > 1)} "
+            f"to {self._id} using gang scheduling "
+            f"(gang_size={gang_size}, {num_gangs} gang(s))."
+        )
+
+        for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
+            member_replica_ids = [
+                ReplicaID(get_random_string(), deployment_id=self._id)
+                for _ in range(gang_size)
+            ]
+
+            for bundle_index, replica_id in enumerate(member_replica_ids):
+                gang_context = GangContext(
+                    gang_id=gang_id,
+                    rank=bundle_index,
+                    world_size=gang_size,
+                    member_replica_ids=[r.unique_id for r in member_replica_ids],
+                    pg_name=pg_name,
+                )
+
+                new_deployment_replica = DeploymentReplica(
+                    replica_id,
+                    self._target_state.version,
+                )
+
+                scheduling_request = new_deployment_replica.start(
+                    self._target_state.info,
+                    assign_rank_callback=self._rank_manager.assign_rank,
+                    gang_placement_group=gang_pg,
+                    gang_pg_index=bundle_index * bundles_per_replica,
+                    gang_context=gang_context,
+                )
+
+                upscale.append(scheduling_request)
+                self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+                self._register_gang_replica(replica_id, gang_id)
+
+        return upscale
 
     def check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
@@ -3019,9 +3362,10 @@ class DeploymentState:
 
         Returns (deleted, any_replicas_recovering).
         """
-        # TODO(edoakes): we could make this more efficient in steady-state by
-        # having a "healthy" flag that gets flipped if an update or replica
-        # failure happens.
+        # Fast path: deployment is in steady state — status is already
+        # HEALTHY, all replicas are RUNNING at target version.  Nothing to do.
+        if not self._in_transition:
+            return False, False
 
         target_version = self._target_state.version
 
@@ -3082,6 +3426,9 @@ class DeploymentState:
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
                 self._replica_constructor_retry_counter = 0
+                # Deployment is in steady state: all replicas RUNNING at
+                # target version, no pending operations.
+                self._in_transition = False
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -3098,6 +3445,7 @@ class DeploymentState:
                 slow to reach running state.
         """
         slow_replicas = []
+        failed_gang_ids: Set[str] = set()
         for replica in self._replicas.pop(states=[original_state]):
             start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
@@ -3107,10 +3455,23 @@ class DeploymentState:
                     # from the replica actor. The invariant is that the rank is assigned
                     # during startup and before the replica is added to the replicas
                     # data structure with RUNNING state.
-                    # Recover rank from the replica actor during controller restart
+                    # Skip if the rank is already assigned (e.g., health-check failure
+                    # put the replica into RECOVERING without a controller crash, so the
+                    # rank was never released).
                     replica_id = replica.replica_id.unique_id
-                    self._rank_manager.recover_rank(
-                        replica_id, replica.actor_node_id, replica.rank
+                    if not self._rank_manager.has_replica_rank(replica_id):
+                        self._rank_manager.recover_rank(
+                            replica_id, replica.actor_node_id, replica.rank
+                        )
+                # Register recovered gang replicas in the incremental
+                # bookkeeping (newly created gang replicas are already
+                # registered in _add_upscale_gang_replicas).
+                if (
+                    original_state == ReplicaState.RECOVERING
+                    and replica.gang_context is not None
+                ):
+                    self._register_gang_replica(
+                        replica.replica_id, replica.gang_context.gang_id
                     )
                 # This replica should be now be added to handle's replica
                 # set.
@@ -3173,9 +3534,19 @@ class DeploymentState:
                         )
 
             elif start_status == ReplicaStartupStatus.FAILED:
-                # Replica reconfigure (deploy / upgrade) failed
-                self.record_replica_startup_failure(error_msg)
+                # Replica reconfigure (deploy / upgrade) failed.
+                # For gang replicas, count the failure once per gang and not per replica so the
+                # retry counter isn't inflated by gang_size on every cycle.
+                if (
+                    replica.gang_context is None
+                    or replica.gang_context.gang_id not in failed_gang_ids
+                ):
+                    self.record_replica_startup_failure(error_msg)
+
                 self._stop_replica(replica)
+                # Track failed gang IDs for sibling cleanup below.
+                if replica.gang_context is not None:
+                    failed_gang_ids.add(replica.gang_context.gang_id)
             elif start_status in [
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
@@ -3191,6 +3562,25 @@ class DeploymentState:
                 else:
                     self._replicas.add(original_state, replica)
 
+        # If any gang member failed during startup, stop all other members of
+        # that gang so partial gangs never exist.
+        if failed_gang_ids:
+            for state in {original_state, ReplicaState.RUNNING}:
+                for replica in self._replicas.pop(states=[state]):
+                    if (
+                        replica.gang_context is not None
+                        and replica.gang_context.gang_id in failed_gang_ids
+                    ):
+                        logger.info(
+                            f"Stopping {replica.replica_id} because a gang "
+                            f"member failed during startup "
+                            f"(gang_id={replica.gang_context.gang_id})."
+                        )
+                        # Forcefully stop siblings to avoid partial gangs
+                        self._stop_replica(replica, graceful_stop=False)
+                    else:
+                        self._replicas.add(state, replica)
+
         return slow_replicas
 
     def record_replica_startup_failure(self, error_msg: str):
@@ -3200,8 +3590,11 @@ class DeploymentState:
         if self._target_state.target_num_replicas == 0:
             return
 
-        # Increase startup failure counter
+        # Increase startup failure counter (may change _terminally_failed()
+        # result, which affects broadcasted availability).
         self._replica_constructor_retry_counter += 1
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
         self._replica_constructor_error_msg = error_msg
 
         # Update the deployment message only if replicas are failing during
@@ -3236,11 +3629,26 @@ class DeploymentState:
         if (
             cached is not None
             and cached[0] == value
-            and (now - cached[1]) < RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S
+            and (now - cached[1]) < RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
         ):
             return
         self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
         self._health_gauge_cache[replica_unique_id] = (value, now)
+
+    def _register_gang_replica(self, replica_id: ReplicaID, gang_id: str) -> None:
+        """Register a replica in the gang membership bookkeeping."""
+        self._gang_id_by_replica[replica_id] = gang_id
+        self._replicas_by_gang_id[gang_id].add(replica_id)
+
+    def _unregister_gang_replica(self, replica_id: ReplicaID) -> None:
+        """Remove a replica from the gang membership bookkeeping."""
+        gang_id = self._gang_id_by_replica.pop(replica_id, None)
+        if gang_id is not None:
+            members = self._replicas_by_gang_id.get(gang_id)
+            if members is not None:
+                members.discard(replica_id)
+                if not members:
+                    self._replicas_by_gang_id.pop(gang_id, None)
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
@@ -3263,12 +3671,121 @@ class DeploymentState:
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self._set_health_gauge(replica.replica_id.unique_id, 0)
 
+    def _stop_replica_mark_unhealthy_if_target_version(
+        self, replica: DeploymentReplica, graceful_stop: bool
+    ):
+        """Stop the replica and mark deployment as UNHEALTHY if the replica is the target version."""
+        self._stop_replica(replica, graceful_stop=graceful_stop)
+        if replica.version == self._target_state.version:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                message="A replica's health check failed. This "
+                "deployment will be UNHEALTHY until the replica "
+                "recovers or a new deploy happens.",
+            )
+
+    def _forcefully_stop_gang_replicas(
+        self,
+        healthy_replicas: List[DeploymentReplica],
+        unhealthy_replicas: List[DeploymentReplica],
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Forcefully stop all replicas in gangs that have any unhealthy or missing member.
+
+        Under the RESTART_GANG policy, when any replica in a gang fails its health check,
+        every member of that gang, including healthy ones, must be torn down so the gang
+        can be rescheduled atomically.
+
+        A gang is also restarted when any of its expected members, listed in
+        gang_context.member_replica_ids, are missing entirely from the replica manager.
+        This handles the case where a gang member dies while the controller is down:
+        on recovery, the dead member is never tracked, leaving an incomplete gang that
+        would block upscaling (the replica deficit would not be divisible by gang_size).
+
+        This differs from normal (single-replica scheduling) unhealthy-replica handling
+        in two ways:
+
+        1. Healthy siblings are also force-stopped.
+        2. Force-stop is always used (graceful_stop=False), regardless
+           of the FORCE_STOP_UNHEALTHY_REPLICAS setting.
+
+        Args:
+            healthy_replicas: A list of healthy replicas.
+            unhealthy_replicas: A list of unhealthy replicas.
+
+        Returns:
+            A (remaining_healthy, remaining_unhealthy) tuple containing only
+            replicas that follow single-replica scheduling logic.
+        """
+        gang_ids_to_restart: Set[str] = {
+            replica.gang_context.gang_id
+            for replica in unhealthy_replicas
+            if replica.gang_context is not None
+        }
+
+        # Detect incomplete gangs: gang members that are missing entirely from
+        # the replica manager. The healthy/unhealthy lists were popped from
+        # self._replicas in check_and_update_replicas, so we must include them
+        # explicitly to get the full set of tracked replica IDs.
+        all_tracked_replica_ids: Set[str] = (
+            {replica.replica_id.unique_id for replica in self._replicas.get()}
+            | {replica.replica_id.unique_id for replica in healthy_replicas}
+            | {replica.replica_id.unique_id for replica in unhealthy_replicas}
+        )
+
+        for replica in healthy_replicas:
+            gc = replica.gang_context
+            if gc is None or gc.gang_id in gang_ids_to_restart:
+                continue
+            for member_id in gc.member_replica_ids:
+                if member_id not in all_tracked_replica_ids:
+                    gang_ids_to_restart.add(gc.gang_id)
+                    break
+
+        if len(gang_ids_to_restart) == 0:
+            return healthy_replicas, unhealthy_replicas
+
+        remaining_healthy: List[DeploymentReplica] = []
+        for replica in healthy_replicas:
+            if (
+                replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                logger.warning(
+                    f"Replica {replica.replica_id} belongs to gang "
+                    f"(gang_id={replica.gang_context.gang_id}) that has an "
+                    "unhealthy or missing member. Forcefully stopping it "
+                    "because RESTART_GANG runtime failure policy is enabled."
+                )
+                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+            else:
+                remaining_healthy.append(replica)
+
+        remaining_unhealthy: List[DeploymentReplica] = []
+        for replica in unhealthy_replicas:
+            if (
+                replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, "
+                    "forcefully stopping it as part of gang restart "
+                    f"(gang_id={replica.gang_context.gang_id})."
+                )
+                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+            else:
+                remaining_unhealthy.append(replica)
+
+        return remaining_healthy, remaining_unhealthy
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
         transition happened.
         """
+
+        healthy_replicas: List[DeploymentReplica] = []
+        unhealthy_replicas: List[DeploymentReplica] = []
 
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
@@ -3287,28 +3804,73 @@ class DeploymentState:
                 self.health_check_failures_counter.inc(tags=metric_tags)
 
             if is_healthy:
-                self._replicas.add(replica.actor_details.state, replica)
-                self._set_health_gauge(replica.replica_id.unique_id, 1)
-                routing_stats = replica.pull_routing_stats()
-                replica.record_routing_stats(routing_stats)
+                healthy_replicas.append(replica)
             else:
-                logger.warning(
-                    f"Replica {replica.replica_id} failed health check, stopping it."
+                unhealthy_replicas.append(replica)
+
+        # Under the RESTART_GANG policy, force-stop all members of any gang that has at
+        # least one unhealthy replica. Replicas handled here are removed from the lists;
+        # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
+        gang_config = self.get_gang_config()
+        if (
+            gang_config is not None
+            and gang_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        ):
+            healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
+                healthy_replicas, unhealthy_replicas
+            )
+
+        for replica in healthy_replicas:
+            self._replicas.add(replica.actor_details.state, replica)
+            self._set_health_gauge(replica.replica_id.unique_id, 1)
+            routing_stats = replica.pull_routing_stats()
+            if routing_stats is not None and routing_stats != replica.routing_stats:
+                self._broadcasted_replicas_set_changed = True
+            replica.record_routing_stats(routing_stats)
+
+        # Only single-replica scheduling replicas remain.
+        for replica in unhealthy_replicas:
+            logger.warning(
+                f"Replica {replica.replica_id} failed health check, stopping it."
+            )
+            graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
+            self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
+
+        # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
+        # replicas, so skip startup/stopping checks.  The rank consistency
+        # check below still runs (it has its own lightweight guard).
+        if self._in_transition:
+            self._check_and_update_transitioning_replicas()
+
+        # After replica state updates, check rank consistency and perform minimal reassignment if needed
+        # This ensures ranks are continuous after lifecycle events
+        # Only do consistency check when deployment is stable (not during active updates)
+        # maybe this constraint need to be relaxed in the future. The implication is that
+        # if we delay the rank reassignment, the rank system will be in an invalid state
+        # for a longer period of time. Abrar made this decision because he is not confident
+        # about how rollouts work in the deployment state machine.
+        active_replicas = self._replicas.get()
+        if (
+            active_replicas
+            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            # Skip consistency check if there are STARTING replicas. During node
+            # migration, new replicas are created in STARTING state (without ranks)
+            # after the status is set to HEALTHY. Running the consistency check
+            # with STARTING replicas causes "active keys without ranks" error.
+            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
+        ):
+            replicas_to_reconfigure = (
+                self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                    active_replicas,
                 )
-                self._set_health_gauge(replica.replica_id.unique_id, 0)
-                self._stop_replica(
-                    replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
-                )
-                # If this is a replica of the target version, the deployment
-                # enters the "UNHEALTHY" status until the replica is
-                # recovered or a new deploy happens.
-                if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.handle_transition(
-                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
-                        message="A replica's health check failed. This "
-                        "deployment will be UNHEALTHY until the replica "
-                        "recovers or a new deploy happens.",
-                    )
+            )
+
+            # Reconfigure replicas that had their ranks reassigned
+            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+
+    def _check_and_update_transitioning_replicas(self):
+        """Check STARTING/UPDATING/RECOVERING/STOPPING replicas for state transitions."""
 
         slow_start_replicas = []
         slow_start = self._check_startup_replicas(ReplicaState.STARTING)
@@ -3411,32 +3973,7 @@ class DeploymentState:
                         f"Released rank from replica {replica_id} in deployment {self._id}"
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
-
-        # After replica state updates, check rank consistency and perform minimal reassignment if needed
-        # This ensures ranks are continuous after lifecycle events
-        # Only do consistency check when deployment is stable (not during active updates)
-        # maybe this constraint need to be relaxed in the future. The implication is that
-        # if we delay the rank reassignment, the rank system will be in an invalid state
-        # for a longer period of time. Abrar made this decision because he is not confident
-        # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get()
-        if (
-            active_replicas
-            and self._curr_status_info.status == DeploymentStatus.HEALTHY
-            # Skip consistency check if there are STARTING replicas. During node
-            # migration, new replicas are created in STARTING state (without ranks)
-            # after the status is set to HEALTHY. Running the consistency check
-            # with STARTING replicas causes "active keys without ranks" error.
-            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
-        ):
-            replicas_to_reconfigure = (
-                self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                    active_replicas,
-                )
-            )
-
-            # Reconfigure replicas that had their ranks reassigned
-            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+                self._unregister_gang_replica(replica.replica_id)
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
@@ -3516,6 +4053,12 @@ class DeploymentState:
         return to_stop, remaining
 
     def migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
+        # Fast path: no draining nodes and deployment is in steady state —
+        # no PENDING_MIGRATION replicas to move back and no replicas to
+        # migrate, so skip the O(N) pop-and-readd.
+        if not draining_nodes and not self._in_transition:
+            return
+
         # Move replicas back to running if they are no longer on a draining node.
         # If this causes the number of replicas to exceed the target state,
         # they will be scaled down because `scale_deployment_replicas` is called on
@@ -3723,7 +4266,8 @@ class DeploymentStateManager:
     ):
         """Detect and remove any placement groups not associated with a replica.
 
-        This can happen under certain rare circumstances:
+        For per-replica PGs, a PG is leaked if no actor with that name exists. This
+        can happen under certain rare circumstances:
             - The controller creates a placement group then crashes before creating
             the associated replica actor.
             - While the controller is down, a replica actor crashes but its placement
@@ -3731,6 +4275,10 @@ class DeploymentStateManager:
 
         In both of these (or any other unknown cases), we simply need to remove the
         leaked placement groups.
+
+        For gang PGs, a PG is leaked only if no alive actor references its placement
+        group ID. Gang PGs that still have live actors are preserved to avoid releasing
+        their resource reservations.
         """
         leaked_pg_names = []
         for pg_name in all_current_placement_group_names:
@@ -3739,6 +4287,25 @@ class DeploymentStateManager:
                 and pg_name not in all_current_actor_names
             ):
                 leaked_pg_names.append(pg_name)
+
+        gang_pg_names_in_cluster = [
+            name
+            for name in all_current_placement_group_names
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        if gang_pg_names_in_cluster:
+            pg_table = ray.util.placement_group_table()
+            gang_pg_name_to_id: Dict[str, str] = {}
+            for pg_id_hex, entry in pg_table.items():
+                name = entry.get("name", "")
+                if name.startswith(GANG_PG_NAME_PREFIX):
+                    gang_pg_name_to_id[name] = pg_id_hex
+
+            occupied_pg_ids = get_active_placement_group_ids()
+            for gang_pg_name in gang_pg_names_in_cluster:
+                pg_id = gang_pg_name_to_id.get(gang_pg_name)
+                if pg_id is not None and pg_id not in occupied_pg_ids:
+                    leaked_pg_names.append(gang_pg_name)
 
         if len(leaked_pg_names) > 0:
             logger.warning(
@@ -4022,7 +4589,11 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.check_and_update_replicas()
 
-        # STEP 2: Drain nodes
+        # STEP 2: Check current status
+        for deployment_state in self._deployment_states.values():
+            deployment_state.check_curr_status()
+
+        # STEP 3: Drain nodes
         draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
         allow_new_compaction = len(draining_nodes) == 0 and all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
@@ -4049,16 +4620,21 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
 
-        # STEP 3: Scale replicas
+        # STEP 3: Reserve gang placement groups
+        gang_placement_groups = self._reserve_gang_placement_groups()
+
+        # STEP 4: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
-            upscale, downscale = deployment_state.scale_deployment_replicas()
+            upscale, downscale = deployment_state.scale_deployment_replicas(
+                gang_placement_groups=gang_placement_groups,
+            )
 
             if upscale:
                 upscales[deployment_id] = upscale
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 4: Update status
+        # STEP 5: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -4066,7 +4642,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 5: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
@@ -4075,7 +4651,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 6: Broadcast long poll information
+        # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -4085,7 +4661,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 7: Record deployment status metrics
+        # STEP 8: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -4096,7 +4672,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 8: Cleanup
+        # STEP 9: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
@@ -4186,6 +4762,60 @@ class DeploymentStateManager:
             ):
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
+
+    def _reserve_gang_placement_groups(
+        self,
+    ) -> Dict[DeploymentID, GangReservationResult]:
+        """Reserve gang placement groups for deployments.
+
+        Returns:
+            Map of deployment_id to GangReservationResult containing the
+            created placement groups or error information.
+        """
+        gang_requests: Dict[DeploymentID, GangPlacementGroupRequest] = {}
+
+        for deployment_id, deployment_state in self._deployment_states.items():
+            gang_config = deployment_state.get_gang_config()
+            if gang_config is None:
+                continue
+
+            num_replicas_to_add = deployment_state._get_target_replica_delta()
+            if num_replicas_to_add <= 0:
+                # Only reserve PGs if we need to add replicas
+                continue
+
+            # Skip if deployment is terminally failed
+            if deployment_state._terminally_failed():
+                continue
+
+            # Skip if deployment has replicas still stopping. Their resources
+            # haven't been released yet, so PG creation would likely fail or
+            # block waiting for resources. We'll retry next reconciliation loop.
+            if deployment_state._replicas.count(states=[ReplicaState.STOPPING]) > 0:
+                continue
+
+            replica_config = deployment_state._target_state.info.replica_config
+            gang_requests[deployment_id] = GangPlacementGroupRequest(
+                deployment_id=deployment_id,
+                gang_size=gang_config.gang_size,
+                gang_placement_strategy=gang_config.gang_placement_strategy.value,
+                num_replicas_to_add=num_replicas_to_add,
+                replica_resource_dict=replica_config.resource_dict.copy(),
+                replica_placement_group_bundles=(
+                    replica_config.placement_group_bundles
+                ),
+                replica_pg_bundle_label_selector=(
+                    replica_config.placement_group_bundle_label_selector
+                ),
+                replica_pg_fallback_strategy=(
+                    replica_config.placement_group_fallback_strategy
+                ),
+            )
+
+        if not gang_requests:
+            return {}
+
+        return self._deployment_scheduler.schedule_gang_placement_groups(gang_requests)
 
     def record_request_routing_info(self, info: RequestRoutingInfo) -> None:
         """

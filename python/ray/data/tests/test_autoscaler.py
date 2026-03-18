@@ -37,6 +37,7 @@ def test_actor_pool_scaling():
         config=AutoscalingConfig(
             actor_pool_util_upscaling_threshold=1.0,
             actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
         ),
     )
 
@@ -49,9 +50,9 @@ def test_actor_pool_scaling():
         num_active_actors=MagicMock(return_value=10),
         num_running_actors=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
-        num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
         per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
         max_actor_concurrency=MagicMock(return_value=1),
         get_pool_util=MagicMock(
             # NOTE: Unittest mocking library doesn't support proxying to actual
@@ -97,18 +98,17 @@ def test_actor_pool_scaling():
     # Should scale up since the util above the threshold.
     assert actor_pool.get_pool_util() == 1.5
     assert_autoscaling_action(
-        delta=1,
+        delta=5,
         expected_reason="utilization of 1.5 >= 1.0",
     )
 
     # Should scale up immediately when the actor pool has no running actors.
     with patch(actor_pool, "num_running_actors", 0):
-        with patch(actor_pool, "num_free_task_slots", 0):
-            with patch(actor_pool, "get_pool_util", float("inf")):
-                assert_autoscaling_action(
-                    delta=1,
-                    expected_reason="no running actors, scale up immediately",
-                )
+        with patch(actor_pool, "get_pool_util", float("inf")):
+            assert_autoscaling_action(
+                delta=1,
+                expected_reason="no running actors, scale up immediately",
+            )
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
@@ -117,23 +117,28 @@ def test_actor_pool_scaling():
             delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]"
         )
 
-    # Should be no-op since previous scaling hasn't finished yet
+    # Should be no-op since there are pending actors (no downscaling while pending)
     with patch(actor_pool, "num_pending_actors", 1):
-        assert_autoscaling_action(delta=0, expected_reason="pending actors")
+        with patch(actor_pool, "num_tasks_in_flight", 4):
+            assert actor_pool.get_pool_util() == 0.4
+            assert_autoscaling_action(
+                delta=0,
+                expected_reason="no downscaling while actors are pending",
+            )
 
     # Should be no-op since we have reached the max size (ie could not scale
     # up even though utilization > threshold)
     with patch(actor_pool, "current_size", 15):
-        with patch(actor_pool, "num_tasks_in_flight", 15):
+        with patch(actor_pool, "num_tasks_in_flight", 20):
             assert_autoscaling_action(
                 delta=0,
                 expected_reason="reached max size",
             )
 
     # Should be no-op since we have reached the min size (ie could not scale
-    # down up even though utilization < threshold))
+    # down even though utilization < threshold)
     with patch(actor_pool, "current_size", 5):
-        with patch(actor_pool, "num_tasks_in_flight", 4):
+        with patch(actor_pool, "num_tasks_in_flight", 2):
             assert_autoscaling_action(
                 delta=0,
                 expected_reason="reached min size",
@@ -238,7 +243,8 @@ def autoscaler_max_upscaling_delta_setup():
         current_size=MagicMock(return_value=10),
         get_current_size=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
-        num_free_task_slots=MagicMock(return_value=0),
+        num_tasks_in_flight=MagicMock(return_value=40),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=4),
         get_pool_util=MagicMock(return_value=2.0),
     )
 
@@ -252,6 +258,7 @@ def autoscaler_max_upscaling_delta_setup():
         spec=OpState,
         total_enqueued_input_blocks=MagicMock(return_value=1),
     )
+    op_state.op = op
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
     return resource_manager, actor_pool, op, op_state
 

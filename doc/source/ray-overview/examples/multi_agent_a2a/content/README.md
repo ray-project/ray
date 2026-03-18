@@ -12,7 +12,7 @@ Or use this script: bash convert_to_md.sh
   <a href="https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangGraph for agent orchestration, and MCP for tool integration.
+This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangChain for agent orchestration, and MCP for tool integration.
 
 If you're new to Ray Serve and LangChain integration, see this **single-agent template** first:
 - **Anyscale template**: [langchain-agent-ray-serve](https://console.anyscale.com/template-preview/langchain-agent-ray-serve)
@@ -31,12 +31,12 @@ The multi-agent system consists of three agents:
 Each agent runs as an independent, autoscaling service with two interfaces: **SSE** for human-to-agent chat and **A2A** for agent-to-agent communication.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/multi-agent-architecture.png" alt="Architecture diagram showing Weather, Research, and Travel agents communicating through the A2A protocol on Ray Serve" style="width: 100%; height: auto;" />
+<img src="https://agent-and-mcp.s3.us-east-2.amazonaws.com/agent-templates-blogs-diagrams/multi-agent-architecture.png" alt="Architecture diagram showing Weather, Research, and Travel agents communicating through the A2A protocol on Ray Serve" style="width: auto; height: auto;" />
 </figure>
 
 ### Key terminology
 
-- *Agent*: The LangGraph workflow/logic that decides what actions to take and calls tools.
+- *Agent*: The LangChain workflow/logic that decides what actions to take and calls tools.
 - *Deployment / Service*: The Ray Serve application that hosts an agent (or MCP/LLM) behind HTTP.
 - *SSE endpoint*: Human-to-agent chat endpoint with streaming support, such as `POST /weather-agent/chat`.
 - *A2A endpoint*: Agent-to-agent endpoints for discovery and execution, such as `GET /.well-known/agent-card.json` and `POST /v1/message:send`.
@@ -401,7 +401,7 @@ See [mcps/web_search_mcp_server.py](https://github.com/ray-project/ray/tree/mast
 The agent runtime provides a builder pattern for creating agents and deploying them with both SSE (human-to-agent) and A2A (agent-to-agent) interfaces. This shared infrastructure eliminates code duplication across agents by centralizing configuration, agent building, and deployment logic.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/agent-builder-pattern.png" alt="Diagram showing the agent runtime builder pattern with configuration, agent building, and deployment layers" style="width: 65%; height: auto;" />
+<img src="https://agent-and-mcp.s3.us-east-2.amazonaws.com/agent-templates-blogs-diagrams/agent-builder-pattern.png" alt="Diagram showing the agent runtime builder pattern with configuration, agent building, and deployment layers" style="width: auto; height: auto;" />
 </figure>
 
 The agent runtime consists of four core modules:
@@ -416,7 +416,7 @@ The configuration module [`agent_runtime/config.py`](https://github.com/ray-proj
 
 #### 5.3.2 Agent building helpers
 
-The agent builder module [`agent_runtime/agent_builder.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/agent_builder.py) provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
+The agent builder module [`agent_runtime/agent_builder.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/agent_builder.py) provides factory functions for building LangChain agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
 
 - **Functions:** `build_llm()`, `load_mcp_tools()`, `build_tool_agent()`, and `build_mcp_agent()`.
 - **Logic handled:** Configuration loading, LLM construction, dynamic MCP tool discovery, and agent creation with `MemorySaver` checkpointing.
@@ -427,7 +427,7 @@ The SSE deployment module [`agent_runtime/serve_deployment.py`](https://github.c
 
 - **Endpoints:** Exposes `POST /chat` with SSE streaming support.
 - **Functions:** `create_chat_app()` and `create_serve_deployment()`.
-- **Features:** Real-time SSE streaming, conversation continuity through Thread IDs, and automatic LangGraph event serialization.
+- **Features:** Real-time SSE streaming, conversation continuity through Thread IDs, and automatic LangChain event serialization.
 
 #### 5.3.4 A2A deployment factory
 
@@ -436,7 +436,7 @@ The A2A deployment module [`agent_runtime/a2a_deployment.py`](https://github.com
 
 ### 5.4 The specialized agents
 
-Each specialized agent is a LangGraph agent that combines an LLM with specific tools. The agents use the builder pattern from the agent runtime to minimize boilerplate code.
+Each specialized agent is a LangChain agent that combines an LLM with specific tools. The agents use the builder pattern from the agent runtime to minimize boilerplate code.
 
 #### Weather agent
 
@@ -551,7 +551,7 @@ async def a2a_weather(query: str) -> str:
 The A2A (Agent-to-Agent) protocol enables standardized agent-to-agent communication. This system uses the official `a2a-sdk` with custom helper utilities.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/a2a-protocol.png" alt="Sequence diagram showing A2A protocol communication between agents using discovery, message send, and task polling" />
+<img src="https://agent-and-mcp.s3.us-east-2.amazonaws.com/agent-templates-blogs-diagrams/a2a-protocol.png" alt="Sequence diagram showing A2A protocol communication between agents using discovery, message send, and task polling" style="width: auto; height: auto;" />
 </figure>
 
 **A2A components:**

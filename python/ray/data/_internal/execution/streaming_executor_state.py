@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
@@ -23,7 +24,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -428,7 +428,7 @@ def process_completed_tasks(
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
+    remaining_output_budget: Dict[OpState, int] = {}
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -445,10 +445,15 @@ def process_completed_tasks(
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
+        assert (
+            max_bytes_to_read is None or max_bytes_to_read >= 0
+        ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
+
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+
         if max_bytes_to_read is not None:
-            max_bytes_to_read_per_op[state] = max_bytes_to_read
+            remaining_output_budget[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -477,10 +482,13 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            max_bytes_to_read_per_op.get(state, None)
+                            remaining_output_budget.get(state, None)
                         )
-                        if state in max_bytes_to_read_per_op:
-                            max_bytes_to_read_per_op[state] -= bytes_read
+                        if state in remaining_output_budget:
+                            # Clamp remaining output budget at 0
+                            remaining_output_budget[state] = max(
+                                remaining_output_budget[state] - bytes_read, 0
+                            )
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
@@ -674,7 +682,7 @@ def select_operator_to_run(
     return next_op
 
 
-def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+def _actor_info_summary_str(info: ActorPoolInfo) -> str:
     total = info.running + info.pending + info.restarting
     base = f"Actors: {total}"
 

@@ -45,9 +45,12 @@ BAZEL_CACHE_ARGS=""
 if [[ -z "${BUILDKITE_BAZEL_CACHE_URL:-}" ]]; then
   # Disable remote cache for local builds (no credentials)
   BAZEL_CACHE_ARGS="--remote_cache="
-elif [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
-  # Read-only mode: disable uploads only
-  BAZEL_CACHE_ARGS="--remote_upload_local_results=false"
+else
+  # Override whatever the base image baked into ~/.bazelrc
+  BAZEL_CACHE_ARGS="--remote_cache=${BUILDKITE_BAZEL_CACHE_URL}"
+  if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
+    BAZEL_CACHE_ARGS="$BAZEL_CACHE_ARGS --remote_upload_local_results=false"
+  fi
 fi
 
 bazelisk --output_base=$BAZEL_CACHE build --config=ci \

@@ -980,7 +980,7 @@ RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
 // The number of grpc clients between object managers.
-RAY_CONFIG(int, object_manager_client_connection_num, 4)
+RAY_CONFIG(int, object_manager_client_connection_num, 2)
 
 // The actual number of threads for object transfers through the object manager is this
 // number * 3. There num_threads started for each of these 3 things:
@@ -1072,3 +1072,14 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
 RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+
+// Whether to enable/disable multiple gRPC connections to improve object transfer
+// throughput.
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// The threshold of the memory usage in bytes for the idle worker to be considered as
+// a candidate for killing.
+// TODO: We should clean it up after the memory monitor is revamped.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB
