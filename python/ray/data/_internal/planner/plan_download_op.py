@@ -238,8 +238,13 @@ def _extract_credentials_from_filesystem(
             kwargs["skip_signature"] = True
 
     elif GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
-        if hasattr(filesystem, "project_id") and filesystem.project_id:
-            kwargs["project_id"] = filesystem.project_id
+        # obstore GCSConfig does not have a project_id field. The only useful
+        # attribute PyArrow exposes on GcsFileSystem is `anonymous`, which maps
+        # to obstore's `skip_signature`. All other credentials (service account,
+        # application default credentials) are resolved by obstore from the
+        # environment automatically.
+        if hasattr(filesystem, "anonymous") and filesystem.anonymous:
+            kwargs["skip_signature"] = True
 
     elif AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
         if hasattr(filesystem, "account_name") and filesystem.account_name:

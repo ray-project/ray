@@ -1,12 +1,3 @@
-"""Unit and integration tests for plan_download_op internals.
-
-Tests are organized into three groups:
-  - TestSplitUri: pure-Python unit tests for _split_uri (no Ray, no obstore).
-  - TestDownloadHelpers: unit tests for credential extraction and URL scheme
-    detection (no Ray, no obstore; obstore_parse_scheme is mocked where needed).
-  - TestObstoreDownloadPath: integration tests for the obstore async download
-    path. All tests in this class are skipped when obstore is not installed.
-"""
 import asyncio
 from unittest.mock import MagicMock, patch
 
@@ -26,62 +17,74 @@ from ray.data.context import DataContext
 from ray.data.datasource.path_util import _split_uri
 
 
-class TestSplitUri:
-    """Tests for _split_uri, which splits a URI into (store_url, path)."""
-
-    def test_s3_uri(self):
-        store_url, path = _split_uri("s3://my-bucket/prefix/key.jpg")
-        assert store_url == "s3://my-bucket"
-        assert path == "prefix/key.jpg"
-
-    def test_https_uri(self):
-        store_url, path = _split_uri("https://host.com/a/b/c.png")
-        assert store_url == "https://host.com"
-        assert path == "a/b/c.png"
-
-    def test_gs_uri(self):
-        store_url, path = _split_uri("gs://bucket/path/to/file")
-        assert store_url == "gs://bucket"
-        assert path == "path/to/file"
-
-    def test_file_uri(self):
-        # file:// URIs have an empty netloc; the path begins at the third slash.
-        store_url, path = _split_uri("file:///tmp/test.txt")
-        assert store_url == "file://"
-        assert path == "tmp/test.txt"
-
-    def test_nested_path(self):
-        store_url, path = _split_uri("s3://bucket/a/b/c/d/e.parquet")
-        assert store_url == "s3://bucket"
-        assert path == "a/b/c/d/e.parquet"
-
-    def test_no_path(self):
-        store_url, path = _split_uri("s3://bucket/")
-        assert store_url == "s3://bucket"
-        assert path == ""
+# TestSplitUri
+@pytest.mark.parametrize(
+    "uri, expected_store_url, expected_path",
+    [
+        ("s3://my-bucket/prefix/key.jpg", "s3://my-bucket", "prefix/key.jpg"),
+        ("gs://bucket/path/to/file", "gs://bucket", "path/to/file"),
+        ("https://host.com/a/b/c.png", "https://host.com", "a/b/c.png"),
+        # file:// URIs have an empty netloc; path starts at the third slash.
+        ("file:///tmp/test.txt", "file://", "tmp/test.txt"),
+        # Nested paths.
+        ("s3://bucket/a/b/c/d/e.parquet", "s3://bucket", "a/b/c/d/e.parquet"),
+        # Trailing slash: empty path.
+        ("s3://bucket/", "s3://bucket", ""),
+        # Query string must be preserved for pre-signed / parameterized URLs.
+        (
+            "https://s3.amazonaws.com/bucket/key?X-Amz-Signature=abc&X-Amz-Expires=3600",
+            "https://s3.amazonaws.com",
+            "bucket/key?X-Amz-Signature=abc&X-Amz-Expires=3600",
+        ),
+        # No query string: path only.
+        ("https://host.com/a/b/c.png", "https://host.com", "a/b/c.png"),
+    ],
+)
+def test_split_uri(uri, expected_store_url, expected_path):
+    store_url, path = _split_uri(uri)
+    assert store_url == expected_store_url
+    assert path == expected_path
 
 
+# TestDownloadHelpers
 class TestDownloadHelpers:
     """Unit tests for credential extraction and URL-scheme detection."""
 
-    # ------------------------------------------------------------------
-    # _extract_credentials_from_filesystem
-    # ------------------------------------------------------------------
-
+    # _extract_credentials_from_filesystem filesystem-agnostic cases
     def test_extract_credentials_none(self):
         assert _extract_credentials_from_filesystem(None) == {}
 
-    def test_extract_credentials_local_fs(self):
-        # LocalFileSystem is not S3/GCS/Azure, so credentials should be empty.
+    def test_extract_credentials_unrecognized_fs(self):
+        # LocalFileSystem is not S3/GCS/Azure, so no credentials extracted.
         assert _extract_credentials_from_filesystem(pafs.LocalFileSystem()) == {}
 
     def test_extract_credentials_unwraps_retrying_fs(self):
-        # RetryingPyFileSystem wraps another filesystem; credentials should
-        # still be resolved from the inner filesystem.
+        # RetryingPyFileSystem must be unwrapped before the isinstance checks,
+        # otherwise an S3/GCS/Azure branch would never be reached.
         inner = pafs.LocalFileSystem()
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
         assert _extract_credentials_from_filesystem(retrying) == {}
 
+    def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
+        # Even when an S3FileSystem is wrapped, credentials must still be
+        # extracted from the inner filesystem after unwrapping.
+        mock_fs = MagicMock()
+        mock_fs.region = "eu-west-1"
+        mock_fs.access_key = None
+        mock_fs.secret_key = None
+        mock_fs.session_token = None
+        mock_fs.endpoint_override = None
+        mock_fs.anonymous = False
+
+        mock_retrying = MagicMock(spec=RetryingPyFileSystem)
+        mock_retrying.unwrap.return_value = mock_fs
+
+        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
+            result = _extract_credentials_from_filesystem(mock_retrying)
+
+        assert result.get("region") == "eu-west-1"
+
+    # _extract_credentials_from_filesystem with S3
     def test_extract_credentials_s3_region_real(self):
         # PyArrow's S3FileSystem C extension only exposes `region` as a Python
         # attribute; credential fields are not accessible. This test documents
@@ -96,9 +99,7 @@ class TestDownloadHelpers:
         assert "skip_signature" not in result
 
     def test_extract_credentials_s3_anonymous_mock(self):
-        # Test extraction logic for anonymous access using a mock that simulates
-        # a filesystem which exposes credential attributes. We patch
-        # pyarrow.fs.S3FileSystem so that isinstance() recognises the mock.
+        # We patch pyarrow.fs.S3FileSystem so isinstance() recognises the mock.
         mock_fs = MagicMock()
         mock_fs.anonymous = True
         mock_fs.access_key = None
@@ -112,7 +113,6 @@ class TestDownloadHelpers:
         assert "access_key_id" not in result
 
     def test_extract_credentials_s3_with_keys_mock(self):
-        # Test extraction logic for explicit credentials using a mock.
         mock_fs = MagicMock()
         mock_fs.anonymous = False
         mock_fs.access_key = "AKID"
@@ -128,37 +128,82 @@ class TestDownloadHelpers:
         assert result["endpoint"] == "https://custom-endpoint.com"
         assert result["region"] == "us-west-2"
 
-    # ------------------------------------------------------------------
+    # _extract_credentials_from_filesystem with GCS
+    @pytest.mark.parametrize(
+        "anonymous, expected",
+        [
+            (True, {"skip_signature": True}),
+            (False, {}),
+            (None, {}),
+        ],
+    )
+    def test_extract_credentials_gcs_anonymous_mock(self, anonymous, expected):
+        # GCS anonymous access maps to obstore's skip_signature.
+        # Other GCS credentials (service account, application default) are
+        # not accessible via PyArrow attributes; obstore resolves them from
+        # the environment automatically.
+        mock_fs = MagicMock()
+        mock_fs.anonymous = anonymous
+        with patch("pyarrow.fs.GcsFileSystem", type(mock_fs)):
+            result = _extract_credentials_from_filesystem(mock_fs)
+        assert result == expected
+
+    # _extract_credentials_from_filesystem with Azure
+    @pytest.mark.parametrize(
+        "account_name, account_key, expected",
+        [
+            (
+                "myaccount",
+                "mykey",
+                {"account_name": "myaccount", "account_key": "mykey"},
+            ),
+            # account_key is optional (e.g. when using managed identity).
+            ("myaccount", None, {"account_name": "myaccount"}),
+            (None, None, {}),
+        ],
+    )
+    def test_extract_credentials_azure_mock(self, account_name, account_key, expected):
+        mock_fs = MagicMock()
+        mock_fs.account_name = account_name
+        mock_fs.account_key = account_key
+        with patch("pyarrow.fs.AzureFileSystem", type(mock_fs)):
+            result = _extract_credentials_from_filesystem(mock_fs)
+        assert result == expected
+
     # _is_obstore_supported_url
-    # ------------------------------------------------------------------
+    @pytest.mark.parametrize(
+        "uri, raises, expected",
+        [
+            # Recognized scheme: parse_scheme succeeds.
+            ("s3://bucket/key", None, True),
+            ("https://host.com/file", None, True),
+            # Unrecognized scheme: parse_scheme raises.
+            ("custom://bucket/key", ValueError("unsupported"), False),
+            # obstore not installed: parse_scheme is None, so TypeError.
+            ("s3://bucket/key", "none", False),
+        ],
+    )
+    def test_is_obstore_supported_url(self, uri, raises, expected):
+        if raises == "none":
+            ctx = patch(
+                "ray.data._internal.planner.plan_download_op.obstore_parse_scheme",
+                new=None,
+            )
+        else:
+            mock = (
+                MagicMock(side_effect=raises)
+                if raises
+                else MagicMock(return_value="s3")
+            )
+            ctx = patch(
+                "ray.data._internal.planner.plan_download_op.obstore_parse_scheme",
+                new=mock,
+            )
+        with ctx:
+            assert _is_obstore_supported_url(uri) is expected
 
-    def test_is_supported_url_recognized_scheme(self):
-        # Patch obstore_parse_scheme to simulate obstore being available and
-        # recognizing the scheme.
-        with patch(
-            "ray.data._internal.planner.plan_download_op.obstore_parse_scheme"
-        ) as mock_parse:
-            mock_parse.return_value = "s3"
-            assert _is_obstore_supported_url("s3://bucket/key") is True
 
-    def test_is_supported_url_unrecognized_scheme(self):
-        # parse_scheme raises when the scheme is not supported.
-        with patch(
-            "ray.data._internal.planner.plan_download_op.obstore_parse_scheme"
-        ) as mock_parse:
-            mock_parse.side_effect = ValueError("unsupported scheme")
-            assert _is_obstore_supported_url("custom://bucket/key") is False
-
-    def test_is_supported_url_parse_scheme_none(self):
-        # When obstore is not installed, obstore_parse_scheme is set to None.
-        # Calling None(...) raises TypeError, which is caught and returns False.
-        with patch(
-            "ray.data._internal.planner.plan_download_op.obstore_parse_scheme",
-            new=None,
-        ):
-            assert _is_obstore_supported_url("s3://bucket/key") is False
-
-
+# TestObstoreDownloadPath
 class TestObstoreDownloadPath:
     """Integration tests for the obstore async download path.
 
@@ -219,16 +264,26 @@ class TestObstoreDownloadPath:
             # from_url should be called exactly once.
             assert spy.call_count == 1
 
-    def test_download_bytes_threaded_uses_obstore(self, tmp_path):
-        # Verify that download_bytes_threaded dispatches to the obstore path
-        # when use_obstore=True and the URI scheme is supported.
-        content = b"dispatched via obstore"
+    @pytest.mark.parametrize(
+        "use_obstore, expect_obstore_called",
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
+    def test_download_bytes_threaded_dispatch(
+        self, tmp_path, use_obstore, expect_obstore_called
+    ):
+        # Verify that download_bytes_threaded dispatches to the correct backend.
+        content = b"dispatch test content"
+        if use_obstore:
+            uri = f"file://{tmp_path}/test.bin"
+        else:
+            # PyArrow path uses bare filesystem paths, not file:// URIs.
+            uri = str(tmp_path / "test.bin")
         (tmp_path / "test.bin").write_bytes(content)
 
-        table = pa.Table.from_arrays(
-            [pa.array([f"file://{tmp_path}/test.bin"])],
-            names=["uri"],
-        )
+        table = pa.Table.from_arrays([pa.array([uri])], names=["uri"])
         ctx = DataContext.get_current()
 
         with patch(
@@ -240,41 +295,12 @@ class TestObstoreDownloadPath:
         ) as pyarrow_spy:
             results = list(
                 download_bytes_threaded(
-                    table, ["uri"], ["bytes"], ctx, use_obstore=True
+                    table, ["uri"], ["bytes"], ctx, use_obstore=use_obstore
                 )
             )
 
-        assert obstore_spy.called
-        assert not pyarrow_spy.called
-        assert results[0].column("bytes")[0].as_py() == content
-
-    def test_download_bytes_threaded_falls_back_to_pyarrow(self, tmp_path):
-        # Verify that download_bytes_threaded falls back to PyArrow when
-        # use_obstore=False, even if obstore is available.
-        content = b"dispatched via pyarrow"
-        (tmp_path / "test.bin").write_bytes(content)
-
-        table = pa.Table.from_arrays(
-            [pa.array([str(tmp_path / "test.bin")])],
-            names=["uri"],
-        )
-        ctx = DataContext.get_current()
-
-        with patch(
-            "ray.data._internal.planner.plan_download_op._download_uris_with_obstore",
-            wraps=_download_uris_with_obstore,
-        ) as obstore_spy, patch(
-            "ray.data._internal.planner.plan_download_op._download_uris_with_pyarrow",
-            wraps=_download_uris_with_pyarrow,
-        ) as pyarrow_spy:
-            results = list(
-                download_bytes_threaded(
-                    table, ["uri"], ["bytes"], ctx, use_obstore=False
-                )
-            )
-
-        assert not obstore_spy.called
-        assert pyarrow_spy.called
+        assert obstore_spy.called == expect_obstore_called
+        assert pyarrow_spy.called == (not expect_obstore_called)
         assert results[0].column("bytes")[0].as_py() == content
 
 

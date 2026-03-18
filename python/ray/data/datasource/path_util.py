@@ -340,12 +340,17 @@ def _resolve_paths_and_filesystem(
 def _split_uri(uri: str):
     """Split a URI into (store_url, path) for use with obstore.
 
-    e.g. "s3://my-bucket/a/b/c.jpg" -> ("s3://my-bucket", "a/b/c.jpg")
-         "https://host.com/a/b"      -> ("https://host.com", "a/b")
+    e.g. "s3://my-bucket/a/b/c.jpg"               -> ("s3://my-bucket", "a/b/c.jpg")
+         "https://host.com/a/b?X-Amz-Signature=x" -> ("https://host.com", "a/b?X-Amz-Signature=x")
+
+    The query string is preserved so that signed URLs (e.g. pre-signed S3 HTTPS
+    URLs) continue to work correctly when passed to obstore's get_async.
     """
     parsed = urlparse(uri)
     store_url = f"{parsed.scheme}://{parsed.netloc}"
     path = parsed.path.lstrip("/")
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
     return store_url, path
 
 

@@ -1919,6 +1919,20 @@ py_test(
 )
 
 py_test(
+    name = "test_plan_download_op",
+    size = "small",
+    srcs = ["tests/test_plan_download_op.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
