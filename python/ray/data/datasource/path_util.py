@@ -134,7 +134,11 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         f".{ext.lower()}" if not ext.startswith(".") else ext.lower()
         for ext in extensions
     ]
-    return any(path.lower().endswith(ext) for ext in extensions)
+    # Ignore query components when checking extensions (for example,
+    # versioned object-store paths like `...parquet?versionId=...`).
+    # Keep `#` untouched because it can be part of object keys.
+    parsed_path = path.split("?", 1)[0]
+    return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 
 # Mapping from URI schemes to compatible filesystem type_name values.
@@ -181,12 +185,21 @@ def _is_filesystem_compatible_with_scheme(
         # This preserves backward compatibility for custom filesystems
         return True
 
+    # Unwrap RetryingPyFileSystem to get the underlying filesystem's type
+    from ray.data._internal.util import RetryingPyFileSystem
+
+    unwrapped = (
+        filesystem.unwrap()
+        if isinstance(filesystem, RetryingPyFileSystem)
+        else filesystem
+    )
+
     # Get the actual filesystem type
-    fs_type = filesystem.type_name
+    fs_type = unwrapped.type_name
 
     # For PyFileSystem (fsspec wrappers), also check if it's HTTP
     if fs_type == "py" and scheme in ("http", "https"):
-        return _is_http_filesystem(filesystem)
+        return _is_http_filesystem(unwrapped)
 
     return fs_type in expected_types
 

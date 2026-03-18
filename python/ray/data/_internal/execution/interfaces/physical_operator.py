@@ -20,6 +20,7 @@ import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -124,6 +125,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
         Args:
@@ -137,6 +139,8 @@ class DataOpTask(OpTask):
             metadata_ready_callback: A callback that's invoked when a new block metadata
                 reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
+            operator_name: The name of the physical operator that created this task.
+                Used for logging the operator name in warnings/errors.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -148,6 +152,7 @@ class DataOpTask(OpTask):
         self._task_done_callback = task_done_callback
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
+        self._operator_name = operator_name
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -254,11 +259,12 @@ class DataOpTask(OpTask):
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
                 logger.warning(
-                    f"Metadata object not ready for "
-                    f"ref={self._pending_meta_ref.hex()} "
-                    f"(operator={self.__class__.__name__}). "
-                    f"Metadata may still be computing or worker may have failed and "
-                    f"object is being reconstructed. Will retry in next iteration."
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                    f"operator '{self._operator_name}' "
+                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                    f"Will retry next iteration. "
+                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
                 break
 
@@ -327,21 +333,6 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
-
-
-@dataclass
-class _ActorPoolInfo:
-    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
-
-    running: int
-    pending: int
-    restarting: int
-
-    def __str__(self):
-        return (
-            f"running={self.running}, restarting={self.restarting}, "
-            f"pending={self.pending}"
-        )
 
 
 class PhysicalOperator(Operator):
@@ -921,9 +912,9 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return _ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

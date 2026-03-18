@@ -52,11 +52,19 @@ class ElasticScalingPolicy(ScalingPolicy):
         self._latest_allocated_resources: Optional[List["ResourceDict"]] = None
 
     def _count_possible_workers(
-        self, allocated_resources: List[Dict[str, float]]
+        self, allocated_resources: List[Dict[str, float]], current_num_workers: int = 0
     ) -> int:
         """Count the number of workers that can be started/restarted with the given
         the list of node resources. The returned number is capped at the maximum
         number of workers.
+
+        Args:
+            allocated_resources: The resources currently allocated by the AutoscalingCoordinator.
+            current_num_workers: The number of healthy workers currently running.
+                This should only be passed when evaluating a running worker group.
+
+        Returns:
+            The number of workers that can be started/restarted with the current resources.
         """
         # TODO: Fractional resources do not work well here.
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
@@ -76,7 +84,93 @@ class ElasticScalingPolicy(ScalingPolicy):
             )
             total_num_workers += num_workers
 
-        return min(int(total_num_workers), self.scaling_config.max_workers)
+        total_num_workers = min(int(total_num_workers), self.scaling_config.max_workers)
+
+        # Multi-host TPUs are scheduled atomically in interconnected slices defined by a topology.
+        if (
+            self.scaling_config.use_tpu
+            and self.scaling_config.topology
+            and self.scaling_config.accelerator_type
+        ):
+            total_num_workers = self._get_strict_tpu_worker_count(
+                total_num_workers=total_num_workers,
+                current_num_workers=current_num_workers,
+            )
+
+        return total_num_workers
+
+    def _get_strict_tpu_worker_count(
+        self, total_num_workers: int, current_num_workers: int = 0
+    ) -> int:
+        """Calculate the number of workers that can run on intact TPU slices.
+
+        The Autoscaler's allocated resources might overestimate the number of schedulable
+        TPU workers because it counts raw resources. TPUs require atomic, interconnected
+        slices. This function strictly checks the cluster for physically intact slices
+        to prevent scaling up onto fractional/broken topologies.
+
+        Args:
+            total_num_workers: The initial estimate of workers based on raw allocated resources.
+            current_num_workers: The number of healthy workers currently running.
+                For TPUs, this implies the slices for the existing workload are physically
+                intact, allowing us to safely add them to the count of newly available
+                idle slices.
+
+        Returns:
+            The precise number of workers that align with fully intact TPU slices.
+        """
+        from ray.util.tpu import get_num_ready_tpu_slices, get_tpu_worker_resources
+
+        single_worker_resources = self.scaling_config._resources_per_worker_not_none
+
+        try:
+            workers_per_slice, _ = get_tpu_worker_resources(
+                topology=self.scaling_config.topology,
+                accelerator_type=self.scaling_config.accelerator_type,
+                resources_per_unit=single_worker_resources,
+                num_slices=1,
+            )
+
+            if workers_per_slice == 0:
+                # A single worker requires more resources than exist in a full slice.
+                # This is an impossible scheduling configuration for TPU.
+                return 0
+
+            num_available_slices = total_num_workers // workers_per_slice
+
+            # If there are enough TPU workers in the cluster for a full slice,
+            # check the cluster to validate there are alive, complete TPU
+            # slices available.
+            if num_available_slices > 0:
+                try:
+                    # This strictly finds physically intact slices that are fully available
+                    # for scheduling.
+                    num_ready_slices = get_num_ready_tpu_slices(
+                        topology=self.scaling_config.topology,
+                        accelerator_type=self.scaling_config.accelerator_type,
+                    )
+                    # Add back the slices we already own and are currently running
+                    running_slices = current_num_workers // workers_per_slice
+                    alive_slices = num_ready_slices + running_slices
+
+                    num_available_slices = min(num_available_slices, alive_slices)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to check cluster state for ready TPU slices: {e}"
+                    )
+
+            # The number of workers scaled should be a multiple of the number of
+            # workers that fit on a TPU slice.
+            return num_available_slices * workers_per_slice
+
+        except Exception as e:
+            logger.warning(
+                f"Could not calculate TPU slice boundaries for elastic scaling: {e}. "
+                "Worker counts may not align with TPU topology."
+            )
+
+        # Return 0 if we're not able to detect any available TPU slice for scheduling.
+        return 0
 
     def _get_resize_decision(self, num_workers: int) -> ResizeDecision:
         return ResizeDecision(
@@ -152,7 +246,9 @@ class ElasticScalingPolicy(ScalingPolicy):
         if allocated_resources is None:
             return NoopDecision()
 
-        num_workers = self._count_possible_workers(allocated_resources)
+        num_workers = self._count_possible_workers(
+            allocated_resources, current_num_workers=worker_group_state.num_workers
+        )
 
         if num_workers == worker_group_state.num_workers:
             logger.info(
