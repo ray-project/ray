@@ -587,7 +587,7 @@ class StreamingExecutor(Executor, threading.Thread):
             task = refreshable.create_async_task()
             if task is None:
                 continue
-            self._async_handles[cb] = AsyncServiceHandle(task=task)
+            self._async_handles[refreshable] = AsyncServiceHandle(task=task)
 
     def _uses_async_service(self, refreshable: "AsyncRefreshable") -> bool:
         """True if the refreshable is registered with the async service."""

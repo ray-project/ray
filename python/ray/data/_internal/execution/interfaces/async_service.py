@@ -4,12 +4,19 @@ import uuid
 from abc import ABC, abstractmethod
 from concurrent import futures
 from enum import Enum
-from typing import Any, Dict, Generic, Optional, TypeVar
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    Optional,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from tensorflow._api.v2.errors import UnimplementedError
 
 logger = logging.getLogger(__name__)
 
@@ -38,36 +45,40 @@ class AsyncServiceTask(ABC, Generic[InputT, OutputT]):
         ...
 
 
-class AsyncRefreshable(ABC):
+@runtime_checkable
+class AsyncRefreshable(Protocol):
     """Protocol for components that participate in async state refresh.
 
-    Both ``PhysicalOperator`` and ``ExecutionCallback`` can implement this.
+    Both ``PhysicalOperator`` and ``ExecutionCallback`` can implement this
+    via structural subtyping — no inheritance required.
+
     The executor manages the submit/poll lifecycle for all registered
-    refreshables — components only implement these three methods.
+    refreshables; components only implement these three methods.
 
     The flow each scheduling step:
-        1. ``build_refresh_input()`` — snapshot state (scheduling thread)
+        1. ``build_refresh_input(executor)`` — snapshot state (scheduling thread)
         2. ``task.run(snapshot, tpe)`` — expensive work (actor process)
-        3. ``apply_refresh_result(result)`` — apply output (scheduling thread)
+        3. ``apply_refresh_result(result, executor)`` — apply output (scheduling thread)
     """
 
     def create_async_task(self) -> Optional["AsyncServiceTask"]:
         """Return the task to register with the async service, or None to skip."""
-        raise NotImplementedError
+        ...
 
     def build_refresh_input(self) -> Any:
         """Build a serializable input snapshot for the async task.
 
-        Called on the scheduling thread. Has access to live internal state.
+        Called on the scheduling thread. The *executor* is passed so
+        implementations need not hold a reference to it.
         """
-        raise NotImplementedError
+        ...
 
     def apply_refresh_result(self, result: Any) -> None:
         """Apply the result from the async task back to internal state.
 
         Called on the scheduling thread when the result is ready.
         """
-        raise NotImplementedError
+        ...
 
 
 class ErrorPolicy(Enum):
