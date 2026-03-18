@@ -158,6 +158,9 @@ class AutoscalerEventsStorage:
                 for constraint in bundle.label_constraints
             ],
         }
+        # Omit count when 0 (proto default for events published before the
+        # count field was added); group_resource_bundle_dicts treats missing
+        # count as 1.
         if bundle.count:
             d["count"] = bundle.count
         return d
