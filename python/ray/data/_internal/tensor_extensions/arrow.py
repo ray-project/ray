@@ -21,11 +21,7 @@ from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
     convert_to_numpy,
 )
-from ray.data._internal.object_extensions.arrow import (
-    MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
-    ArrowPythonObjectArray,
-    _object_extension_type_allowed,
-)
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.tensor_extensions.utils import (
     ArrayLike,
     _is_ndarray_variable_shaped_tensor,
@@ -43,9 +39,6 @@ from ray.util.common import INT32_MAX
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
-
-
-PYARROW_VERSION = get_pyarrow_version()
 
 
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
@@ -302,38 +295,29 @@ def convert_to_pyarrow_array(
             bool
         ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
-        if not _object_extension_type_allowed():
-            object_ext_type_fallback_allowed = False
+        # NOTE: By default setting is unset which (for compatibility reasons)
+        #       is allowing the fallback
+        object_ext_type_fallback_allowed = (
+            enable_fallback_config is None or enable_fallback_config
+        )
+
+        if object_ext_type_fallback_allowed:
             object_ext_type_detail = (
-                "skipping fallback to serialize as pickled python"
-                f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
-                f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
+                "falling back to serialize as pickled python objects"
             )
         else:
-            # NOTE: By default setting is unset which (for compatibility reasons)
-            #       is allowing the fallback
-            object_ext_type_fallback_allowed = (
-                enable_fallback_config is None or enable_fallback_config
+            object_ext_type_detail = (
+                "skipping fallback to serialize as pickled python objects "
+                "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
+                "= False)"
             )
-
-            if object_ext_type_fallback_allowed:
-                object_ext_type_detail = (
-                    "falling back to serialize as pickled python objects"
-                )
-            else:
-                object_ext_type_detail = (
-                    "skipping fallback to serialize as pickled python objects "
-                    "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
-                    "= False)"
-                )
 
         # To avoid logging following warning for every block it's
         # only going to be logged in following cases
         #   - It's being logged for the first time, and
         #   - When config enabling fallback is not set explicitly (in this case
         #       fallback will still occur by default for compatibility reasons), or
-        #   - Fallback is disallowed (either explicitly or due to use of incompatible
-        #       Pyarrow version)
+        #   - Fallback is disallowed (explicitly)
         if (
             enable_fallback_config is None or not object_ext_type_fallback_allowed
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):

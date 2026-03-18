@@ -233,6 +233,8 @@ build-docker.sh
 
 ci/run/
 ci/ci.sh
+.buildkite/*.rules.test.txt
+.buildkite/*.rules.txt
 @ tools
 ;
 
