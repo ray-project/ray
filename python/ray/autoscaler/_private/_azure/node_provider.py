@@ -20,6 +20,7 @@ from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
     _delete_role_assignments_for_principal,
     _generate_arm_guid,
+    _is_shared_msi,
     bootstrap_azure,
     get_azure_sdk_function,
 )
@@ -748,11 +749,7 @@ class AzureNodeProvider(NodeProvider):
                 exc,
             )
 
-        shared_msi = (
-            self.provider_config.get("msi_name") is not None
-            and self.provider_config.get("msi_resource_group") is not None
-        )
-        if shared_msi:
+        if _is_shared_msi(self.provider_config):
             return msi_principal_id
 
         try:
