@@ -48,6 +48,9 @@ message AutoscalerScalingDecisionEvent {
     map<string, double> resources = 1;
     // Label constraints from the original resource request, if any.
     repeated LabelConstraint label_constraints = 2;
+    // Number of identical bundles with this shape. Defaults to 0;
+    // callers should treat 0 as 1 for backward compatibility.
+    int64 count = 3;
   }
 
   message GangResourceBundle {
