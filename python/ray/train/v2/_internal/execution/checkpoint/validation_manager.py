@@ -200,13 +200,18 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             )
         self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics)
 
+    def before_controller_abort(self):
+        for task in self._pending_validations.keys():
+            ray.cancel(task)
+
     def after_controller_state_update(
         self,
         previous_state: "TrainControllerState",
         current_state: "TrainControllerState",
     ):
         # TODO: figure out if there's a better place to poll validations
-        # TODO: consider cleaning up validation tasks in before_controller_abort
+        if current_state.is_terminal():
+            return
         self._poll_validations()
         self._kick_off_validations()
 
