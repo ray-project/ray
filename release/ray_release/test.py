@@ -403,6 +403,10 @@ class Test(dict):
         """Returns whether this test is running on Azure."""
         return self.get_cloud_env() == "azure"
 
+    def uses_anyscale_sdk_2026(self) -> bool:
+        """Returns whether this test uses the new 2026 Anyscale compute config schema."""
+        return self.get("cluster", {}).get("anyscale_sdk_2026", False)
+
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script

@@ -5,7 +5,9 @@ import pytest
 import yaml
 
 from ray_release.config import (
+    CLOUD_ID_TO_NAME,
     _substitute_variable,
+    get_test_cloud_name,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -422,6 +424,144 @@ def test_compute_config_invalid_ebs():
     ][0]["Ebs"]["DeleteOnTermination"] = True
 
     assert not validate_cluster_compute(compute_config)
+
+
+def test_validate_cluster_compute_new_schema_valid():
+    assert not validate_cluster_compute({}, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_valid_with_fields():
+    compute_config = {
+        "cloud": "my_cloud",
+        "head_node": {"instance_type": "m5.4xlarge"},
+        "worker_nodes": [{"instance_type": "m5.xlarge", "min_nodes": 1}],
+    }
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_rejects_legacy_keys():
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node_type": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=True)
+    assert error is not None
+    assert "legacy schema keys" in error
+    assert "anyscale_sdk_2026=true" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_new_keys():
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=False)
+    assert error is not None
+    assert "new schema keys" in error
+    assert "anyscale_sdk_2026=false" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_empty():
+    error = validate_cluster_compute({}, is_new_schema=False)
+    assert error is not None
+    assert "does not have legacy schema keys" in error
+
+
+def test_validate_cluster_compute_new_schema_ebs_top_level():
+    compute_config = {
+        "advanced_instance_config": {
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 1000},
+                }
+            ]
+        },
+    }
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    compute_config["advanced_instance_config"]["BlockDeviceMappings"][0]["Ebs"][
+        "DeleteOnTermination"
+    ] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_head_node():
+    compute_config = {
+        "head_node": {
+            "instance_type": "m5.4xlarge",
+            "advanced_instance_config": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {"VolumeSize": 1000},
+                    }
+                ]
+            },
+        },
+    }
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    compute_config["head_node"]["advanced_instance_config"]["BlockDeviceMappings"][0][
+        "Ebs"
+    ]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_worker_nodes():
+    compute_config = {
+        "worker_nodes": [
+            {
+                "instance_type": "m5.xlarge",
+                "advanced_instance_config": {
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"VolumeSize": 500},
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    compute_config["worker_nodes"][0]["advanced_instance_config"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_get_test_cloud_name_from_cluster_cloud():
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud": "my_cloud"},
+        }
+    )
+    assert get_test_cloud_name(test) == "my_cloud"
+
+
+def test_get_test_cloud_name_from_cloud_id_mapping():
+    for cloud_id, expected_name in CLOUD_ID_TO_NAME.items():
+        test = Test(
+            {
+                "name": "test",
+                "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": cloud_id},
+            }
+        )
+        assert get_test_cloud_name(test) == expected_name
+
+
+def test_get_test_cloud_name_unknown_cloud_id():
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_unknown"},
+        }
+    )
+    with pytest.raises(KeyError):
+        get_test_cloud_name(test)
 
 
 def test_load_and_validate_test_collection_file():
