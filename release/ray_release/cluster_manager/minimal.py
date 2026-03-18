@@ -1,5 +1,9 @@
 import time
 
+import anyscale.compute_config
+from anyscale.compute_config.models import ComputeConfig
+from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
+
 from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -16,6 +20,21 @@ from ray_release.util import (
 )
 
 REPORT_S = 30.0
+
+# Fields accepted by anyscale.compute_config.models.ComputeConfig.
+COMPUTE_CONFIG_FIELDS = {
+    "cloud",
+    "cloud_resource",
+    "head_node",
+    "worker_nodes",
+    "min_resources",
+    "max_resources",
+    "zones",
+    "enable_cross_zone_scaling",
+    "advanced_instance_config",
+    "flags",
+    "auto_select_worker_config",
+}
 
 
 class MinimalClusterManager(ClusterManager):
@@ -148,71 +167,127 @@ class MinimalClusterManager(ClusterManager):
         assert self.cluster_compute_id is None
 
         if self.cluster_compute:
-            assert self.cluster_compute
-
             logger.info(
                 f"Tests uses compute template "
                 f"with name {self.cluster_compute_name}. "
                 f"Looking up existing cluster computes."
             )
 
-            paging_token = None
-            while not self.cluster_compute_id:
-                result = self.sdk.search_cluster_computes(
-                    dict(
-                        project_id=self.project_id,
-                        name=dict(equals=self.cluster_compute_name),
-                        include_anonymous=True,
-                        paging=dict(paging_token=paging_token),
-                    )
+            if self.test.uses_anyscale_sdk_2026():
+                self._create_cluster_compute_new_sdk(_repeat=_repeat)
+            else:
+                self._create_cluster_compute_legacy(_repeat=_repeat)
+
+    def _create_cluster_compute_new_sdk(self, _repeat: bool = True):
+        """Create or find a cluster compute using the new anyscale.compute_config API."""
+        result = anyscale.compute_config.list(name=self.cluster_compute_name)
+        for cc in result.results:
+            if cc.name.rsplit(":", 1)[0] == self.cluster_compute_name:
+                self.cluster_compute_id = cc.id
+                logger.info(
+                    f"Cluster compute already exists "
+                    f"with ID {self.cluster_compute_id}"
                 )
-                paging_token = result.metadata.next_paging_token
+                return
 
-                for res in result.results:
-                    if res.name == self.cluster_compute_name:
-                        self.cluster_compute_id = res.id
-                        logger.info(
-                            f"Cluster compute already exists "
-                            f"with ID {self.cluster_compute_id}"
-                        )
-                        break
+        logger.info(
+            f"Cluster compute not found. "
+            f"Creating with name {self.cluster_compute_name}."
+        )
+        try:
+            # Filter to only fields accepted by ComputeConfig; keys like
+            # idle_termination_minutes/maximum_uptime_minutes are cluster-level
+            # settings not part of the ComputeConfig model.
+            compute_kwargs = {
+                k: v
+                for k, v in self.cluster_compute.items()
+                if k in COMPUTE_CONFIG_FIELDS
+            }
+            config = ComputeConfig(**compute_kwargs)
+            full_name = anyscale.compute_config.create(
+                config, name=self.cluster_compute_name
+            )
+            version = anyscale.compute_config.get(full_name)
+            self.cluster_compute_id = version.id
+        except Exception as e:
+            if _repeat:
+                logger.warning(
+                    f"Got exception when trying to create cluster "
+                    f"compute: {e}. Sleeping for 10 seconds and then "
+                    f"try again once..."
+                )
+                time.sleep(10)
+                return self._create_cluster_compute_new_sdk(_repeat=False)
 
-                if not paging_token:
+            raise ClusterComputeCreateError("Could not create cluster compute") from e
+
+        logger.info(
+            f"Cluster compute template created with "
+            f"name {self.cluster_compute_name} and "
+            f"ID {self.cluster_compute_id}"
+        )
+
+    def _create_cluster_compute_legacy(self, _repeat: bool = True):
+        """Create or find a cluster compute using the legacy DefaultApi SDK."""
+        paging_token = None
+        while not self.cluster_compute_id:
+            result = DefaultApi.search_cluster_computes(
+                self.sdk,
+                dict(
+                    project_id=self.project_id,
+                    name=dict(equals=self.cluster_compute_name),
+                    include_anonymous=True,
+                    paging=dict(paging_token=paging_token),
+                ),
+            )
+            paging_token = result.metadata.next_paging_token
+
+            for res in result.results:
+                if res.name == self.cluster_compute_name:
+                    self.cluster_compute_id = res.id
+                    logger.info(
+                        f"Cluster compute already exists "
+                        f"with ID {self.cluster_compute_id}"
+                    )
                     break
 
-            if not self.cluster_compute_id:
-                logger.info(
-                    f"Cluster compute not found. "
-                    f"Creating with name {self.cluster_compute_name}."
+            if not paging_token:
+                break
+
+        if not self.cluster_compute_id:
+            logger.info(
+                f"Cluster compute not found. "
+                f"Creating with name {self.cluster_compute_name}."
+            )
+            try:
+                result = DefaultApi.create_cluster_compute(
+                    self.sdk,
+                    dict(
+                        name=self.cluster_compute_name,
+                        project_id=self.project_id,
+                        config=self.cluster_compute,
+                    ),
                 )
-                try:
-                    result = self.sdk.create_cluster_compute(
-                        dict(
-                            name=self.cluster_compute_name,
-                            project_id=self.project_id,
-                            config=self.cluster_compute,
-                        )
+                self.cluster_compute_id = result.result.id
+            except Exception as e:
+                if _repeat:
+                    logger.warning(
+                        f"Got exception when trying to create cluster "
+                        f"compute: {e}. Sleeping for 10 seconds and then "
+                        f"try again once..."
                     )
-                    self.cluster_compute_id = result.result.id
-                except Exception as e:
-                    if _repeat:
-                        logger.warning(
-                            f"Got exception when trying to create cluster "
-                            f"compute: {e}. Sleeping for 10 seconds and then "
-                            f"try again once..."
-                        )
-                        time.sleep(10)
-                        return self.create_cluster_compute(_repeat=False)
+                    time.sleep(10)
+                    return self._create_cluster_compute_legacy(_repeat=False)
 
-                    raise ClusterComputeCreateError(
-                        "Could not create cluster compute"
-                    ) from e
+                raise ClusterComputeCreateError(
+                    "Could not create cluster compute"
+                ) from e
 
-                logger.info(
-                    f"Cluster compute template created with "
-                    f"name {self.cluster_compute_name} and "
-                    f"ID {self.cluster_compute_id}"
-                )
+            logger.info(
+                f"Cluster compute template created with "
+                f"name {self.cluster_compute_name} and "
+                f"ID {self.cluster_compute_id}"
+            )
 
     def build_configs(self, timeout: float = 30.0):
         try:

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
-from ray_release.cluster_manager.minimal import MinimalClusterManager
+from ray_release.cluster_manager.minimal import DefaultApi, MinimalClusterManager
 from ray_release.exception import (
     ClusterComputeCreateError,
     ClusterEnvBuildError,
@@ -85,6 +85,21 @@ class _DelayedResponse:
             return self.before
 
 
+def _make_default_api_proxy(sdk):
+    """Return patchers that make DefaultApi methods delegate to MockSDK."""
+
+    def search_proxy(self_arg, query):
+        return sdk.search_cluster_computes(query)
+
+    def create_proxy(self_arg, body):
+        return sdk.create_cluster_compute(body)
+
+    return (
+        patch.object(DefaultApi, "search_cluster_computes", search_proxy),
+        patch.object(DefaultApi, "create_cluster_compute", create_proxy),
+    )
+
+
 class MinimalSessionManagerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.sdk = MockSDK()
@@ -105,6 +120,15 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ),
         )
         self.sdk.reset()
+
+        # Patch DefaultApi methods to delegate to MockSDK
+        self._api_patchers = _make_default_api_proxy(self.sdk)
+        for p in self._api_patchers:
+            p.start()
+
+    def tearDown(self) -> None:
+        for p in self._api_patchers:
+            p.stop()
 
     def testClusterName(self):
         sdk = MockSDK()
@@ -259,6 +283,97 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.cluster_manager.cluster_compute["maximum_uptime_minutes"],
             self.cluster_manager.maximum_uptime_minutes,
         )
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
+    def testNewSdkFindExisting(self, mock_cc):
+        """New SDK path: find existing compute config."""
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cm = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_sdk",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
+
+        mock_cc.list.return_value = APIDict(
+            results=[
+                APIDict(name=cm.cluster_compute_name + ":1", id="existing_id"),
+            ]
+        )
+        cm.create_cluster_compute()
+        self.assertEqual(cm.cluster_compute_id, "existing_id")
+        mock_cc.list.assert_called_once_with(name=cm.cluster_compute_name)
+        mock_cc.create.assert_not_called()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
+    def testNewSdkCreateSucceed(self, mock_cc):
+        """New SDK path: no existing, create succeeds."""
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cm = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_sdk",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
+
+        mock_cc.list.return_value = APIDict(results=[])
+        mock_cc.create.return_value = cm.cluster_compute_name + ":1"
+        mock_cc.get.return_value = APIDict(id="new_id")
+
+        cm.create_cluster_compute()
+        self.assertEqual(cm.cluster_compute_id, "new_id")
+        mock_cc.create.assert_called_once()
+        mock_cc.get.assert_called_once_with(cm.cluster_compute_name + ":1")
+
+        # Verify that COMPUTE_CONFIG_FIELDS filtering works: set_cluster_compute
+        # adds idle_termination_minutes/maximum_uptime_minutes to the dict, but
+        # these must be excluded before passing to ComputeConfig (a frozen
+        # dataclass that rejects unknown kwargs). The fact that create_cluster_compute
+        # succeeded without TypeError proves filtering is working.
+        self.assertIn("idle_termination_minutes", cm.cluster_compute)
+        self.assertIn("maximum_uptime_minutes", cm.cluster_compute)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
+    def testNewSdkCreateFailFail(self, mock_cc):
+        """New SDK path: create fails both times."""
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cm = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_sdk",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
+
+        mock_cc.list.return_value = APIDict(results=[])
+        mock_cc.create.side_effect = RuntimeError("API error")
+
+        with self.assertRaises(ClusterComputeCreateError):
+            cm.create_cluster_compute()
+        self.assertIsNone(cm.cluster_compute_id)
+        # Both list and create are called twice (retry after fail)
+        self.assertEqual(mock_cc.list.call_count, 2)
+        self.assertEqual(mock_cc.create.call_count, 2)
 
     def testClusterComputeExtraTags(self):
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
