@@ -1123,8 +1123,10 @@ def start(
         )
         temp_dir = node.get_temp_dir_path()
 
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
+        # Version check now runs inside Node.__init__ before spawning
+        # processes (see https://github.com/ray-project/ray/issues/61836).
+        # Kept here as a defense-in-depth check for any code paths that
+        # may bypass __init__'s early check.
         node.check_version_info()
 
         cli_logger.newline()
