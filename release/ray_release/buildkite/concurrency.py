@@ -3,11 +3,6 @@ from collections import namedtuple
 from typing import Dict, Optional, Tuple
 
 from ray_release.bazel import bazel_runfile
-from ray_release.compute_config_utils import (
-    get_head_node_config,
-    get_worker_node_configs,
-    is_new_schema,
-)
 from ray_release.logger import logger
 from ray_release.template import load_test_cluster_compute
 from ray_release.test import Test
@@ -136,26 +131,35 @@ def get_concurrency_group(test: Test) -> Tuple[str, int]:
 
 def get_test_resources(test: Test) -> Tuple[int, int]:
     cluster_compute = load_test_cluster_compute(test)
-    return get_test_resources_from_cluster_compute(cluster_compute)
+    return get_test_resources_from_cluster_compute(
+        cluster_compute, is_new_schema=test.uses_anyscale_sdk_2026()
+    )
 
 
-def get_test_resources_from_cluster_compute(cluster_compute: Dict) -> Tuple[int, int]:
+def get_test_resources_from_cluster_compute(
+    cluster_compute: Dict, is_new_schema: bool = False
+) -> Tuple[int, int]:
     instances = []
-    new_schema = is_new_schema(cluster_compute)
 
-    head_node = get_head_node_config(cluster_compute)
-    if "instance_type" not in head_node:
-        raise ValueError("Head node config missing 'instance_type'")
-    instances.append((head_node["instance_type"], 1))
+    if is_new_schema:
+        # New schema: head_node, worker_nodes, min_nodes/max_nodes
+        head_node = cluster_compute.get("head_node", {})
+        if head_node.get("instance_type"):
+            instances.append((head_node["instance_type"], 1))
 
-    for i, w in enumerate(get_worker_node_configs(cluster_compute)):
-        if "instance_type" not in w:
-            raise ValueError(f"Worker node config at index {i} missing 'instance_type'")
-        if new_schema:
-            count = w["max_nodes"]
-        else:
-            count = w.get("max_workers", w.get("min_workers", 1))
-        instances.append((w["instance_type"], count))
+        for w in cluster_compute.get("worker_nodes", []):
+            if w.get("instance_type"):
+                instances.append(
+                    (w["instance_type"], w.get("max_nodes", w.get("min_nodes", 1)))
+                )
+    else:
+        # Legacy schema: head_node_type, worker_node_types, min_workers/max_workers
+        instances.append((cluster_compute["head_node_type"]["instance_type"], 1))
+
+        instances.extend(
+            (w["instance_type"], w.get("max_workers", w.get("min_workers", 1)))
+            for w in cluster_compute["worker_node_types"]
+        )
 
     aws_instance_types = load_instance_types()
     total_cpus = 0

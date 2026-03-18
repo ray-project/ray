@@ -9,16 +9,7 @@ import jsonschema
 import yaml
 
 from ray_release.bazel import bazel_runfile
-from ray_release.compute_config_utils import (
-    get_head_node_config,
-    get_worker_node_configs,
-    is_new_schema,
-)
-from ray_release.exception import (
-    MixedSchemaError,
-    ReleaseTestCLIError,
-    ReleaseTestConfigError,
-)
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
@@ -38,6 +29,10 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
     "cld_kvedZWag2qA8i5BjxUevf5i7",  # anyscale_v2_default_cloud
 )
+DEFAULT_CLOUD_NAME = DeferredEnvVar(
+    "RELEASE_DEFAULT_CLOUD_NAME",
+    "anyscale_v2_default_cloud",
+)
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_6rfevmf12tbsbd6g3al5f6zssh",
@@ -54,6 +49,27 @@ RELEASE_TEST_CONFIG_FILES = [
 ]
 
 ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu128", "llm-cu130"]
+
+NEW_COMPUTE_CONFIG_KEYS = {
+    "cloud",
+    "head_node",
+    "worker_nodes",
+    "advanced_instance_config",
+}
+LEGACY_COMPUTE_CONFIG_KEYS = {
+    "aws",
+    "cloud_id",
+    "head_node_type",
+    "worker_node_types",
+    "aws_advanced_configurations",
+    "advanced_configurations_json",
+    "gcp_advanced_configurations_json",
+}
+
+CLOUD_ID_TO_NAME = {
+    "cld_kvedZWag2qA8i5BjxUevf5i7": "anyscale_v2_default_cloud",
+    "cld_wy5a6nhazplvu32526ams61d98": "serve_release_tests_cloud",
+}
 
 
 def read_and_validate_release_test_collection(
@@ -294,40 +310,49 @@ def validate_test_cluster_compute(
 ) -> Optional[str]:
     from ray_release.template import load_test_cluster_compute
 
+    is_new_schema = test.uses_anyscale_sdk_2026()
     cluster_compute = load_test_cluster_compute(test, test_definition_root)
-    return validate_cluster_compute(cluster_compute)
+    return validate_cluster_compute(cluster_compute, is_new_schema=is_new_schema)
 
 
-def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
-    try:
-        new_schema = is_new_schema(cluster_compute)
-    except MixedSchemaError as e:
-        return str(e)
+def validate_cluster_compute(
+    cluster_compute: Dict[str, Any], is_new_schema: bool = False
+) -> Optional[str]:
+    compute_keys = set(cluster_compute.keys())
+    found_legacy_keys = compute_keys & LEGACY_COMPUTE_CONFIG_KEYS
+    found_new_keys = compute_keys & NEW_COMPUTE_CONFIG_KEYS
 
-    if new_schema:
-        if "aws" in cluster_compute:
+    if is_new_schema:
+        # New schema: must not contain legacy keys
+        if found_legacy_keys:
             return (
-                "'aws' field is invalid in new-schema compute config, "
-                "use 'advanced_instance_config' instead"
+                f"Compute config has legacy schema keys ({found_legacy_keys}) "
+                f"but test expects new schema (anyscale_sdk_2026=true)"
             )
-        head = get_head_node_config(cluster_compute)
-        if "aws_advanced_configurations" in head:
-            return (
-                "'aws_advanced_configurations' is invalid in new-schema "
-                "head_node, use 'advanced_instance_config' instead"
-            )
+        # Validate EBS DeleteOnTermination in new-schema fields
+        head_node_aws = cluster_compute.get("head_node", {}).get(
+            "advanced_instance_config", {}
+        )
         configs_to_check = [
             cluster_compute.get("advanced_instance_config", {}),
-            head.get("advanced_instance_config", {}),
+            head_node_aws,
         ]
-        for worker_node in get_worker_node_configs(cluster_compute):
-            if "aws_advanced_configurations" in worker_node:
-                return (
-                    "'aws_advanced_configurations' is invalid in new-schema "
-                    "worker_nodes, use 'advanced_instance_config' instead"
-                )
-            configs_to_check.append(worker_node.get("advanced_instance_config", {}))
+        for worker_node in cluster_compute.get("worker_nodes", []):
+            worker_aws = worker_node.get("advanced_instance_config", {})
+            configs_to_check.append(worker_aws)
     else:
+        # Legacy schema: must contain legacy keys and must not contain new keys
+        if found_new_keys:
+            return (
+                f"Compute config has new schema keys ({found_new_keys}) "
+                f"but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        if not found_legacy_keys:
+            return (
+                "Compute config does not have legacy schema keys "
+                "but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        # Validate EBS DeleteOnTermination in legacy-schema fields
         aws = cluster_compute.get("aws", {})
         head_node_aws = cluster_compute.get("head_node_type", {}).get(
             "aws_advanced_configurations", {}
@@ -341,6 +366,7 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
         error = validate_aws_config(config)
         if error:
             return error
+
     return None
 
 
@@ -386,6 +412,14 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 def get_test_cloud_id(test: Test) -> str:
     return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
+
+
+def get_test_cloud_name(test: Test) -> str:
+    cloud_name = test.get("cluster", {}).get("cloud")
+    if cloud_name:
+        return cloud_name
+    cloud_id = get_test_cloud_id(test)
+    return CLOUD_ID_TO_NAME[cloud_id]
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:

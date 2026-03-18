@@ -5,7 +5,9 @@ import pytest
 import yaml
 
 from ray_release.config import (
+    CLOUD_ID_TO_NAME,
     _substitute_variable,
+    get_test_cloud_name,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -346,8 +348,33 @@ def test_schema_validation():
     assert validate_test(invalid_test, schema)
 
 
-def _bad_ebs():
-    return {
+def test_compute_config_invalid_ebs():
+    compute_config = {
+        "aws": {
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {
+                        "VolumeSize": 1000,
+                    },
+                }
+            ]
+        }
+    }
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["aws"]["BlockDeviceMappings"][0]["Ebs"][
+        "DeleteOnTermination"
+    ] = False
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["aws"]["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = True
+
+    assert not validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"] = {}
+    compute_config["head_node_type"]["aws_advanced_configurations"] = {
         "BlockDeviceMappings": [
             {
                 "DeviceName": "/dev/sda1",
@@ -358,131 +385,198 @@ def _bad_ebs():
         ]
     }
 
+    assert validate_cluster_compute(compute_config)
 
-def _bad_ebs_delete_false():
-    ebs = _bad_ebs()
-    ebs["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = False
-    return ebs
+    compute_config["head_node_type"]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = False
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+
+    assert not validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"] = [{}]
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = {
+        "BlockDeviceMappings": [
+            {
+                "DeviceName": "/dev/sda1",
+                "Ebs": {
+                    "VolumeSize": 1000,
+                },
+            }
+        ]
+    }
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = False
+
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+
+    assert not validate_cluster_compute(compute_config)
 
 
-def _good_ebs():
-    ebs = _bad_ebs()
-    ebs["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = True
-    return ebs
+def test_validate_cluster_compute_new_schema_valid():
+    """New schema: empty config is valid (all fields optional)."""
+    assert not validate_cluster_compute({}, is_new_schema=True)
 
 
-def test_compute_config_invalid_ebs_legacy_schema():
-    # Legacy-schema: head_node_type aws_advanced_configurations
+def test_validate_cluster_compute_new_schema_valid_with_fields():
+    """New schema: config with new-schema keys is valid."""
     compute_config = {
-        "head_node_type": {
-            "aws_advanced_configurations": _bad_ebs(),
+        "cloud": "my_cloud",
+        "head_node": {"instance_type": "m5.4xlarge"},
+        "worker_nodes": [{"instance_type": "m5.xlarge", "min_nodes": 1}],
+    }
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_rejects_legacy_keys():
+    """New schema: config with legacy keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node_type": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=True)
+    assert error is not None
+    assert "legacy schema keys" in error
+    assert "anyscale_sdk_2026=true" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_new_keys():
+    """Legacy schema: config with new-schema keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=False)
+    assert error is not None
+    assert "new schema keys" in error
+    assert "anyscale_sdk_2026=false" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_empty():
+    """Legacy schema: empty config is rejected (no legacy keys)."""
+    error = validate_cluster_compute({}, is_new_schema=False)
+    assert error is not None
+    assert "does not have legacy schema keys" in error
+
+
+def test_validate_cluster_compute_new_schema_ebs_top_level():
+    """New schema: EBS DeleteOnTermination is checked in top-level advanced_instance_config."""
+    compute_config = {
+        "advanced_instance_config": {
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 1000},
+                }
+            ]
         },
-        "worker_node_types": [],
     }
-    assert validate_cluster_compute(compute_config)
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
 
-    compute_config["head_node_type"][
-        "aws_advanced_configurations"
-    ] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["head_node_type"]["aws_advanced_configurations"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config)
-
-    # Legacy-schema: worker_node_types aws_advanced_configurations
-    compute_config["worker_node_types"] = [{"aws_advanced_configurations": _bad_ebs()}]
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["worker_node_types"][0][
-        "aws_advanced_configurations"
-    ] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config)
-
-    # Legacy-schema: top-level aws key (tested after node keys to ensure legacy-schema)
-    compute_config["aws"] = _bad_ebs()
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["aws"] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["aws"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config)
+    # Set DeleteOnTermination to True should pass
+    compute_config["advanced_instance_config"]["BlockDeviceMappings"][0]["Ebs"][
+        "DeleteOnTermination"
+    ] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
 
 
-def test_compute_config_invalid_ebs_new_schema():
-    # New-schema: top-level advanced_instance_config
+def test_validate_cluster_compute_new_schema_ebs_head_node():
+    """New schema: EBS DeleteOnTermination is checked in head_node.advanced_instance_config."""
     compute_config = {
-        "head_node": {},
-        "worker_nodes": [],
-        "advanced_instance_config": _bad_ebs(),
+        "head_node": {
+            "instance_type": "m5.4xlarge",
+            "advanced_instance_config": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {"VolumeSize": 1000},
+                    }
+                ]
+            },
+        },
     }
-    assert validate_cluster_compute(compute_config)
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
 
-    compute_config["advanced_instance_config"] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config)
+    # Set DeleteOnTermination to True should pass
+    compute_config["head_node"]["advanced_instance_config"]["BlockDeviceMappings"][0][
+        "Ebs"
+    ]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
 
-    compute_config["advanced_instance_config"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config)
 
-    # New-schema: head_node advanced_instance_config
-    compute_config_head = {
-        "head_node": {"advanced_instance_config": _bad_ebs()},
-        "worker_nodes": [],
-    }
-    assert validate_cluster_compute(compute_config_head)
-
-    compute_config_head["head_node"][
-        "advanced_instance_config"
-    ] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config_head)
-
-    compute_config_head["head_node"]["advanced_instance_config"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config_head)
-
-    # New-schema: worker_nodes advanced_instance_config
-    compute_config_worker = {
-        "head_node": {},
+def test_validate_cluster_compute_new_schema_ebs_worker_nodes():
+    """New schema: EBS checks in worker_nodes[*].advanced_instance_config."""
+    compute_config = {
         "worker_nodes": [
-            {"advanced_instance_config": _bad_ebs(), "min_nodes": 0, "max_nodes": 1}
+            {
+                "instance_type": "m5.xlarge",
+                "advanced_instance_config": {
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"VolumeSize": 500},
+                        }
+                    ]
+                },
+            }
         ],
     }
-    assert validate_cluster_compute(compute_config_worker)
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
 
-    compute_config_worker["worker_nodes"][0][
-        "advanced_instance_config"
-    ] = _bad_ebs_delete_false()
-    assert validate_cluster_compute(compute_config_worker)
-
-    compute_config_worker["worker_nodes"][0]["advanced_instance_config"] = _good_ebs()
-    assert not validate_cluster_compute(compute_config_worker)
+    compute_config["worker_nodes"][0]["advanced_instance_config"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
 
 
-def test_compute_config_new_schema_rejects_stale_keys():
-    # New-schema with top-level 'aws' key should be rejected
-    assert validate_cluster_compute({"head_node": {}, "aws": {}})
-
-    # New-schema with aws_advanced_configurations on head_node
-    assert validate_cluster_compute(
-        {"head_node": {"aws_advanced_configurations": {}}, "worker_nodes": []}
-    )
-
-    # New-schema with aws_advanced_configurations on worker_nodes
-    assert validate_cluster_compute(
+def test_get_test_cloud_name_from_cluster_cloud():
+    """get_test_cloud_name() returns cluster.cloud when set."""
+    test = Test(
         {
-            "head_node": {},
-            "worker_nodes": [{"aws_advanced_configurations": {}}],
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud": "my_cloud"},
         }
     )
+    assert get_test_cloud_name(test) == "my_cloud"
 
 
-def test_compute_config_mixed_schema():
-    # Mixed schema keys should return an error
-    result = validate_cluster_compute({"head_node": {}, "worker_node_types": []})
-    assert result
-    assert "both legacy-schema and new-schema" in result
+def test_get_test_cloud_name_from_cloud_id_mapping():
+    """get_test_cloud_name() falls back to CLOUD_ID_TO_NAME mapping."""
+    for cloud_id, expected_name in CLOUD_ID_TO_NAME.items():
+        test = Test(
+            {
+                "name": "test",
+                "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": cloud_id},
+            }
+        )
+        assert get_test_cloud_name(test) == expected_name
+
+
+def test_get_test_cloud_name_unknown_cloud_id():
+    """get_test_cloud_name() raises KeyError for unknown cloud_id."""
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_unknown"},
+        }
+    )
+    with pytest.raises(KeyError):
+        get_test_cloud_name(test)
 
 
 def test_load_and_validate_test_collection_file():

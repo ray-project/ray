@@ -1,3 +1,4 @@
+import copy
 import sys
 import time
 import unittest
@@ -40,14 +41,15 @@ TEST_CLUSTER_COMPUTE = {
 }
 
 TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
-    "cloud": "test-cloud",
-    "zones": ["us-west-2a"],
-    "head_node": {"instance_type": "m5.4xlarge"},
+    "cloud": "test_cloud",
+    "head_node": {
+        "instance_type": "m5.4xlarge",
+    },
     "worker_nodes": [
         {
             "instance_type": "m5.xlarge",
             "min_nodes": 0,
-            "max_nodes": 0,
+            "max_nodes": 4,
         }
     ],
 }
@@ -316,32 +318,45 @@ class MinimalSessionManagerTest(unittest.TestCase):
         )
 
     def testClusterComputeExtraTagsNewSchema(self):
-        new_schema_compute = TEST_CLUSTER_COMPUTE_NEW_SCHEMA.copy()
-        self.cluster_manager.set_cluster_compute(
-            new_schema_compute, extra_tags={"foo": "bar"}
+        # Create a cluster manager with anyscale_sdk_2026=True
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_schema",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
         )
 
-        # Tags should be injected into advanced_instance_config, not
-        # advanced_configurations_json
-        self.assertIn("advanced_instance_config", self.cluster_manager.cluster_compute)
-        self.assertNotIn(
-            "advanced_configurations_json", self.cluster_manager.cluster_compute
-        )
-        self.assertEqual(
-            self.cluster_manager.cluster_compute["advanced_instance_config"],
-            {
-                "TagSpecifications": [
-                    {
-                        "ResourceType": "instance",
-                        "Tags": [{"Key": "foo", "Value": "bar"}],
-                    },
-                    {
-                        "ResourceType": "volume",
-                        "Tags": [{"Key": "foo", "Value": "bar"}],
-                    },
-                ]
-            },
-        )
+        cluster_compute = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_manager.set_cluster_compute(cluster_compute, extra_tags={"foo": "bar"})
+
+        # Top-level advanced_instance_config should have tags
+        top_level_aic = cluster_manager.cluster_compute["advanced_instance_config"]
+        self.assertIn("TagSpecifications", top_level_aic)
+
+        # head_node.advanced_instance_config should have tags
+        head_aic = cluster_manager.cluster_compute["head_node"][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", head_aic)
+
+        # worker_nodes[0].advanced_instance_config should have tags
+        worker_aic = cluster_manager.cluster_compute["worker_nodes"][0][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", worker_aic)
+
+        # Verify tag values
+        for aic in [top_level_aic, head_aic, worker_aic]:
+            tag_specs = aic["TagSpecifications"]
+            instance_tags = [ts for ts in tag_specs if ts["ResourceType"] == "instance"]
+            self.assertEqual(len(instance_tags), 1)
+            self.assertIn({"Key": "foo", "Value": "bar"}, instance_tags[0]["Tags"])
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):

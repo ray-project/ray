@@ -701,7 +701,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertEqual(cpus, 16 + 32 * 4 + 24 * 8)
         self.assertEqual(gpus, 2 * 8)
 
-        # New schema: head_node / worker_nodes with min_nodes / max_nodes
+    def testInstanceResourcesNewSchema(self):
+        # New schema: head_node + worker_nodes
         cpus, gpus = get_test_resources_from_cluster_compute(
             {
                 "head_node": {"instance_type": "m5.4xlarge"},  # 16 CPUs, 0 GPUs
@@ -717,10 +718,31 @@ class BuildkiteSettingsTest(unittest.TestCase):
                         "max_nodes": 8,
                     },
                 ],
-            }
+            },
+            is_new_schema=True,
         )
         self.assertEqual(cpus, 16 + 32 * 4 + 32 * 8)
         self.assertEqual(gpus, 2 * 8)
+
+    def testInstanceResourcesNewSchemaEmpty(self):
+        # New schema: empty config returns 0 resources
+        cpus, gpus = get_test_resources_from_cluster_compute({}, is_new_schema=True)
+        self.assertEqual(cpus, 0)
+        self.assertEqual(gpus, 0)
+
+    def testInstanceResourcesNewSchemaMissingInstanceType(self):
+        # New schema: worker without instance_type is skipped
+        cpus, gpus = get_test_resources_from_cluster_compute(
+            {
+                "head_node": {"instance_type": "m5.4xlarge"},  # 16 CPUs
+                "worker_nodes": [
+                    {"min_nodes": 4},  # no instance_type, skipped
+                ],
+            },
+            is_new_schema=True,
+        )
+        self.assertEqual(cpus, 16)
+        self.assertEqual(gpus, 0)
 
     def testConcurrencyGroups(self):
         def _return(ret):

@@ -64,15 +64,6 @@ class MockTest(Test):
         return ""
 
 
-LEGACY_SCHEMA_CLUSTER_COMPUTE = (
-    "{'head_node_type': {'name': 'head_node', "
-    "'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}"
-)
-NEW_SCHEMA_CLUSTER_COMPUTE = (
-    "{'head_node': {'instance_type': 'm5a.4xlarge'}, 'worker_nodes': []}"
-)
-
-
 class GlueTest(unittest.TestCase):
     def writeClusterEnv(self, content: str):
         with open(os.path.join(self.tempdir, "cluster_env.yaml"), "wt") as fp:
@@ -92,7 +83,9 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
-        self.writeClusterCompute(LEGACY_SCHEMA_CLUSTER_COMPUTE)
+        self.writeClusterCompute(
+            "{'head_node_type': {'name': 'head_node', 'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}"
+        )
 
         with open(os.path.join(self.tempdir, "driver_fail.sh"), "wt") as f:
             f.write("exit 1\n")
@@ -447,14 +440,6 @@ class GlueTest(unittest.TestCase):
 
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
         self.assertEqual(result.status, "success")
-
-
-class GlueTestNewSchema(GlueTest):
-    """Run all GlueTest cases with new-schema compute config."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.writeClusterCompute(NEW_SCHEMA_CLUSTER_COMPUTE)
 
 
 if __name__ == "__main__":

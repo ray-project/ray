@@ -7,7 +7,7 @@ import jinja2
 import yaml
 
 from ray_release.bazel import bazel_runfile
-from ray_release.config import get_test_cloud_id
+from ray_release.config import get_test_cloud_id, get_test_cloud_name
 from ray_release.exception import ReleaseTestConfigError
 
 if TYPE_CHECKING:
@@ -111,5 +111,7 @@ def _populate_cluster_compute_variables(test: "Test") -> Dict:
     env = _get_test_environment()
 
     cloud_id = get_test_cloud_id(test)
+    cloud_name = get_test_cloud_name(test)
     env["ANYSCALE_CLOUD_ID"] = cloud_id
+    env["ANYSCALE_CLOUD"] = cloud_name
     return env

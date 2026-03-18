@@ -45,10 +45,6 @@ class ReleaseTestConfigError(ReleaseTestPackageError):
     exit_code = ExitCode.CONFIG_ERROR
 
 
-class MixedSchemaError(ReleaseTestConfigError):
-    pass
-
-
 class ReleaseTestCLIError(ReleaseTestPackageError):
     exit_code = ExitCode.CLI_ERROR
 
