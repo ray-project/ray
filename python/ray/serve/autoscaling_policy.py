@@ -140,7 +140,7 @@ def _apply_default_params(
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
     final_num_replicas, updated_state = _apply_delay_logic(
-        desired_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+        max(0, desired_num_replicas), ctx.target_num_replicas, ctx.config, policy_state
     )
 
     return final_num_replicas, updated_state
