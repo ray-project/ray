@@ -76,6 +76,8 @@ class AutoscalerEventsStorage:
             {
                 "event_id": row["event_id"],
                 "source_type": _AUTOSCALER_SOURCE,
+                "source_hostname": event.source_hostname,
+                "source_pid": event.source_pid,
                 "message": row["message"],
                 "timestamp": event.timestamp.seconds,
                 "severity": row["severity"],
