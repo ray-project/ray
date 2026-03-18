@@ -155,11 +155,7 @@ class _PhaseMetrics:
 class _BoundShufflePhaseHooks(ShufflePhaseHooks):
     """Concrete shuffle-phase hooks with metrics wiring via composition."""
 
-    def __init__(
-        self,
-        metrics: OpRuntimeMetrics,
-        block_stats: List[BlockStats],
-    ):
+    def __init__(self, metrics: OpRuntimeMetrics, block_stats: List[BlockStats]):
         self._phase_metrics = _PhaseMetrics(metrics)
         self._block_stats = block_stats
 
@@ -212,15 +208,8 @@ class _BoundShufflePhaseHooks(ShufflePhaseHooks):
 class _BoundReducePhaseHooks(ReducePhaseHooks):
     """Concrete reduce-phase hooks with metrics wiring via composition."""
 
-    def __init__(
-        self,
-        metrics: OpRuntimeMetrics,
-        output_queue: Deque[RefBundle],
-        on_output_estimated: Callable[[Optional[int], Optional[int]], None],
-    ):
+    def __init__(self, metrics: OpRuntimeMetrics):
         self._phase_metrics = _PhaseMetrics(metrics)
-        self._output_queue = output_queue
-        self._on_output_estimated = on_output_estimated
 
     def on_task_submitted(self, task_index, input_bundle, task_id):
         self._phase_metrics.on_task_submitted(task_index, input_bundle, task_id)
@@ -251,12 +240,11 @@ class _BoundReducePhaseHooks(ReducePhaseHooks):
             num_tasks_submitted, upstream_op_num_outputs, total_num_tasks
         )
 
-    def on_output_ready(
+    def on_output_queued(
         self,
         bundle: RefBundle,
         task_index: int,
     ) -> None:
-        self._output_queue.append(bundle)
         self._phase_metrics.metrics.on_output_queued(bundle)
         self._phase_metrics.metrics.on_task_output_generated(
             task_index=task_index, output=bundle
@@ -267,13 +255,6 @@ class _BoundReducePhaseHooks(ReducePhaseHooks):
 
     def on_output_taken(self, bundle: RefBundle) -> None:
         self._phase_metrics.metrics.on_output_taken(bundle)
-
-    def on_output_estimated(
-        self,
-        num_output_bundles: Optional[int],
-        num_output_rows: Optional[int],
-    ) -> None:
-        self._on_output_estimated(num_output_bundles, num_output_rows)
 
 
 class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
@@ -296,28 +277,22 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             input_dependencies=input_ops,
             data_context=data_context,
         )
-        self._engine = engine
-
         self._output_queue: Deque[RefBundle] = deque()
+        self._num_outputs_produced: int = 0
+        self._engine = engine
+        self._engine.output_ready_cb = self._on_output_ready
         self._shuffled_block_stats: List[BlockStats] = []
         self._output_block_stats: List[BlockStats] = []
 
         self._shuffle_hooks = _BoundShufflePhaseHooks(
             OpRuntimeMetrics(self), self._shuffled_block_stats
         )
-        self._reduce_hooks = _BoundReducePhaseHooks(
-            OpRuntimeMetrics(self),
-            self._output_queue,
-            self._set_output_estimates,
-        )
+        self._reduce_hooks = _BoundReducePhaseHooks(OpRuntimeMetrics(self))
 
-    def _set_output_estimates(
-        self,
-        num_output_bundles: Optional[int],
-        num_output_rows: Optional[int],
-    ) -> None:
-        self._estimated_num_output_bundles = num_output_bundles
-        self._estimated_output_num_rows = num_output_rows
+    def _on_output_ready(self, bundle: RefBundle) -> None:
+        """Callback invoked by the engine when an output bundle is ready."""
+        self._output_queue.append(bundle)
+        self._num_outputs_produced += 1
 
     # ------------------------------------------------------------------
     # PhysicalOperator lifecycle
@@ -342,6 +317,8 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             self._inputs_complete,
             self.upstream_op_num_outputs(),
         )
+        if len(self._output_queue) > 0:
+            self._update_output_estimates()
         return len(self._output_queue) > 0
 
     def _get_next_inner(self) -> RefBundle:
@@ -350,6 +327,15 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._reduce_hooks.on_output_taken(bundle)
         self._output_block_stats.extend(to_stats(bundle.metadata))
         return bundle
+
+    def _update_output_estimates(self) -> None:
+        progress = self._reduce_hooks.estimate_progress(
+            self._num_outputs_produced,
+            self.upstream_op_num_outputs(),
+            total_num_tasks=self._engine.total_num_reduce_tasks(),
+        )
+        self._estimated_num_output_bundles = progress.num_bundles
+        self._estimated_output_num_rows = progress.num_rows
 
     def get_active_tasks(self) -> List[OpTask]:
         return self._engine.get_active_tasks()
@@ -1148,16 +1134,18 @@ class CpuShuffleEngine(ShuffleEngine):
             return
 
         def _on_bundle_ready(partition_id: int, bundle: RefBundle):
-            # Add finalized block to the output queue
-            hooks.on_output_ready(bundle, task_index=partition_id)
+            # Deliver output bundle to the operator
+            self.output_ready_cb(bundle)
 
+            # Record metrics
+            hooks.on_output_queued(bundle, task_index=partition_id)
+
+            # Update Finalize progress bar
             progress = hooks.estimate_progress(
                 partition_id + 1,
                 upstream_op_num_outputs,
                 total_num_tasks=self._num_partitions,
             )
-            hooks.on_output_estimated(progress.num_bundles, progress.num_rows)
-            # Update Finalize progress bar
             hooks.on_progress(
                 increment=bundle.num_rows() or 0,
                 total=progress.num_rows,
@@ -1336,6 +1324,9 @@ class CpuShuffleEngine(ShuffleEngine):
 
     def progress_bar_names(self) -> List[str]:
         return [self._shuffle_bar_name, self._reduce_bar_name]
+
+    def total_num_reduce_tasks(self) -> Optional[int]:
+        return self._num_partitions
 
     @property
     def num_partitions(self) -> int:
