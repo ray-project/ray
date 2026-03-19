@@ -171,15 +171,6 @@ class SplitCoordinator:
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
-        def gen_epochs():
-            while True:
-                self._executor = self._base_dataset._plan.create_executor()
-                output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan
-                )
-                yield output_iterator
-
-        self._next_epoch = gen_epochs()
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
@@ -224,15 +215,8 @@ class SplitCoordinator:
                     plan = self._base_dataset._plan
                     # Re-execute dataset
                     self._current_executor = plan.create_executor()
-                    # NOTE: We pass dataset.context (the original, uncopied context)
-                    #       rather than self._data_context (the deep copy used for
-                    #       process isolation) because the planner adds callbacks
-                    #       (e.g. checkpoint) to the original context during
-                    #       _get_execution_dag. Using self._data_context would cause
-                    #       those callbacks to be silently missed.
-                    # TODO: Fix this by having Planner.plan() return callbacks explicitly
                     self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, plan, self._base_dataset.context
+                        self._current_executor, plan
                     )
 
                 except Exception as e:
