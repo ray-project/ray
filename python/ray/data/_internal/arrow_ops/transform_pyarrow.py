@@ -10,6 +10,7 @@ from ray._common.utils import env_integer
 from ray._private.utils import INT32_MAX
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
+    PYARROW_VERSION,
     get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
     unify_tensor_arrays,
@@ -27,8 +28,6 @@ except ImportError:
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
-
-PYARROW_VERSION = get_pyarrow_version()
 
 
 # pyarrow.Table.slice is slow when the table has many chunks
