@@ -1488,9 +1488,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
                 # the drain deadline.
                 _execute_command_on_node("ray stop --force", node_to_kill_ip)
             except Exception:
-                logger.exception(
-                    f"Failed to kill node {node_id=}, {node_to_kill_ip=}"
-                )
+                logger.exception(f"Failed to kill node {node_id=}, {node_to_kill_ip=}")
                 self._remove_killed(node_id)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
@@ -2031,7 +2029,11 @@ def _execute_command_on_node(command: str, node_ip: str):
 
     try:
         subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True,
+            ssh_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=True,
             env=env,
         )
     except subprocess.CalledProcessError as e:
