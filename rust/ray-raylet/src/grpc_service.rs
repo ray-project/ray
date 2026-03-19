@@ -300,8 +300,17 @@ impl NodeManagerServiceImpl {
             num_reports = request.backlog_reports.len(),
             "ReportWorkerBacklog"
         );
-        // Backlog reporting is used for autoscaling decisions.
-        // Acknowledged for now; integration with autoscaler is Phase 12.
+
+        for report in &request.backlog_reports {
+            if let Some(ref lease_spec) = report.lease_spec {
+                let resources = resources_from_map(&lease_spec.required_resources);
+                let scheduling_class = compute_scheduling_class(&resources);
+                self.node_manager
+                    .backlog_tracker()
+                    .update(scheduling_class, report.backlog_size);
+            }
+        }
+
         Ok(rpc::ReportWorkerBacklogReply::default())
     }
 
@@ -321,10 +330,23 @@ impl NodeManagerServiceImpl {
     ) -> Result<rpc::PinObjectIDsReply, Status> {
         let num_objects = request.object_ids.len();
         tracing::debug!(num_objects, "PinObjectIDs");
-        // Return success for all objects — real pinning requires object store integration
-        Ok(rpc::PinObjectIDsReply {
-            successes: vec![true; num_objects],
-        })
+
+        let obj_mgr = self.node_manager.local_object_manager();
+        let locked = obj_mgr.lock();
+        let successes: Vec<bool> = request
+            .object_ids
+            .iter()
+            .map(|oid_bytes| {
+                if oid_bytes.len() >= ray_common::id::ObjectID::SIZE {
+                    let oid = ray_common::id::ObjectID::from_binary(oid_bytes);
+                    locked.is_pinned(&oid)
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        Ok(rpc::PinObjectIDsReply { successes })
     }
 
     // ─── Placement Group RPCs ─────────────────────────────────────────
@@ -433,8 +455,26 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::ResizeLocalResourceInstancesRequest,
     ) -> Result<rpc::ResizeLocalResourceInstancesReply, Status> {
-        let _ = request;
-        Ok(rpc::ResizeLocalResourceInstancesReply::default())
+        let local_rm = self.node_manager.scheduler().local_resource_manager();
+
+        for (name, amount) in &request.resources {
+            let new_total = FixedPoint::from_f64(if *amount < 0.0 { 0.0 } else { *amount });
+            if !local_rm.resize_local_resource(name, new_total) {
+                return Err(Status::invalid_argument(format!(
+                    "resource '{}' does not exist on this node",
+                    name
+                )));
+            }
+        }
+
+        // Return updated total resources.
+        let total = local_rm.get_local_total_resources();
+        let mut total_resources = std::collections::HashMap::new();
+        for (name, amount) in total.iter() {
+            total_resources.insert(name.to_string(), amount.to_f64());
+        }
+
+        Ok(rpc::ResizeLocalResourceInstancesReply { total_resources })
     }
 
     pub fn handle_get_resource_load(
@@ -473,8 +513,24 @@ impl NodeManagerServiceImpl {
         _request: rpc::GetNodeStatsRequest,
     ) -> Result<rpc::GetNodeStatsReply, Status> {
         let num_workers = self.node_manager.worker_pool().num_registered_workers() as u32;
+
+        // Object store stats from the local object manager.
+        let obj_stats = {
+            let obj_mgr = self.node_manager.local_object_manager();
+            let locked = obj_mgr.lock();
+            let stats = locked.stats();
+            rpc::ObjectStoreStats {
+                num_local_objects: stats.num_pinned as i64,
+                object_store_bytes_used: stats.pinned_bytes,
+                spilled_bytes_total: stats.total_bytes_spilled as i64,
+                spilled_objects_total: stats.total_objects_spilled as i64,
+                ..Default::default()
+            }
+        };
+
         Ok(rpc::GetNodeStatsReply {
             num_workers,
+            store_stats: Some(obj_stats),
             ..Default::default()
         })
     }
@@ -1192,9 +1248,21 @@ mod tests {
     #[tokio::test]
     async fn test_pin_object_ids() {
         let svc = make_svc();
+
+        // Pin objects first so they can be found
+        let oid1 = ray_common::id::ObjectID::from_binary(&[1u8; 28]);
+        let oid2 = ray_common::id::ObjectID::from_binary(&[2u8; 28]);
+        let oid3 = ray_common::id::ObjectID::from_binary(&[3u8; 28]);
+        {
+            let mut obj_mgr = svc.node_manager.local_object_manager().lock();
+            obj_mgr.pin_object(oid1, 50, 0);
+            obj_mgr.pin_object(oid2, 50, 0);
+            obj_mgr.pin_object(oid3, 50, 0);
+        }
+
         let reply = svc
             .handle_pin_object_ids(rpc::PinObjectIDsRequest {
-                object_ids: vec![vec![1; 20], vec![2; 20], vec![3; 20]],
+                object_ids: vec![vec![1; 28], vec![2; 28], vec![3; 28]],
                 ..Default::default()
             })
             .await
@@ -1783,5 +1851,237 @@ mod tests {
 
         let wid1 = ray_common::id::WorkerID::from_binary(&wid1_bytes);
         assert!(!svc.node_manager.worker_pool().is_worker_dead(&wid1));
+    }
+
+    // ─── RAYLET-3: Worker Backlog Reporting ──────────────────────────
+
+    #[tokio::test]
+    async fn test_report_worker_backlog_updates_state() {
+        let svc = make_svc();
+
+        let request = rpc::ReportWorkerBacklogRequest {
+            worker_id: vec![1u8; 28],
+            backlog_reports: vec![rpc::WorkerBacklogReport {
+                lease_spec: Some(rpc::LeaseSpec {
+                    required_resources: std::collections::HashMap::from([
+                        ("CPU".to_string(), 1.0),
+                    ]),
+                    ..Default::default()
+                }),
+                backlog_size: 42,
+            }],
+        };
+
+        let reply = svc.handle_report_worker_backlog(request).await.unwrap();
+        let _ = reply; // Should succeed
+
+        let backlog = svc.node_manager.backlog_tracker().get_backlog();
+        assert_eq!(backlog.len(), 1);
+        assert!(backlog.values().any(|&v| v == 42));
+    }
+
+    #[tokio::test]
+    async fn test_report_worker_backlog_updates_existing() {
+        let svc = make_svc();
+
+        let lease_spec = rpc::LeaseSpec {
+            required_resources: std::collections::HashMap::from([
+                ("CPU".to_string(), 2.0),
+            ]),
+            ..Default::default()
+        };
+
+        // First report
+        svc.handle_report_worker_backlog(rpc::ReportWorkerBacklogRequest {
+            worker_id: vec![1u8; 28],
+            backlog_reports: vec![rpc::WorkerBacklogReport {
+                lease_spec: Some(lease_spec.clone()),
+                backlog_size: 10,
+            }],
+        })
+        .await
+        .unwrap();
+
+        let backlog = svc.node_manager.backlog_tracker().get_backlog();
+        assert!(backlog.values().any(|&v| v == 10));
+
+        // Second report — latest wins
+        svc.handle_report_worker_backlog(rpc::ReportWorkerBacklogRequest {
+            worker_id: vec![1u8; 28],
+            backlog_reports: vec![rpc::WorkerBacklogReport {
+                lease_spec: Some(lease_spec),
+                backlog_size: 99,
+            }],
+        })
+        .await
+        .unwrap();
+
+        let backlog = svc.node_manager.backlog_tracker().get_backlog();
+        assert_eq!(backlog.len(), 1);
+        assert!(backlog.values().any(|&v| v == 99));
+    }
+
+    // ─── RAYLET-4: Object Pinning Semantics ─────────────────────────
+
+    #[tokio::test]
+    async fn test_pin_object_ids_fails_for_missing() {
+        let svc = make_svc();
+
+        // Pin non-existent objects
+        let reply = svc
+            .handle_pin_object_ids(rpc::PinObjectIDsRequest {
+                object_ids: vec![vec![1u8; 28], vec![2u8; 28]],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(reply.successes.len(), 2);
+        assert!(reply.successes.iter().all(|&s| !s));
+    }
+
+    #[tokio::test]
+    async fn test_pin_object_ids_succeeds_for_local() {
+        let svc = make_svc();
+
+        // Add objects to the local object manager first
+        let oid_bytes = vec![42u8; 28];
+        let oid = ray_common::id::ObjectID::from_binary(&oid_bytes);
+        {
+            let mut obj_mgr = svc.node_manager.local_object_manager().lock();
+            obj_mgr.pin_object(oid, 100, 10);
+        }
+
+        let reply = svc
+            .handle_pin_object_ids(rpc::PinObjectIDsRequest {
+                object_ids: vec![oid_bytes.clone(), vec![99u8; 28]],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(reply.successes.len(), 2);
+        assert!(reply.successes[0], "pinned object should succeed");
+        assert!(!reply.successes[1], "missing object should fail");
+    }
+
+    // ─── RAYLET-5: ResizeLocalResourceInstances ─────────────────────
+
+    #[tokio::test]
+    async fn test_resize_cpu_resources() {
+        let svc = make_svc();
+
+        // Initial CPU is 4.0
+        let load = svc
+            .handle_get_resource_load(rpc::GetResourceLoadRequest::default())
+            .unwrap();
+        let initial_cpu = *load
+            .resources
+            .as_ref()
+            .unwrap()
+            .resources_total
+            .get("CPU")
+            .unwrap();
+        assert_eq!(initial_cpu, 4.0);
+
+        // Resize CPU to 8.0
+        let reply = svc
+            .handle_resize_local_resource_instances(
+                rpc::ResizeLocalResourceInstancesRequest {
+                    resources: std::collections::HashMap::from([
+                        ("CPU".to_string(), 8.0),
+                    ]),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(*reply.total_resources.get("CPU").unwrap(), 8.0);
+
+        // Verify via get_resource_load
+        let load = svc
+            .handle_get_resource_load(rpc::GetResourceLoadRequest::default())
+            .unwrap();
+        let new_cpu = *load
+            .resources
+            .as_ref()
+            .unwrap()
+            .resources_total
+            .get("CPU")
+            .unwrap();
+        assert_eq!(new_cpu, 8.0);
+    }
+
+    #[tokio::test]
+    async fn test_resize_invalid_resource_rejected() {
+        let svc = make_svc();
+
+        let result = svc
+            .handle_resize_local_resource_instances(
+                rpc::ResizeLocalResourceInstancesRequest {
+                    resources: std::collections::HashMap::from([
+                        ("TPU".to_string(), 4.0),
+                    ]),
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    // ─── RAYLET-6: GetNodeStats Parity ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_get_node_stats_includes_store_and_worker_detail() {
+        let svc = make_svc();
+
+        // Pin some objects so store_stats is non-trivial
+        {
+            let mut obj_mgr = svc.node_manager.local_object_manager().lock();
+            let oid1 = ray_common::id::ObjectID::from_binary(&[1u8; 28]);
+            let oid2 = ray_common::id::ObjectID::from_binary(&[2u8; 28]);
+            obj_mgr.pin_object(oid1, 100, 10);
+            obj_mgr.pin_object(oid2, 200, 20);
+        }
+
+        let reply = svc
+            .handle_get_node_stats(rpc::GetNodeStatsRequest::default())
+            .unwrap();
+
+        assert_eq!(reply.num_workers, 0);
+
+        let store_stats = reply.store_stats.expect("should have store_stats");
+        assert_eq!(store_stats.num_local_objects, 2);
+        assert_eq!(store_stats.object_store_bytes_used, 330); // (100+10) + (200+20)
+    }
+
+    #[tokio::test]
+    async fn test_get_node_stats_reflects_draining_state() {
+        let svc = make_svc();
+
+        // Initially not draining
+        let reply = svc
+            .handle_get_node_stats(rpc::GetNodeStatsRequest::default())
+            .unwrap();
+        assert_eq!(reply.num_workers, 0);
+        // store_stats should be present even when empty
+        let store_stats = reply.store_stats.as_ref().expect("should have store_stats");
+        assert_eq!(store_stats.num_local_objects, 0);
+
+        // Drain the node
+        svc.node_manager.handle_drain(5000);
+        assert!(
+            svc.node_manager
+                .scheduler()
+                .local_resource_manager()
+                .is_local_node_draining()
+        );
+
+        // Stats still returned after draining
+        let reply2 = svc
+            .handle_get_node_stats(rpc::GetNodeStatsRequest::default())
+            .unwrap();
+        assert!(reply2.store_stats.is_some());
     }
 }

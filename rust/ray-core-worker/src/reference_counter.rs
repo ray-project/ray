@@ -416,6 +416,66 @@ impl ReferenceCounter {
             .is_some_and(|e| e.is_pending_creation)
     }
 
+    // ─── Owner Death Handling ───────────────────────────────────────
+
+    /// Mark a set of objects as having a dead owner.
+    ///
+    /// For each object ID, if the object is tracked and not owned by us,
+    /// remove it from the reference table and fire zero-ref callbacks.
+    /// This matches C++ behavior where borrowed objects with dead owners
+    /// are treated as if they have zero refs.
+    ///
+    /// Returns the list of object IDs that were actually removed.
+    pub fn mark_objects_owner_died(&self, object_ids: &[ObjectID]) -> Vec<ObjectID> {
+        let removed;
+        {
+            let mut refs = self.refs.lock();
+            let mut r = Vec::new();
+            for oid in object_ids {
+                if let Some(entry) = refs.get(oid) {
+                    if !entry.is_owned_by_us {
+                        r.push(*oid);
+                    }
+                }
+            }
+            for oid in &r {
+                refs.remove(oid);
+            }
+            removed = r;
+        }
+        // Fire callbacks outside lock.
+        if !removed.is_empty() {
+            if let Some(ref cb) = *self.on_object_freed.lock() {
+                for oid in &removed {
+                    cb(oid);
+                }
+            }
+            self.fire_zero_ref_callbacks(&removed);
+        }
+        removed
+    }
+
+    /// Get all owned objects with their location and spill information.
+    /// Used for re-registration after GCS restart.
+    ///
+    /// Returns `(object_id, locations, spill_url)` for each owned object.
+    pub fn get_all_owned_objects_with_locations(
+        &self,
+    ) -> Vec<(ObjectID, Vec<String>, Option<String>)> {
+        self.refs
+            .lock()
+            .iter()
+            .filter(|(_, r)| r.is_owned_by_us)
+            .map(|(oid, r)| {
+                (
+                    *oid,
+                    r.object_locations.iter().cloned().collect(),
+                    r.spill_url.clone(),
+                )
+            })
+            .collect()
+    }
+
     // ─── Bulk Operations ───────────────────────────────────────────
 
     /// Get all objects currently in scope (non-zero reference count).
@@ -1326,5 +1386,101 @@ mod tests {
     fn test_has_any_reference_nonexistent() {
         let rc = ReferenceCounter::new();
         assert!(!rc.has_any_reference(&ObjectID::from_random()));
+    }
+
+    // ── Tests for mark_objects_owner_died ────────────────────────────
+
+    #[test]
+    fn test_mark_objects_owner_died_removes_borrowed() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let freed_count = Arc::new(AtomicUsize::new(0));
+        let freed_count2 = freed_count.clone();
+
+        let rc = ReferenceCounter::new();
+        rc.set_object_freed_callback(Box::new(move |_oid| {
+            freed_count2.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        let oid3 = ObjectID::from_random();
+
+        // oid1 and oid2 are borrowed (not owned by us).
+        rc.add_borrowed_object(oid1, make_address());
+        rc.add_local_reference(oid1);
+        rc.add_borrowed_object(oid2, make_address());
+        rc.add_local_reference(oid2);
+
+        // oid3 is owned by us — should NOT be removed.
+        rc.add_owned_object(oid3, make_address(), vec![]);
+        rc.add_local_reference(oid3);
+
+        let removed = rc.mark_objects_owner_died(&[oid1, oid2, oid3]);
+        // Only oid1 and oid2 should be removed (not owned by us).
+        assert_eq!(removed.len(), 2);
+        assert!(removed.contains(&oid1));
+        assert!(removed.contains(&oid2));
+        assert!(!removed.contains(&oid3));
+
+        // Freed callback should have fired for the 2 removed.
+        assert_eq!(freed_count.load(Ordering::SeqCst), 2);
+
+        // oid3 should still be tracked.
+        assert!(rc.has_reference(&oid3));
+        assert!(!rc.has_reference(&oid1));
+        assert!(!rc.has_reference(&oid2));
+    }
+
+    #[test]
+    fn test_mark_objects_owner_died_empty() {
+        let rc = ReferenceCounter::new();
+        let removed = rc.mark_objects_owner_died(&[]);
+        assert!(removed.is_empty());
+    }
+
+    #[test]
+    fn test_mark_objects_owner_died_nonexistent() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        let removed = rc.mark_objects_owner_died(&[oid]);
+        assert!(removed.is_empty());
+    }
+
+    // ── Tests for get_all_owned_objects_with_locations ───────────────
+
+    #[test]
+    fn test_get_all_owned_objects_with_locations() {
+        let rc = ReferenceCounter::new();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        let oid3 = ObjectID::from_random();
+
+        // oid1: owned, with locations
+        rc.add_owned_object(oid1, make_address(), vec![]);
+        rc.add_object_location(&oid1, "node_a".to_string());
+        rc.add_object_location(&oid1, "node_b".to_string());
+
+        // oid2: owned, with spill url
+        rc.add_owned_object(oid2, make_address(), vec![]);
+        rc.set_spill_url(&oid2, "s3://bucket/obj2".to_string());
+
+        // oid3: borrowed, should not appear
+        rc.add_borrowed_object(oid3, make_address());
+
+        let results = rc.get_all_owned_objects_with_locations();
+        assert_eq!(results.len(), 2);
+
+        // Find oid1 and oid2 in results.
+        let r1 = results.iter().find(|(id, _, _)| *id == oid1).unwrap();
+        assert_eq!(r1.1.len(), 2);
+        assert!(r1.1.contains(&"node_a".to_string()));
+        assert!(r1.1.contains(&"node_b".to_string()));
+        assert!(r1.2.is_none());
+
+        let r2 = results.iter().find(|(id, _, _)| *id == oid2).unwrap();
+        assert!(r2.1.is_empty());
+        assert_eq!(r2.2.as_ref().unwrap(), "s3://bucket/obj2");
     }
 }

@@ -217,11 +217,27 @@ impl CoreWorkerServiceImpl {
     ) -> Result<rpc::RayletNotifyGcsRestartReply, Status> {
         tracing::info!("GCS restart notification received — refreshing ownership state");
 
-        // Re-register all owned objects with the new GCS instance.
-        let owned_objects = self.core_worker.reference_counter().get_all_owned_objects();
+        // Collect all owned objects with their location/spill state and
+        // re-publish them so the new GCS instance can resume managing
+        // object lifetimes.
+        let ref_counter = self.core_worker.reference_counter();
+        let owned_with_locs = ref_counter.get_all_owned_objects_with_locations();
+
+        for (oid, locations, spill_url) in &owned_with_locs {
+            // Re-add each known location so downstream consumers
+            // (e.g. object directory) see them again.
+            for loc in locations {
+                ref_counter.add_object_location(oid, loc.clone());
+            }
+            // Re-set spill URL if the object was spilled.
+            if let Some(url) = spill_url {
+                ref_counter.set_spill_url(oid, url.clone());
+            }
+        }
+
         tracing::info!(
-            count = owned_objects.len(),
-            "Re-registering owned objects after GCS restart"
+            count = owned_with_locs.len(),
+            "Re-registered owned objects after GCS restart"
         );
 
         Ok(rpc::RayletNotifyGcsRestartReply::default())
@@ -897,6 +913,143 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_object_location_batch_add_remove_spill_same_object() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        let node1 = vec![1u8; 28];
+        let node2 = vec![2u8; 28];
+        let node1_hex = hex::encode(&node1);
+        let node2_hex = hex::encode(&node2);
+
+        // Step 1: add(node1)
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node1.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert!(locs.contains(&node1_hex));
+
+        // Step 2: add(node2)
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node2.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert_eq!(locs.len(), 2);
+        assert!(locs.contains(&node1_hex));
+        assert!(locs.contains(&node2_hex));
+
+        // Step 3: remove(node1)
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node1.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Removed as i32),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert_eq!(locs.len(), 1);
+        assert!(locs.contains(&node2_hex));
+        assert!(!locs.contains(&node1_hex));
+
+        // Step 4: spill(url) with spilled_to_local_storage=false (remote spill)
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node2.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                spilled_location_update: Some(rpc::ObjectSpilledLocationUpdate {
+                    spilled_url: "s3://bucket/spilled_obj".to_string(),
+                    spilled_to_local_storage: false,
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Final state: node2 should be removed (remote spill), spill URL set.
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert!(!locs.contains(&node2_hex), "remote spill should remove node location");
+        assert_eq!(
+            svc.core_worker.reference_counter().get_spill_url(&oid),
+            Some("s3://bucket/spilled_obj".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_object_location_batch_mixed_updates_single_batch() {
+        // Test that a single batch with multiple updates for the same object
+        // processes them in order (last-write-wins for spill, set-based for locations).
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        let node_id = vec![1u8; 28];
+        let node_id_hex = hex::encode(&node_id);
+
+        // Single batch: add + spill(local) for the same object.
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node_id.clone(),
+            object_location_updates: vec![
+                rpc::ObjectLocationUpdate {
+                    object_id: oid.binary(),
+                    plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                    ..Default::default()
+                },
+                rpc::ObjectLocationUpdate {
+                    object_id: oid.binary(),
+                    spilled_location_update: Some(rpc::ObjectSpilledLocationUpdate {
+                        spilled_url: "file:///local/spill".to_string(),
+                        spilled_to_local_storage: true,
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // After processing: node should be in locations (added by plasma update
+        // and re-added by local spill), plus spill URL set.
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert!(locs.contains(&node_id_hex));
+        assert_eq!(
+            svc.core_worker.reference_counter().get_spill_url(&oid),
+            Some("file:///local/spill".to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn test_update_object_location_batch_rejects_wrong_recipient() {
         let svc = make_service();
         let oid = ObjectID::from_random();
@@ -1306,6 +1459,52 @@ mod tests {
 
         // Object should still be there after restart notification.
         assert!(svc.core_worker.contains_object(&oid));
+    }
+
+    #[tokio::test]
+    async fn test_gcs_restart_triggers_reregistration() {
+        let svc = make_service();
+        let ref_counter = svc.core_worker.reference_counter();
+
+        // Register two owned objects with locations.
+        let oid1 = ObjectID::from_random();
+        let addr = ray_proto::ray::rpc::Address {
+            node_id: vec![0u8; 28],
+            ip_address: "127.0.0.1".to_string(),
+            port: 1234,
+            worker_id: svc.core_worker.worker_id().binary(),
+        };
+        ref_counter.add_owned_object(oid1, addr.clone(), vec![]);
+        ref_counter.add_object_location(&oid1, "node_a".to_string());
+
+        let oid2 = ObjectID::from_random();
+        ref_counter.add_owned_object(oid2, addr.clone(), vec![]);
+        ref_counter.set_spill_url(&oid2, "s3://bucket/obj2".to_string());
+
+        // A borrowed object should NOT be re-registered.
+        let oid3 = ObjectID::from_random();
+        ref_counter.add_borrowed_object(oid3, addr.clone());
+        ref_counter.add_object_location(&oid3, "node_b".to_string());
+
+        // Trigger GCS restart.
+        let req = rpc::RayletNotifyGcsRestartRequest::default();
+        let reply = svc.handle_raylet_notify_gcs_restart(req).await.unwrap();
+        assert_eq!(reply, rpc::RayletNotifyGcsRestartReply::default());
+
+        // After restart notification, owned objects should still be queryable.
+        assert!(ref_counter.owned_by_us(&oid1));
+        assert!(ref_counter.owned_by_us(&oid2));
+
+        // Locations and spill URLs should persist.
+        let locs1 = ref_counter.get_object_locations(&oid1);
+        assert!(locs1.contains(&"node_a".to_string()));
+        assert_eq!(
+            ref_counter.get_spill_url(&oid2),
+            Some("s3://bucket/obj2".to_string())
+        );
+
+        // Borrowed object should still be tracked.
+        assert!(ref_counter.has_reference(&oid3));
     }
 
     // ─── Tests for handle_get_object_status ─────────────────────────

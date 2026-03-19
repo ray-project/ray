@@ -90,7 +90,7 @@ async fn test_concurrent_subscribe_unsubscribe() {
             let h = Arc::clone(&handler);
             handles.push(tokio::spawn(async move {
                 let sub_id = format!("sub-{}", i);
-                h.handle_unsubscribe_command(sub_id.as_bytes());
+                h.handle_unsubscribe_command(sub_id.as_bytes(), 3);
             }));
         }
 
@@ -236,7 +236,7 @@ async fn test_pubsub_under_subscribe_churn() {
                     h.handle_subscribe_command(sub_id.clone().into_bytes(), 3, vec![]);
                     // Yield to let publishers interleave.
                     tokio::task::yield_now().await;
-                    h.handle_unsubscribe_command(sub_id.as_bytes());
+                    h.handle_unsubscribe_command(sub_id.as_bytes(), 3);
                 }
             }));
         }
@@ -266,7 +266,7 @@ async fn test_pubsub_under_subscribe_churn() {
                     h.handle_subscriber_poll(sub_id.as_bytes(), 0),
                 )
                 .await;
-                h.handle_unsubscribe_command(sub_id.as_bytes());
+                h.handle_unsubscribe_command(sub_id.as_bytes(), 3);
             }));
         }
 

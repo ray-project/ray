@@ -47,6 +47,8 @@ struct BorrowedObjectInfo {
     owner_address: Address,
     /// Whether we've already started monitoring this object's owner.
     is_monitoring_owner: bool,
+    /// Whether the owner has been detected as dead.
+    is_owner_dead: bool,
 }
 
 /// Tracks object ownership across the cluster.
@@ -198,6 +200,7 @@ impl OwnershipDirectory {
             BorrowedObjectInfo {
                 owner_address,
                 is_monitoring_owner: false,
+                is_owner_dead: false,
             },
         );
     }
@@ -238,6 +241,51 @@ impl OwnershipDirectory {
             .borrowed_objects
             .get(object_id)
             .is_some_and(|e| e.is_monitoring_owner)
+    }
+
+    // ─── Borrower & Owner Death Handling ────────────────────────────
+
+    /// Remove a dead borrower from all owned objects' borrower sets.
+    ///
+    /// When a borrower (identified by worker_id string) dies, it should be
+    /// removed from every owned object's borrower set so that we no longer
+    /// attempt to notify it on deletion.
+    ///
+    /// Returns the list of object IDs from which the borrower was removed.
+    pub fn handle_borrower_died(&self, worker_id: &str) -> Vec<ObjectID> {
+        let mut inner = self.inner.lock();
+        let mut affected = Vec::new();
+        for (oid, info) in inner.owned_objects.iter_mut() {
+            if info.borrowers.remove(worker_id) {
+                affected.push(*oid);
+            }
+        }
+        affected
+    }
+
+    /// Propagate owner death: find all borrowed objects owned by the given
+    /// worker and mark them as having a dead owner.
+    ///
+    /// Returns the list of affected (borrowed) object IDs whose owner died.
+    pub fn propagate_owner_death(&self, owner_worker_id: &[u8]) -> Vec<ObjectID> {
+        let mut inner = self.inner.lock();
+        let mut affected = Vec::new();
+        for (oid, info) in inner.borrowed_objects.iter_mut() {
+            if info.owner_address.worker_id == owner_worker_id && !info.is_owner_dead {
+                info.is_owner_dead = true;
+                affected.push(*oid);
+            }
+        }
+        affected
+    }
+
+    /// Check if the owner of a borrowed object has been marked dead.
+    pub fn is_owner_dead(&self, object_id: &ObjectID) -> bool {
+        self.inner
+            .lock()
+            .borrowed_objects
+            .get(object_id)
+            .is_some_and(|e| e.is_owner_dead)
     }
 
     // ─── Bulk Operations ──────────────────────────────────────────────
@@ -662,6 +710,112 @@ mod tests {
         assert!(dir.get_pinned_node(&oid_owned).is_none());
         assert!(!dir.is_borrowed(&oid_borrowed));
         assert_eq!(dir.get_pinned_node(&oid_safe), Some(safe_node));
+    }
+
+    // ── Tests for handle_borrower_died ─────────────────────────────
+
+    #[test]
+    fn test_borrower_cleanup_on_death() {
+        let dir = OwnershipDirectory::new();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        let oid3 = ObjectID::from_random();
+
+        dir.add_owned_object(oid1, make_address("10.0.0.1", 1000));
+        dir.add_owned_object(oid2, make_address("10.0.0.1", 1000));
+        dir.add_owned_object(oid3, make_address("10.0.0.1", 1000));
+
+        // Add borrower "dead-worker" to oid1 and oid2 but not oid3.
+        dir.add_borrower(&oid1, "dead-worker".to_string());
+        dir.add_borrower(&oid1, "alive-worker".to_string());
+        dir.add_borrower(&oid2, "dead-worker".to_string());
+        dir.add_borrower(&oid3, "alive-worker".to_string());
+
+        // Kill "dead-worker".
+        let affected = dir.handle_borrower_died("dead-worker");
+        assert_eq!(affected.len(), 2);
+        assert!(affected.contains(&oid1));
+        assert!(affected.contains(&oid2));
+
+        // "dead-worker" should be gone from oid1 and oid2.
+        let b1 = dir.get_borrowers(&oid1);
+        assert_eq!(b1.len(), 1);
+        assert_eq!(b1[0], "alive-worker");
+
+        let b2 = dir.get_borrowers(&oid2);
+        assert!(b2.is_empty());
+
+        // oid3 should be unaffected.
+        let b3 = dir.get_borrowers(&oid3);
+        assert_eq!(b3.len(), 1);
+        assert_eq!(b3[0], "alive-worker");
+    }
+
+    #[test]
+    fn test_borrower_died_not_a_borrower() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        dir.add_owned_object(oid, make_address("10.0.0.1", 1000));
+        dir.add_borrower(&oid, "worker-1".to_string());
+
+        // Killing a non-existent borrower should be a no-op.
+        let affected = dir.handle_borrower_died("nonexistent");
+        assert!(affected.is_empty());
+        assert_eq!(dir.get_borrowers(&oid).len(), 1);
+    }
+
+    // ── Tests for propagate_owner_death ──────────────────────────────
+
+    #[test]
+    fn test_owner_death_propagates_to_borrowed_objects() {
+        let dir = OwnershipDirectory::new();
+
+        // Create borrowed objects with different owners (distinguished by worker_id).
+        let oid1 = ObjectID::from_random();
+        let mut addr1 = make_address_with_node("10.0.0.1", 1);
+        addr1.worker_id = vec![42u8; 28]; // dead owner
+        dir.add_borrowed_object(oid1, addr1);
+
+        let oid2 = ObjectID::from_random();
+        let mut addr2 = make_address_with_node("10.0.0.1", 1);
+        addr2.worker_id = vec![42u8; 28]; // same dead owner
+        dir.add_borrowed_object(oid2, addr2);
+
+        let oid3 = ObjectID::from_random();
+        let mut addr3 = make_address_with_node("10.0.0.2", 2);
+        addr3.worker_id = vec![99u8; 28]; // alive owner
+        dir.add_borrowed_object(oid3, addr3);
+
+        // Propagate death of owner with worker_id [42; 28].
+        let dead_worker_id = vec![42u8; 28];
+        let affected = dir.propagate_owner_death(&dead_worker_id);
+
+        assert_eq!(affected.len(), 2);
+        assert!(affected.contains(&oid1));
+        assert!(affected.contains(&oid2));
+
+        // oid1 and oid2 should be marked as having dead owner.
+        assert!(dir.is_owner_dead(&oid1));
+        assert!(dir.is_owner_dead(&oid2));
+        // oid3 should be unaffected.
+        assert!(!dir.is_owner_dead(&oid3));
+    }
+
+    #[test]
+    fn test_propagate_owner_death_idempotent() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        let mut addr = make_address("10.0.0.1", 1000);
+        addr.worker_id = vec![7u8; 28];
+        dir.add_borrowed_object(oid, addr);
+
+        let dead_wid = vec![7u8; 28];
+        let affected1 = dir.propagate_owner_death(&dead_wid);
+        assert_eq!(affected1.len(), 1);
+
+        // Calling again should return empty (already marked).
+        let affected2 = dir.propagate_owner_death(&dead_wid);
+        assert!(affected2.is_empty());
     }
 
     // ── Tests for get_all_owned_with_locations ──────────────────────

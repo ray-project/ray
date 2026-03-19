@@ -16,6 +16,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use thiserror::Error;
@@ -344,6 +345,117 @@ impl InternalKVInterface for InMemoryInternalKV {
         } else {
             Ok(Vec::new())
         }
+    }
+}
+
+// ─── StoreClient-backed InternalKV adapter ───────────────────────────────
+
+/// Internal KV implementation backed by a `StoreClient`.
+///
+/// Matches C++ `StoreClientInternalKV` from `store_client_kv.cc`:
+/// - Uses table name "KV" (TablePrefix::KV = 18 in C++)
+/// - Keys are encoded as `@namespace_<ns>:<key>` for namespace isolation
+///
+/// When the store client is Redis-backed, this provides persistence
+/// across GCS restarts (fixing GCS-1).
+pub struct StoreClientInternalKV {
+    store: Arc<dyn StoreClient>,
+}
+
+const KV_TABLE: &str = "KV";
+
+impl StoreClientInternalKV {
+    pub fn new(store: Arc<dyn StoreClient>) -> Self {
+        Self { store }
+    }
+
+    /// Encode a namespaced key matching C++ `MakeKey()`:
+    /// `@namespace_<ns>:<key>`
+    fn make_key(ns: &[u8], key: &[u8]) -> String {
+        let ns_str = String::from_utf8_lossy(ns);
+        let key_str = String::from_utf8_lossy(key);
+        format!("@namespace_{}:{}", ns_str, key_str)
+    }
+
+    /// Extract the original key from an encoded key.
+    /// Returns None if the key doesn't match the expected prefix.
+    fn extract_key(encoded: &str, ns: &[u8]) -> Option<Vec<u8>> {
+        let ns_str = String::from_utf8_lossy(ns);
+        let prefix = format!("@namespace_{}:", ns_str);
+        encoded.strip_prefix(&prefix).map(|k| k.as_bytes().to_vec())
+    }
+}
+
+#[async_trait::async_trait]
+impl InternalKVInterface for StoreClientInternalKV {
+    async fn get(&self, ns: &[u8], key: &[u8]) -> StoreResult<Option<Vec<u8>>> {
+        let encoded_key = Self::make_key(ns, key);
+        self.store.get(KV_TABLE, &encoded_key).await
+    }
+
+    async fn multi_get(
+        &self,
+        ns: &[u8],
+        keys: &[Vec<u8>],
+    ) -> StoreResult<HashMap<Vec<u8>, Vec<u8>>> {
+        let mut result = HashMap::new();
+        for key in keys {
+            let encoded_key = Self::make_key(ns, key);
+            if let Some(val) = self.store.get(KV_TABLE, &encoded_key).await? {
+                result.insert(key.clone(), val);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn put(
+        &self,
+        ns: &[u8],
+        key: &[u8],
+        value: Vec<u8>,
+        overwrite: bool,
+    ) -> StoreResult<bool> {
+        let encoded_key = Self::make_key(ns, key);
+        // StoreClient::put returns true if key existed (was overwritten).
+        // InternalKVInterface::put returns true if key was newly added.
+        // Invert the semantics.
+        let existed = self
+            .store
+            .put(KV_TABLE, &encoded_key, value, overwrite)
+            .await?;
+        Ok(!existed)
+    }
+
+    async fn del(&self, ns: &[u8], key: &[u8], del_by_prefix: bool) -> StoreResult<i64> {
+        if del_by_prefix {
+            let encoded_prefix = Self::make_key(ns, key);
+            let all_keys: Vec<String> = self.store.get_keys(KV_TABLE, &encoded_prefix).await?;
+            if all_keys.is_empty() {
+                return Ok(0);
+            }
+            self.store.batch_delete(KV_TABLE, &all_keys).await
+        } else {
+            let encoded_key = Self::make_key(ns, key);
+            Ok(if self.store.delete(KV_TABLE, &encoded_key).await? {
+                1
+            } else {
+                0
+            })
+        }
+    }
+
+    async fn exists(&self, ns: &[u8], key: &[u8]) -> StoreResult<bool> {
+        let encoded_key = Self::make_key(ns, key);
+        self.store.exists(KV_TABLE, &encoded_key).await
+    }
+
+    async fn keys(&self, ns: &[u8], prefix: &[u8]) -> StoreResult<Vec<Vec<u8>>> {
+        let encoded_prefix = Self::make_key(ns, prefix);
+        let all_keys: Vec<String> = self.store.get_keys(KV_TABLE, &encoded_prefix).await?;
+        Ok(all_keys
+            .iter()
+            .filter_map(|k| Self::extract_key(k, ns))
+            .collect())
     }
 }
 
@@ -967,5 +1079,138 @@ mod tests {
         let existed = store.put("T", "key", b"v3".to_vec(), false).await.unwrap();
         assert!(existed);
         assert_eq!(store.get("T", "key").await.unwrap(), Some(b"v2".to_vec()));
+    }
+
+    // ─── GCS-1: StoreClientInternalKV tests ──────────────────────────
+
+    /// GCS-1 parity test: Internal KV backed by a StoreClient persists data.
+    /// Simulates a GCS restart by creating a new StoreClientInternalKV against
+    /// the same underlying store.
+    #[tokio::test]
+    async fn test_store_client_internal_kv_persists_across_restart() {
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+
+        // "First boot": put KV entries
+        {
+            let kv = StoreClientInternalKV::new(store.clone());
+            kv.put(b"ns", b"key1", b"val1".to_vec(), true)
+                .await
+                .unwrap();
+            kv.put(b"ns", b"key2", b"val2".to_vec(), true)
+                .await
+                .unwrap();
+        }
+
+        // "Restart": create a new KV manager against the same store
+        {
+            let kv = StoreClientInternalKV::new(store.clone());
+            assert_eq!(
+                kv.get(b"ns", b"key1").await.unwrap(),
+                Some(b"val1".to_vec())
+            );
+            assert_eq!(
+                kv.get(b"ns", b"key2").await.unwrap(),
+                Some(b"val2".to_vec())
+            );
+        }
+    }
+
+    /// GCS-1: StoreClientInternalKV multi_get after "restart".
+    #[tokio::test]
+    async fn test_store_client_internal_kv_multi_get_after_restart() {
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+
+        let kv1 = StoreClientInternalKV::new(store.clone());
+        kv1.put(b"ns", b"a", b"1".to_vec(), true).await.unwrap();
+        kv1.put(b"ns", b"b", b"2".to_vec(), true).await.unwrap();
+        kv1.put(b"ns", b"c", b"3".to_vec(), true).await.unwrap();
+        drop(kv1);
+
+        let kv2 = StoreClientInternalKV::new(store.clone());
+        let result = kv2
+            .multi_get(b"ns", &[b"a".to_vec(), b"b".to_vec(), b"c".to_vec()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[&b"a".to_vec()], b"1");
+        assert_eq!(result[&b"b".to_vec()], b"2");
+        assert_eq!(result[&b"c".to_vec()], b"3");
+    }
+
+    /// GCS-1: Full CRUD cycle with StoreClientInternalKV.
+    #[tokio::test]
+    async fn test_store_client_internal_kv_full_crud() {
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+        let kv = StoreClientInternalKV::new(store);
+
+        // Put
+        let added = kv.put(b"ns", b"k", b"v1".to_vec(), true).await.unwrap();
+        assert!(added);
+
+        // Get
+        assert_eq!(kv.get(b"ns", b"k").await.unwrap(), Some(b"v1".to_vec()));
+
+        // Exists
+        assert!(kv.exists(b"ns", b"k").await.unwrap());
+
+        // Overwrite
+        let added = kv.put(b"ns", b"k", b"v2".to_vec(), true).await.unwrap();
+        assert!(!added); // already existed
+        assert_eq!(kv.get(b"ns", b"k").await.unwrap(), Some(b"v2".to_vec()));
+
+        // No overwrite
+        let added = kv.put(b"ns", b"k", b"v3".to_vec(), false).await.unwrap();
+        assert!(!added);
+        assert_eq!(kv.get(b"ns", b"k").await.unwrap(), Some(b"v2".to_vec()));
+
+        // Delete
+        let count = kv.del(b"ns", b"k", false).await.unwrap();
+        assert_eq!(count, 1);
+        assert!(!kv.exists(b"ns", b"k").await.unwrap());
+
+        // Delete non-existent
+        let count = kv.del(b"ns", b"k", false).await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    /// GCS-1: Namespace isolation with StoreClientInternalKV.
+    #[tokio::test]
+    async fn test_store_client_internal_kv_namespace_isolation() {
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+        let kv = StoreClientInternalKV::new(store);
+
+        kv.put(b"ns1", b"k", b"v1".to_vec(), true).await.unwrap();
+        kv.put(b"ns2", b"k", b"v2".to_vec(), true).await.unwrap();
+
+        assert_eq!(kv.get(b"ns1", b"k").await.unwrap(), Some(b"v1".to_vec()));
+        assert_eq!(kv.get(b"ns2", b"k").await.unwrap(), Some(b"v2".to_vec()));
+
+        kv.del(b"ns1", b"k", false).await.unwrap();
+        assert!(kv.get(b"ns1", b"k").await.unwrap().is_none());
+        assert!(kv.get(b"ns2", b"k").await.unwrap().is_some());
+    }
+
+    /// GCS-1: Keys and delete-by-prefix with StoreClientInternalKV.
+    #[tokio::test]
+    async fn test_store_client_internal_kv_prefix_operations() {
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+        let kv = StoreClientInternalKV::new(store);
+
+        kv.put(b"ns", b"foo/a", b"1".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"foo/b", b"2".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"bar/c", b"3".to_vec(), true).await.unwrap();
+
+        // Keys with prefix
+        let mut keys = kv.keys(b"ns", b"foo/").await.unwrap();
+        keys.sort();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&b"foo/a".to_vec()));
+        assert!(keys.contains(&b"foo/b".to_vec()));
+
+        // Delete by prefix
+        let count = kv.del(b"ns", b"foo/", true).await.unwrap();
+        assert_eq!(count, 2);
+        assert!(kv.get(b"ns", b"foo/a").await.unwrap().is_none());
+        assert!(kv.get(b"ns", b"bar/c").await.unwrap().is_some());
     }
 }

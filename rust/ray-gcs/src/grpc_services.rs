@@ -59,7 +59,15 @@ impl JobInfoGcsServiceImpl {
         request: rpc::GetAllJobInfoRequest,
     ) -> Result<rpc::GetAllJobInfoReply, Status> {
         let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
-        let jobs = self.job_manager.handle_get_all_job_info(limit);
+        let job_or_submission_id = request.job_or_submission_id.as_deref();
+        let skip_submission = request.skip_submission_job_info_field.unwrap_or(false);
+        let skip_running_tasks = request.skip_is_running_tasks_field.unwrap_or(false);
+        let jobs = self.job_manager.handle_get_all_job_info(
+            limit,
+            job_or_submission_id,
+            skip_submission,
+            skip_running_tasks,
+        );
         Ok(rpc::GetAllJobInfoReply {
             job_info_list: jobs,
             ..Default::default()
@@ -122,6 +130,7 @@ impl rpc::job_info_gcs_service_server::JobInfoGcsService for JobInfoGcsServiceIm
 
 pub struct NodeInfoGcsServiceImpl {
     pub node_manager: Arc<GcsNodeManager>,
+    pub autoscaler_state_manager: Option<Arc<GcsAutoscalerStateManager>>,
 }
 
 impl NodeInfoGcsServiceImpl {
@@ -198,6 +207,10 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
         for data in &request.drain_node_data {
             let node_id = ray_common::id::NodeID::from_binary(data.node_id.as_slice());
             self.node_manager.handle_drain_node(&node_id, 0);
+            // Also update the autoscaler drain state
+            if let Some(ref autoscaler) = self.autoscaler_state_manager {
+                autoscaler.drain_node(&data.node_id);
+            }
             drain_node_status.push(rpc::DrainNodeStatus {
                 node_id: data.node_id.clone(),
             });
@@ -759,6 +772,7 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
         let request = req.into_inner();
         if let Some(spec) = request.placement_group_spec {
             // Convert PlacementGroupSpec to PlacementGroupTableData for storage.
+            let pg_id_bytes = spec.placement_group_id.clone();
             let pg_data = rpc::PlacementGroupTableData {
                 placement_group_id: spec.placement_group_id,
                 name: spec.name,
@@ -769,13 +783,20 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
                 creator_job_dead: spec.creator_job_dead,
                 creator_actor_dead: spec.creator_actor_dead,
                 is_detached: spec.is_detached,
-                // Mark as Created immediately (single-node: no 2PC needed).
-                state: 1, // PlacementGroupState::Created
+                // Initial state is PENDING (proper state machine).
+                state: 0, // PlacementGroupState::Pending
                 ..Default::default()
             };
             self.placement_group_manager
                 .handle_create_placement_group(pg_data)
                 .await?;
+
+            // Single-node mode: immediately transition to Created.
+            let pg_id = ray_common::id::PlacementGroupID::from_binary(
+                pg_id_bytes.as_slice().try_into().unwrap_or(&[0u8; 18]),
+            );
+            self.placement_group_manager
+                .mark_placement_group_created(&pg_id);
         }
         Ok(Response::new(rpc::CreatePlacementGroupReply::default()))
     }
@@ -1024,7 +1045,7 @@ impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService
                 )
             {
                 self.pubsub_handler
-                    .handle_unsubscribe_command(&subscriber_id);
+                    .handle_unsubscribe_command(&subscriber_id, command.channel_type);
             } else {
                 // Subscribe command
                 self.pubsub_handler.handle_subscribe_command(
@@ -1136,9 +1157,10 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
     ) -> Result<Response<rpc::autoscaler::ReportAutoscalingStateReply>, Status> {
         let inner = req.into_inner();
         if let Some(state) = inner.autoscaling_state {
+            let version = state.autoscaler_state_version;
             let encoded = prost::Message::encode_to_vec(&state);
             self.autoscaler_state_manager
-                .handle_report_autoscaling_state(encoded, 0);
+                .handle_report_autoscaling_state(encoded, version);
         }
         Ok(Response::new(
             rpc::autoscaler::ReportAutoscalingStateReply::default(),
@@ -1174,12 +1196,25 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
         let (version, node_states) = self
             .autoscaler_state_manager
             .handle_get_cluster_resource_state();
+
+        // Decode the last reported autoscaling state (if any).
+        let autoscaling_state: Option<rpc::autoscaler::AutoscalingState> = self
+            .autoscaler_state_manager
+            .get_autoscaling_state()
+            .and_then(|bytes| {
+                prost::Message::decode(bytes.as_slice()).ok()
+            });
+
+        let cluster_resource_state = rpc::autoscaler::ClusterResourceState {
+            cluster_resource_state_version: version,
+            node_states,
+            cluster_session_name: self.autoscaler_state_manager.session_name().to_string(),
+            ..Default::default()
+        };
+
         Ok(Response::new(rpc::autoscaler::GetClusterStatusReply {
-            cluster_resource_state: Some(rpc::autoscaler::ClusterResourceState {
-                cluster_resource_state_version: version,
-                node_states,
-                ..Default::default()
-            }),
+            autoscaling_state,
+            cluster_resource_state: Some(cluster_resource_state),
             ..Default::default()
         }))
     }
@@ -1602,6 +1637,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         svc.register_node(rpc::RegisterNodeRequest {
@@ -1627,6 +1663,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         svc.register_node(rpc::RegisterNodeRequest {
@@ -1655,6 +1692,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         let cluster_id = vec![42u8; 28];
@@ -1670,6 +1708,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         node_manager
@@ -1698,6 +1737,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         node_manager
@@ -1727,6 +1767,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         node_manager
@@ -2865,6 +2906,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         svc.register_node(rpc::RegisterNodeRequest {
@@ -2902,6 +2944,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         for i in 1..=3u8 {
@@ -2933,6 +2976,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         for i in 1..=5u8 {
@@ -2964,6 +3008,7 @@ mod tests {
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let svc = NodeInfoGcsServiceImpl {
             node_manager: node_manager.clone(),
+            autoscaler_state_manager: None,
         };
 
         for i in 1..=3u8 {
@@ -3097,5 +3142,119 @@ mod tests {
             .unwrap()
             .into_inner();
         assert!(reply.is_accepted);
+    }
+
+    // ─── GCS-6: Drain node updates autoscaler drain state ────────────
+
+    #[tokio::test]
+    async fn test_drain_node_updates_autoscaler_drain_state() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager,
+        ));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+            autoscaler_state_manager: Some(autoscaler_state_manager.clone()),
+        };
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        svc.drain_node(Request::new(rpc::DrainNodeRequest {
+            drain_node_data: vec![rpc::DrainNodeData {
+                node_id: node_id_bytes(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // Verify autoscaler state manager was updated with drain status
+        use crate::autoscaler_state_manager::DrainStatus;
+        assert_eq!(
+            autoscaler_state_manager.get_drain_status(&node_id_bytes(1)),
+            DrainStatus::Draining,
+        );
+    }
+
+    // ─── GCS-17: Cluster status payload parity ──────────────────────
+
+    #[tokio::test]
+    async fn test_get_cluster_status_includes_autoscaling_state_and_session() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "my-session".to_string(),
+            node_manager.clone(),
+            resource_manager,
+        ));
+
+        // Report autoscaling state
+        let as_state = rpc::autoscaler::AutoscalingState {
+            autoscaler_state_version: 7,
+            last_seen_cluster_resource_state_version: 3,
+            ..Default::default()
+        };
+        let encoded = prost::Message::encode_to_vec(&as_state);
+        autoscaler_state_manager.handle_report_autoscaling_state(encoded, 7);
+
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        // Verify autoscaling_state is present
+        let autoscaling_state = reply.autoscaling_state.expect("autoscaling_state should be present");
+        assert_eq!(autoscaling_state.autoscaler_state_version, 7);
+        assert_eq!(autoscaling_state.last_seen_cluster_resource_state_version, 3);
+
+        // Verify cluster_session_name is present
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state should be present");
+        assert_eq!(cluster_state.cluster_session_name, "my-session");
+    }
+
+    // ─── GCS-12: PG create lifecycle ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_pg_grpc_create_starts_pending_then_created() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "lifecycle_pg".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // In single-node mode, the gRPC handler immediately transitions to Created
+        let pg = pg_manager.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(pg.state, 1, "single-node mode should transition to Created (1)");
     }
 }

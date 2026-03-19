@@ -237,7 +237,35 @@ impl InternalPubSubHandler {
     }
 
     /// Handle unsubscribe command for a specific channel.
-    pub fn handle_unsubscribe_command(&self, subscriber_id: &[u8]) {
+    ///
+    /// Only removes the targeted channel subscription from the subscriber.
+    /// The subscriber is kept alive if it still has other active subscriptions.
+    pub fn handle_unsubscribe_command(&self, subscriber_id: &[u8], channel_type: i32) {
+        // Remove the specific channel subscription, then check if subscriber is empty.
+        let should_remove_subscriber = {
+            if let Some(mut state) = self.subscribers.get_mut(subscriber_id) {
+                state.subscriptions.remove(&channel_type);
+                state.subscriptions.is_empty()
+            } else {
+                return;
+            }
+        };
+        // subscribers ref dropped — safe to access channel_subscribers now
+
+        // Clean up channel subscriber index for the affected channel only
+        if let Some(mut subs) = self.channel_subscribers.get_mut(&channel_type) {
+            subs.retain(|id| id != subscriber_id);
+        }
+
+        // Only remove the subscriber entirely if it has no remaining subscriptions
+        if should_remove_subscriber {
+            self.subscribers.remove(subscriber_id);
+        }
+    }
+
+    /// Handle unsubscribe command that removes ALL subscriptions for a subscriber.
+    /// Used when a subscriber disconnects entirely.
+    pub fn handle_unsubscribe_all(&self, subscriber_id: &[u8]) {
         // Remove from subscriber state and get subscriptions to clean up index
         if let Some((_, state)) = self.subscribers.remove(subscriber_id) {
             // Clean up channel subscriber index
@@ -324,11 +352,11 @@ mod tests {
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
         assert!(handler.subscribers.contains_key(&b"sub1".to_vec()));
 
-        handler.handle_unsubscribe_command(b"sub1");
+        handler.handle_unsubscribe_command(b"sub1", 3);
         assert!(!handler.subscribers.contains_key(&b"sub1".to_vec()));
 
         // Double-unsubscribe should not panic
-        handler.handle_unsubscribe_command(b"sub1");
+        handler.handle_unsubscribe_command(b"sub1", 3);
     }
 
     #[tokio::test]
@@ -553,6 +581,31 @@ mod tests {
     }
 
     #[test]
+    fn test_pubsub_unsubscribe_only_removes_target_channel() {
+        let handler = InternalPubSubHandler::new();
+        // Subscribe to channel 3 (actor) and channel 4 (job)
+        handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
+        handler.handle_subscribe_command(b"sub1".to_vec(), 4, vec![]);
+
+        // Unsubscribe only from channel 3
+        handler.handle_unsubscribe_command(b"sub1", 3);
+
+        // Subscriber should still exist (has channel 4)
+        assert!(handler.subscribers.contains_key(&b"sub1".to_vec()));
+
+        // Publish to channel 3 — should NOT be delivered
+        handler.publish_pubmessage(make_pub_msg(3, b"actor_x"));
+
+        // Publish to channel 4 — should be delivered
+        handler.publish_pubmessage(make_pub_msg(4, b"job_y"));
+
+        let state = handler.subscribers.get(&b"sub1".to_vec()).unwrap();
+        assert_eq!(state.pending_messages.len(), 1, "only channel 4 message should be delivered");
+        assert_eq!(state.pending_messages[0].0.channel_type, 4);
+        assert_eq!(state.pending_messages[0].0.key_id, b"job_y");
+    }
+
+    #[test]
     fn test_default_creates_handler() {
         let handler = InternalPubSubHandler::default();
         assert!(handler.subscribe(3).is_some());
@@ -573,12 +626,12 @@ mod tests {
     }
 
     #[test]
-    fn test_unsubscribe_removes_subscriber() {
+    fn test_unsubscribe_all_removes_subscriber() {
         let handler = InternalPubSubHandler::new();
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
         handler.handle_subscribe_command(b"sub1".to_vec(), 4, vec![]);
 
-        handler.handle_unsubscribe_command(b"sub1");
+        handler.handle_unsubscribe_all(b"sub1");
 
         assert!(!handler.subscribers.contains_key(&b"sub1".to_vec()));
     }

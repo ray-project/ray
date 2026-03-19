@@ -782,6 +782,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_pg_create_starts_pending() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let pg = make_pg(1, "pending_pg");
+        assert_eq!(pg.state, 0); // PENDING
+        mgr.handle_create_placement_group(pg).await.unwrap();
+
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        let stored = mgr.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(stored.state, 0, "initial state should be PENDING (0)");
+
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 1);
+        assert_eq!(*counts.get(&PlacementGroupState::Created).unwrap_or(&0), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pg_transitions_to_created() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let pg = make_pg(1, "transition_pg");
+        mgr.handle_create_placement_group(pg).await.unwrap();
+
+        let mut pg_id_bytes = [0u8; 18];
+        pg_id_bytes[0] = 1;
+        let pg_id = PlacementGroupID::from_binary(&pg_id_bytes);
+
+        // Verify starts as PENDING
+        let stored = mgr.handle_get_placement_group(&pg_id_bytes).unwrap();
+        assert_eq!(stored.state, 0);
+
+        // Transition to Created
+        mgr.mark_placement_group_created(&pg_id);
+
+        // Verify now Created
+        let stored = mgr.handle_get_placement_group(&pg_id_bytes).unwrap();
+        assert_eq!(stored.state, 1, "should be Created (1) after mark_placement_group_created");
+
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Created).unwrap_or(&0), 1);
+        assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 0);
+    }
+
+    #[tokio::test]
     async fn test_mark_placement_group_created() {
         let store = Arc::new(InMemoryStoreClient::new());
         let storage = Arc::new(GcsTableStorage::new(store));

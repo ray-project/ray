@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 use ray_common::config::RayConfig;
 use ray_common::id::NodeID;
 use ray_common::scheduling::{FixedPoint, ResourceSet};
@@ -24,13 +25,37 @@ use crate::cluster_resource_manager::ClusterResourceManager;
 use crate::cluster_resource_scheduler::ClusterResourceScheduler;
 use crate::demand_calculator::{DemandCalculator, DemandCalculatorConfig};
 use crate::dependency_manager::DependencyManager;
-use crate::lease_manager::{ClusterLeaseManager, WorkerLeaseTracker};
+use crate::lease_manager::{ClusterLeaseManager, SchedulingClass, WorkerLeaseTracker};
 use crate::local_object_manager::{LocalObjectManager, LocalObjectManagerConfig};
 use crate::local_resource_manager::LocalResourceManager;
 use crate::placement_group_resource_manager::PlacementGroupResourceManager;
 use crate::wait_manager::WaitManager;
 use crate::worker_pool::WorkerPool;
 use crate::worker_reaper::{WorkerReaper, WorkerReaperConfig};
+
+/// Tracks per-scheduling-class backlog counts reported by workers.
+pub struct BacklogTracker {
+    /// Map from scheduling class to aggregate backlog size.
+    backlogs: RwLock<HashMap<SchedulingClass, i64>>,
+}
+
+impl BacklogTracker {
+    pub fn new() -> Self {
+        Self {
+            backlogs: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Update the backlog for a given scheduling class (latest value wins).
+    pub fn update(&self, scheduling_class: SchedulingClass, backlog_size: i64) {
+        self.backlogs.write().insert(scheduling_class, backlog_size);
+    }
+
+    /// Get the current backlog map.
+    pub fn get_backlog(&self) -> HashMap<SchedulingClass, i64> {
+        self.backlogs.read().clone()
+    }
+}
 
 /// Wait for SIGTERM or SIGINT for graceful shutdown.
 async fn shutdown_signal() {
@@ -86,6 +111,7 @@ pub struct NodeManager {
     local_object_manager: Arc<parking_lot::Mutex<LocalObjectManager>>,
     demand_calculator: Arc<DemandCalculator>,
     placement_group_resource_manager: Arc<PlacementGroupResourceManager>,
+    backlog_tracker: Arc<BacklogTracker>,
 }
 
 impl NodeManager {
@@ -131,6 +157,8 @@ impl NodeManager {
         let placement_group_resource_manager =
             Arc::new(PlacementGroupResourceManager::new(local_resource_manager));
 
+        let backlog_tracker = Arc::new(BacklogTracker::new());
+
         Self {
             config,
             scheduler,
@@ -143,6 +171,7 @@ impl NodeManager {
             local_object_manager,
             demand_calculator,
             placement_group_resource_manager,
+            backlog_tracker,
         }
     }
 
@@ -188,6 +217,10 @@ impl NodeManager {
 
     pub fn placement_group_resource_manager(&self) -> &Arc<PlacementGroupResourceManager> {
         &self.placement_group_resource_manager
+    }
+
+    pub fn backlog_tracker(&self) -> &Arc<BacklogTracker> {
+        &self.backlog_tracker
     }
 
     /// Handle a drain request.

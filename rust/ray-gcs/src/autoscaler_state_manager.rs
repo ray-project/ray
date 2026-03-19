@@ -67,6 +67,8 @@ pub struct GcsAutoscalerStateManager {
     node_resource_demands: RwLock<HashMap<Vec<u8>, NodeResourceDemand>>,
     /// Node drain status.
     drain_status: RwLock<HashMap<Vec<u8>, DrainStatus>>,
+    /// Drain deadline timestamps per node.
+    drain_deadlines: RwLock<HashMap<Vec<u8>, i64>>,
     /// Idle duration threshold in seconds — nodes idle longer than this
     /// are reported to the autoscaler for potential scale-down.
     #[allow(dead_code)]
@@ -90,6 +92,7 @@ impl GcsAutoscalerStateManager {
             cluster_resource_constraint: RwLock::new(None),
             node_resource_demands: RwLock::new(HashMap::new()),
             drain_status: RwLock::new(HashMap::new()),
+            drain_deadlines: RwLock::new(HashMap::new()),
             idle_threshold_secs: 60,
             node_manager,
             resource_manager,
@@ -134,10 +137,24 @@ impl GcsAutoscalerStateManager {
     }
 
     /// Handle ReportAutoscalingState RPC.
-    pub fn handle_report_autoscaling_state(&self, state: Vec<u8>, autoscaler_state_version: i64) {
+    ///
+    /// Rejects the update if version <= last seen version (stale).
+    /// Returns true if the update was accepted, false if rejected.
+    pub fn handle_report_autoscaling_state(&self, state: Vec<u8>, autoscaler_state_version: i64) -> bool {
+        let last_version = self.last_seen_autoscaler_state_version.load(Ordering::SeqCst);
+        if autoscaler_state_version > 0 && last_version > 0 && autoscaler_state_version <= last_version {
+            // Stale version — reject the update.
+            return false;
+        }
         *self.autoscaling_state.write() = Some(state);
         self.last_seen_autoscaler_state_version
             .store(autoscaler_state_version, Ordering::SeqCst);
+        true
+    }
+
+    /// Get the last reported autoscaling state bytes.
+    pub fn get_autoscaling_state(&self) -> Option<Vec<u8>> {
+        self.autoscaling_state.read().clone()
     }
 
     /// Handle RequestClusterResourceConstraint RPC.
@@ -192,6 +209,11 @@ impl GcsAutoscalerStateManager {
 
     /// Start draining a node. Returns true if the node was found.
     pub fn drain_node(&self, node_id: &[u8]) -> bool {
+        self.drain_node_with_deadline(node_id, 0)
+    }
+
+    /// Start draining a node with a deadline timestamp. Returns true if the node was found.
+    pub fn drain_node_with_deadline(&self, node_id: &[u8], deadline_timestamp_ms: i64) -> bool {
         let nid = ray_common::id::NodeID::from_binary(node_id);
         if !self.node_manager.get_all_alive_nodes().contains_key(&nid) {
             return false;
@@ -199,7 +221,21 @@ impl GcsAutoscalerStateManager {
         self.drain_status
             .write()
             .insert(node_id.to_vec(), DrainStatus::Draining);
+        if deadline_timestamp_ms > 0 {
+            self.drain_deadlines
+                .write()
+                .insert(node_id.to_vec(), deadline_timestamp_ms);
+        }
         true
+    }
+
+    /// Get the drain deadline for a node (0 if not set).
+    pub fn get_drain_deadline(&self, node_id: &[u8]) -> i64 {
+        self.drain_deadlines
+            .read()
+            .get(node_id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Mark a node as fully drained.
@@ -221,6 +257,7 @@ impl GcsAutoscalerStateManager {
     /// Remove drain status for a node (on node death).
     pub fn remove_drain_status(&self, node_id: &[u8]) {
         self.drain_status.write().remove(node_id);
+        self.drain_deadlines.write().remove(node_id);
     }
 
     /// Get the list of nodes that are idle — where available == total.
@@ -314,8 +351,65 @@ mod tests {
     #[test]
     fn test_report_autoscaling_state() {
         let mgr = make_manager();
-        mgr.handle_report_autoscaling_state(b"state_data".to_vec(), 5);
+        assert!(mgr.handle_report_autoscaling_state(b"state_data".to_vec(), 5));
         assert_eq!(mgr.last_seen_autoscaler_version(), 5);
+    }
+
+    #[test]
+    fn test_report_autoscaling_state_rejects_stale_version() {
+        let mgr = make_manager();
+        // First update with version 5 — accepted
+        assert!(mgr.handle_report_autoscaling_state(b"state_v5".to_vec(), 5));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5);
+
+        // Stale version 3 — rejected
+        assert!(!mgr.handle_report_autoscaling_state(b"state_v3".to_vec(), 3));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5); // unchanged
+
+        // Same version 5 — rejected (not strictly greater)
+        assert!(!mgr.handle_report_autoscaling_state(b"state_v5b".to_vec(), 5));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5); // unchanged
+    }
+
+    #[test]
+    fn test_report_autoscaling_state_accepts_monotonic_version() {
+        let mgr = make_manager();
+        // Version 0 → 1 — accepted (initial 0 is not checked)
+        assert!(mgr.handle_report_autoscaling_state(b"state_v1".to_vec(), 1));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 1);
+
+        // Version 1 → 2 — accepted (monotonically increasing)
+        assert!(mgr.handle_report_autoscaling_state(b"state_v2".to_vec(), 2));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 2);
+
+        // Version 2 → 10 — accepted (big jump ok)
+        assert!(mgr.handle_report_autoscaling_state(b"state_v10".to_vec(), 10));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 10);
+    }
+
+    #[test]
+    fn test_get_autoscaling_state() {
+        let mgr = make_manager();
+        assert!(mgr.get_autoscaling_state().is_none());
+
+        mgr.handle_report_autoscaling_state(b"state_data".to_vec(), 1);
+        assert_eq!(mgr.get_autoscaling_state(), Some(b"state_data".to_vec()));
+    }
+
+    #[test]
+    fn test_get_cluster_status_includes_autoscaling_state() {
+        let mgr = make_manager();
+        // Report autoscaling state
+        mgr.handle_report_autoscaling_state(b"my_state".to_vec(), 3);
+        // Verify it's retrievable
+        assert_eq!(mgr.get_autoscaling_state(), Some(b"my_state".to_vec()));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 3);
+    }
+
+    #[test]
+    fn test_get_cluster_status_includes_session_name() {
+        let mgr = make_manager();
+        assert_eq!(mgr.session_name(), "test-session");
     }
 
     #[test]
@@ -490,15 +584,15 @@ mod tests {
     #[test]
     fn test_multiple_report_autoscaling_state_overwrites() {
         let mgr = make_manager();
-        mgr.handle_report_autoscaling_state(b"state1".to_vec(), 1);
+        assert!(mgr.handle_report_autoscaling_state(b"state1".to_vec(), 1));
         assert_eq!(mgr.last_seen_autoscaler_version(), 1);
 
-        mgr.handle_report_autoscaling_state(b"state2".to_vec(), 5);
+        assert!(mgr.handle_report_autoscaling_state(b"state2".to_vec(), 5));
         assert_eq!(mgr.last_seen_autoscaler_version(), 5);
 
-        // Older version should still overwrite (no version check in this impl)
-        mgr.handle_report_autoscaling_state(b"state3".to_vec(), 3);
-        assert_eq!(mgr.last_seen_autoscaler_version(), 3);
+        // Older version should now be rejected (version check in this impl)
+        assert!(!mgr.handle_report_autoscaling_state(b"state3".to_vec(), 3));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5);
     }
 
     #[test]
@@ -597,6 +691,39 @@ mod tests {
         let draining = mgr.get_draining_nodes();
         assert_eq!(draining.len(), 1);
         assert_eq!(draining[0], node2);
+    }
+
+    #[tokio::test]
+    async fn test_drain_node_updates_autoscaler_drain_state() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let node_mgr = Arc::new(GcsNodeManager::new(storage));
+        let resource_mgr = Arc::new(GcsResourceManager::new());
+        let mgr = GcsAutoscalerStateManager::new("test".to_string(), node_mgr.clone(), resource_mgr);
+
+        let node_id = vec![1u8; 28];
+
+        // Cannot drain a non-alive node
+        assert!(!mgr.drain_node_with_deadline(&node_id, 5000));
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+
+        // Register node
+        let node_info = ray_proto::ray::rpc::GcsNodeInfo {
+            node_id: node_id.clone(),
+            state: 0,
+            ..Default::default()
+        };
+        node_mgr.handle_register_node(node_info).await.unwrap();
+
+        // Now drain with deadline
+        assert!(mgr.drain_node_with_deadline(&node_id, 12345));
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Draining);
+        assert_eq!(mgr.get_drain_deadline(&node_id), 12345);
+
+        // Clean up removes deadline too
+        mgr.remove_drain_status(&node_id);
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+        assert_eq!(mgr.get_drain_deadline(&node_id), 0);
     }
 
     #[test]
@@ -811,15 +938,15 @@ mod tests {
 
         assert_eq!(mgr.last_seen_autoscaler_version(), 0);
 
-        mgr.handle_report_autoscaling_state(b"state_v1".to_vec(), 1);
+        assert!(mgr.handle_report_autoscaling_state(b"state_v1".to_vec(), 1));
         assert_eq!(mgr.last_seen_autoscaler_version(), 1);
 
-        mgr.handle_report_autoscaling_state(b"state_v5".to_vec(), 5);
+        assert!(mgr.handle_report_autoscaling_state(b"state_v5".to_vec(), 5));
         assert_eq!(mgr.last_seen_autoscaler_version(), 5);
 
-        // Even setting to a lower version should update
-        mgr.handle_report_autoscaling_state(b"state_v3".to_vec(), 3);
-        assert_eq!(mgr.last_seen_autoscaler_version(), 3);
+        // Setting to a lower version is now rejected
+        assert!(!mgr.handle_report_autoscaling_state(b"state_v3".to_vec(), 3));
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5);
     }
 
     /// Port of TestDrainingStatus — full drain lifecycle.

@@ -181,15 +181,52 @@ impl GcsJobManager {
         Ok(())
     }
 
-    /// Handle GetAllJobInfo RPC.
+    /// Handle GetAllJobInfo RPC with optional filters.
+    ///
+    /// - `job_or_submission_id`: If set, only return the job whose hex job_id matches,
+    ///   or whose `job_info` submission data matches.
+    /// - `skip_submission_job_info_field`: If true, clear the `job_info` field from results.
+    /// - `skip_is_running_tasks_field`: If true, clear the `is_running_tasks` field from results.
     pub fn handle_get_all_job_info(
         &self,
         limit: Option<usize>,
+        job_or_submission_id: Option<&str>,
+        skip_submission_job_info_field: bool,
+        skip_is_running_tasks_field: bool,
     ) -> Vec<ray_proto::ray::rpc::JobTableData> {
+        let iter = self.job_data.iter().filter_map(|r| {
+            let job = r.value();
+
+            // Apply job_or_submission_id filter
+            if let Some(filter) = job_or_submission_id {
+                let job_id_hex = hex::encode(&job.job_id);
+                let submission_matches = job
+                    .job_info
+                    .as_ref()
+                    .map(|info| info.entrypoint == filter || info.status == filter)
+                    .unwrap_or(false);
+                if job_id_hex != filter && !submission_matches {
+                    return None;
+                }
+            }
+
+            let mut job = job.clone();
+
+            // Apply field stripping
+            if skip_submission_job_info_field {
+                job.job_info = None;
+            }
+            if skip_is_running_tasks_field {
+                job.is_running_tasks = None;
+            }
+
+            Some(job)
+        });
+
         if let Some(limit) = limit {
-            self.job_data.iter().take(limit).map(|r| r.value().clone()).collect()
+            iter.take(limit).collect()
         } else {
-            self.job_data.iter().map(|r| r.value().clone()).collect()
+            iter.collect()
         }
     }
 
@@ -340,10 +377,10 @@ mod tests {
             mgr.handle_add_job(job_data).await.unwrap();
         }
 
-        let all = mgr.handle_get_all_job_info(None);
+        let all = mgr.handle_get_all_job_info(None, None, false, false);
         assert_eq!(all.len(), 3);
 
-        let limited = mgr.handle_get_all_job_info(Some(2));
+        let limited = mgr.handle_get_all_job_info(Some(2), None, false, false);
         assert_eq!(limited.len(), 2);
     }
 
@@ -642,5 +679,89 @@ mod tests {
             }
             other => panic!("expected error info pubsub message, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_all_job_info_skip_submission_job_info_field() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            job_info: Some(ray_proto::ray::rpc::JobsApiInfo {
+                status: "RUNNING".to_string(),
+                entrypoint: "python script.py".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+
+        // Without skip: job_info should be present
+        let jobs = mgr.handle_get_all_job_info(None, None, false, false);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].job_info.is_some());
+
+        // With skip: job_info should be stripped
+        let jobs = mgr.handle_get_all_job_info(None, None, true, false);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].job_info.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_all_job_info_skip_is_running_tasks_field() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            is_running_tasks: Some(true),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+
+        // Without skip: is_running_tasks should be present
+        let jobs = mgr.handle_get_all_job_info(None, None, false, false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].is_running_tasks, Some(true));
+
+        // With skip: is_running_tasks should be stripped
+        let jobs = mgr.handle_get_all_job_info(None, None, false, true);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].is_running_tasks.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_all_job_info_job_or_submission_id_filter() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let job1 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            ..Default::default()
+        };
+        let job2 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![2, 0, 0, 0],
+            ..Default::default()
+        };
+        mgr.handle_add_job(job1).await.unwrap();
+        mgr.handle_add_job(job2).await.unwrap();
+
+        // Filter by job_id hex of job 1
+        let job1_hex = hex::encode(&[1, 0, 0, 0]);
+        let jobs = mgr.handle_get_all_job_info(None, Some(&job1_hex), false, false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].job_id, vec![1, 0, 0, 0]);
+
+        // Filter by non-existent ID
+        let jobs = mgr.handle_get_all_job_info(None, Some("nonexistent"), false, false);
+        assert!(jobs.is_empty());
+
+        // No filter returns all
+        let jobs = mgr.handle_get_all_job_info(None, None, false, false);
+        assert_eq!(jobs.len(), 2);
     }
 }

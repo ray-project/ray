@@ -143,6 +143,49 @@ impl LocalResourceManager {
         self.bump_version();
     }
 
+    /// Resize a local resource to a new total capacity.
+    ///
+    /// Adjusts total and available for the named resource. If the new total is
+    /// less than the current total, available is clamped to non-negative.
+    /// Returns true if the resource existed and was resized, false if the
+    /// resource does not exist on this node.
+    pub fn resize_local_resource(&self, resource: &str, new_total: FixedPoint) -> bool {
+        let new_total = if new_total < FixedPoint::ZERO {
+            FixedPoint::ZERO
+        } else {
+            new_total
+        };
+
+        let mut resources = self.local_resources.write();
+        let old_total_instances = match resources.total.get_instances(resource) {
+            Some(s) if !s.is_empty() => s.to_vec(),
+            _ => return false,
+        };
+
+        let old_total: FixedPoint = old_total_instances.iter().copied().fold(FixedPoint::ZERO, |a, b| a + b);
+        let old_avail_instances = resources
+            .available
+            .get_instances(resource)
+            .map(|s| s.to_vec())
+            .unwrap_or_default();
+        let old_avail: FixedPoint = old_avail_instances.iter().copied().fold(FixedPoint::ZERO, |a, b| a + b);
+
+        // Compute new available: available + (new_total - old_total), clamped to [0, new_total]
+        let delta = new_total - old_total;
+        let mut new_avail = old_avail + delta;
+        if new_avail < FixedPoint::ZERO {
+            new_avail = FixedPoint::ZERO;
+        }
+        if new_avail > new_total {
+            new_avail = new_total;
+        }
+
+        resources.total.set_instances(resource.to_string(), vec![new_total]);
+        resources.available.set_instances(resource.to_string(), vec![new_avail]);
+        self.bump_version();
+        true
+    }
+
     /// Delete a local resource.
     pub fn delete_local_resource(&self, resource: &str) {
         let mut resources = self.local_resources.write();

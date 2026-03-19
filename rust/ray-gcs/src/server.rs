@@ -29,7 +29,10 @@ use crate::placement_group_manager::GcsPlacementGroupManager;
 use crate::pubsub_handler::InternalPubSubHandler;
 use crate::recovery::{GcsRecovery, RecoveryConfig};
 use crate::resource_manager::GcsResourceManager;
-use crate::store_client::{InMemoryInternalKV, InMemoryStoreClient, RedisStoreClient, StoreClient};
+use crate::store_client::{
+    InMemoryInternalKV, InMemoryStoreClient, RedisStoreClient, StoreClient,
+    StoreClientInternalKV,
+};
 use crate::table_storage::GcsTableStorage;
 use crate::task_manager::GcsTaskManager;
 use crate::worker_manager::GcsWorkerManager;
@@ -163,8 +166,13 @@ impl GcsServer {
         // 2. Create table storage
         let table_storage = Arc::new(GcsTableStorage::new(store_client.clone()));
 
-        // 3. Create KV manager
-        let internal_kv = Arc::new(InMemoryInternalKV::new());
+        // 3. Create KV manager — use store-client-backed KV for Redis (GCS-1 fix),
+        //    in-memory only for explicit in-memory mode.
+        let internal_kv: Arc<dyn crate::store_client::InternalKVInterface> =
+            match self.storage_type {
+                StorageType::Redis => Arc::new(StoreClientInternalKV::new(store_client.clone())),
+                StorageType::InMemory => Arc::new(InMemoryInternalKV::new()),
+            };
         let kv_manager = Arc::new(GcsInternalKVManager::new(
             internal_kv,
             self.config.raylet_config_list.clone().unwrap_or_default(),
@@ -342,6 +350,7 @@ impl GcsServer {
         };
         let node_svc = NodeInfoGcsServiceImpl {
             node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
+            autoscaler_state_manager: self.autoscaler_state_manager.as_ref().map(Arc::clone),
         };
         let actor_svc = ActorInfoGcsServiceImpl {
             actor_manager: Arc::clone(self.actor_manager.as_ref().unwrap()),
