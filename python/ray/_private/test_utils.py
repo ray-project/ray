@@ -1299,6 +1299,7 @@ class ResourceKillerActor:
         self.head_node_id = head_node_id
 
         # Set to track the killed nodes.
+        # Protected by a lock to support multithreaded subclasses.
         self._killed = set()
         self._killed_lock = threading.Lock()
 
