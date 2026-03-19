@@ -9,6 +9,7 @@ from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
     MockClusterNodeInfoCache,
+    MockDeploymentActorWrapper,
     MockKVStore,
     MockReplicaActorWrapper,
     MockTimer,
@@ -40,7 +41,12 @@ def mock_deployment_state_manager(
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch("time.time", new=timer.time), patch(
+    ), patch(
+        "ray.serve._private.deployment_state.DeploymentActorWrapper",
+        new=MockDeploymentActorWrapper,
+    ), patch(
+        "time.time", new=timer.time
+    ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
