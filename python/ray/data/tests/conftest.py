@@ -848,17 +848,19 @@ def check_if_unit_in_integration(request):
     if pathlib.Path(str(request.fspath)).parent != _INTEGRATION_TEST_DIR:
         return
 
+    current_file = request.fspath.basename
+
     # Skip if the test file is not been migrated yet (i.e. not in the set of migrated files)
-    if request.fspath.basename not in MIGRATED_FILES:
+    if current_file not in MIGRATED_FILES:
         return
 
-    for _f in MIGRATED_FILES:
-        if not (_INTEGRATION_TEST_DIR / _f).exists():
-            pytest.fail(
-                f"MIGRATED_FILES contains '{_f}' but no such file exists. "
-                "Please update MIGRATED_FILES.",
-                pytrace=False,
-            )
+    if not (_INTEGRATION_TEST_DIR / current_file).exists():
+        pytest.fail(
+            f"MIGRATED_FILES contains '{current_file}' but no such file exists. "
+            "Please update MIGRATED_FILES.",
+            pytrace=False,
+        )
+        return
 
     # Skip if the test is marked as an integration test
     if request.node.get_closest_marker("integration_test"):
