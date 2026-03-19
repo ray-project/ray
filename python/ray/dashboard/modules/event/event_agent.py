@@ -66,7 +66,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 )
                 if not dashboard_http_address:
                     raise ValueError("Dashboard http address not found in InternalKV.")
-                self._dashboard_http_address = dashboard_http_address.decode()
+                # GCS KV stores the address without scheme (e.g. "host:port").
+                # Prepend http:// so aiohttp can use it as a valid URL, consistent
+                # with how other callers (e.g. dashboard/utils.py) handle this value.
+                self._dashboard_http_address = (
+                    f"http://{dashboard_http_address.decode()}"
+                )
                 return self._dashboard_http_address
             except Exception:
                 logger.exception("Get dashboard http address failed.")
