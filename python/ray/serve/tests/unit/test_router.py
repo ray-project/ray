@@ -349,6 +349,18 @@ class TestBroadcast:
         assert results[0]._replica_id == r2_id
         assert r1_id in fake_request_router.dropped_replicas
 
+    async def test_all_replicas_dead_raises_unavailable(self, setup_router):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+
+        with pytest.raises(DeploymentUnavailableError):
+            await router.broadcast(dummy_request_metadata())
+
 
 @pytest.mark.asyncio
 class TestAssignRequest:

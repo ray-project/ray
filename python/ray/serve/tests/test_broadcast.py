@@ -165,6 +165,24 @@ async def test_broadcast_return_exceptions_async(serve_instance):
     assert all(isinstance(r, Exception) for r in results)
 
 
+def test_broadcast_sync_timeout(serve_instance):
+    """Test sync timeout handling for broadcast results collection."""
+
+    @serve.deployment(num_replicas=2)
+    class D:
+        def slow(self):
+            import time
+
+            time.sleep(10)
+            return "done"
+
+    serve.run(D.bind())
+    handle = serve.get_deployment_handle("D", "default")
+
+    with pytest.raises(TimeoutError):
+        handle.broadcast("slow").results(timeout_s=0.5)
+
+
 @pytest.mark.asyncio
 async def test_broadcast_async_timeout(serve_instance):
     """Test async timeout handling for broadcast results collection."""
@@ -174,14 +192,14 @@ async def test_broadcast_async_timeout(serve_instance):
         def slow(self):
             import time
 
-            time.sleep(1)
+            time.sleep(10)
             return "done"
 
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
 
     with pytest.raises(TimeoutError):
-        await handle.broadcast("slow").results_async(timeout_s=0.1)
+        await handle.broadcast("slow").results_async(timeout_s=0.5)
 
 
 if __name__ == "__main__":

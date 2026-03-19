@@ -1202,12 +1202,30 @@ class AsyncioRouter:
                 self._metrics_manager.inc_num_running_requests_for_replica(
                     replica.replica_id
                 )
+            # NOTE: add_done_callback fires from a C++ worker thread (for
+            # actor ObjectRefs) or a gRPC callback thread.
+            # _process_finished_request and decrement_queue_len_cache both
+            # access shared router state that is not thread-safe, so we
+            # schedule them on the router's event loop.
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 replica_pr.metadata.internal_request_id,
+                replica.actor_id,
             )
-            result.add_done_callback(callback)
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(
+                    cb, _
+                )
+            )
+            result.add_done_callback(
+                lambda _, rid=replica.replica_id: (
+                    self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        rid,
+                    )
+                )
+            )
 
             results.append(result)
 
