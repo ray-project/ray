@@ -81,6 +81,8 @@ class Benchmark:
         output_ds.materialize()
         duration = time.perf_counter() - start_time
         spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
+        if spilled_bytes_total > 0:
+            raise RuntimeError(f"{spilled_bytes_total} spilled bytes")
 
         # TODO(chengsu): Record more metrics based on dataset stats.
         num_rows = output_ds.count()
@@ -138,6 +140,8 @@ class Benchmark:
 
         duration = time.perf_counter() - start_time
         spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
+        if spilled_bytes_total > 0:
+            raise RuntimeError(f"{spilled_bytes_total} spilled bytes")
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.NUM_ROWS.value: record_count,
@@ -171,6 +175,8 @@ class Benchmark:
         assert fn_output is None or isinstance(fn_output, dict), fn_output
         duration = time.perf_counter() - start_time
         spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
+        if spilled_bytes_total > 0:
+            raise RuntimeError(f"{spilled_bytes_total} spilled bytes")
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
