@@ -101,6 +101,7 @@ if __name__ == "__main__":
         default=100,
         type=int,
     )
+    parser.add_argument("--chaos", action="store_true")
     parser.add_argument("--use-polars-sort", action="store_true")
     parser.add_argument("--limit-num-blocks", type=int, default=None)
 
@@ -183,7 +184,7 @@ if __name__ == "__main__":
 
         return results
 
-    benchmark = Benchmark()
+    benchmark = Benchmark(assert_no_dead_nodes=not args.chaos)
     benchmark.run_fn("main", run_benchmark, args)
     benchmark.write_result()
 

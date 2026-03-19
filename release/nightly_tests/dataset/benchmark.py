@@ -53,8 +53,9 @@ class Benchmark:
         {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self):
+    def __init__(self, assert_no_dead_nodes: bool = True):
         self.result = {}
+        self.assert_no_dead_nodes = assert_no_dead_nodes
 
     def run_fn(
         self,
@@ -97,6 +98,10 @@ class Benchmark:
 
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
+
+        if self.assert_no_dead_nodes:
+            dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+            assert not dead_nodes, f"Unexpected dead nodes: {dead_nodes}"
 
     def write_result(self):
         """Write all results to the appropriate JSON file.

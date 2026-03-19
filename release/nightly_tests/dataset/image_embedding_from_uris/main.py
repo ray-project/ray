@@ -190,7 +190,7 @@ class FakeEmbedPatches:
 
 
 def main(args: argparse.Namespace):
-    benchmark = Benchmark()
+    benchmark = Benchmark(assert_no_dead_nodes=not args.chaos)
 
     if args.chaos:
         start_chaos()

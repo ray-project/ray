@@ -320,6 +320,9 @@
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
           "_RayTrainWorker__execute.get_next"
+        script: >
+          python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+          --target-worker-gb 50 --use-gpu --chaos
 
 - name: training_ingest_benchmark
   python: "3.10"
@@ -511,7 +514,7 @@
       --max-to-kill 2
     script: >
       python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
-      --shuffle
+      --shuffle --chaos
 
 
 - name: "sort_{{scaling}}"
@@ -545,7 +548,9 @@
     prepare: >
       python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900
       --max-to-kill 3
-    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+    script: >
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+      --chaos
 
 
 #######################

@@ -190,6 +190,12 @@ def parse_args():
         default=False,
         help="Whether to cache output dataset (after preprocessing).",
     )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        default=False,
+        help="Whether this benchmark is running in chaos mode.",
+    )
     args = parser.parse_args()
 
     ray.init(
@@ -763,6 +769,6 @@ if __name__ == "__main__":
     else:
         case_name = "cache-none"
 
-    benchmark = Benchmark()
+    benchmark = Benchmark(assert_no_dead_nodes=not args.chaos)
     benchmark.run_fn(case_name, benchmark_code, args=args)
     benchmark.write_result()

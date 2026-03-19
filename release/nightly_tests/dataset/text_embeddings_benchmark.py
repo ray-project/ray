@@ -191,6 +191,6 @@ def main(args):
 if __name__ == "__main__":
     args = parse_args()
     print(f"Writing to {WRITE_PATH}")
-    benchmark = Benchmark()
+    benchmark = Benchmark(assert_no_dead_nodes=not args.chaos_test)
     benchmark.run_fn("text-embeddings-benchmark", main, args)
     benchmark.write_result()
