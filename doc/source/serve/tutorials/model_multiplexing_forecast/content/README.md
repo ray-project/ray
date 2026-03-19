@@ -362,15 +362,29 @@ You can also scale the number of replicas to keep more models loaded in memory a
 
 ### Pre-warm models at initialization
 
-Avoid cold-starts for high-priority models by pre-loading during initialization:
+The first request for a model is slow because it triggers model loading. Pre-warm high-priority models during replica startup to eliminate this cold-start latency.
+
+Ray Serve does **not** automatically call any pre-warming method. You must call it yourself from `__init__`. Ray Serve supports `async def __init__`, so you can await the multiplexed model loader directly:
 
 ```python
-async def _prewarm(self):
-    for customer_id in ["customer_vip_1", "customer_vip_2"]:
-        await self.get_model(customer_id)
+@serve.deployment
+class ForecastingService:
+    async def __init__(self):
+        self.model_storage_path = "/customer-models"
+        await self._prewarm()
+
+    async def _prewarm(self):
+        for customer_id in ["customer_vip_1", "customer_vip_2"]:
+            await self.get_model(customer_id)
+
+    @serve.multiplexed(max_num_models_per_replica=4)
+    async def get_model(self, customer_id: str):
+        ...
 ```
 
-**Note:** First requests for a model are slow because they trigger model loading. Pre-warming eliminates this latency for important models.
+With this pattern, `customer_vip_1` and `customer_vip_2` are loaded into the multiplexed model cache before any requests arrive.
+
+**Note:** Each replica runs its own `__init__` independently, so every replica pre-warms the same set of models. If you want different replicas to pre-warm different models, drive the pre-warming from an ingress deployment using deployment handle options with `multiplexed_model_id`, which routes each call to an appropriate replica.
 
 ## Troubleshooting
 
