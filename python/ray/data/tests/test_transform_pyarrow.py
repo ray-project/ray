@@ -99,6 +99,7 @@ def test_map_batches_fallback_to_pandas_on_incompatible_data(
     assert isinstance(block, pd.DataFrame)
 
 
+@pytest.mark.integration_test
 def test_map_raises_on_incompatible_data(
     ray_start_regular_shared,
     restore_data_context,
