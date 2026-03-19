@@ -128,25 +128,5 @@ TEST(PythonRayEventTest, TestSerializeInvalidFieldNumber) {
   EXPECT_FALSE(ray_event.has_submission_job_lifecycle_event());
 }
 
-TEST(PythonRayEventTest, TestSupportsMerge) {
-  rpc::events::SubmissionJobDefinitionEvent def_event;
-  std::string serialized = def_event.SerializeAsString();
-
-  auto event = CreatePythonRayEvent(
-      /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
-      /*event_type=*/
-      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
-      /*severity=*/static_cast<int>(rpc::events::RayEvent::INFO),
-      /*entity_id=*/"test",
-      /*message=*/"",
-      /*session_name=*/"test-session",
-      /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/
-      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
-
-  // PythonRayEvent should not support merge.
-  EXPECT_FALSE(event->SupportsMerge());
-}
-
 }  // namespace observability
 }  // namespace ray

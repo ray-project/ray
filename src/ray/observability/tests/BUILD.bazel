@@ -18,13 +18,11 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:fake_metric",
-        "//src/ray/observability:python_event_interface",
         "//src/ray/observability:ray_actor_definition_event",
         "//src/ray/observability:ray_actor_lifecycle_event",
         "//src/ray/observability:ray_driver_job_definition_event",
         "//src/ray/observability:ray_driver_job_lifecycle_event",
         "//src/ray/observability:ray_event_recorder",
-        "//src/ray/protobuf/public:events_submission_job_definition_event_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

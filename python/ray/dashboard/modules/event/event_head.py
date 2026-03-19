@@ -119,6 +119,7 @@ class EventHead(
         )
         self._head_aggregator_stub = None
         self._head_node_id = None
+        self._external_ray_event_allowlist = self._get_external_ray_event_allowlist()
 
         # To init gcs_client in internal_kv for record_extra_usage_tag.
         assert self.gcs_client is not None
@@ -186,11 +187,10 @@ class EventHead(
             if event_type
         }
 
-    @classmethod
     def _validate_external_ray_events(
-        cls, events: List[events_base_event_pb2.RayEvent]
+        self, events: List[events_base_event_pb2.RayEvent]
     ) -> None:
-        allowlist = cls._get_external_ray_event_allowlist()
+        allowlist = self._external_ray_event_allowlist
         for event in events:
             event_type_name = events_base_event_pb2.RayEvent.EventType.Name(
                 event.event_type

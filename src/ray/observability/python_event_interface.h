@@ -16,16 +16,10 @@
 
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/observability/ray_event_interface.h"
-#include "ray/observability/ray_event_recorder.h"
-#include "ray/rpc/event_aggregator_client.h"
-#include "ray/stats/metric.h"
-#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
@@ -64,7 +58,6 @@ class PythonRayEvent : public RayEventInterface {
   void Merge(RayEventInterface &&other) override;
   rpc::events::RayEvent Serialize() && override;
   rpc::events::RayEvent::EventType GetEventType() const override;
-  bool SupportsMerge() const override;
 
  private:
   rpc::events::RayEvent::SourceType source_type_;
@@ -108,53 +101,6 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
 /// (e.g., "[{...}, {...}]")
 std::string SerializeEventsToRayEventsDataJson(
     std::vector<std::unique_ptr<RayEventInterface>> &&events);
-
-/// Owns all infrastructure for the Python-side event recorder: io_context,
-/// background thread, gRPC client, metrics counter, and the recorder itself.
-///
-/// Call Shutdown() for orderly cleanup (flush + stop), or let the destructor
-/// handle it. Both are safe to call multiple times.
-class PythonEventRecorder {
- public:
-  /// \param aggregator_address Address of the event aggregator server.
-  /// \param aggregator_port Port of the event aggregator server.
-  /// \param node_ip The IP address of the current node.
-  /// \param node_id_hex Hex-encoded node ID.
-  /// \param max_buffer_size Maximum number of events to buffer before dropping.
-  /// \param metric_source Label for the "Source" tag on dropped-events metrics
-  ///        (e.g., "python", "gcs").
-  PythonEventRecorder(const std::string &aggregator_address,
-                      int aggregator_port,
-                      const std::string &node_ip,
-                      const std::string &node_id_hex,
-                      size_t max_buffer_size,
-                      const std::string &metric_source);
-  ~PythonEventRecorder();
-
-  PythonEventRecorder(const PythonEventRecorder &) = delete;
-  PythonEventRecorder &operator=(const PythonEventRecorder &) = delete;
-
-  /// Add events to the recorder buffer for periodic export.
-  void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list);
-
-  /// Orderly shutdown: flush buffered events, stop io_context, join thread.
-  /// Safe to call multiple times.
-  void Shutdown();
-
- private:
-  std::unique_ptr<instrumented_io_context> io_context_;
-  std::unique_ptr<
-      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>
-      work_guard_;
-  std::unique_ptr<std::thread> io_thread_;
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::unique_ptr<rpc::EventAggregatorClientImpl> event_aggregator_client_;
-  ray::stats::Count dropped_events_counter_;
-  // Owned storage for the metric source label. Declared before recorder_ because
-  // RayEventRecorder stores a string_view into this string.
-  std::string metric_source_str_;
-  std::unique_ptr<RayEventRecorder> recorder_;
-};
 
 }  // namespace observability
 }  // namespace ray

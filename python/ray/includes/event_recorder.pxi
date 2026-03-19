@@ -1,12 +1,5 @@
-"""Cython bindings for RayEventRecorder.
-
-This module provides Python access to the C++ RayEventRecorder for emitting
-internal Ray events from Python code (e.g., submission job events).
-"""
-
 from ray.includes.event_recorder cimport (
     CRayEventInterface,
-    CPythonEventRecorder,
     CreatePythonRayEvent,
     SerializeEventsToRayEventsDataJson,
 )
@@ -14,11 +7,6 @@ from ray.includes.common cimport move
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
-
-import logging
-import threading
-
-logger = logging.getLogger(__name__)
 
 
 cdef class RayEvent:
@@ -102,139 +90,3 @@ def serialize_events_to_ray_events_data_json(list events):
     with nogil:
         json_data = SerializeEventsToRayEventsDataJson(move(cpp_events))
     return json_data
-
-
-# module-level Singleton instance, lazily created by EventRecorder.initialize().
-_event_recorder_instance = None
-# Guards singleton lifecycle and emission against concurrent shutdown/initialize.
-_event_recorder_lock = threading.RLock()
-
-
-cdef class EventRecorder:
-    """Per-process singleton for recording Ray events."""
-    cdef unique_ptr[CPythonEventRecorder] _recorder
-
-    def __dealloc__(self):
-        """Safety-net cleanup. C++ destructor also calls Shutdown()."""
-        if self._recorder.get() != NULL:
-            self._recorder.get().Shutdown()
-        self._recorder.reset()
-
-    @staticmethod
-    def initialize(
-        str aggregator_address,
-        int aggregator_port,
-        str node_ip,
-        str node_id_hex,
-        int max_buffer_size,
-        str metric_source = "python",
-    ):
-        """Initialize the per-process event recorder.
-
-        Creates the underlying C++ PythonEventRecorder with a background I/O
-        thread and gRPC client. No-op if already initialized.
-
-        Args:
-            aggregator_address: Address of the event aggregator server.
-            aggregator_port: Port of the event aggregator server.
-            node_ip: IP address of the current node.
-            node_id_hex: Hex-encoded node ID.
-            max_buffer_size: Maximum number of events to buffer.
-            metric_source: Label for the "Source" tag on dropped-events metrics
-                (default "python").
-        """
-        global _event_recorder_instance
-        cdef EventRecorder rec
-        with _event_recorder_lock:
-            if _event_recorder_instance is not None:
-                return
-
-            rec = EventRecorder()
-            rec._recorder.reset(
-                new CPythonEventRecorder(
-                    aggregator_address.encode("utf-8"),
-                    aggregator_port,
-                    node_ip.encode("utf-8"),
-                    node_id_hex.encode("utf-8"),
-                    max_buffer_size,
-                    metric_source.encode("utf-8"),
-                )
-            )
-            _event_recorder_instance = rec
-
-    @staticmethod
-    def instance():
-        """Get the per-process EventRecorder singleton.
-
-        Returns:
-            The EventRecorder instance if initialized, None otherwise.
-        """
-        with _event_recorder_lock:
-            return _event_recorder_instance
-
-    @staticmethod
-    def shutdown():
-        """Shutdown the event recorder.
-
-        Stops exporting events, performs a final flush, and releases all
-        C++ resources. After this call, emit() and emit_batch() will be
-        no-ops until initialize() is called again.
-        """
-        global _event_recorder_instance
-        cdef EventRecorder rec
-        with _event_recorder_lock:
-            if _event_recorder_instance is None:
-                return
-
-            rec = <EventRecorder>_event_recorder_instance
-            if rec._recorder.get() != NULL:
-                rec._recorder.get().Shutdown()
-            rec._recorder.reset()
-            _event_recorder_instance = None
-
-    @staticmethod
-    def emit(RayEvent event):
-        """Emit a single event. No-op if not initialized.
-
-        Args:
-            event: A RayEvent object (created via InternalEventBuilder.build()).
-
-        Returns:
-            True if the event was successfully queued, False otherwise.
-        """
-        return EventRecorder.emit_batch([event])
-
-    @staticmethod
-    def emit_batch(list events):
-        """Emit multiple events. No-op if not initialized.
-
-        Args:
-            events: List of RayEvent objects to emit.
-
-        Returns:
-            True if events were successfully queued, False otherwise.
-        """
-        cdef EventRecorder rec
-        cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
-        cdef RayEvent ev
-
-        if not events:
-            return True
-
-        for ev in events:
-            cpp_events.push_back(move(ev.to_cpp_event()))
-
-        with _event_recorder_lock:
-            if _event_recorder_instance is None:
-                logger.debug(
-                    "Event recorder not initialized, dropping %d events",
-                    len(events),
-                )
-                return False
-
-            rec = <EventRecorder>_event_recorder_instance
-
-            with nogil:
-                rec._recorder.get().AddEvents(move(cpp_events))
-
-            return True
