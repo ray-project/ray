@@ -2,8 +2,6 @@ import logging
 import time
 import uuid
 from abc import ABC, abstractmethod
-from concurrent import futures
-from enum import Enum
 from typing import (
     Any,
     Dict,
@@ -32,7 +30,7 @@ class AsyncCallee(ABC, Generic[InputT, OutputT]):
     """A unit of work that runs asynchronously in the AsyncServiceActor process.
 
     Subclasses implement ``run()`` to perform expensive computation (CPU-bound)
-    or concurrent I/O (via the provided ThreadPoolExecutor).
+    or concurrent I/O.
 
     Set ``min_interval_s`` to throttle how often the task is submitted.
     The ``AsyncServiceHandle`` enforces this on the scheduling thread.
@@ -41,7 +39,7 @@ class AsyncCallee(ABC, Generic[InputT, OutputT]):
     min_interval_s: float = 0
 
     @abstractmethod
-    def run(self, obj: InputT, tpe: futures.ThreadPoolExecutor) -> OutputT:
+    def run(self, obj: InputT) -> OutputT:
         ...
 
 
@@ -57,7 +55,7 @@ class AsyncCaller(Protocol):
 
     The flow each scheduling step:
         1. ``build_refresh_input(executor)`` — snapshot state (scheduling thread)
-        2. ``task.run(snapshot, tpe)`` — expensive work (actor process)
+        2. ``task.run(snapshot)`` — expensive work (actor process)
         3. ``apply_refresh_result(result, executor)`` — apply output (scheduling thread)
     """
 
@@ -81,11 +79,6 @@ class AsyncCaller(Protocol):
         ...
 
 
-class ErrorPolicy(Enum):
-    LOG_AND_RETRY = "log_and_retry"
-    PROPAGATE = "propagate"
-
-
 @ray.remote(num_cpus=0)
 class AsyncServiceActor:
     """Singleton Ray actor that hosts async service tasks in a separate process.
@@ -97,7 +90,6 @@ class AsyncServiceActor:
 
     def __init__(self):
         self._tasks: Dict[ServiceKeyT, AsyncCallee] = {}
-        self._tpe = futures.ThreadPoolExecutor(max_workers=1)
 
     def register(self, task: AsyncCallee) -> ServiceKeyT:
         service_key = uuid.uuid4()
@@ -106,7 +98,7 @@ class AsyncServiceActor:
 
     def update(self, key: ServiceKeyT, state_obj: Any) -> Any:
         task = self._tasks[key]
-        return task.run(state_obj, self._tpe)
+        return task.run(state_obj)
 
     def unregister(self, key: ServiceKeyT):
         self._tasks.pop(key, None)
@@ -122,12 +114,10 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
     def __init__(
         self,
         task: AsyncCallee,
-        error_policy: ErrorPolicy = ErrorPolicy.LOG_AND_RETRY,
     ):
 
         self._key = ray.get(get_or_create_async_service_actor().register.remote(task))
         self._min_interval_s = task.min_interval_s
-        self._error_policy = error_policy
         self._pending_ref: Optional[ray.ObjectRef] = None
         self._last_submit_time: float = 0
 
@@ -164,9 +154,8 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
         except ray.exceptions.GetTimeoutError:
             pass
         except Exception as e:
-            if self._error_policy == ErrorPolicy.PROPAGATE:
-                raise
             logger.debug(f"Async service task failed: {e}")
+            raise
         finally:
             self._pending_ref = None
 
