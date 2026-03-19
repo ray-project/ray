@@ -430,9 +430,9 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         runner._schedule_trial_pause(trial, should_checkpoint=False)
 
         cached_decision = runner._cached_trial_decisions.get(trial.trial_id)
-        assert cached_decision == TrialScheduler.PAUSE, (
-            f"Expected PAUSE, got {cached_decision}"
-        )
+        assert (
+            cached_decision == TrialScheduler.PAUSE
+        ), f"Expected PAUSE, got {cached_decision}"
         assert trial.status == Trial.PAUSED
 
 
