@@ -1297,7 +1297,11 @@ class ResourceKillerActor:
         self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
-        self.killed = set()
+
+        # Set to track the killed nodes.
+        self._killed = set()
+        self._killed_lock = threading.Lock()
+
         self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
         self.batch_size_to_kill = batch_size_to_kill
@@ -1308,6 +1312,22 @@ class ResourceKillerActor:
 
     def ready(self):
         pass
+
+    def _add_killed(self, node_id: Any):
+        with self._killed_lock:
+            self._killed.add(node_id)
+
+    def _remove_killed(self, node_id: Any):
+        with self._killed_lock:
+            self._killed.discard(node_id)
+
+    def _is_killed(self, node_id: Any) -> bool:
+        with self._killed_lock:
+            return node_id in self._killed
+
+    def _num_killed(self) -> int:
+        with self._killed_lock:
+            return len(self._killed)
 
     async def run(self):
         self.is_running = True
@@ -1328,7 +1348,7 @@ class ResourceKillerActor:
 
             for to_kill in to_kills:
                 self._kill_resource(*to_kill)
-            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
+            if self.max_to_kill is not None and self._num_killed() >= self.max_to_kill:
                 break
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
@@ -1339,6 +1359,10 @@ class ResourceKillerActor:
         raise NotImplementedError
 
     def _kill_resource(self, *args):
+        """To be implemented by subclasses.
+
+        The subclass should add any successfully-killed nodes to 
+        """
         raise NotImplementedError
 
     async def stop_run(self):
@@ -1349,10 +1373,10 @@ class ResourceKillerActor:
         self.is_running = False
         return was_running
 
-    async def get_total_killed(self):
-        """Get the total number of killed resources"""
+    async def get_total_killed(self) -> Set[Any]:
+        """Get the set of node IDs that were killed."""
         await self.done
-        return self.killed
+        return self._killed
 
     def _cleanup(self):
         """Cleanup any resources created by the killer.
@@ -1371,7 +1395,7 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"]
                 and (node["NodeID"] != self.head_node_id)
-                and (node["NodeID"] not in self.killed)
+                and (not self._is_killed(node["NodeID"]))
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), worker_nodes))
@@ -1408,12 +1432,13 @@ class RayletKiller(NodeKillerBase):
                     f"Failed to kill raylet on node {node_id} at "
                     f"{node_to_kill_ip}:{node_to_kill_port}"
                 )
-                raise
+                return
+
             logging.info(
                 f"Killed node {node_id} at address: "
                 f"{node_to_kill_ip}, port: {node_to_kill_port}"
             )
-            self.killed.add(node_id)
+            self._add_killed(node_id)
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
@@ -1443,9 +1468,10 @@ class EC2InstanceTerminator(NodeKillerBase):
                     f"Failed to terminate instance {node_id=}, "
                     f"address={node_to_kill_ip}"
                 )
-                raise
+                return
+
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
-            self.killed.add(node_id)
+            self._add_killed.(node_id)
 
 
 @ray.remote(num_cpus=0)
@@ -1455,19 +1481,6 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
 
         self._grace_period_s = grace_period_s
         self._kill_threads: Set[threading.Thread] = set()
-        self._killed_lock = threading.Lock()
-
-    def _add_killed(self, node_id: str) -> None:
-        with self._killed_lock:
-            self.killed.add(node_id)
-
-    def _remove_killed(self, node_id: str) -> None:
-        with self._killed_lock:
-            self.killed.discard(node_id)
-
-    def _is_killed(self, node_id: str) -> bool:
-        with self._killed_lock:
-            return node_id in self.killed
 
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         assert not self._is_killed(node_id)
@@ -1498,8 +1511,13 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
             daemon=True,
         )
         thread.start()
-        self._kill_threads.add(thread)
+
+        # NOTE(edoakes): we eagerly add the node ID to the killed set here even though
+        # it isn't confirmed yet. We will remove it if the command to kill the node
+        # fails. The ResourceKillerActor may exit its `run` before we ensure that all
+        # of the nodes were actually killed.
         self._add_killed(node_id)
+        self._kill_threads.add(thread)
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1606,7 +1624,7 @@ class WorkerKillerActor(ResourceKillerActor):
                 f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
             )
             # Store both task_id and pid because retried tasks have same task_id.
-            self.killed.add((process_to_kill_task_id, process_to_kill_pid))
+            self._add_killed((process_to_kill_task_id, process_to_kill_pid))
 
 
 def get_and_run_resource_killer(
