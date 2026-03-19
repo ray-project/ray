@@ -525,7 +525,6 @@ def test_export_optional_fields(enable_export_api_write):
     assert "end_time_ns" not in run_data["event_data"]
     assert "run_settings" in run_data["event_data"]
     run_settings = run_data["event_data"]["run_settings"]
-    # Optional protobuf scalar fields use their defaults
     assert "train_loop_config" not in run_settings
     assert "checkpoint_config" in run_settings["run_config"]
     assert "num_to_keep" not in run_settings["run_config"]["checkpoint_config"]
