@@ -66,8 +66,8 @@ class AsyncCaller(Protocol):
     def build_refresh_input(self) -> Any:
         """Build a serializable input snapshot for the async task.
 
-        Called on the scheduling thread. The *executor* is passed so
-        implementations need not hold a reference to it.
+        Called on the scheduling thread. Has access to live state of the
+        implementing object.
         """
         ...
 
@@ -150,14 +150,16 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
             return None
 
         try:
-            return ray.get(self._pending_ref, timeout=1)
+            result = ray.get(self._pending_ref, timeout=1)
+            self._pending_ref = None
+            return result
         except ray.exceptions.GetTimeoutError:
-            pass
+            # Not fully ready, will try again in the next call.
+            return None
         except Exception as e:
             logger.debug(f"Async service task failed: {e}")
-            raise
-        finally:
             self._pending_ref = None
+            raise
 
     def has_in_flight_request(self) -> bool:
         return self._pending_ref is not None
