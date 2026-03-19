@@ -760,26 +760,30 @@ def _map_task(
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
-                # Derive block execution stats
-                blk_exec_stats = blk_exec_stats_builder.build()
+                # Finish processing before yielding the block!
+                blk_exec_stats_builder.finish()
+
                 # Yield block and retrieve its Ray object serialization timing
                 gen_stats: StreamingGeneratorStats = yield block
-                if gen_stats:
-                    blk_exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
 
-                blk_exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
-                blk_exec_stats.task_idx = ctx.task_idx
-                blk_exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+                exec_stats = blk_exec_stats_builder.build(
+                    block_ser_time_s=(
+                        gen_stats.object_creation_dur_s if gen_stats else None
+                    ),
+                    udf_time_s=map_transformer.udf_time_s(reset=True),
+                    task_idx=ctx.task_idx,
+                    max_uss_bytes=profiler.estimate_max_uss(),
+                )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
                 #       interested in task total duration
                 # TODO figure out a better way to track task total duration
                 task_dur_s = time.perf_counter() - task_start_s
 
-                yield BlockMetadataWithSchema(
-                    metadata=replace(
+                yield BlockMetadataWithSchema.from_metadata(
+                    replace(
                         block_meta,
-                        exec_stats=blk_exec_stats,
+                        exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s
                         ),

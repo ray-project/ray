@@ -647,6 +647,13 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
+        CRayStatus ResizeRayletResourceInstances(
+            const c_string &node_id,
+            const unordered_map[c_string, double] &resources,
+            int64_t timeout_ms,
+            unordered_map[c_string, double] &total_resources
+        )
+
     cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
         CRayStatus PublishError(
             c_string key_id,
