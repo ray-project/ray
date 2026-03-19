@@ -552,6 +552,7 @@ class BlockAccessor:
                 and DataContext.get_current().batch_to_block_arrow_format
             ):
                 return cls.for_block(batch).to_arrow()
+            return batch
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:

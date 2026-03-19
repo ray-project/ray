@@ -72,46 +72,33 @@ def _safe_from_pandas(df: "pandas.DataFrame") -> "pyarrow.Table":
     This function routes object-dtype columns through ``convert_to_pyarrow_array``,
     which produces ``ArrowTensorArray`` for ndarray elements and falls back to
     ``ArrowPythonObjectArray`` (pickle) for arbitrary Python objects. All other columns
-    go through ``pa.Table.from_pandas`` on the reduced DataFrame so their dtypes,
-    metadata, and null handling are unchanged.
+    go through ``pa.array(col, from_pandas=True)`` which handles nullable dtypes and
+    extension types via ``__arrow_array__``.
     """
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
-    # Identify object-dtype columns
-    object_col_names = [
-        col_name for col_name in df.columns if is_object_dtype(df[col_name].dtype)
-    ]
-
     # If no object-dtype columns, use fast path with regular from_pandas()
-    if not object_col_names:
+    if not any(is_object_dtype(df[col].dtype) for col in df.columns):
         # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
         return pa.Table.from_pandas(df, preserve_index=False)
 
-    # Convert non-object columns via from_pandas so their dtypes and metadata are
-    # preserved (e.g. TensorDtype via __arrow_array__, extension types, etc.).
-    object_col_set = set(object_col_names)
-    non_object_col_names = [c for c in df.columns if c not in object_col_set]
-    non_object_table = pa.Table.from_pandas(
-        df[non_object_col_names], preserve_index=False
-    )
+    # Convert column by column: object-dtype columns go through
+    # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
+    # all others go through pa.array() with from_pandas=True.
+    arrays = []
+    fields = []
+    for col_name in df.columns:
+        col = df[col_name]
+        if is_object_dtype(col.dtype):
+            arr = convert_to_pyarrow_array(col.values, col_name)
+        else:
+            arr = pa.array(col, from_pandas=True)
+        arrays.append(arr)
+        fields.append(pa.field(col_name, arr.type))
 
-    # Assemble the final table column-by-column in the original order.
-    return pa.table(
-        {
-            col: (
-                convert_to_pyarrow_array(
-                    df[col].values, col
-                )  # use convert_to_pyarrow_array for object-dtype columns
-                if col in object_col_set
-                else non_object_table.column(
-                    col
-                )  # use regular column access for non-object-dtype columns
-            )
-            for col in df.columns
-        }
-    )
+    return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
 
 
 class PandasRow(Mapping):
@@ -354,7 +341,6 @@ class PandasBlockBuilder(TableBlockBuilder):
         from ray.data.extensions.tensor_extension import TensorArray
 
         pandas = lazy_import_pandas()
-
         return pandas.DataFrame(
             {
                 column_name: (

@@ -977,7 +977,9 @@ class Quantile(AggregateFnV2[List[Any], List[Any]]):
                 # Return the first null encountered to preserve column type.
                 return nulls[0]
 
-        if not accumulator:
+        if (
+            len(accumulator) == 0
+        ):  # Use len(accumulator) == 0 instead of not accumulator as a valid empty check for list or numpy array
             # If the list is empty (e.g., all values were null and ignored, or no values),
             # quantile is undefined.
             return None
