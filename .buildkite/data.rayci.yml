@@ -67,6 +67,16 @@ steps:
     depends_on: oss-ci-base_gpu-multipy
     tags: cibase
 
+  # type check
+  - label: ":python: pyrefly type check"
+    tags:
+      - data
+    instance_type: small
+    commands:
+      - bash ci/lint/pyrefly-check.sh
+    depends_on: data9build-multipy
+    job_env: data9build-py3.10
+
   # tests
   - label: ":database: data: arrow v9 tests"
     tags:
