@@ -65,6 +65,10 @@ from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
+_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
+
 # Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
 LogicalActorId = str
 
@@ -967,16 +971,14 @@ class _ActorPool(AutoscalingActorPool):
         """
         actor_state = actor._get_local_state()
         running_actor_state = self._running_actors[actor]
-        if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+        if actor_state in (None, _ACTOR_STATE_DEAD):
             # actor._get_local_state can return None if the state is Unknown
             # If actor_state is None or dead, there is nothing to do.
             return running_actor_state
-        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+        elif actor_state != _ACTOR_STATE_ALIVE:
             # The actors can be either ALIVE or RESTARTING here because they will
             # be restarted indefinitely until execution finishes.
-            assert (
-                actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-            ), actor_state
+            assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
             if not running_actor_state.is_restarting:
                 self._num_restarting_actors += 1
                 running_actor_state.is_restarting = True
