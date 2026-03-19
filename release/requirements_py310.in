@@ -16,7 +16,6 @@ pytest
 responses
 pyyaml
 pybuildkite
-PyGithub
 requests >= 2.31.0
 twine == 6.2.0
 docker >= 7.1.0
