@@ -14,6 +14,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     FixedShapeTensorFormat,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectType,
