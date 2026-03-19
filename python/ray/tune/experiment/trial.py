@@ -6,7 +6,6 @@ import platform
 import re
 import time
 import uuid
-from functools import partial
 from numbers import Number
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
@@ -23,17 +22,13 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import (
-    RAY_CHDIR_TO_TRIAL_DIR,
-    RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
-)
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
 )
-from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -185,27 +180,8 @@ def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     return relative_logdir
 
 
-def _noop_logger_creator(config: Dict[str, Any], logdir: str):
-    # Upon remote process setup, record the actor's original working dir before
-    # changing to the Tune logdir
-    os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
-
-    os.makedirs(logdir, exist_ok=True)
-
-    if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
-        # Set the working dir to the trial directory in the remote process,
-        # for user file writes
-        os.chdir(logdir)
-
-    return NoopLogger(config, logdir)
-
-
 def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
     trial.init_local_path()
-
-    logger_creator = partial(
-        _noop_logger_creator, logdir=trial.storage.trial_working_directory
-    )
 
     trial_config = copy.deepcopy(trial.config)
     trial_config[TRIAL_INFO] = _TrialInfo(trial)
@@ -217,7 +193,6 @@ def _get_trainable_kwargs(trial: "Trial") -> Dict[str, Any]:
 
     kwargs = {
         "config": trial_config,
-        "logger_creator": logger_creator,
         "storage": trial.storage,
     }
 
