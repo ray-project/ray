@@ -23,7 +23,7 @@ def _get_spilled_bytes_total() -> float:
 
 
 def _bytes_to_gb(b: float) -> float:
-    return round(b / (1024**3), 2)
+    return round(b / (1024**3), 4)
 
 
 class BenchmarkMetric(Enum):
