@@ -809,15 +809,16 @@ def unify_block_metadata_schema(
         A unified schema of the input list of schemas, or None if no valid schemas
         are provided.
     """
-    # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
 
-    # First check if there are blocks with computed schemas, then unify
-    # valid schemas from all such blocks.
+    # Collect schemas from all blocks that have a valid schema.
+    # Empty blocks (num_rows == 0) can still carry a valid schema (e.g. an
+    # empty PyArrow table preserves its column names and types), so we must
+    # not skip them.  Only blocks whose schema is None are excluded.
 
     schemas_to_unify = []
     for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+        if m.schema is not None:
             schemas_to_unify.append(m.schema)
     return unify_schemas_with_validation(schemas_to_unify)
 
@@ -847,9 +848,7 @@ def unify_ref_bundles_schema(
 ) -> Optional["Schema"]:
     schemas_to_unify = []
     for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
+        if bundle.schema is not None:
             schemas_to_unify.append(bundle.schema)
     return unify_schemas_with_validation(schemas_to_unify)
 

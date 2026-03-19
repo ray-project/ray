@@ -128,6 +128,19 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_from_arrow_refs_empty_table_preserves_schema(ray_start_regular_shared):
+    """Regression test: empty Arrow tables should preserve column names and types.
+
+    See https://github.com/ray-project/ray/issues/59946
+    """
+    empty_array = pa.array([], pa.int32())
+    empty_ref = ray.put(pa.table([empty_array], ["apples"]))
+    ds = ray.data.from_arrow_refs([empty_ref])
+    result = ds.to_pandas()
+    assert list(result.columns) == ["apples"], list(result.columns)
+    assert len(result) == 0
+
+
 if __name__ == "__main__":
     import sys
 
