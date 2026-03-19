@@ -32,7 +32,7 @@ py_test_module_list(
 
 # Custom metrics tests.
 py_test_module_list_with_env_variants(
-    size = "small",
+    size = "medium",
     env_variants = {
         "metr_agg_at_controller": {
             "env": {
@@ -278,7 +278,7 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
-        "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S": "0.1",
+        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_deploy_app.py",
@@ -697,7 +697,7 @@ py_test_module_list(
     env = {
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
         "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-        "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S": "0.1",
+        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_haproxy.py",

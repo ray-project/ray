@@ -355,6 +355,18 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
         if new_per_replica_pg == prev_per_replica_pg:
             return False
 
+        # All apps must be RUNNING with HEALTHY deployments before we
+        # consider recovery complete to avoid race situations where replicas
+        # serve requests but status is still DEPLOYING.
+        status = serve.status()
+        for app_name in ("survivor_app", "victim_app", "per_replica_app"):
+            app_status = status.applications.get(app_name)
+            if app_status is None or app_status.status != "RUNNING":
+                return False
+            for dep_status in app_status.deployments.values():
+                if dep_status.status != DeploymentStatus.HEALTHY:
+                    return False
+
         return True
 
     wait_for_condition(recovery_complete, timeout=60)
@@ -362,14 +374,6 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     # Verify all apps recovered and are serving.
     assert h_vict.remote().result() == "victim_ok"
     assert h_pr.remote().result() == "per_replica_ok"
-
-    # Verify all apps are RUNNING and deployments are HEALTHY.
-    status = serve.status()
-    for app_name in ("survivor_app", "victim_app", "per_replica_app"):
-        app_status = status.applications[app_name]
-        assert app_status.status == "RUNNING"
-        for dep_name, dep_status in app_status.deployments.items():
-            assert dep_status.status == DeploymentStatus.HEALTHY
 
     serve.delete("survivor_app")
     serve.delete("victim_app")
