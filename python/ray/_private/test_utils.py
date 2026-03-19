@@ -1404,7 +1404,11 @@ class RayletKiller(NodeKillerBase):
             try:
                 self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
             except Exception:
-                pass
+                logger.exception(
+                    f"Failed to kill raylet on node {node_id} at "
+                    f"{node_to_kill_ip}:{node_to_kill_port}"
+                )
+                raise
             logging.info(
                 f"Killed node {node_id} at address: "
                 f"{node_to_kill_ip}, port: {node_to_kill_port}"
@@ -1435,7 +1439,11 @@ class EC2InstanceTerminator(NodeKillerBase):
             try:
                 _terminate_ec2_instance(node_to_kill_ip)
             except Exception:
-                pass
+                logger.exception(
+                    f"Failed to terminate instance {node_id=}, "
+                    f"address={node_to_kill_ip}"
+                )
+                raise
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
@@ -1447,9 +1455,22 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
 
         self._grace_period_s = grace_period_s
         self._kill_threads: Set[threading.Thread] = set()
+        self._killed_lock = threading.Lock()
+
+    def _add_killed(self, node_id: str) -> None:
+        with self._killed_lock:
+            self.killed.add(node_id)
+
+    def _remove_killed(self, node_id: str) -> None:
+        with self._killed_lock:
+            self.killed.discard(node_id)
+
+    def _is_killed(self, node_id: str) -> bool:
+        with self._killed_lock:
+            return node_id in self.killed
 
     def _kill_resource(self, node_id, node_to_kill_ip, _):
-        assert node_id not in self.killed
+        assert not self._is_killed(node_id)
 
         # Clean up any completed threads.
         for thread in self._kill_threads.copy():
@@ -1458,13 +1479,19 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
                 self._kill_threads.remove(thread)
 
         def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            self._drain_node(node_id)
-            time.sleep(self._grace_period_s)
-            # Anyscale extends the drain deadline if you shut down the instance
-            # directly. To work around this, we force-stop Ray on the node. Anyscale
-            # should then terminate it shortly after without updating the drain
-            # deadline.
-            _execute_command_on_node("ray stop --force", node_to_kill_ip)
+            try:
+                self._drain_node(node_id)
+                time.sleep(self._grace_period_s)
+                # Anyscale extends the drain deadline if you shut down the instance
+                # directly. To work around this, we force-stop Ray on the node.
+                # Anyscale should then terminate it shortly after without updating
+                # the drain deadline.
+                _execute_command_on_node("ray stop --force", node_to_kill_ip)
+            except Exception:
+                logger.exception(
+                    f"Failed to kill node {node_id=}, {node_to_kill_ip=}"
+                )
+                self._remove_killed(node_id)
 
         logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
         thread = threading.Thread(
@@ -1474,7 +1501,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         )
         thread.start()
         self._kill_threads.add(thread)
-        self.killed.add(node_id)
+        self._add_killed(node_id)
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1996,13 +2023,23 @@ def _execute_command_on_node(command: str, node_ip: str):
     # easy ssh access to worker nodes.
     ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
+    # Strip library path overrides so that the system ssh binary
+    # doesn't pick up a conflicting OpenSSL from the Ray/conda env.
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("DYLD_LIBRARY_PATH", None)
+
     try:
         subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+            ssh_command, shell=True, capture_output=True, text=True, check=True,
+            env=env,
         )
     except subprocess.CalledProcessError as e:
-        print("Exit code:", e.returncode)
-        print("Stderr:", e.stderr)
+        logger.error(
+            f"Command failed on node {node_ip}: {command}, "
+            f"exit code: {e.returncode}, stderr: {e.stderr}"
+        )
+        raise
 
 
 RPC_FAILURE_MAP = {
