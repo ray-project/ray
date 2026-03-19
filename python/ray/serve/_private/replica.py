@@ -120,6 +120,8 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
+    format_grpc_peer_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
@@ -1317,6 +1319,7 @@ class ReplicaBase(ABC):
                 # Prefer the HTTP status code if it was populated.
                 status=status_code or status_str,
                 latency_ms=latency_ms,
+                client=request_metadata._client,
             ),
             extra=self._access_log_context,
         )
@@ -2057,6 +2060,7 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+
         with self._tracing_context(request_metadata):
             ray.serve.context._serve_request_context.set(
                 ray.serve.context._RequestContext(
@@ -2066,6 +2070,7 @@ class Replica(ReplicaBase):
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
                     grpc_context=request_metadata.grpc_context,
+                    _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
                     and RAY_SERVE_ENABLE_DIRECT_INGRESS,
                     _ray_trace_ctx=ray_trace_ctx,
@@ -2292,6 +2297,7 @@ class Replica(ReplicaBase):
             tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
             is_direct_ingress=True,
+            _client=format_grpc_peer_address(context.peer()),
         )
 
         if not self._can_accept_request(request_metadata):
@@ -2531,6 +2537,7 @@ class Replica(ReplicaBase):
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
+            _client=format_client_address(scope.get("client")),
         )
 
         if not self._can_accept_request(request_metadata):

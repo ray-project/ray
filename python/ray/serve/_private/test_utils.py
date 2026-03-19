@@ -1282,7 +1282,20 @@ def get_metric_dictionaries(
     name: str,
     timeout: float = 20,
     timeseries: Optional[PrometheusTimeseries] = None,
+    wait: bool = True,
 ) -> List[Dict]:
+    """Get metric samples as list of label dicts.
+
+    Args:
+        name: Metric name to fetch.
+        timeout: Timeout for each fetch attempt.
+        timeseries: Optional shared timeseries to populate.
+        wait: If True (default), wait for metric to appear before returning.
+            If False, fetch once and return immediately (possibly empty).
+
+    Returns:
+        List of metric samples as label dicts.
+    """
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
@@ -1296,7 +1309,18 @@ def get_metric_dictionaries(
         )
         return True
 
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout * 4)
+    if wait:
+        wait_for_condition(
+            metric_available, retry_interval_ms=1000, timeout=timeout * 4
+        )
+    else:
+        # Fetch once without asserting - allows outer wait_for_condition to retry
+        fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:
