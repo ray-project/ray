@@ -1892,7 +1892,7 @@ memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and p
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
-modin==0.23.1 ; python_version < "3.12" \
+modin==0.31.0 ; python_version < "3.12" \
     --hash=sha256:532fe0bfb2dcf06c0ad2d467721ef489fd58bb3ef7150bcf4a7ddd1069be1e4d \
     --hash=sha256:fa897dc59d5b9a8496be044185689fdd337b9f26cc81c4144b217a2a94d029bc
     # via
