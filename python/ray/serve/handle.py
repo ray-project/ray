@@ -6,6 +6,7 @@ import warnings
 from typing import (
     Any,
     AsyncIterator,
+    Coroutine,
     Dict,
     Generator,
     Generic,
@@ -772,51 +773,55 @@ class DeploymentBroadcastResponse:
 
     def __init__(
         self,
-        replica_results_future: Union[
-            concurrent.futures.Future[List[ReplicaResult]],
-            asyncio.Future[List[ReplicaResult]],
-        ],
-        _is_router_running_in_separate_loop: bool = True,
+        coro: Coroutine[Any, Any, List[ReplicaResult]],
+        loop: Optional[asyncio.AbstractEventLoop],
     ):
         """Initialize a DeploymentBroadcastResponse.
 
         Args:
-            replica_results_future: Future that resolves to the list of
-                replica results.
-            _is_router_running_in_separate_loop: Whether the router runs
-                in a separate event loop thread.
+            coro: Coroutine that resolves to the list of replica results
+                (i.e. ``Router.broadcast(...)``).
+            loop: The router's event loop. ``None`` in local testing mode.
         """
-        self._replica_results_future = replica_results_future
+        self._coro = coro
+        self._loop = loop
         self._replica_results: Optional[List[ReplicaResult]] = None
-        self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
 
     def _fetch_replica_results_sync(
         self, timeout_s: Optional[float] = None
     ) -> List[ReplicaResult]:
         if self._replica_results is None:
-            # When _is_router_running_in_separate_loop is True, the future
-            # is a concurrent.futures.Future (not asyncio.Future).
-            sync_future = cast(
-                concurrent.futures.Future[List[ReplicaResult]],
-                self._replica_results_future,
-            )
-            self._replica_results = sync_future.result(timeout=timeout_s)
+            if self._loop is None or self._loop.is_closed():
+                # Local testing mode: no running event loop.
+                tmp_loop = asyncio.new_event_loop()
+                try:
+                    self._replica_results = tmp_loop.run_until_complete(self._coro)
+                finally:
+                    tmp_loop.close()
+            else:
+                future = asyncio.run_coroutine_threadsafe(self._coro, self._loop)
+                self._replica_results = future.result(timeout=timeout_s)
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
         if self._replica_results is None:
-            if self._is_router_running_in_separate_loop:
-                sync_future = cast(
-                    concurrent.futures.Future[List[ReplicaResult]],
-                    self._replica_results_future,
+            running_loop = None
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
+            if self._loop is not None and running_loop is self._loop:
+                # Already running inside the router's event loop — just await.
+                self._replica_results = await self._coro
+            elif self._loop is not None:
+                # Different loop (router runs in a separate thread).
+                self._replica_results = await asyncio.wrap_future(
+                    asyncio.run_coroutine_threadsafe(self._coro, self._loop)
                 )
-                self._replica_results = await asyncio.wrap_future(sync_future)  # type: ignore[arg-type]
             else:
-                async_future = cast(
-                    asyncio.Future[List[ReplicaResult]],
-                    self._replica_results_future,
-                )
-                self._replica_results = await async_future
+                # No event loop (local testing mode).
+                self._replica_results = await self._coro
         return self._replica_results
 
     def results(
@@ -1150,27 +1155,5 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             }
         )
 
-        # Router.broadcast is async. Schedule the coroutine on the
-        # router's event loop and let DeploymentBroadcastResponse handle
-        # the sync/async unwrapping.
         coro = self._router.broadcast(metadata, *args, **kwargs)
-        is_separate_loop = self._is_router_running_in_separate_loop()
-        router_loop = self._router.event_loop
-        if is_separate_loop:
-            future = asyncio.run_coroutine_threadsafe(coro, loop=router_loop)
-        elif router_loop is not None:
-            future = router_loop.create_task(coro)
-        else:
-            # Local testing mode: no event loop, run synchronously.
-            tmp_loop = asyncio.new_event_loop()
-            try:
-                result = tmp_loop.run_until_complete(coro)
-            finally:
-                tmp_loop.close()
-            future = concurrent.futures.Future()
-            future.set_result(result)
-            is_separate_loop = True  # It's a concurrent.futures.Future
-        return DeploymentBroadcastResponse(
-            future,
-            _is_router_running_in_separate_loop=is_separate_loop,
-        )
+        return DeploymentBroadcastResponse(coro, self._router.event_loop)
