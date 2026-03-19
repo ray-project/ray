@@ -85,10 +85,16 @@ class SpillMetricsMonitor:
         if count == 0:
             return {}
 
-        return {
+        metrics = {
             "object_store_spilling_peak_gb_min": round(max_gb_min, 4),
             "object_store_spilling_avg_gb_min": round(sum_gb_min / count, 4),
         }
+
+        if count > 0:
+            raise RuntimeError(f"Spilling occurred: {metrics}")
+
+        return metrics
+
 
 
 def get_or_create_spill_metrics_monitor(
