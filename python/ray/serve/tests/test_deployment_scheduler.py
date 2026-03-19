@@ -762,14 +762,13 @@ class TestScaleDownReplicaSelection:
         num_replicas: int,
         ray_actor_options: dict,
     ):
-        return serve._run(
+        return serve.run(
             probe_deployment.options(
                 num_replicas=num_replicas,
                 ray_actor_options=ray_actor_options,
             ).bind(),
             name=app_name,
             route_prefix=f"/{app_name}",
-            _blocking=False,
         )
 
     @staticmethod
