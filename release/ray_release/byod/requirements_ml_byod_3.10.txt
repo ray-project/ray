@@ -1892,7 +1892,7 @@ memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and p
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.10.in
-modin==0.22.2 ; python_version < "3.12" \
+modin==0.23.1 ; python_version < "3.12" \
     --hash=sha256:532fe0bfb2dcf06c0ad2d467721ef489fd58bb3ef7150bcf4a7ddd1069be1e4d \
     --hash=sha256:fa897dc59d5b9a8496be044185689fdd337b9f26cc81c4144b217a2a94d029bc
     # via
@@ -2430,7 +2430,7 @@ packaging==23.0 \
     #   transformers
     #   typepy
     #   utilsforecast
-pandas==1.5.3 ; python_version < "3.12" \
+pandas==2.0.0 ; python_version < "3.12" \
     --hash=sha256:14e45300521902689a81f3f41386dc86f19b8ba8dd5ac5a3c7010ef8d2932813 \
     --hash=sha256:26d9c71772c7afb9d5046e6e9cf42d83dd147b5cf5bcb9d97252077118543792 \
     --hash=sha256:3749077d86e3a2f0ed51367f30bf5b82e131cc0f14260c4d3e499186fccc4406 \
