@@ -827,8 +827,8 @@ class DeploymentBroadcastResponse:
     ) -> List[Any]:
         """Fetch results from all replicas synchronously.
 
-        Returns a list of results, one per replica. The order corresponds
-        to the internal replica ordering at the time the broadcast was issued.
+        Returns a list of results, one per replica. The order of results is
+        not guaranteed.
 
         Args:
             timeout_s: Timeout in seconds. If ``None``, blocks indefinitely.
@@ -1150,8 +1150,27 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             }
         )
 
-        future = self._router.broadcast(metadata, *args, **kwargs)
+        # Router.broadcast is async. Schedule the coroutine on the
+        # router's event loop and let DeploymentBroadcastResponse handle
+        # the sync/async unwrapping.
+        coro = self._router.broadcast(metadata, *args, **kwargs)
+        is_separate_loop = self._is_router_running_in_separate_loop()
+        router_loop = self._router.event_loop
+        if is_separate_loop:
+            future = asyncio.run_coroutine_threadsafe(coro, loop=router_loop)
+        elif router_loop is not None:
+            future = router_loop.create_task(coro)
+        else:
+            # Local testing mode: no event loop, run synchronously.
+            tmp_loop = asyncio.new_event_loop()
+            try:
+                result = tmp_loop.run_until_complete(coro)
+            finally:
+                tmp_loop.close()
+            future = concurrent.futures.Future()
+            future.set_result(result)
+            is_separate_loop = True  # It's a concurrent.futures.Future
         return DeploymentBroadcastResponse(
             future,
-            _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+            _is_router_running_in_separate_loop=is_separate_loop,
         )
