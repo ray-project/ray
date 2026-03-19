@@ -10,7 +10,9 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.file_based_datasource import (
+    FileBasedDatasource,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
