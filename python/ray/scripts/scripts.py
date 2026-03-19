@@ -1131,13 +1131,13 @@ def start(
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."

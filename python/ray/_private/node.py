@@ -382,6 +382,13 @@ class Node:
                     gcs_server_port=int(gcs_server_port) if gcs_server_port else 0
                 )
 
+        # For worker nodes, check version compatibility before spawning
+        # any processes (including the reaper). If the check fails (e.g.
+        # Ray / Python version mismatch) we raise immediately rather than
+        # leave orphaned child processes behind.
+        if not head and not connect_only:
+            self.check_version_info()
+
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
         if not connect_only:
