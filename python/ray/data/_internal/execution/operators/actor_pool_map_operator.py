@@ -920,11 +920,12 @@ class _ActorPool(AutoscalingActorPool):
         return actor, ready_ref
 
     def _schedulable_actors(self) -> List[ActorHandle]:
+        # Access backing field directly to avoid method call overhead in hot path.
+        max_tasks = self._max_tasks_in_flight_per_actor
         return [
             actor
             for actor, state in self._running_actors.items()
-            if state.num_tasks_in_flight < self.max_tasks_in_flight_per_actor()
-            and not state.is_restarting
+            if state.num_tasks_in_flight < max_tasks and not state.is_restarting
         ]
 
     def can_schedule_task(self) -> bool:
