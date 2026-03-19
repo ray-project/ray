@@ -443,7 +443,12 @@ class TestReplicaQueueLengthPolicy:
             downscale_to_zero_delay_s=downscale_to_zero_delay_s,
         )
 
-        overload_requests = 100
+        # Use overload_requests that naturally produce the desired upscale_target
+        # without depending on bounds clamping (bounds are applied at a higher
+        # level in get_decision_num_replicas, not in the policy wrapper).
+        # desired = start_replicas * (overload_requests / target_ongoing_requests)
+        #         = 1 * (2 / 1) = 2
+        overload_requests = 2
 
         ctx = AutoscalingContext(
             config=config,
