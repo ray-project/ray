@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import anyscale
 from anyscale.job.models import JobState
+from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
 from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     CreateProductionJobConfig,
@@ -85,7 +86,7 @@ class AnyscaleJobManager:
                     max_retries=0,
                 ),
             )
-            job_response = self._sdk.create_job(job_request)
+            job_response = DefaultApi.create_job(self._sdk, job_request)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -138,7 +139,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
-            self._sdk.terminate_job(self._job_id)
+            DefaultApi.terminate_job(self._sdk, self._job_id)
             logger.info(f"Job {self._job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self._job_id}!"

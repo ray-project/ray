@@ -77,7 +77,9 @@ class MinimalClusterManager(ClusterManager):
         last_status = None
         error_message = None
         config_json = None
-        result = self.sdk.list_cluster_environment_builds(self.cluster_env_id)
+        result = DefaultApi.list_cluster_environment_builds(
+            self.sdk, self.cluster_env_id
+        )
         if not result or not result.results:
             raise ClusterEnvBuildError(f"No build found for cluster env: {result}")
 
@@ -100,10 +102,11 @@ class MinimalClusterManager(ClusterManager):
             logger.info("Starting new cluster env build...")
 
             # Retry build
-            result = self.sdk.create_cluster_environment_build(
+            result = DefaultApi.create_cluster_environment_build(
+                self.sdk,
                 dict(
                     cluster_environment_id=self.cluster_env_id, config_json=config_json
-                )
+                ),
             )
             build_id = result.result.id
 
@@ -131,7 +134,7 @@ class MinimalClusterManager(ClusterManager):
                 )
                 next_report = next_report + REPORT_S
 
-            result = self.sdk.get_build(build_id)
+            result = DefaultApi.get_build(self.sdk, build_id)
             build = result.result
 
             if build.status == "failed":

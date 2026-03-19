@@ -86,18 +86,29 @@ class _DelayedResponse:
 
 
 def _make_default_api_proxy(sdk):
-    """Return patchers that make DefaultApi methods delegate to MockSDK."""
+    """Return patchers that make DefaultApi methods delegate to MockSDK.
 
-    def search_proxy(self_arg, query):
-        return sdk.search_cluster_computes(query)
+    DefaultApi.method(self.sdk, ...) is used in production code to bypass
+    AnyscaleSDK deprecation overrides. These patches intercept the unbound
+    method calls and route them to the MockSDK instance.
+    """
 
-    def create_proxy(self_arg, body):
-        return sdk.create_cluster_compute(body)
+    def _proxy(method_name):
+        def proxy_fn(self_arg, *args, **kwargs):
+            return getattr(sdk, method_name)(*args, **kwargs)
 
-    return (
-        patch.object(DefaultApi, "search_cluster_computes", search_proxy),
-        patch.object(DefaultApi, "create_cluster_compute", create_proxy),
-    )
+        return proxy_fn
+
+    methods = [
+        "search_cluster_computes",
+        "create_cluster_compute",
+        "list_cluster_environment_builds",
+        "create_cluster_environment_build",
+        "get_build",
+        "search_cluster_environments",
+        "create_byod_cluster_environment",
+    ]
+    return tuple(patch.object(DefaultApi, name, _proxy(name)) for name in methods)
 
 
 class MinimalSessionManagerTest(unittest.TestCase):

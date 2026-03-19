@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
+
 from ray_release.exception import ClusterEnvCreateError
 from ray_release.logger import logger
 from ray_release.util import get_anyscale_sdk
@@ -74,12 +76,13 @@ def create_cluster_env_from_image(
     # Find whether there is identical cluster env
     paging_token = None
     while not cluster_env_id:
-        result = anyscale_sdk.search_cluster_environments(
+        result = DefaultApi.search_cluster_environments(
+            anyscale_sdk,
             dict(
                 name=dict(equals=cluster_env_name),
                 paging=dict(count=50, paging_token=paging_token),
                 project_id=None,
-            )
+            ),
         )
         paging_token = result.metadata.next_paging_token
 
@@ -95,14 +98,15 @@ def create_cluster_env_from_image(
     if not cluster_env_id:
         logger.info("Cluster env not found. Creating new one.")
         try:
-            result = anyscale_sdk.create_byod_cluster_environment(
+            result = DefaultApi.create_byod_cluster_environment(
+                anyscale_sdk,
                 dict(
                     name=cluster_env_name,
                     config_json=dict(
                         docker_image=image,
                         ray_version="nightly",
                     ),
-                )
+                ),
             )
             cluster_env_id = result.result.id
         except Exception as e:
