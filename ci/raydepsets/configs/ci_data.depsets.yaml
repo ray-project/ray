@@ -42,14 +42,7 @@ depsets:
       - pylance
       - pandas
       - modin
-    constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
-    append_flags:
-      - --index https://download.pytorch.org/whl/cpu
-      - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
-      - --unsafe-package ray
     build_arg_sets:
       - py310
       - py312
