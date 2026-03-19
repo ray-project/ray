@@ -118,7 +118,10 @@ class ExecutionPlan:
 
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
-            # The planner returns a tuple (plan, callbacks). We only need the plan for explain.
+            # TODO: This loop mixes two kinds of functions: optimizers (return a Plan) and
+            # the planner (returns a (PhysicalPlan, callbacks) tuple). The isinstance check
+            # below is a workaround for that mismatch. Fix this by pulling the planner step
+            # out of the loop so each function has a uniform return type.
             if isinstance(plan, tuple):
                 plan = plan[0]
 
