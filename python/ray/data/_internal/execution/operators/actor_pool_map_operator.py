@@ -1132,7 +1132,7 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ActorHandle) -> None:
+    def _release_running_actor(self, actor: ActorHandle):
         """Remove the given actor from the pool by dropping all pool references."""
         # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
