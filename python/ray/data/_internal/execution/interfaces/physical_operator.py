@@ -36,7 +36,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
-    from ray.data._internal.execution.interfaces.async_service import AsyncServiceTask
+    from ray.data._internal.execution.interfaces.async_service import AsyncCallee
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -912,12 +912,12 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    # -- AsyncRefreshable protocol --
+    # -- AsyncCaller protocol --
     # Operators that need per-step state refresh should override these
     # instead of refresh_state(). The executor manages the async lifecycle.
 
-    def create_async_task(self) -> Optional["AsyncServiceTask"]:
-        """Return an ``AsyncServiceTask`` to register with the async service,
+    def create_async_task(self) -> Optional["AsyncCallee"]:
+        """Return an ``AsyncCallee`` to register with the async service,
         or ``None`` to fall back to synchronous ``refresh_state()``.
         """
         return None

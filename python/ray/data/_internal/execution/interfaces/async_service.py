@@ -1,9 +1,16 @@
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
-from concurrent import futures
-from enum import Enum
-from typing import Any, Dict, Generic, Optional, TypeVar
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    Optional,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -19,53 +26,57 @@ ASYNC_SERVICE_ACTOR_NAME = "RayData_AsyncServiceActor"
 ASYNC_SERVICE_NAMESPACE = "RayData_AsyncService"
 
 
-class AsyncServiceTask(ABC, Generic[InputT, OutputT]):
+class AsyncCallee(ABC, Generic[InputT, OutputT]):
     """A unit of work that runs asynchronously in the AsyncServiceActor process.
 
     Subclasses implement ``run()`` to perform expensive computation (CPU-bound)
-    or concurrent I/O (via the provided ThreadPoolExecutor).
+    or concurrent I/O.
+
+    Set ``min_interval_s`` to throttle how often the task is submitted.
+    The ``AsyncServiceHandle`` enforces this on the scheduling thread.
     """
 
+    min_interval_s: float = 0
+
     @abstractmethod
-    def run(self, obj: InputT, tpe: futures.ThreadPoolExecutor) -> OutputT:
+    def run(self, obj: InputT) -> OutputT:
         ...
 
 
-class AsyncRefreshable(ABC):
+@runtime_checkable
+class AsyncCaller(Protocol):
     """Protocol for components that participate in async state refresh.
 
-    Both ``PhysicalOperator`` and ``ExecutionCallback`` can implement this.
+    Both ``PhysicalOperator`` and ``ExecutionCallback`` can implement this
+    via structural subtyping — no inheritance required.
+
     The executor manages the submit/poll lifecycle for all registered
-    refreshables — components only implement these three methods.
+    refreshables; components only implement these three methods.
 
     The flow each scheduling step:
-        1. ``build_refresh_input()`` — snapshot state (scheduling thread)
-        2. ``task.run(snapshot, tpe)`` — expensive work (actor process)
-        3. ``apply_refresh_result(result)`` — apply output (scheduling thread)
+        1. ``build_refresh_input(executor)`` — snapshot state (scheduling thread)
+        2. ``task.run(snapshot)`` — expensive work (actor process)
+        3. ``apply_refresh_result(result, executor)`` — apply output (scheduling thread)
     """
 
-    def create_async_task(self) -> Optional["AsyncServiceTask"]:
+    def create_async_task(self) -> Optional["AsyncCallee"]:
         """Return the task to register with the async service, or None to skip."""
-        return None
+        ...
 
     def build_refresh_input(self) -> Any:
         """Build a serializable input snapshot for the async task.
 
-        Called on the scheduling thread. Has access to live internal state.
+        Called on the scheduling thread. The *executor* is passed so
+        implementations need not hold a reference to it.
         """
-        return None
+        ...
 
     def apply_refresh_result(self, result: Any) -> None:
         """Apply the result from the async task back to internal state.
 
         Called on the scheduling thread when the result is ready.
         """
-        pass
-
-
-class ErrorPolicy(Enum):
-    LOG_AND_RETRY = "log_and_retry"
-    PROPAGATE = "propagate"
+        ...
 
 
 @ray.remote(num_cpus=0)
@@ -78,24 +89,23 @@ class AsyncServiceActor:
     """
 
     def __init__(self):
-        self._tasks: Dict[ServiceKeyT, AsyncServiceTask] = {}
-        self._tpe = futures.ThreadPoolExecutor()
+        self._tasks: Dict[ServiceKeyT, AsyncCallee] = {}
 
-    def register(self, task: AsyncServiceTask) -> ServiceKeyT:
+    def register(self, task: AsyncCallee) -> ServiceKeyT:
         service_key = uuid.uuid4()
         self._tasks[service_key] = task
         return service_key
 
     def update(self, key: ServiceKeyT, state_obj: Any) -> Any:
         task = self._tasks[key]
-        return task.run(state_obj, self._tpe)
+        return task.run(state_obj)
 
     def unregister(self, key: ServiceKeyT):
         self._tasks.pop(key, None)
 
 
 class AsyncServiceHandle(Generic[InputT, OutputT]):
-    """Client-side handle for non-blocking interaction with an AsyncServiceTask.
+    """Client-side handle for non-blocking interaction with an AsyncCallee.
 
     Used in the scheduling loop to submit snapshots and poll for
     results via ``ray.wait(timeout=0)`` without blocking.
@@ -103,21 +113,31 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
 
     def __init__(
         self,
-        task: AsyncServiceTask,
-        key: ServiceKeyT,
-        error_policy: ErrorPolicy = ErrorPolicy.LOG_AND_RETRY,
+        task: AsyncCallee,
     ):
 
         self._key = ray.get(get_or_create_async_service_actor().register.remote(task))
-        self._error_policy = error_policy
+        self._min_interval_s = task.min_interval_s
         self._pending_ref: Optional[ray.ObjectRef] = None
+        self._last_submit_time: float = 0
+
+    def should_submit(self) -> bool:
+        """True if no request is in-flight and the minimum interval has elapsed."""
+        if self._pending_ref is not None:
+            print("pending ref is None")
+            return False
+        if self._min_interval_s > 0:
+            print(f"delta is {time.monotonic() - self._last_submit_time}")
+            return time.monotonic() - self._last_submit_time >= self._min_interval_s
+        return True
 
     def request_refresh(self, state: InputT) -> None:
         """Submit state to the actor for async computation.
 
-        Only call when no request is currently in flight.
+        Only call when ``should_submit()`` returns True.
         """
         assert self._pending_ref is None, "Previous refresh still in flight"
+        self._last_submit_time = time.monotonic()
         self._pending_ref = get_or_create_async_service_actor().update.remote(
             self._key, state
         )
@@ -134,9 +154,8 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
         except ray.exceptions.GetTimeoutError:
             pass
         except Exception as e:
-            if self._error_policy == ErrorPolicy.PROPAGATE:
-                raise
             logger.debug(f"Async service task failed: {e}")
+            raise
         finally:
             self._pending_ref = None
 

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, List, Optional
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.async_service import AsyncServiceTask
+    from ray.data._internal.execution.interfaces.async_service import AsyncCallee
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 EXECUTION_CALLBACKS_CONFIG_KEY = "execution_callbacks"
@@ -17,7 +17,7 @@ class ExecutionCallback:
     """Callback interface for execution events.
 
     Callbacks can participate in async state refresh by implementing the
-    ``AsyncRefreshable`` protocol (``create_async_task``,
+    ``AsyncCaller`` protocol (``create_async_task``,
     ``build_refresh_input``, ``apply_refresh_result``).  The executor
     manages the submit/poll lifecycle automatically.
     """
@@ -40,12 +40,12 @@ class ExecutionCallback:
         """Called after the Dataset execution fails."""
         ...
 
-    # -- AsyncRefreshable protocol --
+    # -- AsyncCaller protocol --
     # Callbacks that need per-step state refresh should override these
     # instead of on_execution_step(). The executor manages the async lifecycle.
 
-    def create_async_task(self) -> Optional["AsyncServiceTask"]:
-        """Return an ``AsyncServiceTask`` to register with the async service,
+    def create_async_task(self) -> Optional["AsyncCallee"]:
+        """Return an ``AsyncCallee`` to register with the async service,
         or ``None`` to fall back to synchronous ``on_execution_step()``.
         """
         return None
