@@ -13,9 +13,13 @@ if TYPE_CHECKING:
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
+        DetokenizeRequest,
+        DetokenizeResponse,
         EmbeddingRequest,
         EmbeddingResponse,
         ErrorResponse,
+        TokenizeRequest,
+        TokenizeResponse,
         TranscriptionRequest,
         TranscriptionResponse,
     )
@@ -161,6 +165,53 @@ class LLMEngine(abc.ABC):
             None when the generator is done.
         """
         pass
+
+    async def tokenize(
+        self,
+        request: "TokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["TokenizeResponse", "ErrorResponse"], None]:
+        """Tokenize the input text.
+
+        This method tokenizes the input prompt or chat messages and returns
+        the token IDs and optionally token strings.
+
+        Args:
+            request: The tokenize request containing the text to tokenize.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Yields:
+            Union[TokenizeResponse, ErrorResponse]: A TokenizeResponse object
+            containing the tokens, or an ErrorResponse object.
+
+        Returns:
+            None when the generator is done.
+        """
+        yield  # type: ignore
+
+    async def detokenize(
+        self,
+        request: "DetokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["DetokenizeResponse", "ErrorResponse"], None]:
+        """Detokenize the input token IDs.
+
+        This method converts token IDs back into text.
+
+        Args:
+            request: The detokenize request containing the token IDs.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Yields:
+            Union[DetokenizeResponse, ErrorResponse]: A DetokenizeResponse object
+            containing the text, or an ErrorResponse object.
+
+        Returns:
+            None when the generator is done.
+        """
+        yield  # type: ignore
 
     async def check_health(self) -> None:
         """Check the health of the engine.

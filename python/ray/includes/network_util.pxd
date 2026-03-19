@@ -10,5 +10,3 @@ cdef extern from "ray/util/network_util.h" namespace "ray":
     optional[array_string_2] ParseAddress(const string &address)
     string GetNodeIpAddressFromPerspective(const optional[string] &address)
     bool IsIPv6(const string &host)
-    string GetLocalhostIP()
-    string GetAllInterfacesIP()

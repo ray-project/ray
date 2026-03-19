@@ -20,7 +20,7 @@
 
 #include "absl/time/time.h"
 #include "ray/common/id.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 class instrumented_io_context;
 
@@ -56,8 +56,8 @@ class WorkerInterface {
   /// Return the worker's ID.
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
-  virtual Process GetProcess() const = 0;
-  virtual void SetProcess(Process proc) = 0;
+  virtual const ProcessInterface &GetProcess() const = 0;
+  virtual void SetProcess(std::unique_ptr<ProcessInterface> proc) = 0;
   virtual rpc::Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   virtual void AsyncNotifyGCSRestart() = 0;

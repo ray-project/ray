@@ -171,14 +171,12 @@ class TestGC:
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Does not work on Python 3.10 on Windows.",
-)
 def test_import_in_subprocess(shutdown_only):
     @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
     def f():
-        return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
+        return subprocess.run(
+            [sys.executable, "-c", "import pip_install_test"]
+        ).returncode
 
     assert ray.get(f.remote()) == 0
 

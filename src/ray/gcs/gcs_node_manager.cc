@@ -604,6 +604,10 @@ void GcsNodeManager::SetNodeDraining(
         << drain_request->DebugString();
     iter->second = drain_request;
   }
+
+  for (auto &listener : node_draining_listeners_) {
+    listener(node_id, true, drain_request->deadline_timestamp_ms());
+  }
 }
 
 std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(

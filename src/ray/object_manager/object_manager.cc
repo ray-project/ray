@@ -27,7 +27,6 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/exponential_backoff.h"
-#include "ray/util/network_util.h"
 
 namespace ray {
 
@@ -88,7 +87,7 @@ ObjectManager::ObjectManager(
       rpc_service_(rpc_service),
       object_manager_server_("ObjectManager",
                              config_.object_manager_port,
-                             config_.object_manager_address,
+                             config_.object_manager_address == "127.0.0.1",
                              config_.rpc_service_threads_number),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
@@ -455,7 +454,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
     return;
   }
 
-  RAY_LOG(DEBUG).WithField(node_id).WithField(node_id)
+  RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
       << "Sending object chunks of object to node, number of chunks: "
       << chunk_reader->GetNumChunks()
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();

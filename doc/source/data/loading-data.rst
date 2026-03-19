@@ -17,7 +17,7 @@ Reading files
 
 Ray Data reads files from local disk or cloud storage in a variety of file formats.
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -157,7 +157,7 @@ Reading files from local disk
 To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
 specify paths with the ``local://`` schema. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tip::
 
@@ -190,7 +190,7 @@ To read files in cloud storage, authenticate all nodes with your cloud service p
 Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
 appropriate schema. URIs can point to buckets, folders, or objects.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -302,7 +302,7 @@ Reading files from NFS
 To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
 and specify files on the mounted filesystem. Paths can point to files or directories.
 
-To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+To read formats other than Parquet, see the :ref:`Loading Data API <loading-data-api>`.
 
 .. testcode::
     :skipif: True
@@ -395,11 +395,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=3,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
         Python objects. In the schema, the column name defaults to "item". 
@@ -414,7 +420,19 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
+            shape: (5, 1)
+            ╭───────╮
+            │ item  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 1     │
+            │ 2     │
+            │ 3     │
+            │ 4     │
+            │ 5     │
+            ╰───────╯
+            (Showing 5 of 5 rows)
 
     .. tab-item:: NumPy
 
@@ -427,18 +445,24 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             import numpy as np
             import ray
 
-            array = np.ones((3, 2, 2))
+            array = np.arange(3)
             ds = ray.data.from_numpy(array)
 
             print(ds)
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={data: ArrowTensorTypeV2(shape=(2, 2), dtype=double)}
-            )
+            shape: (3, 1)
+            ╭───────╮
+            │ data  │
+            │ ---   │
+            │ int64 │
+            ╞═══════╡
+            │ 0     │
+            │ 1     │
+            │ 2     │
+            ╰───────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: pandas
 
@@ -460,11 +484,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: object, price: float64}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ object ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
     .. tab-item:: PyArrow
 
@@ -485,11 +515,17 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
         .. testoutput::
 
-            MaterializedDataset(
-               num_blocks=1,
-               num_rows=3,
-               schema={food: string, price: double}
-            )
+            shape: (3, 2)
+            ╭────────┬────────╮
+            │ food   ┆ price  │
+            │ ---    ┆ ---    │
+            │ string ┆ double │
+            ╞════════╪════════╡
+            │ spam   ┆ 9.34   │
+            │ ham    ┆ 5.37   │
+            │ eggs   ┆ 0.94   │
+            ╰────────┴────────╯
+            (Showing 3 of 3 rows)
 
 .. _loading_datasets_from_distributed_df:
 
@@ -1073,13 +1109,14 @@ Ray Data reads from message queues like Kafka.
 
 To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
 the topic names and broker addresses. Ray Data performs bounded reads between
-a start and end offset.
+a start and end offset. You can specify offsets as integers, ``"earliest"``/``"latest"``
+strings, or ``datetime`` objects for time-based ranges.
 
 First, install the required dependencies:
 
 .. code-block:: console
 
-    pip install kafka-python
+    pip install confluent-kafka
 
 Then, specify your Kafka configuration and read from topics.
 
@@ -1104,20 +1141,25 @@ Then, specify your Kafka configuration and read from topics.
         end_offset="latest",
     )
 
-    # Read with authentication
-    from ray.data import KafkaAuthConfig
-
-    auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username="your-username",
-        sasl_plain_password="your-password",
+    # Read messages within a datetime range (datetimes with no timezone info are treated as UTC)
+    from datetime import datetime
+    ds = ray.data.read_kafka(
+        topics="my-topic",
+        bootstrap_servers="localhost:9092",
+        start_offset=datetime(2025, 1, 1),
+        end_offset=datetime(2025, 1, 2),
     )
 
+    # Read with authentication (Confluent/librdkafka options)
     ds = ray.data.read_kafka(
         topics="secure-topic",
         bootstrap_servers="localhost:9092",
-        kafka_auth_config=auth_config,
+        consumer_config={
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": "your-username",
+            "sasl.password": "your-password",
+        },
     )
 
     print(ds.schema())

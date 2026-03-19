@@ -1,6 +1,9 @@
 import functools
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+
+if TYPE_CHECKING:
+    import pyarrow.fs
 
 from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import add_execution_callback
@@ -21,24 +24,24 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     PhysicalPlan,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     AbstractAllToAll,
-)
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.from_operators import AbstractFrom
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.join_operator import Join
-from ray.data._internal.logical.operators.map_operator import (
+    AbstractFrom,
     AbstractUDFMap,
+    Count,
+    Download,
     Filter,
+    InputData,
+    Join,
+    Limit,
     Project,
+    Read,
     StreamingRepartition,
+    StreamingSplit,
+    Union,
+    Write,
+    Zip,
 )
-from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Download, Limit
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.checkpoint import (
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,
@@ -55,6 +58,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext
+from ray.data.datasource.file_datasink import _FileDatasink
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 PlanLogicalOpFn = Callable[
@@ -97,7 +101,7 @@ def plan_union_op(_, physical_children, data_context):
 
 def plan_limit_op(logical_op, physical_children, data_context):
     assert len(physical_children) == 1
-    return LimitOperator(logical_op._limit, physical_children[0], data_context)
+    return LimitOperator(logical_op.limit, physical_children[0], data_context)
 
 
 def plan_count_op(logical_op, physical_children, data_context):
@@ -117,14 +121,14 @@ def plan_join_op(
         data_context=data_context,
         left_input_op=physical_children[0],
         right_input_op=physical_children[1],
-        join_type=logical_op._join_type,
-        left_key_columns=logical_op._left_key_columns,
-        right_key_columns=logical_op._right_key_columns,
-        left_columns_suffix=logical_op._left_columns_suffix,
-        right_columns_suffix=logical_op._right_columns_suffix,
-        num_partitions=logical_op._num_outputs,
-        partition_size_hint=logical_op._partition_size_hint,
-        aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
+        join_type=logical_op.join_type,
+        left_key_columns=logical_op.left_key_columns,
+        right_key_columns=logical_op.right_key_columns,
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        num_partitions=logical_op.num_outputs,
+        partition_size_hint=logical_op.partition_size_hint,
+        aggregator_ray_remote_args_override=logical_op.aggregator_ray_remote_args,
     )
 
 
@@ -136,10 +140,10 @@ def plan_streaming_split_op(
     assert len(physical_children) == 1
     return OutputSplitter(
         physical_children[0],
-        n=logical_op._num_splits,
-        equal=logical_op._equal,
+        n=logical_op.num_splits,
+        equal=logical_op.equal,
         data_context=data_context,
-        locality_hints=logical_op._locality_hints,
+        locality_hints=logical_op.locality_hints,
     )
 
 
@@ -183,7 +187,10 @@ class Planner:
         ):
             self._supports_checkpointing = True
 
-            checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
+            data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
+            checkpoint_callback = self._create_checkpoint_callback(
+                checkpoint_config, data_file_dir, data_file_fs
+            )
             add_execution_callback(checkpoint_callback, logical_plan.context)
             load_checkpoint = checkpoint_callback.load_checkpoint
 
@@ -266,12 +273,35 @@ class Planner:
         op_map[physical_op] = logical_op
         return physical_op, op_map
 
-    def _create_checkpoint_callback(self, checkpoint_config) -> LoadCheckpointCallback:
+    def _create_checkpoint_callback(
+        self,
+        checkpoint_config,
+        data_file_dir=None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
         Subclasses can override this to use a different callback implementation.
         """
-        return LoadCheckpointCallback(checkpoint_config)
+        return LoadCheckpointCallback(
+            checkpoint_config,
+            data_file_dir=data_file_dir,
+            data_file_filesystem=data_file_filesystem,
+        )
+
+    @staticmethod
+    def _get_data_file_info(logical_plan: LogicalPlan):
+        """Extract the data file directory and filesystem from the Write op's datasink.
+
+        Returns (path, filesystem) for file-based datasinks, or (None, None)
+        for non-file datasinks.
+        """
+        last_op = logical_plan.dag
+        if isinstance(last_op, Write):
+            datasink = last_op.datasink_or_legacy_datasource
+            if isinstance(datasink, _FileDatasink):
+                return datasink.unresolved_path, datasink.filesystem
+        return None, None
 
     def _get_plan_fns_for_checkpointing(
         self,

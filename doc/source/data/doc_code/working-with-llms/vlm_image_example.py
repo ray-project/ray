@@ -48,8 +48,6 @@ path = "hf://datasets/lmms-lab/LMMs-Eval-Lite/coco2017_cap_val/"
 fs = HfFileSystem()
 vision_dataset = ray.data.read_parquet(path, filesystem=fs)
 
-HF_TOKEN = "your-hf-token-here"  # Replace with actual token if needed
-
 # __vlm_config_example_start__
 vision_processor_config = vLLMEngineProcessorConfig(
     model_source="Qwen/Qwen2.5-VL-3B-Instruct",
@@ -57,20 +55,10 @@ vision_processor_config = vLLMEngineProcessorConfig(
         tensor_parallel_size=1,
         pipeline_parallel_size=1,
         max_model_len=4096,
-        enable_chunked_prefill=True,
-        max_num_batched_tokens=2048,
         trust_remote_code=True,
         limit_mm_per_prompt={"image": 1},
     ),
-    # Override Ray's runtime env to include the Hugging Face token. Ray Data uses Ray under the hood to orchestrate the inference pipeline.
-    runtime_env=dict(
-        env_vars=dict(
-            # HF_TOKEN=HF_TOKEN, # Token not needed for public models
-            VLLM_USE_V1="1",
-        ),
-    ),
     batch_size=16,
-    accelerator_type="L4",
     concurrency=1,
     prepare_multimodal_stage={"enabled": True},
 )
@@ -148,6 +136,7 @@ def vision_postprocess(row: dict) -> dict:
 
 
 def load_vision_dataset():
+# __vlm_image_load_dataset_example_start__
     """
     Load vision dataset from Hugging Face.
 
@@ -173,6 +162,7 @@ def load_vision_dataset():
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
+# __vlm_image_load_dataset_example_end__
 
 
 def create_vlm_config():
@@ -186,17 +176,14 @@ def create_vlm_config():
             trust_remote_code=True,
             limit_mm_per_prompt={"image": 1},
         ),
-        runtime_env={
-            # "env_vars": {"HF_TOKEN": "your-hf-token-here"}  # Token not needed for public models
-        },
         batch_size=1,
-        accelerator_type="L4",
         concurrency=1,
         prepare_multimodal_stage={"enabled": True},
     )
 
 
 def run_vlm_example():
+# __vlm_run_example_start__
     """Run the complete VLM example workflow."""
     config = create_vlm_config()
     vision_dataset = load_vision_dataset()
@@ -212,7 +199,7 @@ def run_vlm_example():
         print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
-    # __vlm_run_example_end__
+# __vlm_run_example_end__
     return None, None, None
 
 

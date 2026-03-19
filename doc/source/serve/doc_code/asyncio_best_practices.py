@@ -89,6 +89,19 @@ class ThreadedHTTP:
         return await asyncio.to_thread(fetch)
 # __threaded_http_end__
 
+# __threadpool_override_begin__
+from concurrent.futures import ThreadPoolExecutor
+
+@serve.deployment
+class CustomThreadPool:
+    def __init__(self):
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=16))
+
+    async def __call__(self, request):
+        return await asyncio.to_thread(lambda: "ok")
+# __threadpool_override_end__
+
 
 # __numpy_deployment_begin__
 @serve.deployment
@@ -331,7 +344,13 @@ if __name__ == "__main__":
     result = cpu_threadpool_handle.remote(None).result()
     print(f"CPUWithThreadpool result: {result}")
     assert result == "ok"
-    
+
+    print("\nTesting CustomThreadPool deployment...")
+    custom_threadpool_handle = serve.run(CustomThreadPool.bind())
+    result = custom_threadpool_handle.remote(None).result()
+    print(f"CustomThreadPool result: {result}")
+    assert result == "ok"
+
     print("\nTesting BlockingStream deployment...")
     # Test BlockingStream - just verify it can be created and called
     blocking_stream_handle = serve.run(BlockingStream.bind())
@@ -389,7 +408,7 @@ if __name__ == "__main__":
         print("✅ ThreadedHTTP test passed")
     except Exception as e:
         print(f"⚠️  ThreadedHTTP test failed (expected): {type(e).__name__}: {e}")
-    
+
     print("\nTesting OffloadIO deployment...")
     try:
         offload_io_handle = serve.run(OffloadIO.bind())

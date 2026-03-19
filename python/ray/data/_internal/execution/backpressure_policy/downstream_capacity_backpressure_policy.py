@@ -2,17 +2,78 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from .backpressure_policy import BackpressurePolicy
-from ray._private.ray_constants import env_float
+from ray._common.utils import env_float
+from ray.data._internal.execution.resource_manager import (
+    ResourceManager,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = logging.getLogger(__name__)
+
+
+def get_available_object_store_budget_fraction(
+    resource_manager: "ResourceManager",
+    op: "PhysicalOperator",
+    consider_downstream_ineligible_ops: bool,
+) -> Optional[float]:
+    """Get available object store memory budget fraction for the operator.
+
+    Args:
+        resource_manager: The resource manager to use.
+        op: The operator to get the budget fraction for.
+        consider_downstream_ineligible_ops: If True, include downstream ineligible
+            ops in the calculation. If False, only consider this op's usage/budget.
+
+    Returns:
+        The available budget fraction, or None if not available.
+    """
+    op_usage = resource_manager.get_op_usage(
+        op, include_ineligible_downstream=consider_downstream_ineligible_ops
+    )
+    op_budget = resource_manager.get_budget(op)
+    if op_usage is None or op_budget is None:
+        return None
+
+    total_usage = op_usage.object_store_memory
+
+    total_budget = op_budget.object_store_memory
+    total_mem = total_usage + total_budget
+    if total_mem == 0:
+        return None
+
+    return total_budget / total_mem
+
+
+def get_utilized_object_store_budget_fraction(
+    resource_manager: "ResourceManager",
+    op: "PhysicalOperator",
+    consider_downstream_ineligible_ops: bool,
+) -> Optional[float]:
+    """Get utilized object store memory budget fraction for the operator.
+
+    Args:
+        resource_manager: The resource manager to use.
+        op: The operator to get the utilized fraction for.
+        consider_downstream_ineligible_ops: If True, include downstream ineligible
+            ops in the calculation. If False, only consider this op's usage/budget.
+
+    Returns:
+        The utilized budget fraction, or None if not available.
+    """
+    available_fraction = get_available_object_store_budget_fraction(
+        resource_manager,
+        op,
+        consider_downstream_ineligible_ops=consider_downstream_ineligible_ops,
+    )
+    if available_fraction is None:
+        return None
+    return 1 - available_fraction
 
 
 class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
@@ -95,16 +156,15 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if self._backpressure_capacity_ratio is None:
             # Downstream capacity backpressure is disabled.
             return True
+
         if not self._resource_manager.is_op_eligible(op):
             # Operator is not eligible for backpressure.
             return True
-        if self._resource_manager.is_materializing_op(op):
+
+        if self._resource_manager._is_blocking_materializing_op(op):
             # Operator is materializing, so no need to perform backpressure.
             return True
-        if self._resource_manager.has_materializing_downstream_op(op):
-            # Downstream operator is materializing, so can't perform backpressure
-            # based on downstream capacity which requires full materialization.
-            return True
+
         return False
 
     def _get_queue_ratio(self, op: "PhysicalOperator") -> float:
@@ -124,8 +184,8 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if self._should_skip_backpressure(op):
             return False
 
-        utilized_budget_fraction = (
-            self._resource_manager.get_utilized_object_store_budget_fraction(op)
+        utilized_budget_fraction = get_utilized_object_store_budget_fraction(
+            self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
         if (
             utilized_budget_fraction is not None

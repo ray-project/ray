@@ -2,18 +2,20 @@
 
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
-
+import dataclasses
 import logging
-import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
-from uuid import UUID
 
 import ray
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import (
+    ThreadSafeBundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -24,7 +26,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -52,107 +53,82 @@ Topology = Dict[PhysicalOperator, "OpState"]
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
     This class is thread-safe.
+
+    Args:
+        num_splits: Number of output splits operator's output is partitioned into.
+            In case of `num_splits` > 1, bundles are routed to corresponding queue
+             based on their `bundle.output_split_idx`.
     """
 
-    def __init__(self):
-        self._num_blocks = 0
-        self._queue = create_bundle_queue()
-        self._num_per_split = defaultdict(int)
-        self._lock = threading.Lock()
-        # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(create_bundle_queue)
-        super().__init__()
+    def __init__(self, num_splits: int):
+        assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
+
+        self._queues: List[ThreadSafeBundleQueue] = [
+            ThreadSafeBundleQueue(create_bundle_queue()) for _ in range(num_splits)
+        ]
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
-        with self._lock:
-            # The split queues contain bundles popped from the main queue. So, a bundle
-            # will either be in the main queue or in one of the split queues, and we
-            # don't need to worry about double counting.
-            return self._queue.estimate_size_bytes() + sum(
-                split_queue.estimate_size_bytes()
-                for split_queue in self._outputs_by_split.values()
-            )
+        return sum(q.estimate_size_bytes() for q in self._queues)
 
     @property
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
-        with self._lock:
-            return self._num_blocks
+        return sum(q.num_blocks() for q in self._queues)
 
     def __len__(self):
-        with self._lock:
-            return len(self._queue)
+        return sum(len(q) for q in self._queues)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
 
         Args:
             output_split_idx: If specified, only check ref bundles with the
-                given output split.
+                given output split. When None, checks the default queue (index 0).
         """
-        if output_split_idx is None:
-            with self._lock:
-                return len(self._queue) > 0
-        else:
-            with self._lock:
-                return self._num_per_split[output_split_idx] > 0
+        return self._get_queue_for(output_split_idx).has_next()
 
-    def append(self, ref: RefBundle):
+    def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
-        with self._lock:
-            self._queue.add(ref)
-            self._num_blocks += len(ref.blocks)
-            if ref.output_split_idx is not None:
-                self._num_per_split[ref.output_split_idx] += 1
+        self._get_queue_for(bundle.output_split_idx).add(bundle)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
+
         Args:
             output_split_idx: If specified, only pop a RefBundle
-                with the given output split.
+                with the given output split. When None, pops from the default
+                queue (index 0).
         Returns:
             A RefBundle if available, otherwise None.
         """
-        ret = None
-        if output_split_idx is None:
-            try:
-                with self._lock:
-                    ret = self._queue.get_next()
-            except IndexError:
-                pass
-        else:
-            with self._lock:
-                split_queue = self._outputs_by_split[output_split_idx]
-            if len(split_queue) == 0:
-                # Move all ref bundles to their indexed queues
-                # Note, the reason why we do indexing here instead of in the append
-                # is because only the last `OpBufferQueue` in the DAG, which will call
-                # pop with output_split_idx, needs indexing.
-                # If we also index the `OpBufferQueue`s in the middle, we cannot
-                # preserve the order of ref bundles with different output splits.
-                with self._lock:
-                    while len(self._queue) > 0:
-                        ref = self._queue.get_next()
-                        self._outputs_by_split[ref.output_split_idx].add(ref)
-            try:
-                ret = split_queue.get_next()
-            except IndexError:
-                pass
-        if ret is None:
+        try:
+            bundle = self._get_queue_for(output_split_idx).get_next()
+            # NOTE: We're making a copy of the `RefBundle` object to seal off
+            #       any potential modifcations to it from propagating backwards:
+            #
+            #       For ex, `OutputSplitter` modifies `RefBundle.output_split_idx`
+            #       that could affect original bundles that could be materialized,
+            #       therefore undermining these when these are being reused.
+            return dataclasses.replace(bundle)
+        except IndexError:
             return None
-        with self._lock:
-            self._num_blocks -= len(ret.blocks)
-            if ret.output_split_idx is not None:
-                self._num_per_split[ret.output_split_idx] -= 1
-        return ret
 
     def clear(self):
-        with self._lock:
-            self._queue.clear()
-            self._num_blocks = 0
-            self._num_per_split.clear()
+        for q in self._queues:
+            q.clear()
+
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
+        target_output_split_idx = output_split_idx or 0
+
+        assert target_output_split_idx < len(self._queues), (
+            f"Output split index is out of range (got {target_output_split_idx}, "
+            f"but only {list(range(len(self._queues)))} splits are available)"
+        )
+
+        # If output split idx is null, fallback to the first queue
+        return self._queues[target_output_split_idx]
 
 
 @dataclass
@@ -191,7 +167,9 @@ class OpState:
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.output_queue: OpBufferQueue = OpBufferQueue()
+        self.output_queue: OpBufferQueue = OpBufferQueue(
+            num_splits=op.num_output_splits()
+        )
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
@@ -203,12 +181,12 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
-        # Progress Manager
-        self.progress_manager_uuid: Optional[UUID] = None
-        self.output_row_count: int = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
+
+    def has_pending_bundles(self) -> bool:
+        return any(len(q) > 0 for q in self.input_queues)
 
     def total_enqueued_input_blocks(self) -> int:
         """Total number of blocks currently enqueued among:
@@ -223,9 +201,6 @@ class OpState:
         )
         return external_queue_size + internal_queue_size
 
-    def has_pending_bundles(self) -> bool:
-        return any(len(q) > 0 for q in self.input_queues)
-
     def total_enqueued_input_blocks_bytes(self) -> int:
         """Total number of bytes occupied by input bundles currently enqueued among:
         1. Input queue(s) pending dispatching (``OpState.input_queues``)
@@ -238,15 +213,56 @@ class OpState:
         )
         return self.input_queue_bytes() + internal_queue_size_bytes
 
+    def total_enqueued_output_blocks(self) -> int:
+        """Total number of blocks currently enqueued among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        external_queue_size = self.output_queue.num_blocks
+        internal_queue_size = (
+            self.op.internal_output_queue_num_blocks()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return external_queue_size + internal_queue_size
+
+    def total_enqueued_output_blocks_bytes(self) -> int:
+        """Total number of bytes occupied by output bundles currently enqueued
+        among:
+
+        1. Output queue(s) pending dispatching (``OpState.output_queue``)
+        2. Operator's internal output queues (like ``MapOperator``s reordering
+        bundle-queue, when ``preserve_order=True`` etc)
+        """
+        internal_queue_size_bytes = (
+            self.op.internal_output_queue_num_bytes()
+            if isinstance(self.op, InternalQueueOperatorMixin)
+            else 0
+        )
+
+        return self.output_queue_bytes() + internal_queue_size_bytes
+
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        ref, diverged = dedupe_schemas_with_validation(
+        out_ref, diverged = dedupe_schemas_with_validation(
             self._schema,
             ref,
-            warn=not self._warned_on_schema_divergence,
             enforce_schemas=self.op.data_context.enforce_schemas,
         )
+
+        if (
+            diverged
+            and not self._warned_on_schema_divergence
+            and self.op.data_context.enforce_schemas
+        ):
+            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
+            logger.warning(warning_message)
+
+        ref = out_ref
 
         self._schema = ref.schema
         self._warned_on_schema_divergence |= diverged
@@ -255,8 +271,6 @@ class OpState:
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
-        if ref.num_rows() is not None:
-            self.output_row_count += ref.num_rows()
 
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
@@ -266,46 +280,6 @@ class OpState:
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
         self.op.metrics.num_external_outqueue_blocks += len(ref.blocks)
         self.op.metrics.num_external_outqueue_bytes += ref.size_bytes()
-
-    def summary_str_raw(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        # Active tasks
-        active = self.op.num_active_tasks()
-        desc = f"Tasks: {active}"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            backpressure_types = []
-            if self.op._in_task_submission_backpressure:
-                # The op is backpressured from submitting new tasks.
-                policy = self.op._task_submission_backpressure_policy or ""
-                backpressure_types.append(f"tasks({policy})")
-            if self.op._in_task_output_backpressure:
-                # The op is backpressured from producing new outputs.
-                policy = self.op._task_output_backpressure_policy or ""
-                backpressure_types.append(f"outputs({policy})")
-            desc += f" [backpressured:{','.join(backpressure_types)}]"
-
-        # Actors info
-        desc += f"; {_actor_info_summary_str(self.op.get_actor_info())}"
-
-        # Queued blocks
-        desc += f"; Queued blocks: {self.total_enqueued_input_blocks()} ({memory_string(self.total_enqueued_input_blocks_bytes())})"
-        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op, verbose=verbose)}"
-
-        # Any additional operator specific information.
-        suffix = self.op.progress_str()
-        if suffix:
-            desc += f"; {suffix}"
-
-        return desc
-
-    def summary_str(
-        self, resource_manager: ResourceManager, verbose: bool = False
-    ) -> str:
-        return f"- {self.op.name}: {self.summary_str_raw(resource_manager, verbose)}"
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
@@ -433,7 +407,7 @@ def process_completed_tasks(
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
+    remaining_output_budget: Dict[OpState, int] = {}
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -450,10 +424,15 @@ def process_completed_tasks(
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
+        assert (
+            max_bytes_to_read is None or max_bytes_to_read >= 0
+        ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
+
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+
         if max_bytes_to_read is not None:
-            max_bytes_to_read_per_op[state] = max_bytes_to_read
+            remaining_output_budget[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -476,15 +455,19 @@ def process_completed_tasks(
             ready_tasks_by_op[state].append(task)
 
         for state, ready_tasks in ready_tasks_by_op.items():
+            # TODO elaborate why sorting (helps preserve_order case)
             ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            max_bytes_to_read_per_op.get(state, None)
+                            remaining_output_budget.get(state, None)
                         )
-                        if state in max_bytes_to_read_per_op:
-                            max_bytes_to_read_per_op[state] -= bytes_read
+                        if state in remaining_output_budget:
+                            # Clamp remaining output budget at 0
+                            remaining_output_budget[state] = max(
+                                remaining_output_budget[state] - bytes_read, 0
+                            )
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
@@ -610,7 +593,7 @@ def get_eligible_operators(
         #   - Its input queue has a valid bundle
         if (
             not op.has_completed()
-            and op.should_add_input()
+            and op.can_add_input()
             and state.has_pending_bundles()
         ):
             if not in_backpressure:
@@ -678,7 +661,7 @@ def select_operator_to_run(
     return next_op
 
 
-def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+def _actor_info_summary_str(info: ActorPoolInfo) -> str:
     total = info.running + info.pending + info.restarting
     base = f"Actors: {total}"
 
@@ -688,19 +671,114 @@ def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
         return f"{base} ({info})"
 
 
+def _format_schema_mismatch_section(
+    title: str, entries: List[str], truncate_num_mismatched_fields_to: int
+) -> str:
+    """Generate a titled section of the schema mismatch warning.
+
+    Args:
+        title: Section title describing the mismatched fields.
+        entries: Field detail strings (name + type).
+        truncate_num_mismatched_fields_to: Max entries shown before truncation.
+
+    Returns:
+        A formatted message for the warning section, or "" if entries is empty.
+    """
+    if not entries:
+        return ""
+
+    shown = entries[:truncate_num_mismatched_fields_to]
+    remainder = len(entries) - truncate_num_mismatched_fields_to
+
+    body = "\n".join(f"    {line}" for line in shown)
+    suffix = f"\n    ... and {remainder} more" if remainder > 0 else ""
+
+    return f"{title} ({len(entries)} total):\n{body}{suffix}\n"
+
+
+def _build_schemas_mismatch_warning(
+    old_schema: "Schema", new_schema: Optional["Schema"], truncation_length: int = 20
+) -> str:
+    from ray.data.block import _is_empty_schema
+
+    if _is_empty_schema(new_schema):
+        old_fields_info = [
+            f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
+        ]
+        is_empty_message = _format_schema_mismatch_section(
+            "Operator produced a RefBundle with an empty/unknown schema.",
+            old_fields_info,
+            truncate_num_mismatched_fields_to=truncation_length,
+        )
+        return is_empty_message + "This may lead to unexpected behavior."
+
+    # We assume old_schema and new_schema have the same underlying type
+    # and can only either be PyArrow schemas or PandasBlockSchema
+    old_fields = {name: str(t) for name, t in zip(old_schema.names, old_schema.types)}
+    new_fields = {name: str(t) for name, t in zip(new_schema.names, new_schema.types)}
+
+    new_exclusive_fields = [name for name in new_fields if name not in old_fields]
+    old_exclusive_fields = [name for name in old_fields if name not in new_fields]
+    changed_fields = [
+        name
+        for name in new_fields
+        if name in old_fields and new_fields[name] != old_fields[name]
+    ]
+
+    new_excl_fields_info = [
+        f"{field}: {new_fields[field]}" for field in new_exclusive_fields
+    ]
+    old_excl_fields_info = [
+        f"{field}: {old_fields[field]}" for field in old_exclusive_fields
+    ]
+    changed_fields_info = [
+        f"{field}: {old_fields[field]} => {new_fields[field]}"
+        for field in changed_fields
+    ]
+
+    new_excl_fields_message = _format_schema_mismatch_section(
+        "Fields exclusive to the incoming schema",
+        new_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+    old_excl_fields_message = _format_schema_mismatch_section(
+        "Fields exclusive to the old schema",
+        old_excl_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+    changed_fields_message = _format_schema_mismatch_section(
+        "Fields that have different types across the old and the incoming schemas",
+        changed_fields_info,
+        truncate_num_mismatched_fields_to=truncation_length,
+    )
+
+    disordered_message = ""
+    if not new_exclusive_fields and not old_exclusive_fields and not changed_fields:
+        assert old_fields == new_fields
+        disordered_message = "Some fields are ordered differently across the old and the incoming schemas.\n"
+
+    return (
+        "Operator produced a RefBundle with a different schema "
+        "than the previous one.\n"
+        + new_excl_fields_message
+        + old_excl_fields_message
+        + changed_fields_message
+        + disordered_message
+        + "This may lead to unexpected behavior."
+    )
+
+
 def dedupe_schemas_with_validation(
     old_schema: Optional["Schema"],
     bundle: "RefBundle",
-    warn: bool = True,
     enforce_schemas: bool = False,
 ) -> Tuple["RefBundle", bool]:
-    """Unify/Dedupe two schemas, warning if warn=True
+    """Unify/Dedupe two schemas
 
     Args:
         old_schema: The old schema to unify. This can be `None`, in which case
             the new schema will be used as the old schema.
         bundle: The new `RefBundle` to unify with the old schema.
-        warn: Raise a warning if the schemas diverge.
         enforce_schemas: If `True`, allow the schemas to diverge and return unified schema.
             If `False`, but keep the old schema.
 
@@ -722,12 +800,6 @@ def dedupe_schemas_with_validation(
         return bundle, diverged
 
     diverged = True
-    if warn and enforce_schemas:
-        logger.warning(
-            f"Operator produced a RefBundle with a different schema "
-            f"than the previous one. Previous schema: {old_schema}, "
-            f"new schema: {bundle.schema}. This may lead to unexpected behavior."
-        )
     if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
@@ -742,3 +814,40 @@ def dedupe_schemas_with_validation(
         ),
         diverged,
     )
+
+
+def format_op_state_summary(
+    op_state: OpState, resource_manager: ResourceManager, verbose: bool = False
+) -> str:
+    """Get a formatted summary of the OpState for progress reporting."""
+    # Active tasks
+    active = op_state.op.num_active_tasks()
+    desc = f"Tasks: {active}"
+    if (
+        op_state.op._in_task_submission_backpressure
+        or op_state.op._in_task_output_backpressure
+    ):
+        backpressure_types = []
+        if op_state.op._in_task_submission_backpressure:
+            # The op is backpressured from submitting new tasks.
+            policy = op_state.op._task_submission_backpressure_policy or ""
+            backpressure_types.append(f"tasks({policy})")
+        if op_state.op._in_task_output_backpressure:
+            # The op is backpressured from producing new outputs.
+            policy = op_state.op._task_output_backpressure_policy or ""
+            backpressure_types.append(f"outputs({policy})")
+        desc += f" [backpressured:{','.join(backpressure_types)}]"
+
+    # Actors info
+    desc += f"; {_actor_info_summary_str(op_state.op.get_actor_info())}"
+
+    # Queued blocks
+    desc += f"; Queued blocks: {op_state.total_enqueued_input_blocks()} ({memory_string(op_state.total_enqueued_input_blocks_bytes())})"
+    desc += f"; Resources: {resource_manager.get_op_usage_str(op_state.op, verbose=verbose)}"
+
+    # Any additional operator specific information.
+    suffix = op_state.op.progress_str()
+    if suffix:
+        desc += f"; {suffix}"
+
+    return desc

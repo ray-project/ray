@@ -195,6 +195,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
     node_added_listeners_.emplace_back(std::move(listener), io_context);
   }
 
+  /// Add listener to monitor when a node is set to draining.
+  /// The listener receives (node_id, is_draining, draining_deadline_timestamp_ms).
+  ///
+  /// \param listener The handler which processes the draining state change.
+  void AddNodeDrainingListener(
+      std::function<void(const NodeID &, bool, int64_t)> listener) {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK(listener);
+    node_draining_listeners_.emplace_back(std::move(listener));
+  }
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -367,6 +378,10 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Listeners which monitors the removal of nodes.
   std::vector<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
       node_removed_listeners_ ABSL_GUARDED_BY(mutex_);
+
+  /// Listeners which monitor when nodes are set to draining.
+  std::vector<std::function<void(const NodeID &, bool, int64_t)>> node_draining_listeners_
+      ABSL_GUARDED_BY(mutex_);
 
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;

@@ -12,6 +12,7 @@ This module tests:
 import math
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
 
@@ -75,6 +76,13 @@ class TestBasicArithmetic:
         pd.testing.assert_series_equal(
             result.reset_index(drop=True), expected, check_names=False
         )
+
+    def test_string_concat_invalid_input_type(self):
+        """Reject non-string-like inputs in string concatenation."""
+        table = pa.table({"name": ["a", "b"], "age": [1, 2]})
+        expr = col("name") + col("age")
+        with pytest.raises(TypeError, match="string-like pyarrow.*int64"):
+            eval_expr(expr, table)
 
     # ── Subtraction ──
 
@@ -202,6 +210,28 @@ class TestBasicArithmetic:
         expected = pd.Series([10, 5, 3, 2])
         pd.testing.assert_series_equal(
             result.reset_index(drop=True), expected, check_names=False
+        )
+
+    # ── Modulo ──
+
+    @pytest.mark.parametrize(
+        "expr,expected_values",
+        [
+            (col("a") % 3, [1, 2, 0, 1]),
+            (col("a") % col("c"), [1.0, 0.0, 2.0, 4.0]),
+            (10 % col("b"), [0, 2, 0, 2]),
+        ],
+        ids=["col_mod_int", "col_mod_fp", "col_rmod_int"],
+    )
+    def test_modulo(self, sample_data, expr, expected_values):
+        """Test modulo operations."""
+        assert isinstance(expr, BinaryExpr)
+        assert expr.op == Operation.MOD
+        result = eval_expr(expr, sample_data)
+        pd.testing.assert_series_equal(
+            result.reset_index(drop=True),
+            pd.Series(expected_values, name=None),
+            check_names=False,
         )
 
 

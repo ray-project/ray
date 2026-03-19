@@ -2,12 +2,11 @@ import logging
 import math
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
-from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     BlockTransformer,
     HashShufflingOperatorBase,
-    StatefulShuffleAggregation,
+    ShuffleAggregation,
 )
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFn
@@ -21,91 +20,69 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ReducingShuffleAggregation(StatefulShuffleAggregation):
-    """Aggregation performing reduction of the shuffled sequence using provided
-    list of aggregating functions.
+class ReducingAggregation(ShuffleAggregation):
+    """Stateless aggregation that reduces blocks using aggregation functions.
 
-    NOTE: That reductions are performed incrementally in a streaming fashion upon
-          accumulation of pre-configured buffer of rows to run aggregation on."""
-
-    _DEFAULT_BLOCKS_BUFFER_LIMIT = 1000
+    This implementation performs incremental reduction during compaction,
+    combining multiple partially-aggregated blocks into one. The final
+    aggregation is performed during finalization.
+    """
 
     def __init__(
         self,
-        aggregator_id: int,
-        key_columns: Optional[Tuple[str]],
-        aggregation_fns: Tuple[AggregateFn],
+        key_columns: Tuple[str, ...],
+        aggregation_fns: Tuple[AggregateFn, ...],
     ):
+        self._sort_key: "SortKey" = self._get_sort_key(key_columns)
+        self._aggregation_fns: Tuple[AggregateFn, ...] = aggregation_fns
 
-        super().__init__(aggregator_id)
+    @classmethod
+    def is_compacting(cls):
+        return True
 
-        assert key_columns is not None, "Shuffle aggregation requires key columns"
+    def compact(self, partition_shards: List[Block]) -> Block:
+        assert len(partition_shards) > 0, "Provided sequence must be non-empty"
 
-        self._sort_key: "SortKey" = ReducingShuffleAggregation._get_sort_key(
-            key_columns
-        )
-        self._aggregation_fns: Tuple[AggregateFn] = aggregation_fns
+        return self._combine(partition_shards, finalize=False)
 
-        self._aggregated_blocks: List[Block] = []
-
-    def accept(self, input_seq_id: int, partition_id: int, partition_shard: Block):
+    def finalize(self, partition_shards_map: Dict[int, List[Block]]) -> Iterator[Block]:
         assert (
-            input_seq_id == 0
-        ), f"Single sequence is expected (got seq-id {input_seq_id})"
+            len(partition_shards_map) == 1
+        ), f"Single input-sequence is expected (got {len(partition_shards_map)})"
 
-        # Received partition shard is already partially aggregated, hence
-        # we simply add it to the list of aggregated blocks
-        #
-        # NOTE: We're not separating blocks by partition as it's ultimately not
-        #       relevant for the aggregations performed
-        self._aggregated_blocks.append(partition_shard)
+        blocks = partition_shards_map[0]
 
-        # Aggregation is performed incrementally, rather
-        # than being deferred to the finalization stage
-        if len(self._aggregated_blocks) > self._DEFAULT_BLOCKS_BUFFER_LIMIT:
-            # NOTE: This method will reset partially aggregated blocks to hold
-            #       the new combined one
-            #
-            # TODO make aggregation async
-            self._combine_aggregated_blocks(should_finalize=False)
+        if not blocks:
+            return
 
-    def finalize(self, partition_id: int) -> Iterator[Block]:
-        if len(self._aggregated_blocks) == 0:
-            block = ArrowBlockAccessor._empty_table()
-        else:
-            block = self._combine_aggregated_blocks(should_finalize=True)
+        yield self._combine(blocks, finalize=True)
 
-        yield block
+    def _combine(self, blocks: List[Block], *, finalize: bool) -> Block:
+        """Internal method to combine blocks with optional finalization."""
+        assert len(blocks) > 0
 
-    def clear(self, partition_id: int):
-        self._aggregated_blocks: List[Block] = []
-
-    def _combine_aggregated_blocks(self, *, should_finalize: bool) -> Block:
-        assert len(self._aggregated_blocks) > 0
-
-        block_accessor = BlockAccessor.for_block(self._aggregated_blocks[0])
+        block_accessor = BlockAccessor.for_block(blocks[0])
         combined_block, _ = block_accessor._combine_aggregated_blocks(
-            self._aggregated_blocks,
+            blocks,
             sort_key=self._sort_key,
             aggs=self._aggregation_fns,
-            finalize=should_finalize,
+            finalize=finalize,
         )
-
-        # For combined block that's not yet finalized reset cached aggregated
-        # blocks to only hold newly combined one
-        if not should_finalize:
-            self._aggregated_blocks = [combined_block]
 
         return combined_block
 
     @staticmethod
-    def _get_sort_key(key_columns: Tuple[str]):
+    def _get_sort_key(key_columns: Tuple[str, ...]) -> "SortKey":
         from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
         return SortKey(key=list(key_columns), descending=False)
 
 
 class HashAggregateOperator(HashShufflingOperatorBase):
+
+    _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
+    _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
+
     def __init__(
         self,
         data_context: DataContext,
@@ -116,6 +93,13 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         num_partitions: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
     ):
+        # Use new stateless ReducingAggregation factory
+        def _create_reducing_aggregation() -> ReducingAggregation:
+            return ReducingAggregation(
+                key_columns=key_columns,
+                aggregation_fns=aggregation_fns,
+            )
+
         super().__init__(
             name_factory=(
                 lambda num_partitions: f"HashAggregate(key_columns={key_columns}, "
@@ -124,6 +108,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             input_ops=[input_op],
             data_context=data_context,
             key_columns=[key_columns],
+            num_input_seqs=1,
             num_partitions=(
                 # NOTE: In case of global aggregations (ie with no key columns specified),
                 #       we override number of partitions to 1, since the whole dataset
@@ -132,13 +117,7 @@ class HashAggregateOperator(HashShufflingOperatorBase):
                 if len(key_columns) > 0
                 else 1
             ),
-            partition_aggregation_factory=(
-                lambda aggregator_id, target_partition_ids: ReducingShuffleAggregation(
-                    aggregator_id,
-                    key_columns,
-                    aggregation_fns,
-                )
-            ),
+            partition_aggregation_factory=_create_reducing_aggregation,
             input_block_transformer=_create_aggregating_transformer(
                 key_columns, aggregation_fns
             ),
@@ -191,6 +170,15 @@ class HashAggregateOperator(HashShufflingOperatorBase):
 
         return aggregator_total_memory_required
 
+    @classmethod
+    def _get_min_max_partition_shards_compaction_thresholds(
+        cls,
+    ) -> Optional[Tuple[int, int]]:
+        return (
+            cls._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD,
+            cls._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
+        )
+
 
 def _create_aggregating_transformer(
     key_columns: Tuple[str], aggregation_fns: Tuple[AggregateFn]
@@ -198,7 +186,7 @@ def _create_aggregating_transformer(
     """Method creates input block transformer performing partial aggregation of
     the block applied prior to block being shuffled (to reduce amount of bytes shuffled)"""
 
-    sort_key = ReducingShuffleAggregation._get_sort_key(key_columns)
+    sort_key = ReducingAggregation._get_sort_key(key_columns)
 
     def _aggregate(block: Block) -> Block:
         from ray.data._internal.planner.exchange.aggregate_task_spec import (

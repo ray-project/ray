@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/util/network_util.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -104,7 +103,16 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     gcs_client_->Nodes().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        [&node_table_data, &promise](
+            const Status &status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
+          RAY_CHECK_OK(status);
+          for (const auto &node_info : results->first) {
+            node_table_data.push_back(node_info.SerializeAsString());
+          }
+          promise.set_value(true);
+        },
         /*timeout_ms=*/-1);
   }
   promise.get_future().get();
@@ -475,7 +483,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                                timeout_ms, rpc::GcsNodeInfo::ALIVE, {selector}));
     }
     if (node_infos.empty() && node_ip_address == gcs_address) {
-      selector.set_node_ip_address(GetLocalhostIP());
+      selector.set_node_ip_address("127.0.0.1");
       {
         absl::ReaderMutexLock lock(&mutex_);
         auto timeout_ms =

@@ -1,7 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 from urllib.parse import urlparse
 
 import pyarrow as pa
@@ -17,7 +17,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import Download
+from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
 from ray.data.block import BlockAccessor
@@ -48,6 +48,7 @@ def plan_download_op(
     uri_column_names_str = ", ".join(uri_column_names)
     output_bytes_column_names = op.output_bytes_column_names
     ray_remote_args = op.ray_remote_args
+    filesystem = op.filesystem
 
     # Import _get_udf from the main planner file
     from ray.data._internal.planner.plan_udf_map_op import (
@@ -70,7 +71,7 @@ def plan_download_op(
             PartitionActor,
             (),
             {},
-            (uri_column_names, data_context),
+            (uri_column_names, data_context, filesystem),
             {},
             compute=partition_compute,
         )
@@ -108,7 +109,7 @@ def plan_download_op(
 
     fn, init_fn = _get_udf(
         download_bytes_threaded,
-        (uri_column_names, output_bytes_column_names, data_context),
+        (uri_column_names, output_bytes_column_names, data_context, filesystem),
         {},
         None,
         None,
@@ -167,10 +168,22 @@ def download_bytes_threaded(
     uri_column_names: List[str],
     output_bytes_column_names: List[str],
     data_context: DataContext,
+    filesystem: Optional["pa.fs.FileSystem"] = None,
 ) -> Iterator[pa.Table]:
     """Optimized version that uses make_async_gen for concurrent downloads.
 
     Supports downloading from multiple URI columns in a single operation.
+
+    Args:
+        block: Input PyArrow table containing URI columns.
+        uri_column_names: Names of columns containing URIs to download.
+        output_bytes_column_names: Names for the output columns containing downloaded bytes.
+        data_context: Ray Data context for configuration.
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
+
+    Yields:
+        pa.Table: PyArrow table with the downloaded bytes added as new columns.
     """
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
@@ -192,8 +205,9 @@ def download_bytes_threaded(
 
             Takes an iterator of URIs and yields bytes for each.
             Uses lazy filesystem resolution - resolves once and reuses for subsequent URIs.
+            If a filesystem was provided explicitly, it will be used for all URIs.
             """
-            cached_fs = None
+            cached_fs = filesystem
             for uri in uri_iterator:
                 read_bytes = None
                 try:
@@ -267,9 +281,15 @@ class PartitionActor:
 
     INIT_SAMPLE_BATCH_SIZE = 25
 
-    def __init__(self, uri_column_names: List[str], data_context: DataContext):
+    def __init__(
+        self,
+        uri_column_names: List[str],
+        data_context: DataContext,
+        filesystem: Optional["pa.fs.FileSystem"] = None,
+    ):
         self._uri_column_names = uri_column_names
         self._data_context = data_context
+        self._filesystem = filesystem
         self._batch_size_estimate = None
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
@@ -345,7 +365,7 @@ class PartitionActor:
         # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
         # This is for sampling the file sizes which doesn't require a full resolution of the paths.
         try:
-            paths, fs = _resolve_paths_and_filesystem(uris)
+            paths, fs = _resolve_paths_and_filesystem(uris, filesystem=self._filesystem)
             fs = RetryingPyFileSystem.wrap(
                 fs, retryable_errors=self._data_context.retried_io_errors
             )

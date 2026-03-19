@@ -29,7 +29,11 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
@@ -37,11 +41,9 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
     format_web_url,
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
@@ -416,7 +418,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -672,6 +674,23 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
         )
         with pytest.raises(HTTPError):
             response.raise_for_status()
+
+    # DELETE should be blocked for browsers
+    for testcase in testcases:
+        response = requests.delete(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+        )
+        assert response.status_code == 405, "DELETE should be blocked for browsers"
+
+    # PATCH should also be blocked for browsers
+    for testcase in testcases:
+        response = requests.patch(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+            json={},
+        )
+        assert response.status_code == 405, "PATCH should be blocked for browsers"
 
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
@@ -1011,7 +1030,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
     indirect=True,
 )
 def test_get_nodes_summary(call_ray_start):
-
     # The sleep is needed since it seems a previous shutdown could be not yet
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
@@ -1468,6 +1486,56 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server(
+    httpserver, ray_start_with_dashboard_and_proxy
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard_and_proxy["webui_url"])
+        is True
+    )
+    address_info = ray_start_with_dashboard_and_proxy
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
+    httpserver, call_ray_start_context_with_proxy_server
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server when using `ray start`.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    address = ray.init(address=call_ray_start_context_with_proxy_server)
+    webui_url = address["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
 
 
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):

@@ -4,7 +4,9 @@
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
-ARG PIP_REQUIREMENTS
+ARG PYTHON_VERSION=3.10
+ARG IMAGE_TYPE="ray"
+ARG PIP_REQUIREMENTS="python/deplocks/base_extra_testdeps/${IMAGE_TYPE}-base_extra_testdeps_py${PYTHON_VERSION}.lock"
 
 COPY "$PIP_REQUIREMENTS" extra-test-requirements.txt
 
@@ -66,7 +68,11 @@ EOF
 #
 # RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1
 #   To make ray data compatible across multiple pyarrow versions.
+# Conda's libstdc++ provides CXXABI_1.3.15 needed by ICU 78 and other
+# C++ libraries pulled in by vLLM 0.17.0. Place it before the system copy
+# so the dynamic linker finds it first.
 ENV \
+  LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}} \
   RAY_BACKEND_LOG_JSON=1 \
   RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT=1 \
   RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1

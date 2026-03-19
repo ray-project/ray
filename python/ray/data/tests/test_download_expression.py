@@ -250,6 +250,39 @@ class TestDownloadExpressionFunctionality:
         finally:
             ctx.enable_pandas_block = old_enable_pandas_block
 
+    def test_download_expression_with_custom_filesystem(self, tmp_path):
+        import pyarrow.fs as pafs
+
+        # 1. Setup paths
+        subdir = tmp_path / "data"
+        subdir.mkdir()
+
+        file_name = "test_file.txt"
+        file_path = subdir / file_name
+        sample_content = b"File content with custom fs"
+        file_path.write_bytes(sample_content)
+
+        # 2. Setup SubTreeFileSystem
+        # This treats 'subdir' as the root '/'
+        base_fs = pafs.LocalFileSystem()
+        custom_fs = pafs.SubTreeFileSystem(str(subdir), base_fs)
+
+        # 3. Create Dataset
+        # Note: We use the relative 'file_name' because the FS is rooted at 'subdir'
+        ds = ray.data.from_items([{"file_uri": file_name, "file_id": 0}])
+
+        # 4. Execute Download
+        ds_with_downloads = ds.with_column(
+            "content", download("file_uri", filesystem=custom_fs)
+        )
+
+        # 5. Assertions
+        results = ds_with_downloads.take_all()
+
+        assert len(results) == 1
+        assert results[0]["content"] == sample_content
+        assert results[0]["file_id"] == 0
+
 
 class TestDownloadExpressionErrors:
     """Test error conditions and edge cases for download expressions."""

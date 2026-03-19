@@ -90,17 +90,16 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] bind_address The IP address to bind to.
   ///
   GrpcServer(std::string name,
              const uint32_t port,
-             std::string bind_address,
+             bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
              std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
-        bind_address_(std::move(bind_address)),
+        listen_to_localhost_only_(listen_to_localhost_only),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -167,8 +166,9 @@ class GrpcServer {
   /// Port of this server.
   int port_;
 
-  /// The IP address to bind this server to.
-  const std::string bind_address_;
+  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
+  /// interfaces (0.0.0.0)
+  const bool listen_to_localhost_only_;
 
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;

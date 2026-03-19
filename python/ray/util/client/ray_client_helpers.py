@@ -4,7 +4,6 @@ from typing import Any, Dict
 
 import ray as real_ray
 import ray.util.client.server.server as ray_client_server
-from ray._common.network_utils import build_address, get_localhost_ip
 from ray._private.client_mode_hook import disable_client_hook
 from ray.job_config import JobConfig
 from ray.util.client import ray
@@ -44,9 +43,9 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     with disable_client_hook():
         assert not ray.is_initialized()
     server = ray_client_server.serve(
-        get_localhost_ip(), 50051, ray_connect_handler=ray_connect_handler
+        "127.0.0.1", 50051, ray_connect_handler=ray_connect_handler
     )
-    ray.connect(build_address(get_localhost_ip(), 50051), metadata=metadata, **kwargs)
+    ray.connect("127.0.0.1:50051", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:
@@ -72,9 +71,9 @@ def ray_start_cluster_client_server_pair(address):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(
-        get_localhost_ip(), 50051, ray_connect_handler=ray_connect_handler
+        "127.0.0.1", 50051, ray_connect_handler=ray_connect_handler
     )
-    ray.connect(build_address(get_localhost_ip(), 50051))
+    ray.connect("127.0.0.1:50051")
     try:
         yield ray, server
     finally:

@@ -41,7 +41,7 @@
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
@@ -245,8 +245,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       std::make_shared<rpc::RayletClient>(std::move(raylet_address),
                                           *client_call_manager_,
                                           /*raylet_unavailable_timeout_callback=*/[] {});
-  auto core_worker_server = std::make_unique<rpc::GrpcServer>(
-      WorkerTypeString(options.worker_type), assigned_port, options.node_ip_address);
+  auto core_worker_server =
+      std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
+                                        assigned_port,
+                                        options.node_ip_address == "127.0.0.1");
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -571,7 +573,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_ms_histogram_);
+      *scheduler_placement_time_percentile_ms_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -824,8 +826,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+  scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
@@ -851,22 +852,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
-      metrics_agent_client_ =
-          std::make_unique<ray::rpc::MetricsAgentClientImpl>(GetLocalhostIP(),
-                                                             options_.metrics_agent_port,
-                                                             io_service_,
-                                                             *client_call_manager_);
-      metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-        if (server_status.ok()) {
-          stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
-          stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to establish connection to the metrics exporter agent. "
-                 "Metrics will not be exported. "
-              << "Exporter agent status: " << server_status.ToString();
-        }
-      });
+      // Initialize exporters synchronously to avoid a getenv/setenv race condition.
+      // POSIX setenv is MT-Unsafe.
+      stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
     } else {
       RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
                        "with dashboard support: `pip install 'ray[default]'`.";

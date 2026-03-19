@@ -60,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v6e-8", "TPU-V6E"),
+        ("gke", "tpu7x-16", "TPU-V7X"),
     ],
 )
 @patch("requests.get")
@@ -232,32 +233,54 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
 @pytest.mark.parametrize(
     "test_config",
     [
-        (0, {"TPU-v4-16-head": 1, "my-tpu": 1}),
-        (1, {"my-tpu": 1}),
+        (0, "v4-16", {"TPU-v4-16-head": 1, "my-tpu": 1}),
+        (1, "v4-16", {"my-tpu": 1}),
+        (0, "tpu7x-16", {"TPU-v7x-16-head": 1, "my-tpu": 1}),
     ],
 )
 def test_tpu_pod_detect_and_configure_worker(test_config):
-    worker_id, expected_value = test_config
+    worker_id, pod_type, expected_value = test_config
     final_resources = {}
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         with patch(
-            "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "get_current_node_tpu_pod_type",
-            return_value="v4-16",
+            "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_worker_id",
+            return_value=worker_id,
         ):
-            with patch(
-                "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                ".get_current_node_tpu_worker_id",
-                return_value=worker_id,
-            ):
+            with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": pod_type}):
                 final_resources = (
                     TPUAcceleratorManager.get_current_node_additional_resources()
                 )
 
     assert final_resources == expected_value
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("v2-8", True),
+        ("v3-32", True),
+        ("v4-8", True),
+        ("v5p-8", True),
+        ("v5litepod-8", True),
+        ("v6e-8", True),
+        ("tpu7x-16", True),
+        ("v7x-16", True),
+        ("v-8", False),
+        ("8", False),
+        ("tpu-8", False),
+        ("v2", False),
+        ("v2-", False),
+        ("random-string", False),
+    ],
+)
+def test_is_valid_tpu_accelerator_type(accelerator_type, expected):
+    assert (
+        TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type)
+        == expected
+    )
 
 
 if __name__ == "__main__":

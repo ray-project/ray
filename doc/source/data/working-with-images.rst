@@ -20,7 +20,7 @@ Reading images
 Ray Data can read images from a variety of formats.
 
 To view the full list of supported file formats, see the
-:ref:`Input/Output reference <input-output>`.
+:ref:`Loading Data API <loading-data-api>`.
 
 .. tab-set::
 
@@ -272,7 +272,7 @@ Saving images
 -------------
 
 Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
-see the :ref:`Input/Output reference <input-output>`.
+see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 
