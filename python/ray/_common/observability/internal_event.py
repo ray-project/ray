@@ -35,12 +35,12 @@ class InternalEventBuilder(ABC):
                 RayEventProto.SourceType.GCS).
             event_type: RayEvent.EventType enum value. Use
                 RayEventProto.EventType.<NAME> constants (e.g.,
-                RayEventProto.EventType.SUBMISSION_JOB_DEFINITION_EVENT,
+                RayEventProto.EventType.DRIVER_JOB_DEFINITION_EVENT,
                 RayEventProto.EventType.DRIVER_JOB_LIFECYCLE_EVENT).
             nested_event_field_number: The field number in RayEvent proto for the
                 nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER
                 constants (e.g.,
-                RayEventProto.SUBMISSION_JOB_DEFINITION_EVENT_FIELD_NUMBER).
+                RayEventProto.DRIVER_JOB_DEFINITION_EVENT_FIELD_NUMBER).
             severity: RayEvent.Severity enum value (default INFO).
             message: Optional message associated with the event.
             session_name: The Ray session name.
@@ -70,7 +70,7 @@ class InternalEventBuilder(ABC):
 
         Returns:
             Serialized protobuf bytes of the nested event message
-            (e.g., SubmissionJobDefinitionEvent.SerializeToString()).
+            (e.g., DriverJobDefinitionEvent.SerializeToString()).
         """
         pass
 

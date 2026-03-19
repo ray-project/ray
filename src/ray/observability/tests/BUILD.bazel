@@ -34,8 +34,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:python_event_interface",
-        "//src/ray/protobuf/public:events_submission_job_definition_event_cc_proto",
-        "//src/ray/protobuf/public:events_submission_job_lifecycle_event_cc_proto",
+        "//src/ray/protobuf/public:events_driver_job_definition_event_cc_proto",
+        "//src/ray/protobuf/public:events_driver_job_lifecycle_event_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

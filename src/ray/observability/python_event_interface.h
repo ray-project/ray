@@ -41,9 +41,9 @@ class PythonRayEvent : public RayEventInterface {
   /// \param message An optional message associated with the event.
   /// \param session_name The Ray session name.
   /// \param serialized_event_data The serialized protobuf data for the nested event
-  ///        message (e.g., SubmissionJobDefinitionEvent or SubmissionJobLifecycleEvent).
+  ///        message (e.g., DriverJobDefinitionEvent or DriverJobLifecycleEvent).
   /// \param nested_event_field_number The field number in RayEvent proto for the nested
-  ///        event message (e.g., 19 for submission_job_definition_event). This is used
+  ///        event message (e.g., 12 for driver_job_definition_event). This is used
   ///        with protobuf reflection to set the correct field without type-specific code.
   PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                  rpc::events::RayEvent::EventType event_type,

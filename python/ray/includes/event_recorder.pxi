@@ -19,7 +19,7 @@ cdef class RayEvent:
         source_type: Integer value of RayEvent.SourceType enum.
         event_type: Integer value of RayEvent.EventType enum.
         severity: Integer value of RayEvent.Severity enum.
-        entity_id: Unique identifier for the event entity (e.g., submission_id).
+        entity_id: Unique identifier for the event entity (e.g., job_id).
         message: Optional message associated with the event.
         session_name: The Ray session name.
         serialized_data: Serialized protobuf bytes of the nested event message.
