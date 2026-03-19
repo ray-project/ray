@@ -145,7 +145,7 @@ class TestIsFilesystemCompatibleWithScheme:
 
     def test_retrying_wrapper_around_native_s3(self):
         """RetryingPyFileSystem wrapping a native S3FileSystem should be compatible with s3."""
-        from ray.data._internal.arrow_compatible_fs import RetryingPyFileSystem
+        from ray.data._internal.util import RetryingPyFileSystem
 
         mock_native_s3 = mock.MagicMock()
         mock_native_s3.type_name = "s3"
