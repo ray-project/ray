@@ -1216,9 +1216,7 @@ class AsyncioRouter:
                 replica.actor_id,
             )
             result.add_done_callback(
-                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(
-                    cb, _
-                )
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
             )
             result.add_done_callback(
                 lambda _, rid=replica.replica_id: (
