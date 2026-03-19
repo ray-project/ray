@@ -1461,9 +1461,7 @@ class TuneController:
             self._schedule_trial_stop(trial)
             # Override cached STOP with PAUSE (see #57906).
             if trial.trial_id in self._cached_trial_decisions:
-                self._cached_trial_decisions[trial.trial_id] = (
-                    TrialScheduler.PAUSE
-                )
+                self._cached_trial_decisions[trial.trial_id] = TrialScheduler.PAUSE
             self._set_trial_status(trial, Trial.PAUSED)
 
     ###
