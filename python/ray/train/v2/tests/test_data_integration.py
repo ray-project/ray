@@ -138,14 +138,15 @@ def test_datasets_callback(ray_start_4_cpus):
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
     assert not isinstance(processed_valid_ds, StreamSplitDataIterator)
 
-    # The callback should have excluded the resources reserved for training.
+    # Under the V2 cluster autoscaler (default), the scaling policy registers training resources
+    # with the AutoscalingCoordinator, so exclude_resources should not be set.
     assert (
         processed_train_ds._base_dataset.context.execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+        == ExecutionResources.zero()
     )
     assert (
         processed_valid_ds._base_dataset.context.execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+        == ExecutionResources.zero()
     )
 
 
@@ -380,10 +381,10 @@ def test_data_config_exclude_resources(ray_start_4_cpus, exclude_resources):
         ds = ray.train.get_dataset_shard("train")
         exclude_resources = config.get("exclude_resources") or ExecutionResources.zero()
 
-        # Ray Data always excludes resources reserved by Ray Train workers.
-        expected_exclude_resources = exclude_resources.add(
-            ExecutionResources(cpu=NUM_WORKERS)
-        )
+        # Under the V2 cluster autoscaler (default), training resources are
+        # registered with the AutoscalingCoordinator, so exclude_resources
+        # only contains what the user explicitly set.
+        expected_exclude_resources = exclude_resources
         assert (
             ds.get_context().execution_options.exclude_resources
             == expected_exclude_resources
@@ -548,8 +549,10 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
 
 
 def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
-    """Test that the default behavior of excluding train worker resources
-    applies to each dataset individually when using per-dataset execution options."""
+    """Test that user-defined per-dataset exclude_resources are preserved.
+    Under the V2 cluster autoscaler (default), training resources are NOT added
+    to exclude_resources (they are handled by the AutoscalingCoordinator), so
+    only the user-defined values should appear."""
     NUM_ROWS = 100
     NUM_WORKERS = 2
 
@@ -568,37 +571,36 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
     data_config = ray.train.DataConfig(execution_options=execution_options_dict)
 
     def train_fn():
-        # Check that each dataset has the train resources excluded,
-        # in addition to any per-dataset exclude_resources.
+        # Under the V2 cluster autoscaler, only user-defined exclude_resources
+        # should be present. Training resources are NOT added to exclude_resources.
 
-        # Check train dataset
+        # Check train dataset — only user-defined exclude_resources
         train_ds = ray.train.get_dataset_shard("train")
         train_exec_options = train_ds.get_context().execution_options
         assert train_exec_options.is_resource_limits_default()
-        # Train worker resources: NUM_WORKERS CPUs (default 1 CPU per worker)
-        expected_train_cpu = NUM_WORKERS + 2  # 2 from user-defined
-        expected_train_gpu = 0 + 1  # 1 from user-defined (no GPUs allocated)
-        assert train_exec_options.exclude_resources.cpu == expected_train_cpu
-        assert train_exec_options.exclude_resources.gpu == expected_train_gpu
+        assert train_exec_options.exclude_resources.cpu == 2
+        assert train_exec_options.exclude_resources.gpu == 1
 
-        # Check test dataset
+        # Check test dataset — only user-defined exclude_resources
         test_ds = ray.train.get_dataset_shard("test")
         test_exec_options = test_ds.get_context().execution_options
         assert test_exec_options.is_resource_limits_default()
-        expected_test_cpu = NUM_WORKERS + 1  # 1 from user-defined
-        expected_test_gpu = 0 + 0  # 0 from user-defined
-        assert test_exec_options.exclude_resources.cpu == expected_test_cpu
-        assert test_exec_options.exclude_resources.gpu == expected_test_gpu
+        assert test_exec_options.exclude_resources.cpu == 1
+        assert test_exec_options.exclude_resources.gpu == 0
 
-        # Check val dataset (should have default + train resources excluded)
+        # Check val dataset — no user-defined exclude_resources, so zero
         val_ds = ray.train.get_dataset_shard("val")
         val_exec_options = val_ds.get_context().execution_options
         assert val_exec_options.is_resource_limits_default()
         default_options = ray.train.DataConfig.default_ingest_options()
-        expected_val_cpu = NUM_WORKERS + default_options.exclude_resources.cpu
-        expected_val_gpu = 0 + default_options.exclude_resources.gpu
-        assert val_exec_options.exclude_resources.cpu == expected_val_cpu
-        assert val_exec_options.exclude_resources.gpu == expected_val_gpu
+        assert (
+            val_exec_options.exclude_resources.cpu
+            == default_options.exclude_resources.cpu
+        )
+        assert (
+            val_exec_options.exclude_resources.gpu
+            == default_options.exclude_resources.gpu
+        )
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -611,6 +613,212 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypatch):
+    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
+    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V1")
+
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(1000)
+    valid_ds = ray.data.range(1000)
+
+    data_config = ray.train.DataConfig(datasets_to_split=["train"])
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+    )
+
+    worker_group_context = WorkerGroupContext(
+        run_attempt_id="attempt_1",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=scaling_config.num_workers,
+        resources_per_worker=scaling_config.resources_per_worker,
+    )
+    train_run_context = create_dummy_run_context(
+        datasets={"train": train_ds, "valid": valid_ds},
+        dataset_config=data_config,
+        scaling_config=scaling_config,
+    )
+    worker_group = DummyWorkerGroup(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+    worker_group._start()
+
+    callback = DatasetsCallback(train_run_context)
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
+
+    # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
+    assert (
+        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+    )
+    assert (
+        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+    )
+
+
+def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
+    """Regression test: under the V2 cluster autoscaler, exclude_resources is not set,
+    so the scenario that previously caused negative global limits (small cluster,
+    multiple datasets, large training reservation) no longer fails.
+
+    Before the fix, with 4 CPUs, 2 datasets (2 executors), and 3 CPUs for training:
+    each executor gets 4 // 2 = 2 CPUs, minus 3 exclude_resources = -1 CPU -> assertion error.
+    """
+    NUM_WORKERS = 3
+
+    train_ds = ray.data.range(100)
+    valid_ds = ray.data.range(100)
+
+    data_config = ray.train.DataConfig(datasets_to_split=["train"])
+    # 3 workers * 1 CPU each = 3 CPUs for training, leaving 1 CPU for data.
+    # With 2 datasets, each data executor gets 4 // 2 = 2 CPUs from coordinator.
+    # If exclude_resources were set to 3, that would give 2 - 3 = -1 -> crash.
+    scaling_config = ray.train.ScalingConfig(num_workers=NUM_WORKERS)
+
+    worker_group_context = WorkerGroupContext(
+        run_attempt_id="attempt_1",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=scaling_config.num_workers,
+        resources_per_worker=scaling_config.resources_per_worker,
+    )
+    train_run_context = create_dummy_run_context(
+        datasets={"train": train_ds, "valid": valid_ds},
+        dataset_config=data_config,
+        scaling_config=scaling_config,
+    )
+    worker_group = DummyWorkerGroup(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+    worker_group._start()
+
+    callback = DatasetsCallback(train_run_context)
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
+
+    # Under the V2 cluster autoscaler (default), exclude_resources should be
+    # zero regardless of how many training resources are reserved.
+    assert (
+        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        == ExecutionResources.zero()
+    )
+    assert (
+        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        == ExecutionResources.zero()
+    )
+
+
+def test_fixed_scaling_policy_coordinator_lifecycle():
+    """Test that FixedScalingPolicy registers training resources with the
+    AutoscalingCoordinator on start, periodically re-requests to keep
+    the reservation alive, and cancels on shutdown/abort."""
+    from unittest.mock import patch
+
+    from freezegun import freeze_time
+
+    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+        ResourceRequestPriority,
+    )
+    from ray.train.v2._internal.execution.scaling_policy import (
+        AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+        AUTOSCALING_REQUESTS_INTERVAL_S,
+    )
+    from ray.train.v2._internal.execution.scaling_policy.fixed import (
+        FixedScalingPolicy,
+    )
+
+    resources_per_worker = {"CPU": 4, "GPU": 1}
+    num_workers = 2
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=True,
+        resources_per_worker=resources_per_worker,
+    )
+
+    mock_coordinator = MagicMock()
+    expected_request_kwargs = dict(
+        requester_id="train-test-run-123",
+        resources=[resources_per_worker] * num_workers,
+        expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+        priority=ResourceRequestPriority.HIGH,
+    )
+
+    with patch(
+        "ray.get",
+        side_effect=lambda x, **_: x,
+    ):
+        policy = FixedScalingPolicy(scaling_config)
+        # Inject mock coordinator
+        policy.__dict__["_autoscaling_coordinator"] = mock_coordinator
+
+        with freeze_time() as frozen_time:
+            # Simulate controller start
+            mock_run_context = MagicMock()
+            mock_run_context.run_id = "test-run-123"
+            policy.after_controller_start(mock_run_context)
+
+            assert policy._requester_id == "train-test-run-123"
+
+            # Verify request_resources was called with the correct arguments
+            mock_coordinator.request_resources.remote.assert_called_once_with(
+                **expected_request_kwargs
+            )
+
+            # Calling make_decision immediately should NOT re-request (interval not passed)
+            worker_group_state = MagicMock()
+            worker_group_status = MagicMock()
+            policy.make_decision_for_running_worker_group(
+                worker_group_state=worker_group_state,
+                worker_group_status=worker_group_status,
+            )
+            assert mock_coordinator.request_resources.remote.call_count == 1
+
+            # Advance past the interval — should re-request
+            frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S)
+            policy.make_decision_for_running_worker_group(
+                worker_group_state=worker_group_state,
+                worker_group_status=worker_group_status,
+            )
+            assert mock_coordinator.request_resources.remote.call_count == 2
+            mock_coordinator.request_resources.remote.assert_called_with(
+                **expected_request_kwargs
+            )
+
+        # Simulate controller shutdown
+        policy.before_controller_shutdown()
+        mock_coordinator.cancel_request.remote.assert_called_once_with(
+            requester_id="train-test-run-123",
+        )
+
+        # Reset and test abort path
+        mock_coordinator.cancel_request.remote.reset_mock()
+        policy.before_controller_abort()
+        mock_coordinator.cancel_request.remote.assert_called_once_with(
+            requester_id="train-test-run-123",
+        )
 
 
 if __name__ == "__main__":

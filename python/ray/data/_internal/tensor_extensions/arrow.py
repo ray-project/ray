@@ -40,6 +40,7 @@ from ray.util.common import INT32_MAX
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
 
+PYARROW_VERSION = get_pyarrow_version()
 
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
