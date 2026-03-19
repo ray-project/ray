@@ -1141,16 +1141,19 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ) -> Tuple[int, int]:
             node_id, replica_set = node_and_num_running_replicas_of_all_deployments
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
-            not_fallback_node = True
+            is_preferred_node = True
+            # If there are label selectors or bundle label selectors
+            # then nodes that don't match any of the labels are not preferred
+            # and are deprioritized for keeping upscaled replicas.
             if len(labels_to_check) > 0:
-                not_fallback_node = any(
+                is_preferred_node = any(
                     node_labels_match_selector(node_labels, labels)
                     for labels in labels_to_check
                 )
             num_replicas = (
                 len(replica_set) if node_id != self._head_node_id else sys.maxsize
             )
-            return int(not_fallback_node), num_replicas
+            return int(is_preferred_node), num_replicas
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
