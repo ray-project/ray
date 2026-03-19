@@ -1158,6 +1158,9 @@ python/ray/data/block.py
     DOC102: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring contains more arguments than in function signature.
     DOC103: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [block: ].
 --------------------
+python/ray/data/checkpoint/checkpoint_writer.py
+    DOC201: Method `BatchBasedCheckpointWriter.write_block_checkpoint` does not have a return section in docstring
+--------------------
 python/ray/data/context.py
     DOC201: Method `DataContext.get_current` does not have a return section in docstring
     DOC201: Method `DataContext.get_config` does not have a return section in docstring
