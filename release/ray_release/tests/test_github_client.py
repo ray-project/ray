@@ -64,6 +64,24 @@ def test_auth_header_is_sent():
     assert "X-GitHub-Api-Version" in sent_headers
 
 
+@responses.activate
+def test_token_not_leaked_on_api_error():
+    responses.add(
+        responses.GET,
+        f"{BASE}/repos/{REPO}/pulls/1",
+        json={"message": "Bad credentials"},
+        status=401,
+    )
+    secret = "super-secret-token-xyz"
+    with pytest.raises(GitHubException) as exc_info:
+        GitHubClient(secret).get_repo(REPO).get_pull(1)
+
+    exc = exc_info.value
+    assert secret not in str(exc)
+    assert secret not in str(exc.data)
+    assert secret not in str(dict(exc.headers))
+
+
 # ---------------------------------------------------------------------------
 # GitHubRepo.get_issue
 # ---------------------------------------------------------------------------
