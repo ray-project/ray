@@ -33,7 +33,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected final AbstractRayRuntime runtime;
 
-  private T actorContext = null;
+  private final ThreadLocal<T> actorContext = new ThreadLocal<>();
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
