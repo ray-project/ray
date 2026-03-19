@@ -1806,6 +1806,7 @@ def init(
     if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
+    services.find_gcs_addresses.cache_clear()
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -2069,6 +2070,7 @@ def init(
             FutureWarning,
         )
 
+    services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2158,6 +2160,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    services.find_gcs_addresses.cache_clear()
 
 
 atexit.register(shutdown, True)
