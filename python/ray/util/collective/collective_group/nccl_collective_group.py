@@ -175,9 +175,9 @@ class NCCLGroup(BaseGroup):
     @classmethod
     def check_backend_availability(cls) -> bool:
         global _LOG_NCCL_WARNING, _NCCL_AVAILABLE
-        if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
+        if _LOG_NCCL_WARNING:
             logger.warning(
-                "NCCL seems unavailable. Please install Cupy "
+                "NCCL is not available. Please install Cupy "
                 "following the guide at: "
                 "https://docs.cupy.dev/en/stable/install.html."
             )

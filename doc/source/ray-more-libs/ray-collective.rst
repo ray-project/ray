@@ -354,6 +354,11 @@ The following links provide helpful resources on how to efficiently leverage the
 * `Scaling up the spaCy Named Entity Recognition (NER) pipeline <https://github.com/explosion/spacy-ray>`_ using Ray collective library.
 * `Implementing the AllReduce strategy <https://github.com/ray-project/distml/blob/master/distml/strategy/allreduce_strategy.py>`_ for data-parallel distributed ML training.
 
+Custom Collective Backends
+-------------------------
+
+.. include:: ray-collective-custom-backend.rst
+
 API References
 --------------
 

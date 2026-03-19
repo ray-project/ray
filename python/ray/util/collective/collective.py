@@ -14,7 +14,7 @@ import ray.experimental.internal_kv as _internal_kv
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
 from ray.util.collective.backend_registry import (
-    get_backend_registry as _get_backend_registry,
+    _global_registry,
     register_collective_backend,
 )
 
@@ -55,7 +55,7 @@ def is_backend_available(backend: str) -> bool:
     Returns:
         True if the backend is available, False otherwise.
     """
-    return _get_backend_registry().check(backend)
+    return _global_registry.check(backend)
 
 
 def get_address_and_port() -> Tuple[str, int]:
@@ -75,7 +75,7 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
-        self._registry = _get_backend_registry()
+        self._registry = _global_registry
 
     def create_collective_group(
         self, backend, world_size, rank, group_name, gloo_timeout=None
@@ -258,6 +258,14 @@ def create_collective_group(
         raise RuntimeError("Ranks must be non-negative.")
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
+
+    # Check if backend is registered
+    backend_upper = backend.upper()
+    if not _global_registry.check(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is not registered. "
+            f"Please register it using register_collective_backend('{backend_upper}', YourBackendClass)."
+        )
 
     # avoid a circular dependency
     from ray.util.collective.util import Info
