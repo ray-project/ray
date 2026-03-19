@@ -1472,7 +1472,7 @@ packaging==24.2
     #   transformers
     #   utilsforecast
     #   wandb
-pandas==2.0.0
+pandas==2.2.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
