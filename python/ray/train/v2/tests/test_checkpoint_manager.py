@@ -78,7 +78,6 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
     return True
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "checkpoint_config",
     [
@@ -90,6 +89,7 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_save_load_state_equivalence(
     monkeypatch, tmp_path, checkpoint_config: CheckpointConfig
 ):
