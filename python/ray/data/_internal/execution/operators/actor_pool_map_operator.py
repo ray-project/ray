@@ -484,16 +484,10 @@ class ActorPoolMapOperator(MapOperator):
             self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def _do_shutdown(self, force: bool = False):
-        if force:
-            # Force: kill actors immediately, then cancel/join in-flight tasks.
-            self._actor_pool.shutdown(force=True)
-            super()._do_shutdown(force)
-        else:
-            # Graceful: clear task refs then release actors.
-            self._data_tasks.clear()
-            self._metadata_tasks.clear()
-            self._actor_pool.shutdown(force=False)
-            super()._do_shutdown(force)
+        self._actor_pool.shutdown(force=force)
+        # NOTE: It's critical for Actor Pool to release actors before calling into
+        #       the base method that will attempt to cancel and join pending.
+        super()._do_shutdown(force)
 
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
@@ -1139,16 +1133,12 @@ class _ActorPool(AutoscalingActorPool):
                 ray.kill(actor)
 
     def _release_running_actor(self, actor: ActorHandle) -> None:
-        """Remove the given actor from the pool by dropping all pool references.
-
-        The actor will be garbage-collected (and ``__ray_shutdown__`` called)
-        once all other references to the handle are also dropped.  During full
-        shutdown the operator clears ``_data_tasks`` first to break callback
-        reference chains, then calls ``gc.collect()`` to force collection.
-
-        Unlike ``__ray_terminate__``, this passive-GC approach preserves the
-        actor's restartability for lineage reconstruction.
-        """
+        """Remove the given actor from the pool by dropping all pool references."""
+        # NOTE: By default, we remove references to the actor and let ref counting
+        # garbage collect the actor, instead of using ray.kill.
+        #
+        # Otherwise, actor cannot be reconstructed for the purposes of produced
+        # object's lineage reconstruction.
         if actor not in self._running_actors:
             return
 
