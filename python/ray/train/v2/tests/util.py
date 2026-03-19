@@ -113,6 +113,9 @@ class MockScalingPolicy(ScalingPolicy):
 
         super().__init__(scaling_config)
 
+    def _get_num_workers_for_resource_request(self) -> int:
+        return self.scaling_config.num_workers
+
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         if self._recovery_decision_queue:
             return self._recovery_decision_queue.pop(0)

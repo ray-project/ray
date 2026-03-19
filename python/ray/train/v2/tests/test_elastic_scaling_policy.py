@@ -8,7 +8,12 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     ResourceRequestPriority,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
-from ray.train.v2._internal.execution.scaling_policy import NoopDecision, ResizeDecision
+from ray.train.v2._internal.execution.scaling_policy import (
+    AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+    AUTOSCALING_REQUESTS_INTERVAL_S,
+    NoopDecision,
+    ResizeDecision,
+)
 from ray.train.v2._internal.execution.scaling_policy.elastic import (
     ElasticScalingPolicy,
 )
@@ -383,7 +388,7 @@ def test_request_and_clear():
         mock_coordinator.request_resources.remote.assert_called_with(
             requester_id=policy._requester_id,
             resources=[resources_per_worker] * 4,
-            expire_after_s=ElasticScalingPolicy.AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+            expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
         )
 
@@ -399,14 +404,14 @@ def test_request_and_clear():
         # Test request_resources is only called in
         # `make_decision_for_running_worker_group`,
         # if `AUTOSCALING_REQUESTS_INTERVAL_S` has passed.
-        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S / 2)
         policy.make_decision_for_running_worker_group(
             worker_group_state=worker_group_state,
             worker_group_status=worker_group_status,
         )
         assert mock_coordinator.request_resources.remote.call_count == 1
 
-        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S / 2)
         policy.make_decision_for_running_worker_group(
             worker_group_state=worker_group_state,
             worker_group_status=worker_group_status,
