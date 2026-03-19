@@ -99,29 +99,6 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "events_submission_job_definition_event_proto",
-    srcs = ["events_submission_job_definition_event.proto"],
-)
-
-cc_proto_library(
-    name = "events_submission_job_definition_event_cc_proto",
-    deps = [":events_submission_job_definition_event_proto"],
-)
-
-proto_library(
-    name = "events_submission_job_lifecycle_event_proto",
-    srcs = ["events_submission_job_lifecycle_event.proto"],
-    deps = [
-        "@com_google_protobuf//:timestamp_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_submission_job_lifecycle_event_cc_proto",
-    deps = [":events_submission_job_lifecycle_event_proto"],
-)
-
-proto_library(
     name = "events_actor_definition_event_proto",
     srcs = ["events_actor_definition_event.proto"],
     deps = ["//src/ray/protobuf:common_proto"],
