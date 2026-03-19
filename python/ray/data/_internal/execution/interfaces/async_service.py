@@ -79,7 +79,7 @@ class AsyncCaller(Protocol):
         ...
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0, max_restarts=-1)
 class AsyncServiceActor:
     """Singleton Ray actor that hosts async service tasks in a separate process.
 
