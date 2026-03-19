@@ -1361,7 +1361,7 @@ class ResourceKillerActor:
     def _kill_resource(self, *args):
         """To be implemented by subclasses.
 
-        The subclass should add any successfully-killed nodes to 
+        The subclass should add any successfully-killed nodes to
         """
         raise NotImplementedError
 
