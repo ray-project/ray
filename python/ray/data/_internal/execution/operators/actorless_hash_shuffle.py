@@ -255,7 +255,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     """
 
     _DEFAULT_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_COMPACTION_THRESHOLD = 10
+    _DEFAULT_COMPACTION_THRESHOLD = 0
 
     def __init__(
         self,
@@ -329,6 +329,13 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     # -- Input handling (Map phase) -------------------------------------------
 
+    def can_add_input(self) -> bool:
+        # Throttle map submissions when in-flight maps reach num_partitions,
+        # so compact tasks can get scheduled and make progress.
+        if len(self._compact_tasks) >= self._num_partitions:
+            return False
+        return True
+
     def _add_input_inner(self, input_bundle: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
@@ -373,6 +380,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 # Drop local list so empty-partition refs (with no other
                 # references) are reclaimed by Ray's reference counting.
                 del shard_refs
+
+                # Free the input block now that the map task has consumed it.
+                input_bundle.destroy_if_owned()
 
                 self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
