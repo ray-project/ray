@@ -473,13 +473,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
         upsert_keys = concat(upsert_keys_tables) if upsert_keys_tables else None
 
-        result = IcebergWriteResult(
+        return IcebergWriteResult(
             data_files=all_data_files,
             upsert_keys=upsert_keys,
             schemas=block_schemas,
         )
-
-        return result
 
     def _commit_overwrite(
         self, txn: "Table.transaction", data_files: List["DataFile"]
@@ -510,8 +508,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
 
     def on_write_complete(self, write_result: WriteResult) -> None:
         """
-        Commit the write transaction to Iceberg.
-        This method is called on the driver after all write tasks have completed.
+        Complete the write by reconciling schemas and committing all data files.
+
+        This runs on the driver after all workers finish writing files.
+        Collects all DataFile objects and schemas from all workers, reconciles schemas
+        (allowing type promotion), updates table schema if needed, then performs a single
+        atomic commit.
         """
         import time
 

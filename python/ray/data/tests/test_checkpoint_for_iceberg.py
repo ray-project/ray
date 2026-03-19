@@ -8,7 +8,6 @@ import pytest
 from pkg_resources import parse_version
 from pyiceberg import (
     catalog as pyi_catalog,
-    expressions as pyi_expr,
     schema as pyi_schema,
     types as pyi_types,
 )
@@ -18,7 +17,6 @@ from ray.data._internal.datasource.iceberg_datasink import (
     IcebergDatasink,
     IcebergWriteResult,
 )
-from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
@@ -300,3 +298,8 @@ def test_iceberg_checkpoint_recovers_upsert_keys_and_upserts(
     )
     assert actual_df["id"].is_unique
     assert actual_df.equals(expected_df)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
