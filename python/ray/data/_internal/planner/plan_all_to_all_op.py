@@ -11,12 +11,13 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
+    TopK,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
-from ray.data._internal.planner.sort import generate_sort_fn
+from ray.data._internal.planner.sort import generate_sort_fn, generate_topk_fn
 from ray.data.context import DataContext, ShuffleStrategy
 
 
@@ -134,6 +135,14 @@ def plan_all_to_all_op(
             op.batch_format,
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
+        )
+
+    elif isinstance(op, TopK):
+        fn = generate_topk_fn(
+            op.sort_key,
+            op.batch_format,
+            op.k,
+            data_context,
         )
 
     elif isinstance(op, Aggregate):

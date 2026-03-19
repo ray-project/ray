@@ -22,6 +22,7 @@ __all__ = [
     "RandomizeBlocks",
     "Repartition",
     "Sort",
+    "TopK",
 ]
 
 
@@ -214,6 +215,50 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Sort doesn't affect filtering correctness
+        return PredicatePassThroughBehavior.PASSTHROUGH
+
+
+class TopK(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
+    """Logical operator for TopK."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        sort_key: SortKey,
+        k: int,
+        batch_format: Optional[str] = "default",
+    ):
+        super().__init__(
+            input_op,
+            name="TopK",
+        )
+        self.sort_key = sort_key
+        self.k = k
+        self.batch_format = batch_format
+
+    def infer_metadata(self) -> "BlockMetadata":
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        input_meta = self.input_dependencies[0].infer_metadata()
+        if input_meta.num_rows is None:
+            num_rows = None
+        else:
+            num_rows = min(input_meta.num_rows, self.k)
+        return BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=None,
+            input_files=input_meta.input_files,
+            exec_stats=None,
+        )
+
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 

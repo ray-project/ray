@@ -8,9 +8,13 @@ import ray
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces import LogicalOperator, Plan
 from ray.data._internal.logical.operators import Download, Limit
-from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
+from ray.data._internal.logical.rules.limit_pushdown import (
+    SORT_LIMIT_TO_TOPK_MAX_K_CONFIG_KEY,
+    LimitPushdownRule,
+)
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
@@ -161,8 +165,21 @@ def test_limit_pushdown_through_project(ray_start_regular_shared_2_cpus):
     )
 
 
-def test_limit_pushdown_stops_at_sort(ray_start_regular_shared_2_cpus):
-    """Test that Limit stops at Sort operations (AllToAll)."""
+def test_sort_limit_rewritten_to_topk(ray_start_regular_shared_2_cpus):
+    """Test that Sort -> Limit is rewritten to TopK."""
+    ds = ray.data.range(100).sort("id").limit(5)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> TopK[TopK]",
+        [{"id": i} for i in range(5)],
+    )
+
+
+def test_sort_limit_not_rewritten_when_k_above_threshold(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    ctx = DataContext.get_current()
+    ctx.set_config(SORT_LIMIT_TO_TOPK_MAX_K_CONFIG_KEY, 3)
     ds = ray.data.range(100).sort("id").limit(5)
     _check_valid_plan_and_result(
         ds,
@@ -183,8 +200,7 @@ def test_limit_pushdown_complex_interweaved_operations(ray_start_regular_shared_
     ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
         ds,
-        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
-        "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
+        "Read[ReadRange] -> TopK[TopK] -> MapRows[Map(f1)] -> TopK[TopK] -> MapRows[Map(f2)]",
         [{"id": i} for i in range(5)],
     )
 
@@ -397,7 +413,7 @@ def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
 
 
 def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
-    """Limit after Union + Sort: limit must NOT push through the Sort."""
+    """Limit after Union + Sort should be rewritten to TopK."""
     ds1 = ray.data.range(100, override_num_blocks=4)
     ds2 = ray.data.range(50, override_num_blocks=4).map(
         lambda x: {"id": x["id"] + 1000}
@@ -407,7 +423,7 @@ def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
     expected_plan = (
         "Read[ReadRange], "
         "Read[ReadRange] -> MapRows[Map(<lambda>)] -> "
-        "Union[Union] -> Sort[Sort] -> Limit[limit=5]"
+        "Union[Union] -> TopK[TopK]"
     )
     _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
 
@@ -471,7 +487,7 @@ def test_limit_pushdown_complex_chain(ray_start_regular_shared_2_cpus):
     expected_plan = (
         "Read[ReadRange] -> Limit[limit=10] -> Project[Project], "
         "Read[ReadRange] -> Limit[limit=10] -> MapRows[Map(<lambda>)] "
-        "-> Union[Union] -> Aggregate[Aggregate] -> Sort[Sort] -> Limit[limit=3]"
+        "-> Union[Union] -> Aggregate[Aggregate] -> TopK[TopK]"
     )
 
     # Top-3 ids are the three largest (1009, 1008, 1007) with count()==1.

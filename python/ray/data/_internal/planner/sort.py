@@ -1,6 +1,7 @@
 from functools import partial
 from typing import List, Optional, Tuple
 
+import ray
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
@@ -13,8 +14,10 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data.block import Block, BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext, ShuffleStrategy
 
 
@@ -81,3 +84,64 @@ def generate_sort_fn(
     # "UnboundLocalError: local variable ... referenced before assignment",
     # because `key` and `descending` variables are reassigned in `fn()`.
     return partial(fn, sort_key)
+
+
+def generate_topk_fn(
+    sort_key: SortKey,
+    batch_format: str,
+    k: int,
+    _data_context: DataContext,
+) -> AllToAllTransformFn:
+    def fn(
+        sort_key: SortKey,
+        refs: List[RefBundle],
+        ctx: TaskContext,
+    ) -> Tuple[List[RefBundle], StatsDict]:
+        blocks: List[ray.ObjectRef[Block]] = []
+        for ref_bundle in refs:
+            blocks.extend(ref_bundle.block_refs)
+        if len(blocks) == 0 or k <= 0:
+            return ([], {})
+
+        sort_key.validate_schema(unify_ref_bundles_schema(refs))
+
+        topk_block = cached_remote_fn(_topk_sort_block)
+        topk_block_refs = [topk_block.remote(block, sort_key, k) for block in blocks]
+        topk_blocks = ray.get(topk_block_refs)
+
+        from ray.data._internal.execution.interfaces import RefBundle
+        from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+        from ray.data._internal.table_block import TableBlockAccessor
+
+        target_block_type = ExchangeTaskSpec._derive_target_block_type(batch_format)
+        normalized_blocks = TableBlockAccessor.normalize_block_types(
+            topk_blocks,
+            target_block_type=target_block_type,
+        )
+        merged_block, _ = BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+            normalized_blocks, sort_key
+        )
+        merged_accessor = BlockAccessor.for_block(merged_block)
+        result_block = merged_accessor.slice(0, min(k, merged_accessor.num_rows()), copy=False)
+
+        meta_with_schema = BlockMetadataWithSchema.from_block(result_block)
+        output = RefBundle(
+            [
+                (
+                    ray.put(result_block),
+                    meta_with_schema.metadata,
+                )
+            ],
+            owns_blocks=True,
+            schema=meta_with_schema.schema,
+        )
+        return ([output], {})
+
+    return partial(fn, sort_key)
+
+
+def _topk_sort_block(block: Block, sort_key: SortKey, k: int) -> Block:
+    accessor = BlockAccessor.for_block(block)
+    sorted_block = accessor.sort(sort_key)
+    sorted_accessor = BlockAccessor.for_block(sorted_block)
+    return sorted_accessor.slice(0, min(k, sorted_accessor.num_rows()), copy=False)

@@ -8,12 +8,18 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Sort,
+    TopK,
     Union,
 )
 
 __all__ = [
     "LimitPushdownRule",
+    "SORT_LIMIT_TO_TOPK_MAX_K_CONFIG_KEY",
 ]
+
+SORT_LIMIT_TO_TOPK_MAX_K_CONFIG_KEY = "execution_optimizer.sort_limit_to_topk_max_k"
+DEFAULT_SORT_LIMIT_TO_TOPK_MAX_K = 1000
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +46,9 @@ class LimitPushdownRule(Rule):
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        max_k = plan.context.get_config(
+            SORT_LIMIT_TO_TOPK_MAX_K_CONFIG_KEY, DEFAULT_SORT_LIMIT_TO_TOPK_MAX_K
+        )
         # The DAG's root is the most downstream operator.
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
@@ -49,6 +58,20 @@ class LimitPushdownRule(Rule):
                     # Fuse consecutive Limits: Limit[n] -> Limit[m] becomes Limit[min(n,m)]
                     new_limit = min(node.limit, upstream_op.limit)
                     return Limit(upstream_op.input_dependency, new_limit)
+
+                if (
+                    isinstance(upstream_op, Sort)
+                    and node.limit > 0
+                    and isinstance(max_k, int)
+                    and max_k > 0
+                    and node.limit <= max_k
+                ):
+                    return TopK(
+                        upstream_op.input_dependencies[0],
+                        upstream_op.sort_key,
+                        node.limit,
+                        upstream_op.batch_format,
+                    )
 
                 # If no fusion, apply pushdown logic
                 if isinstance(upstream_op, Union):
