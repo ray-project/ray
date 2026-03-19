@@ -73,8 +73,8 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
 # 16.0.0, because 12.0.0 contains bugs in slicing arrays, and has no support for to_numpy()
 # for scalars.
 if (
-    get_pyarrow_version() is None
-    or get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR
+    PYARROW_VERSION is None
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR
 ):
     from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
 else:
