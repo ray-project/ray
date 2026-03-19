@@ -157,23 +157,23 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
       break;
     }
 
-    if (IsEnabled()) {
-      if (fds[0].revents & POLLPRI) {
+    if (fds[0].revents & POLLPRI) {
+      if (IsEnabled()) {
         Disable();
         kill_workers_callback_(
             MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_));
-      } else if (fds[0].revents & POLLERR) {
-        RAY_LOG(ERROR) << "Got POLLERR while monitoring memory pressure. "
-                       << "This likely indicates that the event source is gone, "
-                       << "Pressure memory monitoring thread is stopping.";
-        break;
-      } else {
-        RAY_LOG(ERROR) << absl::StrFormat(
-            "Got unexpected event while monitoring memory pressure, event: 0x%x. "
-            "Pressure memory monitoring thread is stopping.",
-            fds[0].revents);
-        break;
       }
+    } else if (fds[0].revents & POLLERR) {
+      RAY_LOG(ERROR) << "Got POLLERR while monitoring memory pressure. "
+                     << "This likely indicates that the event source is gone, "
+                     << "Pressure memory monitoring thread is stopping.";
+      break;
+    } else {
+      RAY_LOG(ERROR) << absl::StrFormat(
+          "Got unexpected event while monitoring memory pressure, event: 0x%x. "
+          "Pressure memory monitoring thread is stopping.",
+          fds[0].revents);
+      break;
     }
   }
 }
