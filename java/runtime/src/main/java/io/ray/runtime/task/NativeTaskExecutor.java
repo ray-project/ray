@@ -6,11 +6,11 @@ import io.ray.runtime.AbstractRayRuntime;
 /**
  * Task executor for cluster mode.
  *
- * <p>In cluster mode, each worker process serves exactly one actor. The C++ core worker
- * runs {@code ACTOR_CREATION_TASK} on the main event-loop thread and dispatches subsequent
- * {@code ACTOR_TASK}s to a BoundedExecutor thread pool — potentially a different thread.
- * Therefore the actor context is stored as a shared volatile field so that it is visible
- * across all threads within the same worker process.
+ * <p>In cluster mode, each worker process serves exactly one actor. The C++ core worker runs {@code
+ * ACTOR_CREATION_TASK} on the main event-loop thread and dispatches subsequent {@code ACTOR_TASK}s
+ * to a BoundedExecutor thread pool — potentially a different thread. Therefore the actor context is
+ * stored as a shared volatile field so that it is visible across all threads within the same worker
+ * process.
  */
 public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeActorContext> {
 

@@ -50,9 +50,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
    * Retrieve the actor context for the current execution.
    *
    * <p>Subclasses implement this to match their threading model:
+   *
    * <ul>
-   *   <li>Cluster mode: a single actor per worker process, context is shared across threads.</li>
-   *   <li>Local mode: multiple actors may share one TaskExecutor, context is thread-isolated.</li>
+   *   <li>Cluster mode: a single actor per worker process, context is shared across threads.
+   *   <li>Local mode: multiple actors may share one TaskExecutor, context is thread-isolated.
    * </ul>
    */
   protected abstract T getActorContext();

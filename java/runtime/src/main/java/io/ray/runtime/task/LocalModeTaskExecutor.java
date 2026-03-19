@@ -6,10 +6,10 @@ import io.ray.runtime.AbstractRayRuntime;
 /**
  * Task executor for local mode.
  *
- * <p>In local mode, multiple actors may share the same {@code TaskExecutor} instance but
- * run on different threads (each actor is dispatched to its own executor service thread).
- * A {@code ThreadLocal} is used to isolate each actor's context per thread, preventing
- * cross-actor interference.
+ * <p>In local mode, multiple actors may share the same {@code TaskExecutor} instance but run on
+ * different threads (each actor is dispatched to its own executor service thread). A {@code
+ * ThreadLocal} is used to isolate each actor's context per thread, preventing cross-actor
+ * interference.
  */
 public class LocalModeTaskExecutor extends TaskExecutor<LocalModeTaskExecutor.LocalActorContext> {
 
