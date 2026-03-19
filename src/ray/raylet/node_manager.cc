@@ -462,18 +462,29 @@ void NodeManager::RegisterGcs() {
             // capture checking ptr here because vs17 fail to compile
             [this, checking_ptr = &checking](const auto &status,
                                              const auto &alive_vec) mutable {
+              // When the RPC fails (timeout, network error, etc.), accessor calls
+              // callback(status, {}). Do not access alive_vec[0] when empty.
+              if (!status.ok()) {
+                if (status.IsUnauthenticated()) {
+                  RAY_LOG(FATAL)
+                      << "GCS returned an authentication error. This may happen when "
+                      << "GCS is not backed by a DB and restarted or there is data loss "
+                      << "in the DB. Local cluster ID: " << gcs_client_.GetClusterId();
+                }
+                *checking_ptr = false;
+                return;
+              }
+              if (alive_vec.empty()) {
+                *checking_ptr = false;
+                return;
+              }
               bool alive = alive_vec[0];
-              if ((status.ok() && !alive)) {
+              if (!alive) {
                 // GCS think this raylet is dead. Fail the node
                 RAY_LOG(FATAL)
                     << "GCS consider this node to be dead. This may happen when "
                     << "GCS is not backed by a DB and restarted or there is data loss "
                     << "in the DB.";
-              } else if (status.IsUnauthenticated()) {
-                RAY_LOG(FATAL)
-                    << "GCS returned an authentication error. This may happen when "
-                    << "GCS is not backed by a DB and restarted or there is data loss "
-                    << "in the DB. Local cluster ID: " << gcs_client_.GetClusterId();
               }
               *checking_ptr = false;
             });
