@@ -96,7 +96,6 @@ class SpillMetricsMonitor:
         return metrics
 
 
-
 def get_or_create_spill_metrics_monitor(
     poll_interval_s: float = 60.0,
 ) -> ray.actor.ActorHandle:
