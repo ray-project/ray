@@ -101,7 +101,9 @@ class DelayedServiceHandler {
 /// (3) When the `ServiceHandler` finishes handling the request, `ServerCallImpl::Finish`
 ///     will be called, and the state becomes `SENDING_REPLY`.
 /// (4) When the reply is sent, an event will be gotten from the `CompletionQueue`.
-///     `GrpcServer` will then delete this call.
+///     `GrpcServer` will call `ReleaseSelf()` on this call. If no async lambdas are
+///     still in flight, the call is destroyed immediately. Otherwise it stays alive
+///     until the last lambda completes.
 ///
 /// NOTE(hchen): Compared to `ServerCallImpl`, this abstract interface doesn't use
 /// template. This allows the users (e.g., `GrpcServer`) not having to use
@@ -120,6 +122,13 @@ class ServerCall {
 
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
+
+  /// Release the self-reference held by this call.
+  ///
+  /// Called by `GrpcServer` when the CQ is done with this call, in place of
+  /// `delete server_call`. Any async lambdas that captured a `shared_ptr` copy of
+  /// this call extend its lifetime until they complete, preventing use-after-free.
+  virtual void ReleaseSelf() = 0;
 
   virtual const ServerCallFactory &GetServerCallFactory() = 0;
 
@@ -206,6 +215,10 @@ class ServerCallImpl : public ServerCall {
 
   ServerCallState GetState() const override { return state_; }
 
+  void SetSelf(std::shared_ptr<ServerCallImpl> self) { self_ = std::move(self); }
+
+  void ReleaseSelf() override { self_.reset(); }
+
   void HandleRequest() override {
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
@@ -248,9 +261,11 @@ class ServerCallImpl : public ServerCall {
       grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
+      auto self = self_;
       io_service_.post(
-          [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
-            HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
+          [self, auth_success, token_auth_failed, cluster_id_auth_failed] {
+            self->HandleRequestImpl(
+                auth_success, token_auth_failed, cluster_id_auth_failed);
           },
           call_name_ + ".HandleRequestImpl",
           // Implement the delay of the rpc server call as the
@@ -288,13 +303,18 @@ class ServerCallImpl : public ServerCall {
       // a new request comes in.
       factory_.CreateCall();
     }
+    // Capture shared_ptr before posting to any executor. Under heavy reconnection bursts,
+    // millions of auth-failure lambdas can flood GetServerCallExecutor(). The CQ poller
+    // may call ReleaseSelf() (ok=false path) before a queued lambda executes -- use
+    // shared_ptr to keep the object alive until all in-flight lambdas complete.
+    auto self = self_;
     if (!auth_success) {
-      boost::asio::post(GetServerCallExecutor(), [this, token_auth_failed]() {
+      boost::asio::post(GetServerCallExecutor(), [self, token_auth_failed]() {
         if (token_auth_failed) {
-          SendReply(Status::Unauthenticated(
+          self->SendReply(Status::Unauthenticated(
               "InvalidAuthToken: Authentication token is missing or incorrect"));
         } else {
-          SendReply(Status::Unauthenticated(
+          self->SendReply(Status::Unauthenticated(
               "WrongClusterID: Perhaps the client is accessing GCS "
               "after it has restarted."));
         }
@@ -304,15 +324,15 @@ class ServerCallImpl : public ServerCall {
           std::move(request_),
           reply_,
           /*send_reply_callback=*/
-          [this](Status status,
+          [self](Status status,
                  std::function<void()> success,
                  std::function<void()> failure) {
             // These two callbacks must be set before `SendReply`, because `SendReply`
             // is async and this `ServerCall` might be deleted right after `SendReply`.
-            send_reply_success_callback_ = std::move(success);
-            send_reply_failure_callback_ = std::move(failure);
+            self->send_reply_success_callback_ = std::move(success);
+            self->send_reply_failure_callback_ = std::move(failure);
             boost::asio::post(GetServerCallExecutor(),
-                              [this, status]() { SendReply(status); });
+                              [self, status]() { self->SendReply(status); });
           });
     }
   }
@@ -452,6 +472,12 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
+  /// Shared ownership of this call. Held until the gRPC CQ is done with the call
+  /// (ReleaseSelf() called from PollEventsFromCompletionQueue). Any in-flight async
+  /// lambdas that captured a copy of this shared_ptr extend lifetime beyond
+  /// ReleaseSelf().
+  std::shared_ptr<ServerCallImpl> self_;
+
   ray::stats::Histogram grpc_server_req_process_time_ms_histogram_{
       GetGrpcServerReqProcessTimeMsHistogramMetric()};
   ray::stats::Count grpc_server_req_new_counter_{GetGrpcServerReqNewCounterMetric()};
@@ -537,19 +563,26 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         record_metrics_(record_metrics) {}
 
   void CreateCall() const override {
-    // Create a new `ServerCall`. This object will eventually be deleted by
-    // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth>(
-        *this,
-        service_handler_,
-        handle_request_function_,
-        io_service_,
-        call_name_,
-        cluster_id_,
-        auth_token_,
-        record_metrics_);
-    /// Request gRPC runtime to starting accepting this kind of request, using the call as
-    /// the tag.
+    // Use make_shared for exception safety: if the control-block allocation in a
+    // separate shared_ptr(raw_ptr) call throws, the raw pointer would leak.
+    // make_shared allocates object and control block together, so there is no
+    // window between allocation and ownership transfer.
+    auto call_sp =
+        std::make_shared<ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth>>(
+            *this,
+            service_handler_,
+            handle_request_function_,
+            io_service_,
+            call_name_,
+            cluster_id_,
+            auth_token_,
+            record_metrics_);
+    // Establish self-ownership so async lambda captures can extend lifetime past the
+    // point where the CQ poller would otherwise call `delete server_call`.
+    call_sp->SetSelf(call_sp);
+    // Register with gRPC using raw pointer as tag (gRPC CQ interface requires void*).
+    // The shared_ptr stored in call->self_ keeps the object alive until ReleaseSelf().
+    auto *call = call_sp.get();
     (service_.*request_call_function_)(&call->context_,
                                        &call->request_,
                                        &call->response_writer_,

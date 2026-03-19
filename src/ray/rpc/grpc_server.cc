@@ -253,7 +253,11 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         // Create a new `ServerCall` to accept the next incoming request.
         server_call->GetServerCallFactory().CreateCall();
       }
-      delete server_call;
+      // Release the self-reference instead of delete. If async lambdas (posted to
+      // GetServerCallExecutor or io_service) still hold a shared_ptr copy, the object
+      // stays alive until they complete. Otherwise this is the last reference and the
+      // object is destroyed immediately -- equivalent to `delete server_call`.
+      server_call->ReleaseSelf();
     }
   }
 }
