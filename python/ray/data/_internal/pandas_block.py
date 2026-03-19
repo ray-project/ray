@@ -92,7 +92,7 @@ def _safe_from_pandas(df: "pandas.DataFrame") -> "pyarrow.Table":
     # Convert non-object columns via from_pandas so their dtypes and metadata are
     # preserved (e.g. TensorDtype via __arrow_array__, extension types, etc.).
     object_col_set = set(object_col_names)
-    non_object_col_names = [c for c in df.columns if c not in object_col_set]
+    non_object_col_names = df.columns.drop(object_col_names).tolist()
     non_object_table = pa.Table.from_pandas(
         df[non_object_col_names], preserve_index=False
     )
