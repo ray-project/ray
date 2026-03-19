@@ -318,7 +318,7 @@ def _format_in_threadpool(
     """Executes the batching, formatting, and collation logic in a threadpool.
 
     Args:
-        logical_batch_iterator: An iterator over logical batches.
+        batch_iter: An iterator over logical batches.
         stats: DatasetStats object to record timing and other statistics.
         batch_format: The format in which to return each batch.
             Specify "default" to use the current block format (promoting
@@ -328,6 +328,8 @@ def _format_in_threadpool(
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
         num_threadpool_workers: The number of threads to use in the threadpool.
+        ensure_copy: Whether batches are always copied from the underlying base
+            blocks (not zero-copy views).
     """
 
     def threadpool_computations_format_collate(
