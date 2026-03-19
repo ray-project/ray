@@ -23,7 +23,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.async_service import (
-    AsyncRefreshable,
+    AsyncCaller,
     AsyncServiceHandle,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -100,7 +100,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
         self._callbacks: List["ExecutionCallback"] = []
-        self._async_handles: Dict[AsyncRefreshable, AsyncServiceHandle] = {}
+        self._async_handles: Dict[AsyncCaller, AsyncServiceHandle] = {}
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -589,7 +589,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 continue
             self._async_handles[refreshable] = AsyncServiceHandle(task=task)
 
-    def _uses_async_service(self, refreshable: "AsyncRefreshable") -> bool:
+    def _uses_async_service(self, refreshable: "AsyncCaller") -> bool:
         """True if the refreshable is registered with the async service."""
         return refreshable in self._async_handles
 

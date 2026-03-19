@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.execution.interfaces.async_service import AsyncServiceTask
+from ray.data._internal.execution.interfaces.async_service import AsyncCallee
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.issue_detection.detectors.hanging_detector import (
     HangingExecutionIssueDetector,
@@ -38,7 +38,7 @@ class IssueDetectionInput:
     hash_shuffle_snapshots: List[HashShuffleOpSnapshot]
 
 
-class IssueDetectionTask(AsyncServiceTask[IssueDetectionInput, List[Issue]]):
+class IssueDetectionTask(AsyncCallee[IssueDetectionInput, List[Issue]]):
     """Runs all issue detectors in the async service actor process.
 
     Each detector delegates to ``detect_from_snapshots()`` so all
@@ -126,7 +126,7 @@ class IssueDetectionExecutionCallback(ExecutionCallback):
 
     # -- Async path --
 
-    def create_async_task(self) -> Optional[AsyncServiceTask]:
+    def create_async_task(self) -> Optional[AsyncCallee]:
         cfg = self._executor._data_context.issue_detectors_config
         intervals = [
             cfg.hanging_detector_config.detection_time_interval_s,

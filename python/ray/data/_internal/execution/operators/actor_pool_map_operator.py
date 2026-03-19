@@ -614,10 +614,10 @@ class ActorPoolMapOperator(MapOperator):
 
     def create_async_task(self):
         from ray.data._internal.execution.interfaces.async_service import (
-            AsyncServiceTask,
+            AsyncCallee,
         )
 
-        class ActorStateRefreshTask(AsyncServiceTask):
+        class ActorStateRefreshTask(AsyncCallee):
             """Queries GCS for actor states in the async service process."""
 
             def run(self, actor_handles, tpe):

@@ -28,7 +28,7 @@ ASYNC_SERVICE_ACTOR_NAME = "RayData_AsyncServiceActor"
 ASYNC_SERVICE_NAMESPACE = "RayData_AsyncService"
 
 
-class AsyncServiceTask(ABC, Generic[InputT, OutputT]):
+class AsyncCallee(ABC, Generic[InputT, OutputT]):
     """A unit of work that runs asynchronously in the AsyncServiceActor process.
 
     Subclasses implement ``run()`` to perform expensive computation (CPU-bound)
@@ -46,7 +46,7 @@ class AsyncServiceTask(ABC, Generic[InputT, OutputT]):
 
 
 @runtime_checkable
-class AsyncRefreshable(Protocol):
+class AsyncCaller(Protocol):
     """Protocol for components that participate in async state refresh.
 
     Both ``PhysicalOperator`` and ``ExecutionCallback`` can implement this
@@ -61,7 +61,7 @@ class AsyncRefreshable(Protocol):
         3. ``apply_refresh_result(result, executor)`` — apply output (scheduling thread)
     """
 
-    def create_async_task(self) -> Optional["AsyncServiceTask"]:
+    def create_async_task(self) -> Optional["AsyncCallee"]:
         """Return the task to register with the async service, or None to skip."""
         ...
 
@@ -96,10 +96,10 @@ class AsyncServiceActor:
     """
 
     def __init__(self):
-        self._tasks: Dict[ServiceKeyT, AsyncServiceTask] = {}
+        self._tasks: Dict[ServiceKeyT, AsyncCallee] = {}
         self._tpe = futures.ThreadPoolExecutor(max_workers=1)
 
-    def register(self, task: AsyncServiceTask) -> ServiceKeyT:
+    def register(self, task: AsyncCallee) -> ServiceKeyT:
         service_key = uuid.uuid4()
         self._tasks[service_key] = task
         return service_key
@@ -113,7 +113,7 @@ class AsyncServiceActor:
 
 
 class AsyncServiceHandle(Generic[InputT, OutputT]):
-    """Client-side handle for non-blocking interaction with an AsyncServiceTask.
+    """Client-side handle for non-blocking interaction with an AsyncCallee.
 
     Used in the scheduling loop to submit snapshots and poll for
     results via ``ray.wait(timeout=0)`` without blocking.
@@ -121,7 +121,7 @@ class AsyncServiceHandle(Generic[InputT, OutputT]):
 
     def __init__(
         self,
-        task: AsyncServiceTask,
+        task: AsyncCallee,
         error_policy: ErrorPolicy = ErrorPolicy.LOG_AND_RETRY,
     ):
 

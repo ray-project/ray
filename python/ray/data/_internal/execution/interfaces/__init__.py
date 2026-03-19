@@ -1,8 +1,8 @@
 from .async_service import (
-    AsyncRefreshable,
+    AsyncCallee,
+    AsyncCaller,
     AsyncServiceActor,
     AsyncServiceHandle,
-    AsyncServiceTask,
 )
 from .common import NodeIdStr
 from .execution_options import ExecutionOptions, ExecutionResources
@@ -24,8 +24,8 @@ __all__ = [
     "BlockSlice",
     "ReportsExtraResourceUsage",
     "TaskContext",
-    "AsyncServiceTask",
-    "AsyncRefreshable",
+    "AsyncCallee",
+    "AsyncCaller",
     "AsyncServiceActor",
     "AsyncServiceHandle",
 ]
