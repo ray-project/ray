@@ -166,7 +166,6 @@ class TestActorPool(unittest.TestCase):
             max_actor_concurrency=1,
             per_actor_resource_usage=ExecutionResources(cpu=1),
             map_worker_cls_name=map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=False,
         )
         return pool
 
@@ -798,7 +797,6 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
         per_actor_resource_usage=ExecutionResources(cpu=1),
         map_worker_cls_name="MapWorker(TestOp)",
         debounce_period_s=0,
-        _enable_actor_pool_on_exit_hook=False,
     )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):

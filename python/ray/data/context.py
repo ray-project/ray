@@ -723,14 +723,6 @@ class DataContext:
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
-    # Whether to trigger UDF cleanup (via __ray_shutdown__ / __del__) when
-    # actor-pool workers are terminated.  When True, _ActorPool submits
-    # actor.__ray_terminate__ which waits for pending tasks, calls
-    # _MapWorker.__ray_shutdown__, and then exits the actor process.
-    # Set to False to skip cleanup and let actors exit without invoking
-    # __ray_shutdown__, which avoids the shutdown cost but means UDF.__del__
-    # will only fire if/when Python GC collects the actor handle.
-    enable_actor_pool_on_exit_hook: bool = True
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory
