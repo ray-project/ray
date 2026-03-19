@@ -24,6 +24,8 @@ depsets:
     build_arg_sets:
       - py310
       - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
   - name: serve_ci_depset_${PYTHON_SHORT}
     operation: relax
