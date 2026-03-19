@@ -311,6 +311,18 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(int64_t total_memory_bytes,
   }
 }
 
+int64_t MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+    const ProcessesMemorySnapshot &snapshot, pid_t pid) {
+  const ProcessesMemorySnapshot::const_iterator it = snapshot.find(pid);
+  if (it == snapshot.end()) {
+    RAY_LOG_EVERY_MS(INFO, 60000) << "Can't find memory usage in process memory snapshot "
+                                     "for PID, reporting zero. PID: "
+                                  << pid;
+    return 0;
+  }
+  return it->second;
+}
+
 const std::vector<pid_t> MemoryMonitorUtils::GetPidsFromDir(const std::string proc_dir) {
   std::vector<pid_t> pids;
   if (!std::filesystem::exists(proc_dir)) {

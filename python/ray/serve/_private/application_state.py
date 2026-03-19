@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -1192,6 +1193,8 @@ class ApplicationStateManager:
             tag_keys=("application",),
         )
 
+        self._app_status_gauge_cache: Dict[str, Tuple[int, float]] = {}
+
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1460,16 +1463,35 @@ class ApplicationStateManager:
                 logger.debug(f"Application '{name}' deleted successfully.")
 
         # Record application status metrics
+        now = time.time()
         for name, app in self._application_states.items():
-            self._application_status_gauge.set(
-                app.status.to_numeric(),
-                tags={"application": name},
+            cached = self._app_status_gauge_cache.get(name)
+            value = app.status.to_numeric()
+
+            # Throttle gauge reporting to avoid redundant FFI calls each control loop.
+            # Two independent conditions trigger a write:
+            #   - value_changed: reports status transitions (e.g. DEPLOYING -> RUNNING)
+            #     immediately, without waiting for the interval to expire.
+            #   - interval_elapsed: refreshes the gauge periodically even when status is
+            #     unchanged, preventing stale/empty time series in Grafana/Prometheus.
+            # We skip ONLY when both say it is safe — value unchanged AND reported recently.
+            value_changed = cached is None or cached[0] != value
+            interval_elapsed = (
+                cached is None
+                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
             )
+
+            if not value_changed and not interval_elapsed:
+                continue
+
+            self._application_status_gauge.set(value, tags={"application": name})
+            self._app_status_gauge_cache[name] = (value, now)
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
+                self._app_status_gauge_cache.pop(app_name, None)
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
         if any_target_state_changed:
