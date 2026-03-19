@@ -70,7 +70,7 @@ To understand the following content better, you should understand the difference
   * `DELETE_RAYJOB_CR_AFTER_JOB_FINISHES` (Optional, added in version 1.2.0): Set this environment variable for the KubeRay operator, not the RayJob resource. If you set this environment variable to true, the RayJob custom resource itself is deleted if you also set `shutdownAfterJobFinishes` to true. Note that KubeRay deletes all resources created by the RayJob, including the Kubernetes Job.
 * Others
   * `suspend` (Optional): If `suspend` is true, KubeRay deletes both the RayCluster and the submitter. Note that Kueue also implements scheduling strategies by mutating this field. Avoid manually updating this field if you use Kueue to schedule RayJob.
-  * `deletionStrategy` (beta in v1.6.0): Configures automated cleanup after the RayJob reaches a terminal state. This field requires the `RayJobDeletionPolicy` feature gate to be enabled. Two mutually exclusive styles are supported:
+  * `deletionStrategy` (alpha in v1.5.1, beta in v1.6.0): Configures automated cleanup after the RayJob reaches a terminal state. This field requires the `RayJobDeletionPolicy` feature gate to be enabled. Two mutually exclusive styles are supported:
     * **Rules-based** (Recommended): Define `deletionRules` as a list of deletion actions triggered by specific conditions. Each rule specifies:
       * `policy`: The deletion action to perform — `DeleteCluster` (delete the entire RayCluster and its Pods), `DeleteWorkers` (delete only worker Pods), `DeleteSelf` (delete the RayJob and all associated resources), or `DeleteNone` (no deletion).
       * `condition`: When to trigger the deletion, based on `jobStatus` (`SUCCEEDED` or `FAILED`) and an optional `ttlSeconds` delay.
