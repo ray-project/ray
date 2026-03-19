@@ -266,7 +266,7 @@ def test_read_with_map_batches_fused_successfully(
 
     mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
     assert isinstance(physical_op, MapOperator)
@@ -343,7 +343,7 @@ def test_map_batches_batch_size_fusion(
         lambda x: x, batch_size=5
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
 
@@ -389,7 +389,7 @@ def test_map_batches_with_batch_size_specified_fusion(
         batch_size=downstream_batch_size,
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     root_op = physical_plan.dag
     assert isinstance(root_op, MapOperator)
