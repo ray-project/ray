@@ -1,4 +1,5 @@
 import sys
+import time
 
 import pytest
 
@@ -732,62 +733,30 @@ async def test_e2e_serve_fallback_strategy_unschedulable(
 
 class TestScaleDownReplicaSelection:
     @staticmethod
-    def _collect_replica_infos(
-        handle,
-        *,
-        expected_replicas: int,
-        timeout_s: int = 30,
-    ):
-        infos = {}
-
-        def check():
-            responses = [
-                handle.get_replica_info.remote(0.2)
-                for _ in range(expected_replicas * 2)
-            ]
-            for response in responses:
-                info = response.result()
-                infos[info["replica_tag"]] = info
-
-            return len(infos) == expected_replicas
-
-        wait_for_condition(check, timeout=timeout_s, retry_interval_ms=500)
-        return infos
-
-    @staticmethod
-    def _deploy_probe_app(
+    def _deploy_test_app(
         app_name: str,
-        probe_deployment,
         *,
-        num_replicas: int,
         ray_actor_options: dict,
+        autoscaling_config: dict = None,
     ):
+        @serve.deployment
+        class TestDeployment:
+            def get_node_id(self, delay_s: float = 0):
+                time.sleep(delay_s)
+                return ray.get_runtime_context().get_node_id()
+
         return serve.run(
-            probe_deployment.options(
-                num_replicas=num_replicas,
+            TestDeployment.options(
                 ray_actor_options=ray_actor_options,
+                autoscaling_config=autoscaling_config,
             ).bind(),
             name=app_name,
             route_prefix=f"/{app_name}",
         )
 
-    @staticmethod
-    def _build_probe_deployment(name: str):
-        @serve.deployment(name=name, max_ongoing_requests=1)
-        class ReplicaProbe:
-            def __init__(self):
-                self.replica_tag = serve.get_replica_context().replica_tag
-                self.node_id = ray.get_runtime_context().get_node_id()
+        return TestDeployment
 
-            def get_replica_info(self, delay_s: float = 0):
-                return {
-                    "node_id": self.node_id,
-                    "replica_tag": self.replica_tag,
-                }
-
-        return ReplicaProbe
-
-    def test_downscale_prefers_fallback_node(self, ray_cluster):
+    def test_downscale_fallback_node(self, ray_cluster):
         cluster = ray_cluster
 
         primary_label = {"region": "us-west"}
@@ -806,99 +775,60 @@ class TestScaleDownReplicaSelection:
         cluster.add_node(
             num_cpus=num_fallback_replicas,
             labels=fallback_label,
-            resources={"fallback_node": 1},
         )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address, ignore_reinit_error=True)
         serve.start()
         app_name = "downscale_fallback_app"
-        deployment_name = "DownscaleFallbackProbe"
-        probe_deployment = self._build_probe_deployment(deployment_name)
 
         fallback_node_id = ray.get(
-            get_node_id.options(resources={"fallback_node": 1}).remote()
+            get_node_id.options(label_selector=fallback_label).remote()
         )
 
         try:
-            handle = self._deploy_probe_app(
+            handle = self._deploy_test_app(
                 app_name,
-                probe_deployment,
-                num_replicas=num_fallback_replicas,
                 ray_actor_options=ray_actor_options,
+                autoscaling_config={
+                    "min_replicas": 1,
+                    "max_replicas": num_fallback_replicas + num_match_replicas,
+                    "target_ongoing_requests": 0.01,
+                    "upscale_delay_s": 0.1,
+                    "metrics_interval_s": 0.2,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 0.1,
+                },
             )
             wait_for_condition(check_apps_running, apps=[app_name])
-            replica_infos = self._collect_replica_infos(
-                handle, expected_replicas=num_fallback_replicas
-            )
-            assert {info["node_id"] for info in replica_infos.values()} == {
-                fallback_node_id
-            }
 
             cluster.add_node(
                 num_cpus=num_match_replicas,
                 labels=primary_label,
-                resources={"primary_node": 1},
             )
             cluster.wait_for_nodes()
             primary_node_id = ray.get(
-                get_node_id.options(resources={"primary_node": 1}).remote()
+                get_node_id.options(label_selector=primary_label).remote()
             )
 
-            total_replicas = num_fallback_replicas + num_match_replicas
-            handle = self._deploy_probe_app(
-                app_name,
-                probe_deployment,
-                num_replicas=total_replicas,
-                ray_actor_options=ray_actor_options,
-            )
-            wait_for_condition(check_apps_running, apps=[app_name])
-            replica_infos = self._collect_replica_infos(
-                handle, expected_replicas=total_replicas
-            )
-
-            fallback_infos = [
-                info
-                for info in replica_infos.values()
-                if info["node_id"] == fallback_node_id
-            ]
-            match_infos = [
-                info
-                for info in replica_infos.values()
-                if info["node_id"] == primary_node_id
-            ]
-
-            assert len(fallback_infos) == num_fallback_replicas
-            assert len(match_infos) == num_match_replicas
-
-            handle = self._deploy_probe_app(
-                app_name,
-                probe_deployment,
-                num_replicas=num_match_replicas,
-                ray_actor_options=ray_actor_options,
-            )
-            wait_for_condition(check_apps_running, apps=[app_name])
-            remaining_infos = self._collect_replica_infos(
-                handle, expected_replicas=num_match_replicas
-            )
-
-            assert {info["node_id"] for info in remaining_infos.values()} == {
-                primary_node_id
-            }
-            assert set(remaining_infos).issubset(
-                {info["replica_tag"] for info in match_infos}
-            )
+            # The first replica is always the fallback node
+            assert handle.get_node_id.remote(delay_s=1).result() == fallback_node_id
+            # After calling the deployment will scale up
+            time.sleep(5)
+            # After some time, the deployment will scale down
+            # Replica on the fallback node should be removed first
+            # so the remaining replica should be on the primary node
+            assert handle.get_node_id.remote().result() == primary_node_id
         finally:
             serve.shutdown()
 
     def test_downscale_prefers_nodes_with_fewer_total_replicas(self, ray_cluster):
         cluster = ray_cluster
-        # Create a head node without CPUs so replicas schedule on worker nodes.
         cluster.add_node(num_cpus=0)
         primary_label = {"region": "us-south"}
         cluster.add_node(
             num_cpus=1,
             labels=primary_label,
-            resources={"primary_node_1": 1},
+            resources={"node_1": 1},
         )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address, ignore_reinit_error=True)
@@ -909,76 +839,43 @@ class TestScaleDownReplicaSelection:
             "label_selector": primary_label,
         }
         app_name = "downscale_fewer_total_replicas_app"
-        deployment_name = "DownscaleNodeCountProbe"
-        probe_deployment = self._build_probe_deployment(deployment_name)
-        first_node_id = ray.get(
-            get_node_id.options(resources={"primary_node_1": 1}).remote()
-        )
+        first_node_id = ray.get(get_node_id.options(resources={"node_1": 1}).remote())
 
         try:
-            handle = self._deploy_probe_app(
+            handle = self._deploy_test_app(
                 app_name,
-                probe_deployment,
-                num_replicas=1,
                 ray_actor_options=ray_actor_options,
+                autoscaling_config={
+                    "min_replicas": 1,
+                    "max_replicas": 3,
+                    "target_ongoing_requests": 0.01,
+                    "upscale_delay_s": 0.1,
+                    "metrics_interval_s": 0.2,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 0.1,
+                },
             )
             wait_for_condition(check_apps_running, apps=[app_name])
-            initial_replica_infos = self._collect_replica_infos(
-                handle, expected_replicas=1
-            )
-            assert {info["node_id"] for info in initial_replica_infos.values()} == {
-                first_node_id
-            }
 
             cluster.add_node(
                 num_cpus=2,
                 labels=primary_label,
-                resources={"primary_node_2": 1},
+                resources={"node_2": 1},
             )
             cluster.wait_for_nodes()
             second_node_id = ray.get(
-                get_node_id.options(resources={"primary_node_2": 1}).remote()
+                get_node_id.options(resources={"node_2": 1}).remote()
             )
 
-            handle = self._deploy_probe_app(
-                app_name,
-                probe_deployment,
-                num_replicas=3,
-                ray_actor_options=ray_actor_options,
-            )
-            wait_for_condition(check_apps_running, apps=[app_name])
-            replica_infos = self._collect_replica_infos(handle, expected_replicas=3)
-
-            first_node_replicas = [
-                info
-                for info in replica_infos.values()
-                if info["node_id"] == first_node_id
-            ]
-            second_node_replicas = [
-                info
-                for info in replica_infos.values()
-                if info["node_id"] == second_node_id
-            ]
-            assert len(first_node_replicas) == 1
-            assert len(second_node_replicas) == 2
-
-            handle = self._deploy_probe_app(
-                app_name,
-                probe_deployment,
-                num_replicas=2,
-                ray_actor_options=ray_actor_options,
-            )
-            wait_for_condition(check_apps_running, apps=[app_name])
-            remaining_replica_infos = self._collect_replica_infos(
-                handle, expected_replicas=2
-            )
-
-            assert {info["node_id"] for info in remaining_replica_infos.values()} == {
-                second_node_id
-            }
-            assert set(remaining_replica_infos).issubset(
-                {info["replica_tag"] for info in second_node_replicas}
-            )
+            # The first replica is always the first node
+            assert handle.get_node_id.remote(delay_s=1).result() == first_node_id
+            # After calling the deployment will scale up
+            time.sleep(5)
+            # After some time, the deployment will scale down
+            # Replica on the first node should be removed first
+            # Because the first node has only 1 replica
+            # So the remaining replica(s) should be on the 2nd node
+            assert handle.get_node_id.remote().result() == second_node_id
         finally:
             serve.shutdown()
 
