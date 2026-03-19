@@ -105,7 +105,8 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch "transformers==4.44.2" "datasets==2.21.0"
+python -m pip install -U torch "transformers==4.44.2" "datasets==2.21.0"
+python -m pip show torch transformers datasets
 ```
 
 
@@ -113,8 +114,11 @@ pip install torch "transformers==4.44.2" "datasets==2.21.0"
 import json
 import logging
 import os
+import subprocess
+import sys
 import tempfile
 import uuid
+from importlib import import_module
 
 import torch
 
@@ -125,6 +129,28 @@ logger = logging.getLogger(__name__)
 def get_mixed_precision_dtype() -> torch.dtype:
     """Select a mixed-precision dtype that the current GPU supports."""
     return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
+
+def log_runtime_environment(context: str) -> None:
+    """Print interpreter and package details to debug CI environment mismatches."""
+    print(f"[env] context={context}")
+    print(f"[env] sys.executable={sys.executable}")
+    print(f"[env] sys.version={sys.version.replace(os.linesep, ' ')}")
+    print(f"[env] cwd={os.getcwd()}")
+    pip_version = subprocess.check_output(
+        [sys.executable, "-m", "pip", "--version"], text=True
+    ).strip()
+    print(f"[env] pip={pip_version}")
+    for package_name in ("torch", "transformers", "datasets"):
+        module = import_module(package_name)
+        print(
+            f"[env] {package_name}="
+            f"{getattr(module, '__version__', 'unknown')} "
+            f"from {getattr(module, '__file__', '<namespace>')}"
+        )
+
+
+log_runtime_environment("driver_after_install")
 ```
 
 ## 2. Data loading with TP-aware sharding
@@ -473,6 +499,7 @@ def train_func(config):
 
     if world_rank == 0:
         logger.info(f"Worker started: world_rank={world_rank}, world_size={world_size}")
+        log_runtime_environment("worker_rank0_before_model_setup")
 
     # Set up model with 2D parallelism
     model, _, _, _, dp_rank = setup_model_with_tp(
