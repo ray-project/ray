@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.llm._internal.serve.utils.pg_utils import get_bundle_indices_sorted_by_node
+from ray.serve._private.utils import get_head_node_id
 
 # Realistic 56-char hex node IDs
 NODE_A = "ab7c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c"  # driver node
@@ -62,17 +63,17 @@ def test_sort_bundle_indices_by_node(
     bundles_to_node_id, expected_sorted_bundle_indices
 ):
     mock_pg = MagicMock()
-    mock_ctx = MagicMock()
-    mock_ctx.get_node_id.return_value = NODE_A
 
     with (
         patch(
             "ray.llm._internal.serve.utils.pg_utils.placement_group_table",
             return_value={"bundles_to_node_id": bundles_to_node_id},
         ),
-        patch("ray.llm._internal.serve.utils.pg_utils.ray") as mock_ray,
+        patch(
+            "ray.llm._internal.serve.utils.pg_utils.get_head_node_id",
+            return_value=NODE_A,
+        ),
     ):
-        mock_ray.get_runtime_context.return_value = mock_ctx
         result = get_bundle_indices_sorted_by_node(mock_pg)
 
     assert result == expected_sorted_bundle_indices
@@ -88,7 +89,7 @@ def test_sort_bundles(ray_start_cluster, strategy):
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    driver_node_id = ray.get_runtime_context().get_node_id()
+    driver_node_id = get_head_node_id()
 
     pg = ray.util.placement_group(
         name=f"test_sort_bundles_{strategy}",
