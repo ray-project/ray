@@ -9,7 +9,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class Scanner(ABC, Generic[InputSplit]):
     """Abstract base class for configured scanners.
 

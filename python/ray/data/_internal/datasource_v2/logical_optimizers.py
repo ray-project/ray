@@ -7,7 +7,7 @@ from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class SupportsFilterPushdown(ABC):
     """Mixin for scanners that support filter/predicate pushdown.
 
@@ -33,7 +33,7 @@ class SupportsFilterPushdown(ABC):
         ...
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class SupportsColumnPruning(ABC):
     """Mixin for scanners that support column pruning/projection pushdown.
 
@@ -54,7 +54,7 @@ class SupportsColumnPruning(ABC):
         ...
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class SupportsLimitPushdown(ABC):
     """Mixin for scanners that support limit pushdown.
 
@@ -75,7 +75,7 @@ class SupportsLimitPushdown(ABC):
         ...
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class SupportsPartitionPruning(ABC):
     """Mixin for scanners that support partition pruning.
 

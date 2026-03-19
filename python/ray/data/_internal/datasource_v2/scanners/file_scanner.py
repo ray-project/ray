@@ -6,7 +6,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 class FileScanner(Scanner[FileManifest]):
     """Base scanner for file-based datasources.
 
