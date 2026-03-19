@@ -920,7 +920,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
     requirement_path.write_text(
         "\n".join(
             [
-                "PyGithub",
                 f"pandas=={pandas_version}",
                 "typer",
                 "aiofiles",
