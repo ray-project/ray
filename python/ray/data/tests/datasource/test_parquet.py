@@ -866,7 +866,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
             self.filename_template = filename_template
             self.should_include_uuid = should_include_uuid
 
-        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+        def get_filename_for_task(self, write_uuid, task_index):
             if self.should_include_uuid:
                 # Replace {write_uuid} placeholder with actual write_uuid
                 return self.filename_template.format(write_uuid=write_uuid, i="{i}")
