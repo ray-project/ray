@@ -1645,7 +1645,6 @@ requests==2.32.5 \
     #   kubernetes
     #   msal
     #   pybuildkite
-    #   pygithub
     #   requests-oauthlib
     #   requests-toolbelt
     #   responses
@@ -2102,7 +2101,6 @@ urllib3==1.26.18 \
     #   botocore
     #   docker
     #   kubernetes
-    #   pygithub
     #   requests
     #   responses
     #   twine
