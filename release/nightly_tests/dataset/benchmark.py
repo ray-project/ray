@@ -21,8 +21,10 @@ def _get_spilled_bytes_total() -> float:
     )
     return memory_info.store_stats.spilled_bytes_total
 
+
 def _bytes_to_gb(b: float) -> float:
-    return round(b / (1024 ** 3), 2)
+    return round(b / (1024**3), 2)
+
 
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
@@ -90,7 +92,9 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.NUM_ROWS.value: num_rows,
             BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(spilled_bytes_total),
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -144,7 +148,9 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.NUM_ROWS.value: record_count,
             BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(spilled_bytes_total),
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -176,7 +182,9 @@ class Benchmark:
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(spilled_bytes_total),
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
