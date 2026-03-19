@@ -830,12 +830,6 @@ def pytest_configure(config):
 
 _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
 
-for _f in MIGRATED_FILES:
-    assert (_INTEGRATION_TEST_DIR / _f).exists(), (
-        f"MIGRATED_FILES contains '{_f}' but no such file exists in {_INTEGRATION_TEST_DIR}. "
-        "Please update MIGRATED_FILES."
-    )
-
 
 @pytest.fixture(autouse=True)
 def check_if_unit_in_integration(request):
@@ -857,6 +851,14 @@ def check_if_unit_in_integration(request):
     # Skip if the test file is not been migrated yet (i.e. not in the set of migrated files)
     if request.fspath.basename not in MIGRATED_FILES:
         return
+
+    for _f in MIGRATED_FILES:
+        if not (_INTEGRATION_TEST_DIR / _f).exists():
+            pytest.fail(
+                f"MIGRATED_FILES contains '{_f}' but no such file exists. "
+                "Please update MIGRATED_FILES.",
+                pytrace=False,
+            )
 
     # Skip if the test is marked as an integration test
     if request.node.get_closest_marker("integration_test"):
