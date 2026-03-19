@@ -5,6 +5,7 @@ import pytest
 from opentelemetry.metrics import NoOpHistogram
 
 from ray._private.metrics_agent import Gauge, Record
+from ray._private.telemetry import metric_cardinality as _mc_module
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
@@ -300,6 +301,139 @@ def test_record_histogram_aggregated_batch(
 
     # No warnings should be logged for registered histogram
     mock_logger_warning.assert_not_called()
+
+
+def _reset_cardinality_cache():
+    """Reset module-level caches between cardinality tests."""
+    _mc_module._CARDINALITY_LEVEL = None
+    _mc_module._HIGH_CARDINALITY_LABELS.clear()
+    _mc_module._CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE.clear()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_counter_write_time_label_drop_recommended(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Counter collapses per-instance labels at write time under RECOMMENDED."""
+    mock_get_meter.return_value = MagicMock()
+
+    try:
+        with patch.object(_mc_module, "RAY_METRIC_CARDINALITY_LEVEL", "recommended"):
+            _reset_cardinality_cache()
+            recorder = OpenTelemetryMetricRecorder()
+            recorder.register_counter_metric(
+                name="serve_num_router_requests", description="Router requests"
+            )
+
+            for replica_id, actor_id in [
+                ("app_MyDeployment#abc123", "a1b2c3"),
+                ("app_MyDeployment#def456", "d4e5f6"),
+                ("app_MyDeployment#ghi789", "g7h8i9"),
+            ]:
+                recorder.set_metric_value(
+                    name="serve_num_router_requests",
+                    tags={
+                        "deployment": "MyDeployment",
+                        "application": "app",
+                        "route": "/predict",
+                        "handle": "default",
+                        "replica": replica_id,
+                        "actor_id": actor_id,
+                    },
+                    value=10.0,
+                )
+
+            observations = recorder._counter_observations_by_name[
+                "serve_num_router_requests"
+            ]
+
+            # All three replicas should collapse to a single entry
+            assert len(observations) == 1, (
+                f"Expected 1 collapsed entry, got {len(observations)}"
+            )
+            assert list(observations.values())[0] == 30.0
+            stored_key_dict = dict(list(observations.keys())[0])
+            assert "replica" not in stored_key_dict
+            assert "actor_id" not in stored_key_dict
+            assert stored_key_dict["deployment"] == "MyDeployment"
+            assert stored_key_dict["route"] == "/predict"
+    finally:
+        _reset_cardinality_cache()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_counter_write_time_label_drop_legacy_preserves_full_tags(
+    mock_get_meter, mock_set_meter_provider
+):
+    """At LEGACY cardinality level, full tag combinations are preserved."""
+    mock_get_meter.return_value = MagicMock()
+
+    try:
+        with patch.object(_mc_module, "RAY_METRIC_CARDINALITY_LEVEL", "legacy"):
+            _reset_cardinality_cache()
+            recorder = OpenTelemetryMetricRecorder()
+            recorder.register_counter_metric(
+                name="serve_num_router_requests", description="Router requests"
+            )
+
+            for replica_id in ["replica#aaa", "replica#bbb"]:
+                recorder.set_metric_value(
+                    name="serve_num_router_requests",
+                    tags={
+                        "deployment": "MyDeployment",
+                        "replica": replica_id,
+                    },
+                    value=5.0,
+                )
+
+            observations = recorder._counter_observations_by_name[
+                "serve_num_router_requests"
+            ]
+            assert len(observations) == 2
+    finally:
+        _reset_cardinality_cache()
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_sum_write_time_label_drop_recommended(mock_get_meter, mock_set_meter_provider):
+    """Sum collapses per-instance labels at write time under RECOMMENDED."""
+    mock_get_meter.return_value = MagicMock()
+
+    try:
+        with patch.object(_mc_module, "RAY_METRIC_CARDINALITY_LEVEL", "recommended"):
+            _reset_cardinality_cache()
+            recorder = OpenTelemetryMetricRecorder()
+            recorder.register_sum_metric(
+                name="serve_deployment_queued_queries", description="Queued queries"
+            )
+
+            for actor_id in ["actor#111", "actor#222", "actor#333"]:
+                recorder.set_metric_value(
+                    name="serve_deployment_queued_queries",
+                    tags={
+                        "deployment": "MyDeployment",
+                        "application": "app",
+                        "handle": "default",
+                        "actor_id": actor_id,
+                    },
+                    value=3.0,
+                )
+
+            observations = recorder._sum_observations_by_name[
+                "serve_deployment_queued_queries"
+            ]
+
+            assert len(observations) == 1, (
+                f"Expected 1 entry after write-time label drop, got {len(observations)}"
+            )
+            assert list(observations.values())[0] == 9.0
+            stored_key_dict = dict(list(observations.keys())[0])
+            assert "actor_id" not in stored_key_dict
+    finally:
+        _reset_cardinality_cache()
 
 
 if __name__ == "__main__":

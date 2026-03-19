@@ -8,6 +8,11 @@ from ray._private.telemetry.metric_types import MetricType
 WORKER_ID_TAG_KEY = "WorkerId"
 # Keep in sync with the NameKey in src/ray/stats/tag_defs.cc
 TASK_OR_ACTOR_NAME_TAG_KEY = "Name"
+# Keep in sync with REPLICA_TAG in python/ray/serve/metrics.py
+SERVE_REPLICA_TAG_KEY = "replica"
+# actor_id is a per-handle-instance label used in Serve router metrics
+SERVE_ACTOR_ID_TAG_KEY = "actor_id"
+
 # Aggregation functions for high-cardinality gauge metrics when labels are dropped.
 # Counter and Sum metrics always use sum() aggregation.
 HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = {
@@ -15,8 +20,20 @@ HIGH_CARDINALITY_GAUGE_AGGREGATION: Dict[str, Callable[[List[float]], float]] = 
     "actors": sum,
 }
 
+# Per-instance labels that cause unbounded cardinality growth in cumulative metrics
+# (Counter, Sum). Unlike gauges which clear after each scrape, cumulative metrics
+# retain one entry per unique tag combination forever. These labels are unique per
+# actor/replica/worker instance, so they must be dropped at write time.
+# Dropped when RAY_metric_cardinality_level >= "recommended" (the default).
+_CUMULATIVE_METRIC_HIGH_CARDINALITY_LABELS = (
+    WORKER_ID_TAG_KEY,
+    SERVE_REPLICA_TAG_KEY,
+    SERVE_ACTOR_ID_TAG_KEY,
+)
+
 _CARDINALITY_LEVEL = None
 _HIGH_CARDINALITY_LABELS: Dict[str, List[str]] = {}
+_CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE: Dict[str, List[str]] = {}
 
 
 class MetricCardinality(str, Enum):
@@ -27,8 +44,9 @@ class MetricCardinality(str, Enum):
 
     - LEGACY: Keep all labels. This is the default behavior.
     - RECOMMENDED: Drop high cardinality labels. The set of high cardinality labels
-    are determined internally by Ray and not exposed to users. Currently, this includes
-    the following labels: WorkerId
+    are determined internally by Ray and not exposed to users. For gauge metrics,
+    this currently includes WorkerId. For cumulative metrics (Counter, Sum), this
+    includes WorkerId, replica, and actor_id to prevent unbounded memory growth.
     - LOW: Same as RECOMMENDED, but also drop the Name label for tasks and actors.
     """
 
@@ -99,3 +117,26 @@ class MetricCardinality(str, Enum):
         ]:
             _HIGH_CARDINALITY_LABELS[metric_name].append(TASK_OR_ACTOR_NAME_TAG_KEY)
         return _HIGH_CARDINALITY_LABELS[metric_name]
+
+    @staticmethod
+    def get_cumulative_metric_labels_to_drop(metric_name: str) -> List[str]:
+        """Get per-instance labels to drop at write time for cumulative metrics.
+
+        Cumulative metrics (Counter, Sum) are never cleared, so every unique tag
+        combination creates a permanent entry. This returns labels to strip so
+        observations collapse to a bounded number of entries.
+
+        Returns an empty list at LEGACY cardinality level.
+        """
+        if metric_name in _CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE:
+            return _CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE[metric_name]
+
+        cardinality_level = MetricCardinality.get_cardinality_level()
+        if cardinality_level == MetricCardinality.LEGACY:
+            _CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE[metric_name] = []
+            return []
+
+        _CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE[metric_name] = list(
+            _CUMULATIVE_METRIC_HIGH_CARDINALITY_LABELS
+        )
+        return _CUMULATIVE_HIGH_CARDINALITY_LABELS_CACHE[metric_name]

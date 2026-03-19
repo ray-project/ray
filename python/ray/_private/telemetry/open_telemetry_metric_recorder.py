@@ -213,6 +213,28 @@ class OpenTelemetryMetricRecorder:
         """
         return self._histogram_bucket_midpoints[name]
 
+    def _accumulate_cumulative_metric(
+        self,
+        store: dict,
+        name: str,
+        tags: dict,
+        tag_key: frozenset,
+        value: float,
+    ) -> None:
+        """Accumulate a value for a cumulative metric (Counter or Sum).
+
+        Drops high-cardinality per-instance labels at write time so the dict
+        stays bounded. Without this, every unique tag combination creates a
+        permanent entry that is never cleared.
+        """
+        labels_to_drop = MetricCardinality.get_cumulative_metric_labels_to_drop(name)
+        storage_key = (
+            frozenset((k, v) for k, v in tags.items() if k not in labels_to_drop)
+            if labels_to_drop
+            else tag_key
+        )
+        store[storage_key] = store.get(storage_key, 0) + value
+
     def set_metric_value(self, name: str, tags: dict, value: float):
         """
         Set the value of a metric with the given name and tags.
@@ -233,14 +255,15 @@ class OpenTelemetryMetricRecorder:
                 # Gauge - store the most recent value for the given tags.
                 self._gauge_observations_by_name[name][tag_key] = value
             elif name in self._counter_observations_by_name:
-                # Counter - increment the value for the given tags.
-                self._counter_observations_by_name[name][tag_key] = (
-                    self._counter_observations_by_name[name].get(tag_key, 0) + value
+                # Counter - accumulate with high-cardinality labels dropped
+                # at write time to keep the dict bounded (cumulative semantics).
+                self._accumulate_cumulative_metric(
+                    self._counter_observations_by_name[name], name, tags, tag_key, value
                 )
             elif name in self._sum_observations_by_name:
-                # Sum - add the value for the given tags.
-                self._sum_observations_by_name[name][tag_key] = (
-                    self._sum_observations_by_name[name].get(tag_key, 0) + value
+                # Sum - same write-time label-drop as Counter.
+                self._accumulate_cumulative_metric(
+                    self._sum_observations_by_name[name], name, tags, tag_key, value
                 )
             else:
                 # Histogram - record the value synchronously.
