@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    GPU_SHUFFLE = "gpu_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -112,6 +114,8 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
 #       total cumulative size (due to it internally utilizing int32 offsets)
 #
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+# DEPRECATED: use_arrow_tensor_v2 is deprecated and no longer used.
+# arrow_fixed_shape_tensor_format defaults to V2.
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
 DEFAULT_AUTO_LOG_STATS = False
@@ -271,7 +275,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
-DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
     1,
 )
@@ -352,7 +356,9 @@ class AutoscalingConfig:
     )
 
     # Maximum number of actors to scale up in a single scaling decision
-    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
+    actor_pool_max_upscaling_delta: Optional[
+        int
+    ] = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -379,6 +385,13 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
         )
 
         return DEFAULT_SHUFFLE_STRATEGY
+
+
+def _default_fixed_shape_tensor_format():
+    """Factory function to avoid circular import."""
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+
+    return FixedShapeTensorFormat.V2
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
@@ -438,8 +451,11 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
-        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
-            tensors > 2Gb in size (off by default)
+        arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
+            Options are FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
+            Default is V2. NOTE: For ARROW_NATIVE, only numbers (integers, floats) are currently supported.
+        use_arrow_tensor_v2: [Deprecated] This setting is no longer used.
+            Use ``arrow_fixed_shape_tensor_format`` instead.
         enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
             values not suppported by Arrow natively (like user-defined custom Python
             classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
@@ -552,6 +568,16 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
+            to total GPUs available in the cluster.
+        gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
+            uses 90% of free device memory; ``None`` uses an expandable pool.
+        gpu_shuffle_spill_memory_limit: Device-to-host spill threshold per rank.
+            ``"auto"`` uses 80% of ``gpu_shuffle_rmm_pool_size``; ``None`` disables
+            spilling.
+        gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
+            communicator setup (actor creation + root/worker init) before raising
+            a ``TimeoutError``. Defaults to 120 seconds.
     """
 
     # `None` means the block size is infinite.
@@ -611,6 +637,25 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
+    ################################################################
+    # GPU Shuffle configuration
+    ################################################################
+
+    # Number of GPU actors (ranks). Defaults to total GPUs in the cluster.
+    gpu_shuffle_num_actors: Optional[int] = None
+
+    # RMM GPU memory pool size for each rank.
+    # "auto" = 90% of free device memory; None = expandable pool (no fixed size).
+    gpu_shuffle_rmm_pool_size: Union[int, str, None] = None
+
+    # Device→host spill threshold for each rank.
+    # "auto" = 80% of rmm_pool_size; None = spilling disabled.
+    gpu_shuffle_spill_memory_limit: Union[int, str, None] = "auto"
+
+    # Maximum seconds to wait for UCXX communicator setup before raising
+    # TimeoutError.
+    gpu_shuffle_setup_timeout_s: float = 120.0
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
@@ -623,6 +668,9 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
+        default_factory=_default_fixed_shape_tensor_format
+    )
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
@@ -764,6 +812,21 @@ class DataContext:
                 DeprecationWarning,
             )
             self.use_polars_sort = value
+
+        elif name == "use_arrow_tensor_v2":
+            warnings.warn(
+                "`use_arrow_tensor_v2` is deprecated. "
+                "Configure `arrow_fixed_shape_tensor_format` instead. ",
+                DeprecationWarning,
+            )
+            from ray.data._internal.tensor_extensions.arrow import (
+                FixedShapeTensorFormat,
+            )
+
+            if isinstance(value, bool) and value:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
+            else:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
 
         super().__setattr__(name, value)
 
