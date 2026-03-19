@@ -786,6 +786,17 @@ class DeploymentBroadcastResponse:
         self._coro = coro
         self._loop = loop
         self._replica_results: Optional[List[ReplicaResult]] = None
+        # Cached future so the single-use coroutine is only scheduled once.
+        # A retry after timeout reuses this future instead of re-scheduling.
+        self._scheduled_future: Optional[concurrent.futures.Future] = None
+
+    def _ensure_scheduled(self) -> concurrent.futures.Future:
+        """Schedule the coroutine on the router's loop exactly once."""
+        if self._scheduled_future is None:
+            self._scheduled_future = asyncio.run_coroutine_threadsafe(
+                self._coro, self._loop
+            )
+        return self._scheduled_future
 
     def _fetch_replica_results_sync(
         self, timeout_s: Optional[float] = None
@@ -799,8 +810,9 @@ class DeploymentBroadcastResponse:
                 finally:
                     tmp_loop.close()
             else:
-                future = asyncio.run_coroutine_threadsafe(self._coro, self._loop)
-                self._replica_results = future.result(timeout=timeout_s)
+                self._replica_results = self._ensure_scheduled().result(
+                    timeout=timeout_s
+                )
         return self._replica_results
 
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
@@ -817,7 +829,7 @@ class DeploymentBroadcastResponse:
             elif self._loop is not None:
                 # Different loop (router runs in a separate thread).
                 self._replica_results = await asyncio.wrap_future(
-                    asyncio.run_coroutine_threadsafe(self._coro, self._loop)
+                    self._ensure_scheduled()
                 )
             else:
                 # No event loop (local testing mode).
