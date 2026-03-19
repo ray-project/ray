@@ -754,8 +754,6 @@ class TestScaleDownReplicaSelection:
             route_prefix=f"/{app_name}",
         )
 
-        return TestDeployment
-
     def test_downscale_fallback_node(self, ray_cluster):
         cluster = ray_cluster
 
