@@ -116,7 +116,7 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_msg == "ham"
 
 
-def test_file_handler_uses_utf8_on_windows(monkeypatch, tmp_path, tmp_logger):
+def test_file_handler_uses_utf8_on_windows(tmp_path, tmp_logger):
     handler = SessionFileHandler(
         "ray-data.log", get_log_directory=lambda: str(tmp_path), platform="win32"
     )
