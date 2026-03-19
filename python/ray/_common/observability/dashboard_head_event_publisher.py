@@ -10,7 +10,7 @@ from ray._private.authentication.http_token_authentication import (
 )
 from ray._raylet import RayEvent, serialize_events_to_ray_events_data_json
 
-_DEFAULT_TIMEOUT_S = 1
+_DEFAULT_TIMEOUT_S = 0.5
 _EXTERNAL_RAY_EVENTS_PATH = "/api/v0/external/ray_events"
 
 
@@ -91,14 +91,9 @@ class DashboardHeadRayEventPublisher:
     def _normalize_dashboard_url(url: Optional[str]) -> Optional[str]:
         if url is None:
             return None
-        url = url.strip()
-        if not url:
-            return None
-        # urlparse misparses "host:port" (e.g. "localhost:8265") as
-        # scheme="localhost", path="8265" with no netloc. Detect the
-        # absence of a real "://" separator to catch that case together
-        # with the no-scheme case.
         parsed = urlparse(url)
-        if not parsed.netloc and "://" not in url:
+        if not parsed.scheme or (
+            parsed.scheme and not parsed.netloc and "://" not in url
+        ):
             url = f"http://{url}"
         return url.rstrip("/")

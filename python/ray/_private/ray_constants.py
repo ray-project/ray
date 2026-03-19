@@ -556,6 +556,15 @@ RAY_METRIC_CARDINALITY_LEVEL = os.environ.get(
     "RAY_metric_cardinality_level", "recommended"
 )
 
+# Whether to enable the ONE-event framework for emitting events via the event
+# aggregator gRPC service. When True, ONE-event takes priority over export events
+# (mutually exclusive, matching the C++ actor/node event pattern).
+RAY_ENABLE_RAY_EVENT = env_bool("RAY_enable_ray_event", False)
+
+# Whether to enable Python-side ONE-event publishing (e.g. autoscaler, job events)
+# via the dashboard head HTTP API.
+RAY_ENABLE_PYTHON_RAY_EVENT = env_bool("RAY_enable_python_ray_event", False)
+
 # Whether enable OpenTelemetry as the metrics collection backend. The default is
 # using OpenCensus.
 RAY_ENABLE_OPEN_TELEMETRY = env_bool("RAY_enable_open_telemetry", True)

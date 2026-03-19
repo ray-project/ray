@@ -14,6 +14,10 @@ from typing import Optional
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.network_utils import build_address, parse_address
+from ray._common.observability.autoscaler_events import is_ray_event_enabled
+from ray._common.observability.dashboard_head_event_publisher import (
+    DashboardHeadRayEventPublisher,
+)
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -34,13 +38,13 @@ from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
     IConfigReader,
-    Provider,
     ReadOnlyProviderConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
+from ray.dashboard import consts as dashboard_consts
 
 try:
     import prometheus_client
@@ -91,20 +95,38 @@ class AutoscalerMonitor:
         head_node_ip = parse_address(self.gcs_address)[0]
 
         self.autoscaler = None
-        if log_dir:
+
+        # ONE-event and legacy export events are mutually exclusive.
+        # When RAY_enable_python_ray_event is set, publish structured events
+        # through the dashboard head; otherwise fall back to the legacy
+        # export-event logger.
+        self.event_logger = None
+        if is_ray_event_enabled():
+            try:
+                if not self._wait_for_dashboard_head_event_ingestion_ready():
+                    logger.warning(
+                        "Dashboard head event ingestion was not ready before the "
+                        "timeout. Initial autoscaler RayEvents may be dropped."
+                    )
+                ray_event_publisher = DashboardHeadRayEventPublisher(
+                    gcs_client=self.gcs_client
+                )
+                self.event_logger = AutoscalerEventLogger(
+                    ray_event_publisher=ray_event_publisher,
+                    session_name=self._session_name or "",
+                )
+            except Exception:
+                logger.exception("Failed to initialize DashboardHeadRayEventPublisher.")
+        elif log_dir:
             try:
                 ray_event_logger = get_event_logger(
                     RayEvent.SourceType.AUTOSCALER, log_dir
                 )
                 self.event_logger = AutoscalerEventLogger(
-                    ray_event_logger,
-                    log_cluster_shape=config_reader.get_cached_autoscaling_config().provider
-                    != Provider.READ_ONLY,
+                    export_event_logger=ray_event_logger,
                 )
             except Exception:
-                self.event_logger = None
-        else:
-            self.event_logger = None
+                logger.exception("Failed to initialize export event logger.")
 
         prom_metrics = AutoscalerPrometheusMetrics(session_name=self._session_name)
         self.metric_reporter = AutoscalerMetricsReporter(prom_metrics)
@@ -141,6 +163,37 @@ class AutoscalerMonitor:
             event_logger=self.event_logger,
             metrics_reporter=self.metric_reporter,
         )
+
+    def _wait_for_dashboard_head_event_ingestion_ready(
+        self, timeout_s: int = 10
+    ) -> bool:
+        deadline = time.monotonic() + timeout_s
+
+        while time.monotonic() < deadline:
+            dashboard_url = self.gcs_client.internal_kv_get(
+                ray_constants.DASHBOARD_ADDRESS.encode(),
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                timeout=1,
+            )
+            head_node_id = self.gcs_client.internal_kv_get(
+                ray_constants.KV_HEAD_NODE_ID_KEY,
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=1,
+            )
+            if dashboard_url and head_node_id:
+                agent_addr = self.gcs_client.internal_kv_get(
+                    (
+                        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}"
+                        f"{head_node_id.decode()}"
+                    ).encode(),
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=1,
+                )
+                if agent_addr:
+                    return True
+            time.sleep(1)
+
+        return False
 
     @staticmethod
     def _get_session_name(gcs_client: GcsClient) -> Optional[str]:

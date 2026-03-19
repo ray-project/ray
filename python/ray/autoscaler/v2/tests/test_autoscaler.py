@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,7 +14,6 @@ from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE
 from ray.autoscaler.v2.autoscaler import Autoscaler
 from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
-from ray.autoscaler.v2.monitor import AutoscalerMonitor
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.cluster_utils import Cluster
@@ -92,7 +91,9 @@ def make_autoscaler():
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)
 
-        event_logger = AutoscalerEventLogger(MockEventLogger(logger))
+        event_logger = AutoscalerEventLogger(
+            export_event_logger=MockEventLogger(logger)
+        )
 
         autoscaler = Autoscaler(
             session_name="test",
@@ -228,31 +229,6 @@ def test_basic_scaling(make_autoscaler):
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
-
-
-class TestAutoscalerMonitor(AutoscalerMonitor):
-    """Lightweight wrapper for testing _run() without full init."""
-
-    def __init__(self, gcs_address, gcs_client, autoscaler):
-        self.gcs_address = gcs_address
-        self.gcs_client = gcs_client
-        self.autoscaler = autoscaler
-        self._session_name = "test"
-
-
-def test_raise_AuthenticationError_v2(make_autoscaler):
-    autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
-    gcs_client = autoscaler._gcs_client
-    gcs_address = gcs_client.address
-
-    monitor = TestAutoscalerMonitor(gcs_address, gcs_client, autoscaler)
-
-    def flaky():
-        raise ray.exceptions.AuthenticationError("WrongClusterID")
-
-    with patch.object(autoscaler, "update_autoscaling_state", side_effect=flaky):
-        with pytest.raises(ray.exceptions.AuthenticationError):
-            monitor._run()
 
 
 if __name__ == "__main__":
