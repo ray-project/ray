@@ -608,7 +608,7 @@ class ActorPoolMapOperator(MapOperator):
     def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
 
-    def update_resource_usage(self) -> None:
+    def refresh_state(self):
         """Updates internal state"""
 
         # Trigger Actor Pool's state refresh
