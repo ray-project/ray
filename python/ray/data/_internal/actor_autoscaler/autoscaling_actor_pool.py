@@ -158,6 +158,12 @@ class AutoscalingActorPool(ABC):
         When ``bundle`` is provided, returns the best actor for that bundle
         (considering locality when ``actor_locality_enabled`` is True).
 
+        Args:
+            bundle: The bundle to find an actor for. If ``None``, returns any
+                available actor with spare capacity.
+            actor_locality_enabled: Whether to consider locality when selecting
+                an actor.
+
         Returns:
             An actor handle if an actor with capacity is available, otherwise
             ``None``.

@@ -751,15 +751,17 @@ class _ActorPool(AutoscalingActorPool):
         """Initialize the actor pool.
 
         Args:
-            create_actor_fn: This function should take key-value labels as input, and
-                create an actor with those labels. The function should return the actor
-                handle and a reference to the actor's node ID.
+            create_actor_fn: Callable that takes key-value labels as input and
+                creates an actor with those labels. Returns the actor handle and
+                a reference to the actor's node ID.
             config: Configuration for the autoscaling actor pool, including
                 min/max/initial pool sizes, concurrency, and resource usage.
+            map_worker_cls_name: Name of the map worker class for logging
+                purposes.
+            debounce_period_s: Debounce period for scaling down after scaling
+                up.
             _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
                 on exit hook.
-            map_worker_cls_name: Name of the map worker class for logging purposes.
-            debounce_period_s: Debounce period for scaling down after scaling up
         """
         super().__init__(config=config)
 
