@@ -198,9 +198,13 @@ def _is_filesystem_compatible_with_scheme(
         if isinstance(actual_fs, RetryingPyFileSystem):
             actual_fs = actual_fs.unwrap()
 
-        if isinstance(actual_fs, PyFileSystem) and isinstance(
-            actual_fs.handler, FSSpecHandler
-        ):
+        # After unwrapping, the inner filesystem may be a native PyArrow
+        # filesystem (e.g., S3FileSystem) rather than a PyFileSystem wrapper.
+        # Fall back to direct type_name matching in that case.
+        if not isinstance(actual_fs, PyFileSystem):
+            return actual_fs.type_name in expected_types
+
+        if isinstance(actual_fs.handler, FSSpecHandler):
             inner_fs = actual_fs.handler.fs
             protocol = getattr(inner_fs, "protocol", None)
             if protocol is not None:

@@ -143,6 +143,16 @@ class TestIsFilesystemCompatibleWithScheme:
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "http") is False
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "https") is False
 
+    def test_retrying_wrapper_around_native_s3(self):
+        """RetryingPyFileSystem wrapping a native S3FileSystem should be compatible with s3."""
+        from ray.data._internal.arrow_compatible_fs import RetryingPyFileSystem
+
+        mock_native_s3 = mock.MagicMock()
+        mock_native_s3.type_name = "s3"
+        retrying_fs = RetryingPyFileSystem(mock_native_s3)
+        assert _is_filesystem_compatible_with_scheme(retrying_fs, "s3") is True
+        assert _is_filesystem_compatible_with_scheme(retrying_fs, "gs") is False
+
     def test_unknown_scheme_trusts_filesystem(self):
         """Unknown schemes should always return True (trust user's filesystem)."""
         wrapped_fs = self._make_mock_fsspec_fs("s3")
