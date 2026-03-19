@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from freezegun import freeze_time
 
+from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.minimal import DefaultApi, MinimalClusterManager
 from ray_release.exception import (
     ClusterComputeCreateError,
@@ -850,6 +851,210 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
         self.assertEqual(len(self.sdk.call_counter), 2)
+
+
+class NewSdkBuildClusterEnvTest(unittest.TestCase):
+    """Tests for _build_cluster_env_new_sdk() which polls anyscale.image.get()."""
+
+    def _make_new_sdk_cm(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cm = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_sdk_build",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        cm.set_cluster_env()
+        cm.cluster_env_id = "env_id"
+        cm.cluster_env_build_id = None
+        return cm
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildAlreadySucceeded(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        mock_image.get.return_value = APIDict(
+            latest_build_id="bld_123",
+            latest_build_status="SUCCEEDED",
+            latest_image_uri="anyscale/image/test:1",
+        )
+        cm.build_cluster_env(timeout=600)
+        # Stores image URI, not build ID
+        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test:1")
+        mock_image.get.assert_called_once_with(name=cm.cluster_env_name)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildAlreadyFailed(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        mock_image.get.return_value = APIDict(
+            latest_build_id="bld_123",
+            latest_build_status="FAILED",
+            latest_image_uri=None,
+        )
+        with self.assertRaisesRegex(ClusterEnvBuildError, "build failed"):
+            cm.build_cluster_env(timeout=600)
+        self.assertIsNone(cm.cluster_env_build_id)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildNoBuild(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        mock_image.get.return_value = APIDict(
+            latest_build_id=None,
+            latest_build_status=None,
+            latest_image_uri=None,
+        )
+        with self.assertRaisesRegex(ClusterEnvBuildError, "No build found"):
+            cm.build_cluster_env(timeout=600)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildInProgressThenSucceeds(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        call_count = [0]
+
+        def fake_get(name=None):
+            call_count[0] += 1
+            if call_count[0] <= 3:
+                return APIDict(
+                    latest_build_id="bld_123",
+                    latest_build_status="IN_PROGRESS",
+                    latest_image_uri=None,
+                )
+            return APIDict(
+                latest_build_id="bld_123",
+                latest_build_status="SUCCEEDED",
+                latest_image_uri="anyscale/image/test:2",
+            )
+
+        mock_image.get.side_effect = fake_get
+        cm.build_cluster_env(timeout=600)
+        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test:2")
+        self.assertGreaterEqual(mock_image.get.call_count, 4)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildInProgressThenFails(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        call_count = [0]
+
+        def fake_get(name=None):
+            call_count[0] += 1
+            if call_count[0] <= 3:
+                return APIDict(
+                    latest_build_id="bld_123",
+                    latest_build_status="IN_PROGRESS",
+                    latest_image_uri=None,
+                )
+            return APIDict(
+                latest_build_id="bld_123",
+                latest_build_status="FAILED",
+                latest_image_uri=None,
+            )
+
+        mock_image.get.side_effect = fake_get
+        with self.assertRaisesRegex(ClusterEnvBuildError, "build failed"):
+            cm.build_cluster_env(timeout=600)
+        self.assertIsNone(cm.cluster_env_build_id)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildTimeout(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        mock_image.get.return_value = APIDict(
+            latest_build_id="bld_123",
+            latest_build_status="IN_PROGRESS",
+            latest_image_uri=None,
+        )
+        with self.assertRaisesRegex(ClusterEnvBuildTimeout, "Time out when building"):
+            cm.build_cluster_env(timeout=0)
+        self.assertIsNone(cm.cluster_env_build_id)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale.image")
+    def testNewSdkBuildSucceededButNoImageUri(self, mock_image):
+        cm = self._make_new_sdk_cm()
+        mock_image.get.return_value = APIDict(
+            latest_build_id="bld_123",
+            latest_build_status="SUCCEEDED",
+            latest_image_uri=None,
+        )
+        with self.assertRaisesRegex(ClusterEnvBuildError, "no image URI"):
+            cm.build_cluster_env(timeout=600)
+        self.assertIsNone(cm.cluster_env_build_id)
+
+
+class NewSdkCreateClusterEnvTest(unittest.TestCase):
+    """Tests for _create_cluster_env_new_sdk() in anyscale_util."""
+
+    @patch("ray_release.anyscale_util.anyscale.image")
+    def testNewSdkFindExistingEnv(self, mock_image):
+        mock_image.list.return_value = [
+            APIDict(name="my_env", id="env_123"),
+        ]
+        result = create_cluster_env_from_image(
+            image="docker/image:tag",
+            test_name="test",
+            runtime_env={},
+            cluster_env_name="my_env",
+            use_new_sdk=True,
+        )
+        self.assertEqual(result, "env_123")
+        mock_image.list.assert_called_once_with(name="my_env")
+        mock_image.register.assert_not_called()
+
+    @patch("ray_release.anyscale_util.anyscale.image")
+    def testNewSdkCreateEnvSucceed(self, mock_image):
+        mock_image.list.return_value = []
+        mock_image.get.return_value = APIDict(id="new_env_id")
+
+        result = create_cluster_env_from_image(
+            image="docker/image:tag",
+            test_name="test",
+            runtime_env={},
+            cluster_env_name="my_env",
+            use_new_sdk=True,
+        )
+        self.assertEqual(result, "new_env_id")
+        mock_image.register.assert_called_once_with(
+            "docker/image:tag", name="my_env", ray_version="nightly"
+        )
+        mock_image.get.assert_called_once_with(name="my_env")
+
+    @patch("ray_release.anyscale_util.anyscale.image")
+    def testNewSdkCreateEnvFail(self, mock_image):
+        mock_image.list.return_value = []
+        mock_image.register.side_effect = RuntimeError("API error")
+
+        with self.assertRaises(ClusterEnvCreateError):
+            create_cluster_env_from_image(
+                image="docker/image:tag",
+                test_name="test",
+                runtime_env={},
+                cluster_env_name="my_env",
+                use_new_sdk=True,
+            )
+
+    @patch("ray_release.anyscale_util.anyscale.image")
+    def testNewSdkExistingIdSkipsList(self, mock_image):
+        """When cluster_env_id is already provided, skip listing."""
+        result = create_cluster_env_from_image(
+            image="docker/image:tag",
+            test_name="test",
+            runtime_env={},
+            cluster_env_id="existing_id",
+            cluster_env_name="my_env",
+            use_new_sdk=True,
+        )
+        self.assertEqual(result, "existing_id")
+        mock_image.list.assert_not_called()
+        mock_image.register.assert_not_called()
 
 
 if __name__ == "__main__":

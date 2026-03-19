@@ -551,6 +551,7 @@ py_test(
     ],
     deps = [
         ":ray_release",
+        ":test_utils",
         bk_require("pytest"),
     ],
 )
