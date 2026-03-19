@@ -90,24 +90,6 @@ class AnyscaleJobManager:
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
-    def _submit_job_new_sdk(
-        self,
-        cmd_to_run: str,
-        env_vars: Dict[str, str],
-        working_dir: Optional[str] = None,
-    ) -> str:
-        """Submit a job using anyscale.job.submit() and return the job ID."""
-        config = JobConfig(
-            name=self.cluster_manager.cluster_name,
-            entrypoint=cmd_to_run,
-            image_uri=self.cluster_manager.cluster_env_build_id,
-            compute_config=self.cluster_manager.cluster_compute_id,
-            env_vars=env_vars,
-            working_dir=working_dir,
-            max_retries=0,
-        )
-        return anyscale.job.submit(config)
-
     def _submit_job_legacy(
         self,
         cmd_to_run: str,
@@ -138,6 +120,24 @@ class AnyscaleJobManager:
         )
         job_response = DefaultApi.create_job(self._sdk, job_request)
         return job_response.result.id
+
+    def _submit_job_new_sdk(
+        self,
+        cmd_to_run: str,
+        env_vars: Dict[str, str],
+        working_dir: Optional[str] = None,
+    ) -> str:
+        """Submit a job using anyscale.job.submit() and return the job ID."""
+        config = JobConfig(
+            name=self.cluster_manager.cluster_name,
+            entrypoint=cmd_to_run,
+            image_uri=self.cluster_manager.cluster_env_build_id,
+            compute_config=self.cluster_manager.cluster_compute_id,
+            env_vars=env_vars,
+            working_dir=working_dir,
+            max_retries=0,
+        )
+        return anyscale.job.submit(config)
 
     def save_last_job_status(self, status):
         if status and hasattr(status, "id") and status.id != self._job_id:

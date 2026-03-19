@@ -79,38 +79,6 @@ def create_cluster_env_from_image(
     return _create_cluster_env_legacy(image, cluster_env_name, cluster_env_id, sdk)
 
 
-def _create_cluster_env_new_sdk(
-    image: str,
-    cluster_env_name: str,
-    cluster_env_id: Optional[str] = None,
-) -> str:
-    """Find or create a cluster env using anyscale.image APIs."""
-    if not cluster_env_id:
-        for img in anyscale.image.list(name=cluster_env_name):
-            if img.name == cluster_env_name:
-                cluster_env_id = img.id
-                logger.info(f"Cluster env already exists with ID {cluster_env_id}")
-                break
-
-    if not cluster_env_id:
-        logger.info("Cluster env not found. Creating new one.")
-        try:
-            anyscale.image.register(image, name=cluster_env_name, ray_version="nightly")
-            img = anyscale.image.get(name=cluster_env_name)
-            cluster_env_id = img.id
-        except Exception as e:
-            logger.warning(
-                f"Got exception when trying to create cluster "
-                f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                f"try again..."
-            )
-            raise ClusterEnvCreateError("Could not create cluster env.") from e
-
-        logger.info(f"Cluster env created with ID {cluster_env_id}")
-
-    return cluster_env_id
-
-
 def _create_cluster_env_legacy(
     image: str,
     cluster_env_name: str,
@@ -155,6 +123,38 @@ def _create_cluster_env_legacy(
                 ),
             )
             cluster_env_id = result.result.id
+        except Exception as e:
+            logger.warning(
+                f"Got exception when trying to create cluster "
+                f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                f"try again..."
+            )
+            raise ClusterEnvCreateError("Could not create cluster env.") from e
+
+        logger.info(f"Cluster env created with ID {cluster_env_id}")
+
+    return cluster_env_id
+
+
+def _create_cluster_env_new_sdk(
+    image: str,
+    cluster_env_name: str,
+    cluster_env_id: Optional[str] = None,
+) -> str:
+    """Find or create a cluster env using anyscale.image APIs."""
+    if not cluster_env_id:
+        for img in anyscale.image.list(name=cluster_env_name):
+            if img.name == cluster_env_name:
+                cluster_env_id = img.id
+                logger.info(f"Cluster env already exists with ID {cluster_env_id}")
+                break
+
+    if not cluster_env_id:
+        logger.info("Cluster env not found. Creating new one.")
+        try:
+            anyscale.image.register(image, name=cluster_env_name, ray_version="nightly")
+            img = anyscale.image.get(name=cluster_env_name)
+            cluster_env_id = img.id
         except Exception as e:
             logger.warning(
                 f"Got exception when trying to create cluster "
