@@ -1471,7 +1471,7 @@ class EC2InstanceTerminator(NodeKillerBase):
                 return
 
             logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
-            self._add_killed.(node_id)
+            self._add_killed(node_id)
 
 
 @ray.remote(num_cpus=0)
