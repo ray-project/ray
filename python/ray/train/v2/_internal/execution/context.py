@@ -51,6 +51,9 @@ logger = logging.getLogger(__file__)
 # TODO: make this value manually or automatically configurable.
 MAX_CHECKPOINT_UPLOAD_THREADS = 1
 
+DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate a network issue or slow storage backend. Consider specifying a different filesystem via RunConfig(storage_filesystem=...)."
+CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Custom checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate an issue in your custom upload function passed to `ray.train.report(custom_upload_fn)`."
+
 
 @dataclass(frozen=True)
 class TrainRunContext:
@@ -262,10 +265,8 @@ class TrainContext:
         if not checkpoint:
             return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
-        def slow_upload_warning(
-            stop_event: threading.Event, func_name: str, checkpoint_dir_name: str
-        ) -> None:
-            # Log a warning for the checkpoint upload every `DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S`
+        def slow_upload_warning(stop_event: threading.Event, message: str):
+            # Log a warning for the checkpoint upload every `CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR`
             #   seconds until `stop_event` is set.
             elapsed = 0.0
             interval = env_float(
@@ -275,8 +276,11 @@ class TrainContext:
             while not stop_event.wait(interval):
                 elapsed += interval
                 logger.warning(
-                    f"{func_name} for {checkpoint_dir_name} has been running for {elapsed} seconds. "
-                    "If this is unexpected, check your upload function for issues."
+                    message.format(
+                        checkpoint_dir_name=checkpoint_dir_name,
+                        elapsed=elapsed,
+                        interval=interval,
+                    )
                 )
 
         try:
@@ -284,7 +288,7 @@ class TrainContext:
             if checkpoint_upload_fn:
                 # Wraps the checkpoint_upload_fn with warning if slow
                 with context_watchdog(
-                    slow_upload_warning, "checkpoint_upload_fn", checkpoint_dir_name
+                    slow_upload_warning, CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
                 ):
                     persisted_checkpoint = checkpoint_upload_fn(
                         checkpoint, checkpoint_dir_name
@@ -300,7 +304,7 @@ class TrainContext:
             else:
                 # Wraps the `storage_context.persist_current_checkpoint` with warning if slow
                 with context_watchdog(
-                    slow_upload_warning, "pyarrow.fs.copy_files", checkpoint_dir_name
+                    slow_upload_warning, DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
                 ):
                     persisted_checkpoint = (
                         self.storage_context.persist_current_checkpoint(
