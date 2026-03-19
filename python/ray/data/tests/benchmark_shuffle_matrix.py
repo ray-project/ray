@@ -19,7 +19,7 @@ from datetime import datetime
 os.environ.setdefault("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.5")
 
 import ray
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
 
 DEFAULT_TIMEOUT_S = 30 * 60  # 30 minutes
 
@@ -54,25 +54,46 @@ def load_dataset(sf):
     return ds
 
 
+def wait_for_object_store_to_drain(threshold_pct=10, timeout_s=120, poll_s=5):
+    """Wait until object store utilization drops below threshold."""
+    deadline = time.perf_counter() + timeout_s
+    while time.perf_counter() < deadline:
+        mem = ray.cluster_resources().get("object_store_memory", 1)
+        avail = ray.available_resources().get("object_store_memory", 0)
+        used_pct = (1 - avail / mem) * 100 if mem > 0 else 0
+        if used_pct < threshold_pct:
+            return
+        print(
+            f"    waiting for object store to drain ({used_pct:.0f}% used)...",
+            flush=True,
+        )
+        time.sleep(poll_s)
+    print(f"    object store drain timed out after {timeout_s}s", flush=True)
+
+
 def run_one(ds, sf, num_partitions, strategy, label):
     """Run a single repartition and return elapsed time and row count."""
-    ctx = DataContext.get_current()
-    ctx.shuffle_strategy = strategy
+    ds.context.shuffle_strategy = strategy
     if strategy == ShuffleStrategy.ACTORLESS_HASH_SHUFFLE:
-        ctx.override_object_store_memory_limit_fraction = 0.5
+        ds.context.override_object_store_memory_limit_fraction = 0.5
 
+    name = f"sf{sf}_{label}_p{num_partitions}"
     print(f"  [{label}] sf={sf}, partitions={num_partitions} ... ", end="", flush=True)
 
+    repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
+    repartitioned.set_name(name)
+
     start = time.perf_counter()
-    result = ds.repartition(num_partitions, keys=KEY_COLUMNS).materialize()
+    result = repartitioned.materialize()
     elapsed = time.perf_counter() - start
 
     num_rows = result.count()
     print(f"{elapsed:.1f}s ({num_rows:,} rows)")
 
-    # Clean up shuffle output to free object store before next run.
-    del result
+    # Clean up shuffle output and wait for object store to settle.
+    del result, repartitioned
     gc.collect()
+    wait_for_object_store_to_drain()
 
     return elapsed, num_rows
 

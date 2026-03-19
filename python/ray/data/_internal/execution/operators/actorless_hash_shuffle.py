@@ -203,12 +203,16 @@ def _shuffle_reduce(
 
         while output_buffer.has_next():
             out_block = output_buffer.next()
-            exec_stats = exec_stats_builder.build()
-            exec_stats_builder = BlockExecStats.builder()
+            exec_stats_builder.finish()
 
             gen_stats: StreamingGeneratorStats = yield out_block
-            if gen_stats:
-                exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
+
+            exec_stats = exec_stats_builder.build(
+                block_ser_time_s=(
+                    gen_stats.object_creation_dur_s if gen_stats else None
+                ),
+            )
+            exec_stats_builder = BlockExecStats.builder()
 
             yield BlockMetadataWithSchema.from_block(
                 out_block,
@@ -218,11 +222,13 @@ def _shuffle_reduce(
                 ),
             )
     else:
-        exec_stats = exec_stats_builder.build()
+        exec_stats_builder.finish()
 
         gen_stats: StreamingGeneratorStats = yield result
-        if gen_stats:
-            exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
+
+        exec_stats = exec_stats_builder.build(
+            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
+        )
 
         yield BlockMetadataWithSchema.from_block(
             result,
