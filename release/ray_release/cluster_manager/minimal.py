@@ -1,6 +1,7 @@
 import time
 
 import anyscale.compute_config
+import anyscale.image
 from anyscale.compute_config.models import ComputeConfig
 from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
 
@@ -66,12 +67,106 @@ class MinimalClusterManager(ClusterManager):
             sdk=self.sdk,
             cluster_env_id=self.cluster_env_id,
             cluster_env_name=self.cluster_env_name,
+            use_new_sdk=self.test.uses_anyscale_sdk_2026(),
         )
 
     def build_cluster_env(self, timeout: float = 600.0):
         assert self.cluster_env_id
         assert self.cluster_env_build_id is None
 
+        if self.test.uses_anyscale_sdk_2026():
+            self._build_cluster_env_new_sdk(timeout)
+        else:
+            self._build_cluster_env_legacy(timeout)
+
+    def _build_cluster_env_new_sdk(self, timeout: float):
+        """Poll build status using anyscale.image.get()."""
+        img = anyscale.image.get(name=self.cluster_env_name)
+        build_id = img.latest_build_id
+        status = (
+            str(img.latest_build_status).upper() if img.latest_build_status else None
+        )
+
+        if not build_id:
+            raise ClusterEnvBuildError(
+                f"No build found for cluster env: {self.cluster_env_name}"
+            )
+
+        if status == "SUCCEEDED":
+            logger.info(
+                f"Link to succeeded cluster env build: "
+                f"{format_link(anyscale_cluster_env_build_url(build_id))}"
+            )
+            # Store image URI (not build ID) for use with JobConfig.image_uri
+            self.cluster_env_build_id = img.latest_image_uri
+            if not self.cluster_env_build_id:
+                raise ClusterEnvBuildError(
+                    f"Build {build_id} succeeded but no image URI was returned."
+                )
+            return
+
+        if status == "FAILED":
+            raise ClusterEnvBuildError(
+                f"Cluster env build failed. Please see "
+                f"{anyscale_cluster_env_build_url(build_id)} for details."
+            )
+
+        # Build in progress — poll until done
+        start_wait = time.time()
+        next_report = start_wait + REPORT_S
+        timeout_at = time.monotonic() + timeout
+        logger.info(f"Waiting for build {build_id} to finish...")
+        logger.info(
+            f"Track progress here: "
+            f"{format_link(anyscale_cluster_env_build_url(build_id))}"
+        )
+        while True:
+            now = time.time()
+            if now > next_report:
+                logger.info(
+                    f"... still waiting for build {build_id} to finish "
+                    f"({int(now - start_wait)} seconds) ..."
+                )
+                next_report = next_report + REPORT_S
+
+            img = anyscale.image.get(name=self.cluster_env_name)
+            status = (
+                str(img.latest_build_status).upper()
+                if img.latest_build_status
+                else None
+            )
+
+            if status == "FAILED":
+                raise ClusterEnvBuildError(
+                    f"Cluster env build failed. Please see "
+                    f"{anyscale_cluster_env_build_url(build_id)} for details."
+                )
+
+            if status == "SUCCEEDED":
+                logger.info("Build succeeded.")
+                # Store image URI (not build ID) for use with JobConfig.image_uri
+                self.cluster_env_build_id = img.latest_image_uri
+                if not self.cluster_env_build_id:
+                    raise ClusterEnvBuildError(
+                        f"Build {build_id} succeeded but no image URI " f"was returned."
+                    )
+                return
+
+            if status not in ("IN_PROGRESS", None):
+                raise ClusterEnvBuildError(
+                    f"Unknown build status: {status}. Please see "
+                    f"{anyscale_cluster_env_build_url(build_id)} for details"
+                )
+
+            if time.monotonic() > timeout_at:
+                raise ClusterEnvBuildTimeout(
+                    f"Time out when building cluster env {self.cluster_env_name}"
+                )
+
+            time.sleep(1)
+
+    def _build_cluster_env_legacy(self, timeout: float):
+        """Poll build status using legacy DefaultApi SDK."""
         # Fetch build
         build_id = None
         last_status = None

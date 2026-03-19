@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+import anyscale.image
 from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
 
 from ray_release.exception import ClusterEnvCreateError
@@ -67,13 +68,58 @@ def create_cluster_env_from_image(
     sdk: Optional["AnyscaleSDK"] = None,
     cluster_env_id: Optional[str] = None,
     cluster_env_name: Optional[str] = None,
+    use_new_sdk: bool = False,
 ) -> str:
-    # TODO(aslonnie): remove this; new SDK does not need creating cluster envs anymore.
-    anyscale_sdk = sdk or get_anyscale_sdk()
     if not cluster_env_name:
         cluster_env_name = get_custom_cluster_env_name(image, test_name)
 
-    # Find whether there is identical cluster env
+    if use_new_sdk:
+        return _create_cluster_env_new_sdk(image, cluster_env_name, cluster_env_id)
+
+    return _create_cluster_env_legacy(image, cluster_env_name, cluster_env_id, sdk)
+
+
+def _create_cluster_env_new_sdk(
+    image: str,
+    cluster_env_name: str,
+    cluster_env_id: Optional[str] = None,
+) -> str:
+    """Find or create a cluster env using anyscale.image APIs."""
+    if not cluster_env_id:
+        for img in anyscale.image.list(name=cluster_env_name):
+            if img.name == cluster_env_name:
+                cluster_env_id = img.id
+                logger.info(f"Cluster env already exists with ID {cluster_env_id}")
+                break
+
+    if not cluster_env_id:
+        logger.info("Cluster env not found. Creating new one.")
+        try:
+            anyscale.image.register(image, name=cluster_env_name, ray_version="nightly")
+            img = anyscale.image.get(name=cluster_env_name)
+            cluster_env_id = img.id
+        except Exception as e:
+            logger.warning(
+                f"Got exception when trying to create cluster "
+                f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                f"try again..."
+            )
+            raise ClusterEnvCreateError("Could not create cluster env.") from e
+
+        logger.info(f"Cluster env created with ID {cluster_env_id}")
+
+    return cluster_env_id
+
+
+def _create_cluster_env_legacy(
+    image: str,
+    cluster_env_name: str,
+    cluster_env_id: Optional[str] = None,
+    sdk: Optional["AnyscaleSDK"] = None,
+) -> str:
+    """Find or create a cluster env using legacy DefaultApi SDK."""
+    anyscale_sdk = sdk or get_anyscale_sdk()
+
     paging_token = None
     while not cluster_env_id:
         result = DefaultApi.search_cluster_environments(
@@ -89,7 +135,7 @@ def create_cluster_env_from_image(
         for res in result.results:
             if res.name == cluster_env_name:
                 cluster_env_id = res.id
-                logger.info(f"Cluster env already exists with ID " f"{cluster_env_id}")
+                logger.info(f"Cluster env already exists with ID {cluster_env_id}")
                 break
 
         if not paging_token or cluster_env_id:
