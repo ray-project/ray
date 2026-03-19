@@ -1,7 +1,6 @@
 from .async_service import (
     AsyncCallee,
     AsyncCaller,
-    AsyncServiceActor,
     AsyncServiceHandle,
 )
 from .common import NodeIdStr
@@ -26,6 +25,5 @@ __all__ = [
     "TaskContext",
     "AsyncCallee",
     "AsyncCaller",
-    "AsyncServiceActor",
     "AsyncServiceHandle",
 ]

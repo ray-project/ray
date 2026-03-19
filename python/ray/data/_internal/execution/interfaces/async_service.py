@@ -1,10 +1,9 @@
 import logging
 import time
-import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import Future, ProcessPoolExecutor
 from typing import (
     Any,
-    Dict,
     Generic,
     Optional,
     Protocol,
@@ -12,22 +11,14 @@ from typing import (
     runtime_checkable,
 )
 
-import ray
-from ray.actor import ActorHandle
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
 logger = logging.getLogger(__name__)
 
 InputT = TypeVar("InputT")
 OutputT = TypeVar("OutputT")
-ServiceKeyT = uuid.UUID
-
-ASYNC_SERVICE_ACTOR_NAME = "RayData_AsyncServiceActor"
-ASYNC_SERVICE_NAMESPACE = "RayData_AsyncService"
 
 
 class AsyncCallee(ABC, Generic[InputT, OutputT]):
-    """A unit of work that runs asynchronously in the AsyncServiceActor process.
+    """A unit of work that runs asynchronously in a worker process.
 
     Subclasses implement ``run()`` to perform expensive computation (CPU-bound)
     or concurrent I/O.
@@ -55,7 +46,7 @@ class AsyncCaller(Protocol):
 
     The flow each scheduling step:
         1. ``build_refresh_input(executor)`` — snapshot state (scheduling thread)
-        2. ``task.run(snapshot)`` — expensive work (actor process)
+        2. ``task.run(snapshot)`` — expensive work (worker process)
         3. ``apply_refresh_result(result, executor)`` — apply output (scheduling thread)
     """
 
@@ -79,113 +70,87 @@ class AsyncCaller(Protocol):
         ...
 
 
-@ray.remote(num_cpus=0, max_restarts=-1)
-class AsyncServiceActor:
-    """Singleton Ray actor that hosts async service tasks in a separate process.
+def _run_task(callee: AsyncCallee, state: Any) -> Any:
+    """Top-level function so pickle can serialize the work item."""
+    return callee.run(state)
 
-    Multiple executors/datasets can register tasks via unique ServiceKeyT keys.
-    Each ``update()`` call runs the task synchronously within the actor process,
-    and the result is returned to the caller via ObjectRef.
+
+_pool: Optional[ProcessPoolExecutor] = None
+
+
+def _get_pool() -> ProcessPoolExecutor:
+    """Lazily create a module-level singleton ProcessPoolExecutor(max_workers=1).
+
+    Shared across all datasets/executors, analogous to the singleton Ray actor
+    in the actor-based implementation.
     """
-
-    def __init__(self):
-        self._tasks: Dict[ServiceKeyT, AsyncCallee] = {}
-
-    def register(self, task: AsyncCallee) -> ServiceKeyT:
-        service_key = uuid.uuid4()
-        self._tasks[service_key] = task
-        return service_key
-
-    def update(self, key: ServiceKeyT, state_obj: Any) -> Any:
-        task = self._tasks[key]
-        return task.run(state_obj)
-
-    def unregister(self, key: ServiceKeyT):
-        self._tasks.pop(key, None)
+    global _pool
+    if _pool is None:
+        _pool = ProcessPoolExecutor(max_workers=1)
+    return _pool
 
 
 class AsyncServiceHandle(Generic[InputT, OutputT]):
     """Client-side handle for non-blocking interaction with an AsyncCallee.
 
     Used in the scheduling loop to submit snapshots and poll for
-    results via ``ray.wait(timeout=0)`` without blocking.
+    results without blocking.
     """
 
-    def __init__(
-        self,
-        task: AsyncCallee,
-    ):
-
-        self._key = ray.get(get_or_create_async_service_actor().register.remote(task))
+    def __init__(self, task: AsyncCallee):
+        self._task = task
         self._min_interval_s = task.min_interval_s
-        self._pending_ref: Optional[ray.ObjectRef] = None
+        self._pending_future: Optional[Future] = None
         self._last_submit_time: float = 0
 
     def should_submit(self) -> bool:
         """True if no request is in-flight and the minimum interval has elapsed."""
-        if self._pending_ref is not None:
-            print("pending ref is None")
+        if self._pending_future is not None:
             return False
         if self._min_interval_s > 0:
-            print(f"delta is {time.monotonic() - self._last_submit_time}")
             return time.monotonic() - self._last_submit_time >= self._min_interval_s
         return True
 
     def request_refresh(self, state: InputT) -> None:
-        """Submit state to the actor for async computation.
+        """Submit state to the worker process for async computation.
 
         Only call when ``should_submit()`` returns True.
         """
-        assert self._pending_ref is None, "Previous refresh still in flight"
+        assert self._pending_future is None, "Previous refresh still in flight"
         self._last_submit_time = time.monotonic()
-        self._pending_ref = get_or_create_async_service_actor().update.remote(
-            self._key, state
-        )
+        self._pending_future = _get_pool().submit(_run_task, self._task, state)
 
     def try_get_result(self) -> Optional[OutputT]:
         """Non-blocking poll. Returns the result if ready, None otherwise."""
-        assert self._pending_ref is not None, "No pending ref yet"
-        ready, _ = ray.wait([self._pending_ref], timeout=0)
-        if not ready:
+        assert self._pending_future is not None, "No pending future yet"
+        if not self._pending_future.done():
             return None
 
         try:
-            result = ray.get(self._pending_ref, timeout=1)
-            self._pending_ref = None
+            result = self._pending_future.result(timeout=0)
+            self._pending_future = None
             return result
-        except ray.exceptions.GetTimeoutError:
-            # Not fully ready, will try again in the next call.
-            return None
         except Exception as e:
             logger.debug(f"Async service task failed: {e}")
-            self._pending_ref = None
+            self._pending_future = None
             raise
 
     def has_in_flight_request(self) -> bool:
-        return self._pending_ref is not None
+        return self._pending_future is not None
 
     def shutdown(self) -> None:
-        if self._pending_ref is not None:
-            ray.cancel(self._pending_ref, force=False)
-            self._pending_ref = None
-        get_or_create_async_service_actor().unregister.remote(self._key)
+        if self._pending_future is not None:
+            self._pending_future.cancel()
+            self._pending_future = None
 
 
-def get_or_create_async_service_actor() -> ActorHandle:
-    """Get or create the singleton AsyncServiceActor.
+def shutdown_pool() -> None:
+    """Shut down the module-level ProcessPoolExecutor.
 
-    The actor is co-located on the driver node via NodeAffinitySchedulingStrategy
-    for low-latency serialization. It uses ``get_if_exists=True`` so multiple
-    datasets/executors share the same actor.
+    Call during interpreter shutdown or test teardown. In production the pool
+    is left alive (like the detached Ray actor) so subsequent datasets reuse it.
     """
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
-    return AsyncServiceActor.options(
-        name=ASYNC_SERVICE_ACTOR_NAME,
-        namespace=ASYNC_SERVICE_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    global _pool
+    if _pool is not None:
+        _pool.shutdown(wait=False)
+        _pool = None
