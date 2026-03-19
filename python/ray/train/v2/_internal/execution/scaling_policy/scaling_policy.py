@@ -55,3 +55,8 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
     ) -> ScalingDecision:
         """Makes a scaling decision when monitoring healthy, running workers."""
         raise NotImplementedError
+
+    def requires_shutdown_before_non_running_decision(self) -> bool:
+        """Whether the existing non-running worker group must be shut down before making
+        a scaling decision."""
+        return False

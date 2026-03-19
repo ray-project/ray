@@ -542,10 +542,14 @@ class TrainController:
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
         """
-        # If we are in a non-running state we should ensure the old worker group
-        # is shut down and its resources before we ask the scaling policy to
-        # calculate newly available resources.
-        if self._worker_group:
+        # Some scaling policies require that the old worker group is shut down
+        # before we ask the scaling policy to calculate newly available resources.
+        # Meanwhile if the train run manages_replica_groups we might be able to
+        # replace only the failing replica groups when executing the resize decision.
+        if (
+            self._worker_group
+            and self._scaling_policy.requires_shutdown_before_non_running_decision()
+        ):
             self._shutdown_worker_group()
 
         scaling_decision = (
