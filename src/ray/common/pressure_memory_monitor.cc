@@ -28,22 +28,24 @@
 
 namespace ray {
 
-StatusOr<std::unique_ptr<PressureMemoryMonitor>> PressureMemoryMonitor::Create(
-    MemoryPsi pressure_threshold,
-    std::string cgroup_path,
-    KillWorkersCallback kill_workers_callback) {
+StatusSetOr<std::unique_ptr<PressureMemoryMonitor>,
+            StatusT::InvalidArgument,
+            StatusT::IOError>
+PressureMemoryMonitor::Create(MemoryPsi pressure_threshold,
+                              std::string cgroup_path,
+                              KillWorkersCallback kill_workers_callback) {
   if (!pressure_threshold.IsValid()) {
-    return Status::InvalidArgument(
+    return StatusT::InvalidArgument(
         absl::StrFormat("Failed to initialize PressureMemoryMonitor due to "
                         "invalid pressure threshold configuration: %s",
-                        to_string(pressure_threshold)));
+                        pressure_threshold.ToString()));
   }
 
   std::string memory_pressure_path =
       cgroup_path + std::filesystem::path::preferred_separator + "memory.pressure";
   int pressure_fd = open(memory_pressure_path.c_str(), O_RDWR | O_NONBLOCK);
   if (pressure_fd < 0) {
-    return Status::IOError(absl::StrFormat(
+    return StatusT::IOError(absl::StrFormat(
         "Failed to initialize PressureMemoryMonitor due to "
         "failure to open memory.pressure file at path: %s, errno: %d, error: %s",
         memory_pressure_path,
@@ -70,27 +72,27 @@ StatusOr<std::unique_ptr<PressureMemoryMonitor>> PressureMemoryMonitor::Create(
         errno,
         strerror(errno));
     close(pressure_fd);
-    return Status::IOError(error_msg);
+    return StatusT::IOError(error_msg);
   }
 
   std::unique_ptr<PressureMemoryMonitor> monitor =
       std::make_unique<PressureMemoryMonitor>(
-          cgroup_path, pressure_fd, std::move(kill_workers_callback));
+          std::move(cgroup_path), pressure_fd, std::move(kill_workers_callback));
 
   RAY_LOG(INFO) << absl::StrFormat(
       "Pressure memory monitor successfully initialized with: "
       "memory pressure path: %s, and "
       "pressure threshold: %s",
       memory_pressure_path,
-      to_string(pressure_threshold));
+      pressure_threshold.ToString());
 
   return monitor;
 }
 
-PressureMemoryMonitor::PressureMemoryMonitor(const std::string &cgroup_path,
+PressureMemoryMonitor::PressureMemoryMonitor(std::string cgroup_path,
                                              int memory_pressure_fd,
                                              KillWorkersCallback kill_workers_callback)
-    : cgroup_path_(cgroup_path),
+    : cgroup_path_(std::move(cgroup_path)),
       pressure_fd_(memory_pressure_fd),
       kill_workers_callback_(std::move(kill_workers_callback)),
       worker_killing_in_progress_(false),
@@ -100,7 +102,7 @@ PressureMemoryMonitor::PressureMemoryMonitor(const std::string &cgroup_path,
       "failure to create shutdown event fd, errno: %d, error: %s",
       errno,
       strerror(errno));
-  thread_ = std::thread([this] {
+  pressure_monitoring_thread_ = std::thread([this] {
     SetThreadName("PressureMemoryMonitor.MonitoringThread");
     MonitoringThreadMain();
   });
@@ -108,15 +110,15 @@ PressureMemoryMonitor::PressureMemoryMonitor(const std::string &cgroup_path,
 
 PressureMemoryMonitor::~PressureMemoryMonitor() {
   uint64_t val = 1;
-  ssize_t rc = write(shutdown_event_fd_, &val, sizeof(val));
-  RAY_CHECK(rc == sizeof(val)) << absl::StrFormat(
+  ssize_t written_bytes = write(shutdown_event_fd_, &val, sizeof(val));
+  RAY_CHECK(written_bytes == sizeof(val)) << absl::StrFormat(
       "PressureMemoryMonitor could not be successfully cleaned up due to "
       "Failure to signal shutdown to monitoring thread via eventfd, errno: %d, error: %s",
       errno,
       strerror(errno));
 
-  if (thread_.joinable()) {
-    thread_.join();
+  if (pressure_monitoring_thread_.joinable()) {
+    pressure_monitoring_thread_.join();
   }
 
   close(shutdown_event_fd_);
@@ -132,7 +134,9 @@ bool PressureMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.lo
 void PressureMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
   fds[0].fd = pressure_fd_;
-  fds[0].events = POLLPRI;
+  fds[0].events =
+      POLLPRI;  // Kernel will set priority flag if memory pressure is detected.
+                // https://docs.kernel.org/accounting/psi.html#userspace-monitor-usage-example
   fds[1].fd = shutdown_event_fd_;
   fds[1].events = POLLIN;
 
@@ -140,9 +144,6 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
     int ret = poll(fds, 2, -1);
 
     if (ret < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
       RAY_LOG(ERROR) << absl::StrFormat(
           "Poll failed, errno: %d, error: %s. "
           "Pressure memory monitoring thread stopping.",
@@ -152,6 +153,7 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
     }
 
     if (fds[1].revents & POLLIN) {
+      // Shutdown received, stopping the monitoring thread.
       break;
     }
 
@@ -165,7 +167,7 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
                        << "This likely indicates that the event source is gone, "
                        << "Pressure memory monitoring thread is stopping.";
         break;
-      } else if (fds[0].revents) {
+      } else {
         RAY_LOG(ERROR) << absl::StrFormat(
             "Got unexpected event while monitoring memory pressure, event: 0x%x. "
             "Pressure memory monitoring thread is stopping.",

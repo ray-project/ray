@@ -60,7 +60,8 @@ TEST_F(PressureMemoryMonitorTest, TestValidMemoryPsiReturnsTrue) {
   for (uint32_t duration : {2, 4, 6, 8, 10}) {
     psi_variable_dur.stall_duration_s = duration;
     ASSERT_TRUE(psi_variable_dur.IsValidStallDuration())
-        << "Duration " << duration << " is a multiple of 2 andshould be valid";
+        << "Duration " << duration
+        << " must be a multiple of 2 to be valid. Is the duration correctly validated?";
     ASSERT_TRUE(psi_variable_dur.IsValid());
   }
 
@@ -71,7 +72,8 @@ TEST_F(PressureMemoryMonitorTest, TestValidMemoryPsiReturnsTrue) {
   for (float proportion : {0.1f, 0.5f, 1.0f}) {
     psi_variable_prop.stall_proportion = proportion;
     ASSERT_TRUE(psi_variable_prop.IsValidStallProportion())
-        << "Proportion " << proportion << " should be valid";
+        << "Proportion " << proportion
+        << " must be between 0.0 and 1.0. Is the proportion correctly validated?";
     ASSERT_TRUE(psi_variable_prop.IsValid());
   }
 }
@@ -98,10 +100,11 @@ TEST_F(PressureMemoryMonitorTest, TestNonexistentCgroupPathFailsGracefully) {
   MemoryPsi psi = {.mode = "some", .stall_proportion = 0.5f, .stall_duration_s = 2};
   std::string nonexistent_path = "/nonexistent/cgroup/path";
   auto result = PressureMemoryMonitor::Create(
-      psi, nonexistent_path, [](const SystemMemorySnapshot &) {});
+      psi, std::move(nonexistent_path), [](const SystemMemorySnapshot &) {});
 
-  ASSERT_FALSE(result.ok());
-  ASSERT_TRUE(result.status().IsIOError());
+  ASSERT_TRUE(result.has_error())
+      << "Failed to catch invalid cgroup path when creating PressureMemoryMonitor";
+  ASSERT_TRUE(std::holds_alternative<StatusT::IOError>(result.error()));
 }
 
 TEST_F(PressureMemoryMonitorTest, TestMonitorCreationWritesTriggerStringToFile) {
@@ -109,8 +112,8 @@ TEST_F(PressureMemoryMonitorTest, TestMonitorCreationWritesTriggerStringToFile) 
 
   auto result = PressureMemoryMonitor::Create(
       psi, mock_cgroup_dir_->GetPath(), [](const SystemMemorySnapshot &) {});
-  ASSERT_TRUE(result.ok()) << "Failed to create PressureMemoryMonitor: "
-                           << result.status().ToString();
+  ASSERT_TRUE(result.has_value())
+      << "Failed to create PressureMemoryMonitor: " << result.message();
 
   std::ifstream file(pressure_file_->GetPath());
   std::istreambuf_iterator<char> begin(file);
@@ -161,14 +164,14 @@ TEST_F(PressureMemoryMonitorTest,
   close(listener);
 
   std::shared_ptr<boost::latch> has_called_once = std::make_shared<boost::latch>(1);
-  auto callback = [has_called_once](const SystemMemorySnapshot &) {
+  auto kill_workers_callback = [has_called_once](const SystemMemorySnapshot &) {
     has_called_once->count_down();
   };
   std::unique_ptr<PressureMemoryMonitor> monitor =
       std::make_unique<PressureMemoryMonitor>(
-          mock_cgroup_dir_->GetPath(), listener_fd, callback);
+          mock_cgroup_dir_->GetPath(), listener_fd, kill_workers_callback);
 
-  // Send OOB (out-of-band) data to trigger POLLPRI on the listener side
+  // Send out-of-band data to trigger POLLPRI on the listener side
   const char oob_data = '!';
   ssize_t sent = send(client, &oob_data, 1, MSG_OOB);
   ASSERT_EQ(sent, 1) << "Failed to mock POLLPRI event due to: failure to send OOB data "

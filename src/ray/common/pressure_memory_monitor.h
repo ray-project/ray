@@ -21,7 +21,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/common/memory_monitor_interface.h"
-#include "ray/common/status_or.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -66,14 +66,14 @@ struct MemoryPsi {
   bool IsValid() const {
     return IsValidMode() && IsValidStallDuration() && IsValidStallProportion();
   }
-};
 
-inline std::string to_string(const MemoryPsi &psi) {
-  return absl::StrFormat("MemoryPsi{mode=%s, stall proportion=%f, stall duration=%ds}",
-                         psi.mode,
-                         psi.stall_proportion,
-                         psi.stall_duration_s);
-}
+  std::string ToString() const {
+    return absl::StrFormat("MemoryPsi{mode=%s, stall proportion=%f, stall duration=%ds}",
+                           mode,
+                           stall_proportion,
+                           stall_duration_s);
+  }
+};
 
 /**
  * @brief Pressure based memory monitor that monitors
@@ -93,10 +93,12 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
    * @return The PressureMemoryMonitor instance, or an error status if initialization
    * fails.
    */
-  static StatusOr<std::unique_ptr<PressureMemoryMonitor>> Create(
-      MemoryPsi pressure_threshold,
-      std::string cgroup_path,
-      KillWorkersCallback kill_workers_callback);
+  static StatusSetOr<std::unique_ptr<PressureMemoryMonitor>,
+                     StatusT::InvalidArgument,
+                     StatusT::IOError>
+  Create(MemoryPsi pressure_threshold,
+         std::string cgroup_path,
+         KillWorkersCallback kill_workers_callback);
 
   /**
    * @param cgroup_path the path to the cgroup whose memory pressure will be monitored.
@@ -105,7 +107,7 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
    * for closing it.
    * @param kill_workers_callback function to execute when memory pressure is detected.
    */
-  PressureMemoryMonitor(const std::string &cgroup_path,
+  PressureMemoryMonitor(std::string cgroup_path,
                         int memory_pressure_fd,
                         KillWorkersCallback kill_workers_callback);
 
@@ -149,7 +151,7 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
   int shutdown_event_fd_;
 
   /// Thread for monitoring memory pressure.
-  std::thread thread_;
+  std::thread pressure_monitoring_thread_;
 };
 
 }  // namespace ray
