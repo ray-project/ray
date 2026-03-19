@@ -49,15 +49,15 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   protected abstract T createActorContext();
 
   T getActorContext() {
-    return actorContext;
+    return actorContext.get();
   }
 
   void setActorContext(UniqueId workerId, T actorContext) {
     if (actorContext == null) {
-      // ConcurrentHashMap doesn't allow null values. So just return here.
-      return;
+      this.actorContext.remove();
+    } else {
+      this.actorContext.set(actorContext);
     }
-    this.actorContext = actorContext;
   }
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
