@@ -117,7 +117,7 @@ def _shuffle_map(
     )
 
     if block.num_rows == 0:
-        return (input_block_metadata, []), *([None] * num_partitions)
+        return (input_block_metadata, [], {}), *([None] * num_partitions)  # noqa: E501
 
     assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
 
@@ -127,12 +127,14 @@ def _shuffle_map(
 
     shards = [None] * num_partitions
     non_empty_pids = []
+    shard_sizes = {}
     for pid, shard in block_partitions.items():
         if shard.num_rows > 0:
             shards[pid] = shard
             non_empty_pids.append(pid)
+            shard_sizes[pid] = (shard.num_rows, shard.nbytes)
 
-    return (input_block_metadata, non_empty_pids), *shards
+    return (input_block_metadata, non_empty_pids, shard_sizes), *shards
 
 
 @ray.remote
@@ -302,6 +304,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._map_resource_usage = ExecutionResources.zero()
 
         # -- Per-partition shard buffers (driver bookkeeping) -----------------
+        self._partition_row_counts: Dict[int, int] = defaultdict(int)
+        self._partition_bytes: Dict[int, int] = defaultdict(int)
         self._partition_buffers: Dict[int, List[ObjectRef]] = defaultdict(list)
         self._compacted_partition_buffers: Dict[int, List[ObjectRef]] = defaultdict(
             list
@@ -324,6 +328,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._output_queue: deque = deque()
 
         # -- Stats ------------------------------------------------------------
+        self._total_input_rows: int = 0
+        self._total_input_bytes: int = 0
         self._shuffled_blocks_stats: List[BlockStats] = []
         self._output_blocks_stats: List[BlockStats] = []
 
@@ -374,13 +380,16 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                     task.get_requested_resource_bundle()
                 )
 
-                input_block_metadata, non_empty_pids = ray.get(
+                input_block_metadata, non_empty_pids, shard_sizes = ray.get(
                     task.get_waitable(), timeout=60
                 )
 
                 # Only add refs for non-empty partitions.
                 for pid in non_empty_pids:
                     self._partition_buffers[pid].append(shard_refs[pid])
+                    rows, nbytes = shard_sizes.get(pid, (0, 0))
+                    self._partition_row_counts[pid] += rows
+                    self._partition_bytes[pid] += nbytes
                     self._maybe_compact_partition(pid)
 
                 # Drop local list so empty-partition refs (with no other
@@ -390,6 +399,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 # Free the input block now that the map task has consumed it.
                 input_bundle.destroy_if_owned()
 
+                self._total_input_rows += input_block_metadata.num_rows or 0
+                self._total_input_bytes += input_block_metadata.size_bytes or 0
                 self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
 
                 # Update shuffle metrics.
@@ -524,6 +535,39 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _is_all_reduce_submitted(self) -> bool:
         return len(self._pending_reduce_partition_ids) == 0
 
+    def _estimate_partition_bytes(self, partition_id: int) -> int:
+        """Return the actual in-memory size of a partition's shards.
+
+        Includes 2x multiplier for concatenation overhead (input shards +
+        result coexist briefly during reduce).
+        """
+        nbytes = self._partition_bytes.get(partition_id, 0)
+        # 2x for concatenation overhead.
+        return nbytes * 2
+
+    def _log_partition_stats(self):
+        """Log partition size distribution before reduce."""
+        counts = self._partition_row_counts
+        if not counts:
+            return
+        row_counts = sorted(counts.values())
+        total = sum(row_counts)
+        n = len(row_counts)
+        empty = self._num_partitions - n
+        partition_bytes = sorted(self._partition_bytes[pid] for pid in counts)
+        total_bytes = sum(partition_bytes)
+        logger.info(
+            f"Partition stats before reduce: "
+            f"partitions={self._num_partitions} (non-empty={n}, empty={empty}), "
+            f"total_rows={total:,}, total_bytes={total_bytes / 1e9:.1f}GB, "
+            f"rows: min={row_counts[0]:,}, median={row_counts[n // 2]:,}, max={row_counts[-1]:,}, "
+            f"partition_size: min={partition_bytes[0] / 1e6:.0f}MB, "
+            f"median={partition_bytes[n // 2] / 1e6:.0f}MB, "
+            f"max={partition_bytes[-1] / 1e6:.0f}MB, "
+            f"refs_per_partition: min={min(len(self._partition_buffers[pid]) for pid in counts)}, "
+            f"max={max(len(self._partition_buffers[pid]) for pid in counts)}"
+        )
+
     def _try_reduce(self):
         """Launch reduce tasks once all map and compact tasks have completed."""
         if self._is_all_reduce_submitted():
@@ -531,6 +575,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         if not self._is_ready_for_reduce():
             return
+
+        self._log_partition_stats()
 
         target_max_block_size = self._data_context.target_max_block_size
 
@@ -586,8 +632,14 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                             exc_info=exc,
                         )
 
+            estimated_bytes = self._estimate_partition_bytes(partition_id)
+            reduce_resources = {"num_cpus": 1}
+            if estimated_bytes > 0:
+                reduce_resources["memory"] = estimated_bytes
+
             block_gen = _shuffle_reduce.options(
-                num_cpus=1,
+                **reduce_resources,
+                scheduling_strategy="SPREAD",
                 num_returns="streaming",
             ).remote(
                 *shard_refs,
@@ -601,7 +653,11 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 streaming_gen=block_gen,
                 output_ready_callback=functools.partial(_on_bundle_ready, partition_id),
                 task_done_callback=functools.partial(_on_reduce_done, partition_id),
-                task_resource_bundle=ExecutionResources(cpu=1),
+                task_resource_bundle=ExecutionResources(
+                    cpu=1,
+                    memory=estimated_bytes,
+                    object_store_memory=estimated_bytes,
+                ),
                 operator_name=self.name,
             )
 

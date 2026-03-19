@@ -8,7 +8,6 @@ Usage:
 """
 
 import argparse
-import concurrent.futures
 import gc
 import json
 import os
@@ -20,9 +19,6 @@ os.environ.setdefault("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.5")
 
 import ray
 from ray.data.context import ShuffleStrategy
-
-DEFAULT_TIMEOUT_S = 30 * 60  # 30 minutes
-
 
 BENCHMARK_MATRIX = [
     # (sf, num_partitions)
@@ -54,7 +50,7 @@ def load_dataset(sf):
     return ds
 
 
-def wait_for_object_store_to_drain(threshold_pct=10, timeout_s=120, poll_s=5):
+def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=120, poll_s=5):
     """Wait until object store utilization drops below threshold."""
     deadline = time.perf_counter() + timeout_s
     while time.perf_counter() < deadline:
@@ -112,12 +108,6 @@ def main():
         default=1,
         help="Number of runs per (sf, partitions, strategy) combo",
     )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=DEFAULT_TIMEOUT_S,
-        help="Timeout per run in seconds (default: 1800 = 30 min)",
-    )
     args = parser.parse_args()
 
     ray.init()
@@ -163,22 +153,14 @@ def main():
                 num_rows = 0
 
                 for run in range(args.num_runs):
-                    with concurrent.futures.ThreadPoolExecutor(
-                        max_workers=1
-                    ) as executor:
-                        future = executor.submit(
-                            run_one, ds, sf, num_partitions, strategy, label
+                    try:
+                        elapsed, num_rows = run_one(
+                            ds, sf, num_partitions, strategy, label
                         )
-                        try:
-                            elapsed, num_rows = future.result(timeout=args.timeout)
-                            times.append(elapsed)
-                        except concurrent.futures.TimeoutError:
-                            print(f"TIMEOUT ({args.timeout}s)")
-                            times.append(None)
-                            ray.data.DataContext.get_current()._max_errored_blocks = 0
-                        except Exception as e:
-                            print(f"  [{label}] FAILED: {e}")
-                            times.append(None)
+                        times.append(elapsed)
+                    except Exception as e:
+                        print(f"  [{label}] FAILED: {e}")
+                        times.append(None)
 
                 valid_times = [t for t in times if t is not None]
                 entry = {
