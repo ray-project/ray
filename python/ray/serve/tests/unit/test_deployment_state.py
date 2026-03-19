@@ -5643,6 +5643,64 @@ class TestDeploymentRankManagerIntegrationE2E:
             2,
         }, f"Expected ranks [0, 1, 2], got {[r.rank for r in ranks_mapping.values()]}"
 
+    def test_rank_recovery_skips_when_already_assigned(
+        self, mock_deployment_state_manager
+    ):
+        """Verify that recover_rank is skipped when a replica's rank is already assigned."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy 3 replicas: STARTING -> RUNNING (ranks get assigned).
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Record the actor names and ranks for recovery.
+        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        original_ranks = {
+            r.replica_id.unique_id: ds._rank_manager.get_replica_rank(
+                r.replica_id.unique_id
+            )
+            for r in ds._replicas.get()
+        }
+        dsm.save_checkpoint()
+
+        # Simulate controller crash: create a new DSM with the live actor names.
+        new_dsm: DeploymentStateManager = create_dsm(actor_names)
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+        # Enable strict rank error mode so duplicate recover_rank raises.
+        new_ds._rank_manager._fail_on_rank_error = True
+
+        # Pre-populate 1 replica's rank in the new rank manager, simulating
+        # the scenario where the rank was never released.
+        target = new_ds._replicas.get(states=[ReplicaState.RECOVERING])[0]
+        target_id = target.replica_id.unique_id
+        target_rank = original_ranks[target_id]
+        new_ds._rank_manager.recover_rank(target_id, target.actor_node_id, target_rank)
+        assert new_ds._rank_manager.has_replica_rank(target_id)
+
+        # Mark all recovering replicas as ready.
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+
+        # This update() calls _check_startup_replicas(RECOVERING). For the
+        # pre-populated replica, has_replica_rank returns True so recover_rank
+        # is SKIPPED.
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Verify all ranks were recovered correctly.
+        for rid, expected_rank in original_ranks.items():
+            assert new_ds._rank_manager.get_replica_rank(rid) == expected_rank
+
 
 class TestGetOutboundDeployments:
     def test_basic_outbound_deployments(self, mock_deployment_state_manager):
@@ -6940,6 +6998,278 @@ class TestGangHealthCheck:
             ds,
             total=num_replicas,
             by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+class TestGangRollingUpdate:
+    def _deploy_gang(self, mock_deployment_state_manager, gang_size, num_replicas):
+        """Deploy a gang-scheduled deployment and advance to HEALTHY."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
+                *args, **kwargs
+            ),
+        )
+        info, _ = deployment_info(
+            version="v1",
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        return dsm, ds
+
+    def _deploy_new_version(self, dsm, gang_size, num_replicas, version, **kwargs):
+        """Deploy a new version and return its version tag."""
+        info, v = deployment_info(
+            version=version,
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+            **kwargs,
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        return v
+
+    def _mock_gang_pgs(self, dsm, gang_size, num_new):
+        """Mock gang PG reservation for new replicas."""
+        n = num_new // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(n)],
+                    gang_ids=[f"new_gang_{i}" for i in range(n)],
+                    gang_pg_names=[f"SERVE_GANG::pg-{i}" for i in range(n)],
+                )
+            }
+        )
+
+    def _finish_stopping(self, ds):
+        """Mark all STOPPING replicas as done."""
+        for r in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+    def _finish_starting(self, ds):
+        """Mark all STARTING replicas as ready."""
+        for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+            r._actor.set_ready()
+
+    def _advance_wave(self, dsm, ds, gang_size):
+        """Complete one rolling-update wave: finish stops, mock PGs, start new."""
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        self._finish_starting(ds)
+
+    def test_stop_gang_atomically(self, mock_deployment_state_manager):
+        """Stops one complete gang per wave, never partially tearing down a gang."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # First wave: exactly one gang (2 replicas) stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+        assert all(r.version != v2 for r in stopping)
+
+        # Complete wave 1, trigger wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        # Second old gang now stopping
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
+
+        # Complete wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_rollout_size_rounding(self, mock_deployment_state_manager):
+        """With gang_size=3, num_replicas=9, rollout_size rounds up from 1 to 3."""
+        gang_size, num_replicas = 3, 9
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # Exactly one gang (3 replicas) stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+
+        # Advance through all 3 waves
+        for _ in range(3):
+            self._advance_wave(dsm, ds, gang_size)
+            dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_reconfigure(self, mock_deployment_state_manager):
+        """Config-only change (same code version) reconfigures in place, no stops."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        self._deploy_new_version(
+            dsm, gang_size, num_replicas, "v1", user_config={"key": "new_value"}
+        )
+        dsm.update()
+
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+        running = ds._replicas.count(states=[ReplicaState.RUNNING])
+        updating = ds._replicas.count(states=[ReplicaState.UPDATING])
+        assert running + updating == num_replicas
+
+    def test_starting_replicas(self, mock_deployment_state_manager):
+        """Rapid v1->v2->v3: v2 STARTING replicas are stopped when v3 arrives."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        # Deploy v2, complete first wave's stops, but leave new replicas STARTING.
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v2, states=[ReplicaState.STARTING]) == gang_size
+        )
+
+        # Deploy v3 while v2 replicas are still STARTING.
+        v3 = self._deploy_new_version(dsm, gang_size, num_replicas, "v3")
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v2, states=[ReplicaState.STOPPING]) == gang_size
+        )
+
+        # State: 2 v1 RUNNING, 2 v2 STOPPING.
+        # The rolling-update budget (pending_replicas=2) is already exhausted
+        # by the missing slots, so v1 won't be stopped until new v3 replicas
+        # fill those slots first.
+
+        # Wave 1: Finish v2 stops -> update starts 2 v3 (v1 not stopped yet).
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v3, states=[ReplicaState.STARTING]) == gang_size
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Wave 2: v3 replicas ready -> update stops the old v1 gang.
+        self._finish_starting(ds)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v3, states=[ReplicaState.RUNNING]) == gang_size
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == gang_size
+
+        # Wave 3: Finish v1 stops -> update starts remaining v3 replicas.
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        self._finish_starting(ds)
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v3)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_multi_gang_stop_per_wave(self, mock_deployment_state_manager):
+        """Validate that multiple gangs are stopped per wave."""
+        gang_size, num_replicas = 2, 20
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        # rollout_size = max(1, int(0.2 * 20)) = 4
+        assert len(stopping) == 4
+        stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert len(stopping_gang_ids) == 2
+
+    def test_recovering_member_skips_gang_update(self, mock_deployment_state_manager):
+        """Gang with a RECOVERING member is skipped during rolling update."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        # Move one replica to RECOVERING so its gang is incomplete.
+        running = ds._replicas.pop(states=[ReplicaState.RUNNING])
+        recovering_replica = running[0]
+        for r in running[1:]:
+            ds._replicas.add(ReplicaState.RUNNING, r)
+        ds._replicas.add(ReplicaState.RECOVERING, recovering_replica)
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # An incomplete gang (with a RECOVERING member) cannot be stopped.
+        # Additionally, the budget is insufficient because the RECOVERING
+        # replica increases the pending count, preventing any stops.
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Recover the replica so the gang is complete again
+        recovering_replica._actor.set_ready()
+        dsm.update()
+
+        # Wave 1: first complete gang stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+
+        # Complete wave 1, trigger wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        # Wave 2: second gang stops
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
+
+        # Complete wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 

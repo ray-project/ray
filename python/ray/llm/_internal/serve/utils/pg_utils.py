@@ -3,7 +3,7 @@
 from collections import defaultdict
 from typing import Dict, List
 
-import ray
+from ray.serve._private.utils import get_head_node_id
 from ray.util.placement_group import PlacementGroup, placement_group_table
 
 
@@ -55,5 +55,5 @@ def get_bundle_indices_sorted_by_node(
     """
     table = placement_group_table(pg)
     bundles_to_node_id = table["bundles_to_node_id"]
-    driver_node_id = ray.get_runtime_context().get_node_id()
+    driver_node_id = get_head_node_id()
     return _sort_bundle_indices_by_node(bundles_to_node_id, driver_node_id)
