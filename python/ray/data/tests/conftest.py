@@ -788,6 +788,12 @@ def pytest_configure(config):
 
 _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
 
+for _f in MIGRATED_FILES:
+    assert (_INTEGRATION_TEST_DIR / _f).exists(), (
+        f"MIGRATED_FILES contains '{_f}' but no such file exists in {_INTEGRATION_TEST_DIR}. "
+        "Please update MIGRATED_FILES."
+    )
+
 
 @pytest.fixture(autouse=True)
 def check_if_unit_in_integration(request):
@@ -800,48 +806,49 @@ def check_if_unit_in_integration(request):
     - Appears to be a unit test (no `ray_start` fixture) but is not marked with
       `@pytest.mark.unit_for_integration` or moved to the `tests/unit` directory.
     """
+    yield
 
     # Skip if the test is not in the integration test directory
     if pathlib.Path(str(request.fspath)).parent != _INTEGRATION_TEST_DIR:
-        yield
         return
 
     # Skip if the test file is not been migrated yet (i.e. not in the set of migrated files)
     if request.fspath.basename not in MIGRATED_FILES:
-        yield
         return
 
     # Skip if the test is marked as an integration test
     if request.node.get_closest_marker("integration_test"):
-        yield
         return
+
+    has_cluster_fixture = any(
+        name.startswith("ray_start") for name in request.fixturenames
+    )
 
     # Skip if the test file is in the set of migrated files that are known to be unit tests
     if request.node.get_closest_marker("unit_for_integration"):
-        if any("ray_start" in name for name in request.fixturenames):
-            yield
-            raise Exception(
+        if has_cluster_fixture:
+            pytest.fail(
                 f"{request.node.nodeid} is marked with @pytest.mark.unit_for_integration but uses a Ray cluster fixture. "
-                "Mark it with @pytest.mark.integration_test instead."
+                "Mark it with @pytest.mark.integration_test instead.",
+                pytrace=False,
             )
         else:
-            yield
             return
 
     # raise an exception if the test has a direct Ray cluster dependency but is not marked as an integration test
-    if any("ray_start" in name for name in request.fixturenames):
-        yield
-        raise Exception(
+    if has_cluster_fixture:
+        pytest.fail(
             f"{request.node.nodeid} uses a Ray cluster fixture but is missing "
-            "@pytest.mark.integration_test. Consider adding it to document intent."
+            "@pytest.mark.integration_test. Consider adding it to document intent.",
+            pytrace=False,
         )
 
     # raise an exception if the test is a unit test but not marked as unit_for_integration
-    yield
-    raise Exception(
+    pytest.fail(
         f"{request.node.nodeid} has no Ray cluster dependency and no intent marker.\n"
         "Please do one of the following:\n"
         "  1) Add @pytest.mark.integration_test if this test requires a Ray cluster.\n"
         "  2) Add @pytest.mark.unit_for_integration if this is a unit test kept here intentionally.\n"
-        "  3) Move it to tests/unit/ if it has no Ray dependency."
+        "  3) Move it to tests/unit/ if it has no Ray dependency.",
+        pytrace=False,
     )
