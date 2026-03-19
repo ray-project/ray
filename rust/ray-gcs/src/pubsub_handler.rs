@@ -250,6 +250,25 @@ impl InternalPubSubHandler {
     }
 }
 
+#[cfg(test)]
+impl InternalPubSubHandler {
+    pub(crate) fn pending_messages_for_test(
+        &self,
+        subscriber_id: &[u8],
+    ) -> Vec<(ray_proto::ray::rpc::PubMessage, i64)> {
+        self.subscribers
+            .get(subscriber_id)
+            .map(|state| {
+                state
+                    .pending_messages
+                    .iter()
+                    .map(|(msg, seq)| ((**msg).clone(), *seq))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
 impl Default for InternalPubSubHandler {
     fn default() -> Self {
         Self::new()

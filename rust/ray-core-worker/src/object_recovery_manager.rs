@@ -193,6 +193,27 @@ impl ObjectRecoveryManager {
             return strategy;
         }
 
+        // Check if lineage reconstruction is available.
+        if let Some(ref cb) = inner.lineage_callback {
+            // Use a placeholder task ID derived from the object ID to check lineage.
+            // In C++, the task ID is looked up from the object's metadata. Here we
+            // extract it from the ObjectID (first 24 bytes = TaskID per Ray ID layout).
+            let task_id = object_id.task_id();
+            if cb(&task_id) {
+                let strategy = RecoveryStrategy::ReExecuteLineage { task_id };
+                inner.recovering.insert(
+                    object_id,
+                    RecoveryEntry {
+                        strategy: strategy.clone(),
+                        status: RecoveryStatus::InProgress,
+                        attempts: 1,
+                    },
+                );
+                tracing::info!(?object_id, ?task_id, "Recovering object via lineage re-execution");
+                return strategy;
+            }
+        }
+
         // No recovery path available.
         let strategy = RecoveryStrategy::Unrecoverable {
             reason: "no spill URL, no other locations, no lineage".to_string(),
@@ -434,6 +455,89 @@ mod tests {
             strategy,
             RecoveryStrategy::RestoreFromSpill { .. }
         ));
+    }
+
+    #[test]
+    fn test_recover_via_lineage_when_no_spill_or_locations() {
+        let (mgr, _rc) = make_manager_with_rc();
+        let oid = ObjectID::from_random();
+
+        let call_count = Arc::new(AtomicU32::new(0));
+        let cc = call_count.clone();
+        // Set lineage callback that always succeeds.
+        mgr.set_lineage_callback(Box::new(move |_task_id| {
+            cc.fetch_add(1, Ordering::Relaxed);
+            true
+        }));
+
+        let strategy = mgr.recover_object(oid);
+        assert!(
+            matches!(strategy, RecoveryStrategy::ReExecuteLineage { .. }),
+            "Expected ReExecuteLineage, got {:?}",
+            strategy
+        );
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+        assert!(mgr.is_recovering(&oid));
+        assert!(!mgr.is_unrecoverable(&oid));
+    }
+
+    #[test]
+    fn test_lineage_callback_returns_false_falls_through_to_unrecoverable() {
+        let (mgr, _rc) = make_manager_with_rc();
+        let oid = ObjectID::from_random();
+
+        // Set lineage callback that returns false (lineage not available).
+        mgr.set_lineage_callback(Box::new(|_task_id| false));
+
+        let strategy = mgr.recover_object(oid);
+        assert!(
+            matches!(strategy, RecoveryStrategy::Unrecoverable { .. }),
+            "Expected Unrecoverable, got {:?}",
+            strategy
+        );
+        assert!(mgr.is_unrecoverable(&oid));
+    }
+
+    #[test]
+    fn test_spill_preferred_over_lineage() {
+        let (mgr, rc) = make_manager_with_rc();
+        let oid = ObjectID::from_random();
+
+        rc.add_local_reference(oid);
+        rc.set_spill_url(&oid, "s3://bucket/key".to_string());
+
+        let lineage_called = Arc::new(AtomicU32::new(0));
+        let lc = lineage_called.clone();
+        mgr.set_lineage_callback(Box::new(move |_| {
+            lc.fetch_add(1, Ordering::Relaxed);
+            true
+        }));
+
+        let strategy = mgr.recover_object(oid);
+        assert!(matches!(strategy, RecoveryStrategy::RestoreFromSpill { .. }));
+        // Lineage callback should NOT have been called.
+        assert_eq!(lineage_called.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_fetch_preferred_over_lineage() {
+        let (mgr, rc) = make_manager_with_rc();
+        let oid = ObjectID::from_random();
+
+        rc.add_local_reference(oid);
+        rc.add_object_location(&oid, "node-7".to_string());
+
+        let lineage_called = Arc::new(AtomicU32::new(0));
+        let lc = lineage_called.clone();
+        mgr.set_lineage_callback(Box::new(move |_| {
+            lc.fetch_add(1, Ordering::Relaxed);
+            true
+        }));
+
+        let strategy = mgr.recover_object(oid);
+        assert!(matches!(strategy, RecoveryStrategy::FetchFromNode { .. }));
+        // Lineage callback should NOT have been called.
+        assert_eq!(lineage_called.load(Ordering::Relaxed), 0);
     }
 
     #[test]

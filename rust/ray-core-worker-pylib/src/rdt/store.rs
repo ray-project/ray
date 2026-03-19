@@ -13,8 +13,11 @@
 //! (`wait_and_get_object`, `wait_and_pop_object`, `wait_tensor_freed`)
 //! release the GIL during the condvar wait, avoiding deadlocks.
 
+#[cfg(feature = "python")]
 use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(feature = "python")]
 use std::sync::{Condvar, Mutex};
+#[cfg(feature = "python")]
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "python")]
@@ -25,6 +28,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 
 /// Internal representation of an RDT object in the store.
+#[cfg(feature = "python")]
 struct RDTObject {
     /// Python list of tensors (or empty list if error).
     data: Py<PyAny>,
@@ -35,6 +39,7 @@ struct RDTObject {
 }
 
 /// Interior state protected by the mutex.
+#[cfg(feature = "python")]
 struct RDTStoreInner {
     /// Maps object ID → queue of RDT objects.
     store: HashMap<String, VecDeque<RDTObject>>,
@@ -50,7 +55,8 @@ struct RDTStoreInner {
 /// 3. CoreWorker GC thread: pop (garbage collection)
 ///
 /// Blocking waits release the Python GIL to prevent deadlocks.
-#[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet"))]
+#[cfg(feature = "python")]
+#[pyo3::pyclass(module = "_raylet")]
 pub struct PyRDTStore {
     inner: Mutex<RDTStoreInner>,
     /// Signaled when an object is added to the store.

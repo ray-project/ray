@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use parking_lot::Mutex;
@@ -79,6 +80,8 @@ struct PendingResolution {
     owner_address: Address,
     /// Senders for all waiters.
     waiters: Vec<oneshot::Sender<ResolvedObject>>,
+    /// When this resolution was created.
+    created_at: std::time::Instant,
 }
 
 /// Resolves borrowed object references by querying their owners.
@@ -91,6 +94,9 @@ pub struct FutureResolver {
     inner: Mutex<FutureResolverInner>,
     memory_store: Arc<CoreWorkerMemoryStore>,
     reference_counter: Arc<ReferenceCounter>,
+    /// Timeout for pending resolutions. If a resolution has been pending for
+    /// longer than this, it is marked as OwnerDied.
+    resolution_timeout: Duration,
 }
 
 struct FutureResolverInner {
@@ -100,22 +106,38 @@ struct FutureResolverInner {
     total_resolved: u64,
     /// Total number of resolutions that failed (owner died, out of scope).
     total_failed: u64,
+    /// Total number of resolutions that timed out.
+    total_timed_out: u64,
 }
 
 impl FutureResolver {
-    /// Create a new FutureResolver.
+    /// Default resolution timeout (30 seconds).
+    pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// Create a new FutureResolver with the default timeout.
     pub fn new(
         memory_store: Arc<CoreWorkerMemoryStore>,
         reference_counter: Arc<ReferenceCounter>,
+    ) -> Self {
+        Self::with_timeout(memory_store, reference_counter, Self::DEFAULT_TIMEOUT)
+    }
+
+    /// Create a new FutureResolver with a custom timeout.
+    pub fn with_timeout(
+        memory_store: Arc<CoreWorkerMemoryStore>,
+        reference_counter: Arc<ReferenceCounter>,
+        resolution_timeout: Duration,
     ) -> Self {
         Self {
             inner: Mutex::new(FutureResolverInner {
                 pending_resolutions: HashMap::new(),
                 total_resolved: 0,
                 total_failed: 0,
+                total_timed_out: 0,
             }),
             memory_store,
             reference_counter,
+            resolution_timeout,
         }
     }
 
@@ -143,6 +165,7 @@ impl FutureResolver {
                 PendingResolution {
                     owner_address,
                     waiters: vec![tx],
+                    created_at: std::time::Instant::now(),
                 },
             );
         }
@@ -264,10 +287,63 @@ impl FutureResolver {
             .map(|p| p.owner_address.clone())
     }
 
-    /// Statistics about resolution activity.
+    /// Check for timed-out pending resolutions and mark them as OwnerDied.
+    ///
+    /// Returns the list of object IDs that timed out.
+    pub fn check_timeouts(&self) -> Vec<ObjectID> {
+        let now = std::time::Instant::now();
+        let timed_out_ids: Vec<ObjectID>;
+        {
+            let inner = self.inner.lock();
+            timed_out_ids = inner
+                .pending_resolutions
+                .iter()
+                .filter(|(_, p)| now.duration_since(p.created_at) >= self.resolution_timeout)
+                .map(|(oid, _)| *oid)
+                .collect();
+        }
+
+        // Process each timed-out resolution as OwnerDied.
+        for oid in &timed_out_ids {
+            self.process_resolved_object(ResolutionReply {
+                object_id: *oid,
+                status: ObjectStatus::OwnerDied,
+                data: None,
+                metadata: None,
+                nested_refs: Vec::new(),
+                node_id: None,
+                object_size: 0,
+            });
+        }
+
+        // Update timeout counter.
+        if !timed_out_ids.is_empty() {
+            let mut inner = self.inner.lock();
+            inner.total_timed_out += timed_out_ids.len() as u64;
+        }
+
+        timed_out_ids
+    }
+
+    /// Get the configured resolution timeout.
+    pub fn resolution_timeout(&self) -> Duration {
+        self.resolution_timeout
+    }
+
+    /// Statistics about resolution activity: (total_resolved, total_failed).
     pub fn stats(&self) -> (u64, u64) {
         let inner = self.inner.lock();
         (inner.total_resolved, inner.total_failed)
+    }
+
+    /// Extended statistics: (total_resolved, total_failed, total_timed_out).
+    pub fn stats_extended(&self) -> (u64, u64, u64) {
+        let inner = self.inner.lock();
+        (
+            inner.total_resolved,
+            inner.total_failed,
+            inner.total_timed_out,
+        )
     }
 }
 
@@ -480,6 +556,69 @@ mod tests {
         // Non-pending object returns None.
         let other = ObjectID::from_random();
         assert!(resolver.get_pending_owner(&other).is_none());
+    }
+
+    #[test]
+    fn test_resolution_timeout_marks_owner_died() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let rc = Arc::new(ReferenceCounter::new());
+        // Use a very short timeout for testing.
+        let resolver =
+            FutureResolver::with_timeout(store.clone(), rc, Duration::from_millis(10));
+
+        let oid = ObjectID::from_random();
+        let mut rx = resolver.resolve_object_async(oid, make_address());
+
+        assert!(resolver.is_resolving(&oid));
+
+        // Wait for the timeout to expire.
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Check timeouts — should mark the object as OwnerDied.
+        let timed_out = resolver.check_timeouts();
+        assert_eq!(timed_out.len(), 1);
+        assert_eq!(timed_out[0], oid);
+
+        // The pending resolution should be resolved now.
+        assert!(!resolver.is_resolving(&oid));
+
+        // Waiter should receive OwnerDied.
+        let result = rx.try_recv().unwrap();
+        assert_eq!(result.status, ObjectStatus::OwnerDied);
+
+        // Stats should reflect the timeout.
+        let (resolved, failed, timed_out_count) = resolver.stats_extended();
+        assert_eq!(resolved, 0);
+        assert_eq!(failed, 1); // OwnerDied counts as failed
+        assert_eq!(timed_out_count, 1);
+
+        // Error marker should be in the memory store.
+        let obj = store.get(&oid).unwrap();
+        assert_eq!(obj.metadata.as_ref(), b"ERROR");
+    }
+
+    #[test]
+    fn test_resolution_timeout_does_not_expire_early() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let rc = Arc::new(ReferenceCounter::new());
+        // Use a long timeout.
+        let resolver =
+            FutureResolver::with_timeout(store, rc, Duration::from_secs(300));
+
+        let oid = ObjectID::from_random();
+        let _rx = resolver.resolve_object_async(oid, make_address());
+
+        // Check timeouts immediately — nothing should expire.
+        let timed_out = resolver.check_timeouts();
+        assert!(timed_out.is_empty());
+        assert!(resolver.is_resolving(&oid));
+    }
+
+    #[test]
+    fn test_default_timeout() {
+        let resolver = make_resolver();
+        assert_eq!(resolver.resolution_timeout(), FutureResolver::DEFAULT_TIMEOUT);
+        assert_eq!(resolver.resolution_timeout(), Duration::from_secs(30));
     }
 
     #[test]

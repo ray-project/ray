@@ -319,6 +319,30 @@ impl ActorTaskSubmitter {
             .get(actor_id)
             .map_or(0, |q| q.num_tasks_sent)
     }
+
+    /// Get the pending queue size for a specific actor.
+    ///
+    /// Used for backlog reporting to the raylet for autoscaling decisions.
+    /// Returns 0 if the actor is not registered.
+    pub fn get_pending_queue_size(&self, actor_id: &ActorID) -> usize {
+        self.queues
+            .lock()
+            .get(actor_id)
+            .map_or(0, |q| q.pending_tasks.len())
+    }
+
+    /// Get the pending queue sizes for all actors.
+    ///
+    /// Returns a map of actor_id → pending queue size for actors with
+    /// non-empty queues. Used for aggregated backlog reporting.
+    pub fn get_all_pending_queue_sizes(&self) -> HashMap<ActorID, usize> {
+        self.queues
+            .lock()
+            .iter()
+            .filter(|(_, q)| !q.pending_tasks.is_empty())
+            .map(|(id, q)| (*id, q.pending_tasks.len()))
+            .collect()
+    }
 }
 
 impl Default for ActorTaskSubmitter {
@@ -1250,5 +1274,91 @@ mod tests {
     fn test_default_impl() {
         let submitter = ActorTaskSubmitter::default();
         assert_eq!(submitter.total_pending_tasks(), 0);
+    }
+
+    // ── Backlog reporting ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_get_pending_queue_size() {
+        let submitter = ActorTaskSubmitter::new();
+        let a1 = make_actor_id(1);
+        let a2 = make_actor_id(2);
+        submitter.add_actor(a1);
+        submitter.add_actor(a2);
+
+        // Empty queues
+        assert_eq!(submitter.get_pending_queue_size(&a1), 0);
+        assert_eq!(submitter.get_pending_queue_size(&a2), 0);
+
+        // Submit tasks to a1
+        for _ in 0..3 {
+            submitter
+                .submit_task(&a1, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        submitter
+            .submit_task(&a2, TaskSpec::default())
+            .await
+            .unwrap();
+
+        assert_eq!(submitter.get_pending_queue_size(&a1), 3);
+        assert_eq!(submitter.get_pending_queue_size(&a2), 1);
+
+        // Unregistered actor returns 0
+        assert_eq!(submitter.get_pending_queue_size(&make_actor_id(99)), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_pending_queue_sizes() {
+        let submitter = ActorTaskSubmitter::new();
+        let a1 = make_actor_id(1);
+        let a2 = make_actor_id(2);
+        let a3 = make_actor_id(3);
+        submitter.add_actor(a1);
+        submitter.add_actor(a2);
+        submitter.add_actor(a3);
+
+        for _ in 0..2 {
+            submitter
+                .submit_task(&a1, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        submitter
+            .submit_task(&a3, TaskSpec::default())
+            .await
+            .unwrap();
+
+        let sizes = submitter.get_all_pending_queue_sizes();
+        // a2 has no pending tasks so should not appear
+        assert_eq!(sizes.len(), 2);
+        assert_eq!(*sizes.get(&a1).unwrap(), 2);
+        assert_eq!(*sizes.get(&a3).unwrap(), 1);
+        assert!(!sizes.contains_key(&a2));
+    }
+
+    #[tokio::test]
+    async fn test_get_pending_queue_size_after_send() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+
+        // Task sent immediately — queue should be empty
+        assert_eq!(submitter.get_pending_queue_size(&actor_id), 0);
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
     }
 }

@@ -175,23 +175,63 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::ReturnWorkerLeaseRequest,
     ) -> Result<rpc::ReturnWorkerLeaseReply, Status> {
+        let worker_id = if request.lease_id.len() >= 28 {
+            Some(ray_common::id::WorkerID::from_binary(&request.lease_id[..28]))
+        } else {
+            // Try to find the worker by port.
+            let port = request.worker_port as u16;
+            self.node_manager
+                .worker_pool()
+                .get_all_workers()
+                .into_iter()
+                .find(|w| w.port == port)
+                .map(|w| w.worker_id)
+        };
+
         tracing::debug!(
             worker_port = request.worker_port,
             disconnect = request.disconnect_worker,
+            worker_exiting = request.worker_exiting,
+            ?worker_id,
             "ReturnWorkerLease"
         );
 
-        if request.disconnect_worker {
-            // Worker is being disconnected — could handle cleanup here
+        // Release resources from the lease tracker back to the resource pool.
+        if let Some(wid) = worker_id {
+            if let Some(lease) = self.node_manager.worker_lease_tracker().return_lease(&wid) {
+                // Convert the ResourceSet to TaskResourceInstances for the release API.
+                let mut alloc =
+                    crate::scheduling_resources::TaskResourceInstances::new();
+                for (name, amount) in lease.allocated_resources.iter() {
+                    alloc
+                        .resources
+                        .insert(name.to_string(), vec![amount]);
+                }
+                self.node_manager
+                    .scheduler()
+                    .release_worker_resources(&alloc);
+                tracing::info!(
+                    ?wid,
+                    "Released resources from returned lease"
+                );
+            }
+        }
+
+        if request.disconnect_worker || request.worker_exiting {
+            // Worker is being disconnected or exiting — do not re-grant.
             tracing::info!(
                 worker_port = request.worker_port,
                 reason = %request.disconnect_worker_error_detail,
-                "Worker disconnecting on return"
+                exiting = request.worker_exiting,
+                "Worker disconnecting on return, will not re-grant"
             );
+            if let Some(wid) = worker_id {
+                self.node_manager.worker_pool().disconnect_worker(&wid);
+            }
         }
-        // In a full implementation, we'd release the allocated resources
-        // and push the worker back to the pool. For now, trigger re-scheduling
-        // so any pending leases can be reconsidered.
+
+        // Trigger re-scheduling so any pending leases can be reconsidered
+        // now that resources have been freed.
         self.node_manager
             .lease_manager()
             .schedule_and_grant_leases();
@@ -501,6 +541,21 @@ impl NodeManagerServiceImpl {
         request: rpc::DrainRayletRequest,
     ) -> Result<rpc::DrainRayletReply, Status> {
         let deadline_ms = request.deadline_timestamp_ms as u64;
+
+        // Reject drain if there are active (non-idle) worker leases — the node is busy.
+        let active_leases = self.node_manager.worker_lease_tracker().num_active_leases();
+        if active_leases > 0 {
+            let reason = format!(
+                "Node has {} active worker lease(s); cannot drain a busy node",
+                active_leases
+            );
+            tracing::info!(active_leases, "DrainRaylet rejected: node is busy");
+            return Ok(rpc::DrainRayletReply {
+                is_accepted: false,
+                rejection_reason_message: reason,
+            });
+        }
+
         self.node_manager.handle_drain(deadline_ms);
         Ok(rpc::DrainRayletReply {
             is_accepted: true,
@@ -524,7 +579,33 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::ReleaseUnusedActorWorkersRequest,
     ) -> Result<rpc::ReleaseUnusedActorWorkersReply, Status> {
-        let _ = request;
+        let in_use: std::collections::HashSet<ray_common::id::WorkerID> = request
+            .worker_ids_in_use
+            .iter()
+            .filter(|b| b.len() >= 28)
+            .map(|b| ray_common::id::WorkerID::from_binary(&b[..28]))
+            .collect();
+
+        // Disconnect any registered worker not in the in-use set that is idle.
+        let idle_ids = self.node_manager.worker_pool().idle_worker_ids();
+        let mut released = 0u32;
+        for wid in &idle_ids {
+            if !in_use.contains(wid) {
+                // Release lease resources if any.
+                if let Some(lease) = self.node_manager.worker_lease_tracker().return_lease(wid) {
+                    let mut alloc = crate::scheduling_resources::TaskResourceInstances::new();
+                    for (name, amount) in lease.allocated_resources.iter() {
+                        alloc.resources.insert(name.to_string(), vec![amount]);
+                    }
+                    self.node_manager.scheduler().release_worker_resources(&alloc);
+                }
+                self.node_manager.worker_pool().disconnect_worker(wid);
+                released += 1;
+            }
+        }
+        if released > 0 {
+            tracing::info!(released, "Released unused actor workers");
+        }
         Ok(rpc::ReleaseUnusedActorWorkersReply::default())
     }
 
@@ -606,8 +687,25 @@ impl NodeManagerServiceImpl {
             force_kill = request.force_kill,
             "KillLocalActor received"
         );
-        // TODO: once actor→worker mapping exists, disconnect the worker here.
-        // For now, acknowledged but no-op since WorkerInfo lacks actor_id.
+
+        // If the request contains a worker_id, use it to find and disconnect
+        // the worker running the actor, and release its resources.
+        if request.worker_id.len() >= 28 {
+            let wid = ray_common::id::WorkerID::from_binary(&request.worker_id[..28]);
+            if let Some(lease) = self.node_manager.worker_lease_tracker().return_lease(&wid) {
+                let mut alloc = crate::scheduling_resources::TaskResourceInstances::new();
+                for (name, amount) in lease.allocated_resources.iter() {
+                    alloc.resources.insert(name.to_string(), vec![amount]);
+                }
+                self.node_manager.scheduler().release_worker_resources(&alloc);
+                tracing::info!(?wid, "Released resources for killed actor");
+            }
+            self.node_manager.worker_pool().disconnect_worker(&wid);
+
+            // Trigger re-scheduling now that resources are freed.
+            self.node_manager.lease_manager().schedule_and_grant_leases();
+        }
+
         Ok(rpc::KillLocalActorReply::default())
     }
 
@@ -620,8 +718,54 @@ impl NodeManagerServiceImpl {
             force_kill = request.force_kill,
             "CancelLocalTask received"
         );
-        // TODO: once task→worker mapping exists, cancel the task here.
-        Ok(rpc::CancelLocalTaskReply::default())
+
+        // Try to cancel the pending lease for this task if it hasn't been granted yet.
+        // The lease_id is derived from the task_id bytes.
+        let lease_id = if request.intended_task_id.len() >= 8 {
+            u64::from_le_bytes(request.intended_task_id[..8].try_into().unwrap())
+        } else {
+            let mut hasher = DefaultHasher::new();
+            request.intended_task_id.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let cancelled = self.node_manager.lease_manager().cancel_lease(lease_id);
+        if cancelled {
+            tracing::info!(lease_id, "Cancelled pending lease for task");
+            return Ok(rpc::CancelLocalTaskReply {
+                requested_task_running: false,
+                attempt_succeeded: true,
+            });
+        }
+
+        // If the task is already running on a worker, try to disconnect the worker
+        // if force_kill is set.
+        if request.force_kill && request.executor_worker_id.len() >= 28 {
+            let wid =
+                ray_common::id::WorkerID::from_binary(&request.executor_worker_id[..28]);
+            if let Some(lease) = self.node_manager.worker_lease_tracker().return_lease(&wid) {
+                let mut alloc = crate::scheduling_resources::TaskResourceInstances::new();
+                for (name, amount) in lease.allocated_resources.iter() {
+                    alloc.resources.insert(name.to_string(), vec![amount]);
+                }
+                self.node_manager
+                    .scheduler()
+                    .release_worker_resources(&alloc);
+            }
+            self.node_manager.worker_pool().disconnect_worker(&wid);
+            self.node_manager
+                .lease_manager()
+                .schedule_and_grant_leases();
+            return Ok(rpc::CancelLocalTaskReply {
+                requested_task_running: true,
+                attempt_succeeded: true,
+            });
+        }
+
+        Ok(rpc::CancelLocalTaskReply {
+            requested_task_running: false,
+            attempt_succeeded: false,
+        })
     }
 }
 
@@ -1279,5 +1423,365 @@ mod tests {
         assert!(opts.node_affinity_soft);
         assert!(opts.node_affinity_spill_on_unavailable);
         assert!(!opts.node_affinity_fail_on_unavailable);
+    }
+
+    // ─── RAYLET-1: ReturnWorkerLease resource release ───────────────
+
+    #[tokio::test]
+    async fn test_return_worker_lease_releases_resources() {
+        let svc = make_svc();
+
+        // Allocate 2 CPUs via a lease
+        let reply = svc
+            .handle_request_worker_lease(make_lease_request(2.0))
+            .await
+            .unwrap();
+        assert!(reply.worker_address.is_some(), "lease should be granted");
+
+        // Verify resources are consumed
+        let load = svc
+            .handle_get_resource_load(rpc::GetResourceLoadRequest::default())
+            .unwrap();
+        let avail_before = *load
+            .resources
+            .as_ref()
+            .unwrap()
+            .resources_available
+            .get("CPU")
+            .unwrap();
+        assert!(
+            avail_before < 4.0,
+            "available CPU should be less than total after lease"
+        );
+
+        // Now simulate a lease tracker grant so ReturnWorkerLease can find it.
+        let mut wid_bytes = [0u8; 28];
+        wid_bytes[0] = 42;
+        let wid = ray_common::id::WorkerID::from_binary(&wid_bytes);
+        let tid_bytes = [0u8; 24];
+        let tid = ray_common::id::TaskID::from_binary(&tid_bytes);
+        let mut lease_resources = ResourceSet::new();
+        lease_resources.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        svc.node_manager
+            .worker_lease_tracker()
+            .grant_lease(wid, tid, lease_resources, false);
+
+        // Register the worker so it can be found by port
+        let worker = crate::worker_pool::WorkerInfo {
+            worker_id: wid,
+            language: crate::worker_pool::Language::Python,
+            worker_type: crate::worker_pool::WorkerType::Worker,
+            job_id: ray_common::id::JobID::from_int(1),
+            pid: 9999,
+            port: 5555,
+            ip_address: "127.0.0.1".to_string(),
+            is_alive: true,
+        };
+        svc.node_manager
+            .worker_pool()
+            .handle_job_started(ray_common::id::JobID::from_int(1));
+        svc.node_manager
+            .worker_pool()
+            .register_worker(worker)
+            .unwrap();
+
+        // Return the lease (not exiting)
+        let _ = svc
+            .handle_return_worker_lease(rpc::ReturnWorkerLeaseRequest {
+                worker_port: 5555,
+                disconnect_worker: false,
+                worker_exiting: false,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Verify resources are restored
+        assert_eq!(
+            svc.node_manager
+                .worker_lease_tracker()
+                .num_active_leases(),
+            0,
+            "lease should be returned"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_return_worker_lease_exiting_worker_not_regranted() {
+        let svc = make_svc();
+
+        let mut wid_bytes = [0u8; 28];
+        wid_bytes[0] = 50;
+        let wid = ray_common::id::WorkerID::from_binary(&wid_bytes);
+        let worker = crate::worker_pool::WorkerInfo {
+            worker_id: wid,
+            language: crate::worker_pool::Language::Python,
+            worker_type: crate::worker_pool::WorkerType::Worker,
+            job_id: ray_common::id::JobID::from_int(1),
+            pid: 10000,
+            port: 6666,
+            ip_address: "127.0.0.1".to_string(),
+            is_alive: true,
+        };
+        svc.node_manager
+            .worker_pool()
+            .handle_job_started(ray_common::id::JobID::from_int(1));
+        svc.node_manager
+            .worker_pool()
+            .register_worker(worker)
+            .unwrap();
+
+        // Return with worker_exiting = true
+        let _ = svc
+            .handle_return_worker_lease(rpc::ReturnWorkerLeaseRequest {
+                worker_port: 6666,
+                disconnect_worker: false,
+                worker_exiting: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Worker should be disconnected
+        assert!(
+            svc.node_manager.worker_pool().is_worker_dead(&wid),
+            "exiting worker should be disconnected"
+        );
+    }
+
+    // ─── RAYLET-7: DrainRaylet rejection logic ──────────────────────
+
+    #[tokio::test]
+    async fn test_drain_raylet_rejected_busy_node() {
+        let svc = make_svc();
+
+        // Grant a lease to make the node busy
+        let wid_bytes = [0u8; 28];
+        let wid = ray_common::id::WorkerID::from_binary(&wid_bytes);
+        let tid_bytes = [0u8; 24];
+        let tid = ray_common::id::TaskID::from_binary(&tid_bytes);
+        svc.node_manager
+            .worker_lease_tracker()
+            .grant_lease(wid, tid, ResourceSet::new(), false);
+        assert_eq!(
+            svc.node_manager
+                .worker_lease_tracker()
+                .num_active_leases(),
+            1
+        );
+
+        // Drain should be rejected
+        let reply = svc
+            .handle_drain_raylet(rpc::DrainRayletRequest {
+                deadline_timestamp_ms: 5000,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert!(!reply.is_accepted, "drain should be rejected on busy node");
+        assert!(
+            reply.rejection_reason_message.contains("active worker lease"),
+            "rejection message should mention active leases, got: {}",
+            reply.rejection_reason_message
+        );
+    }
+
+    #[tokio::test]
+    async fn test_drain_raylet_accepted_idle_node() {
+        let svc = make_svc();
+
+        // No active leases — node is idle
+        assert_eq!(
+            svc.node_manager
+                .worker_lease_tracker()
+                .num_active_leases(),
+            0
+        );
+
+        let reply = svc
+            .handle_drain_raylet(rpc::DrainRayletRequest {
+                deadline_timestamp_ms: 5000,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        assert!(reply.is_accepted, "drain should be accepted on idle node");
+        assert!(reply.rejection_reason_message.is_empty());
+    }
+
+    // ─── RAYLET-9: Cleanup RPCs ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_kill_local_actor_disconnects_worker_and_releases_resources() {
+        let svc = make_svc();
+
+        let mut wid_bytes = [0u8; 28];
+        wid_bytes[0] = 77;
+        let wid = ray_common::id::WorkerID::from_binary(&wid_bytes);
+        let tid_bytes = [0u8; 24];
+        let tid = ray_common::id::TaskID::from_binary(&tid_bytes);
+
+        // Grant a lease with resources
+        let mut resources = ResourceSet::new();
+        resources.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        svc.node_manager
+            .worker_lease_tracker()
+            .grant_lease(wid, tid, resources, true);
+
+        // Register the worker
+        let worker = crate::worker_pool::WorkerInfo {
+            worker_id: wid,
+            language: crate::worker_pool::Language::Python,
+            worker_type: crate::worker_pool::WorkerType::Worker,
+            job_id: ray_common::id::JobID::from_int(1),
+            pid: 11111,
+            port: 7777,
+            ip_address: "127.0.0.1".to_string(),
+            is_alive: true,
+        };
+        svc.node_manager
+            .worker_pool()
+            .handle_job_started(ray_common::id::JobID::from_int(1));
+        svc.node_manager
+            .worker_pool()
+            .register_worker(worker)
+            .unwrap();
+
+        // Kill the actor
+        let _ = svc
+            .handle_kill_local_actor(rpc::KillLocalActorRequest {
+                intended_actor_id: vec![1u8; 16],
+                worker_id: wid_bytes.to_vec(),
+                force_kill: true,
+                death_cause: None,
+            })
+            .await
+            .unwrap();
+
+        // Worker should be disconnected and lease returned
+        assert!(svc.node_manager.worker_pool().is_worker_dead(&wid));
+        assert_eq!(
+            svc.node_manager
+                .worker_lease_tracker()
+                .num_active_leases(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_local_task_cancels_pending_lease() {
+        let svc = make_svc();
+
+        // Exhaust all CPUs so the next lease stays pending
+        let _ = svc
+            .handle_request_worker_lease(make_lease_request(4.0))
+            .await
+            .unwrap();
+
+        // Queue a 1 CPU lease that will stay pending
+        let _rx = svc
+            .node_manager
+            .lease_manager()
+            .queue_and_schedule_lease(
+                {
+                    let mut rs = ResourceSet::new();
+                    rs.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+                    rs
+                },
+                crate::scheduling_resources::SchedulingOptions::hybrid(),
+                crate::lease_manager::SchedulingClass(99),
+            );
+
+        assert_eq!(svc.node_manager.lease_manager().num_pending_leases(), 1);
+
+        // Cancel using the lease ID (which is 2, since first was ID 1)
+        let task_id = 2u64.to_le_bytes().to_vec();
+        let reply = svc
+            .handle_cancel_local_task(rpc::CancelLocalTaskRequest {
+                intended_task_id: task_id,
+                force_kill: false,
+                recursive: false,
+                caller_worker_id: vec![],
+                executor_worker_id: vec![],
+            })
+            .await
+            .unwrap();
+
+        assert!(reply.attempt_succeeded);
+        assert!(!reply.requested_task_running);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_local_task_not_found() {
+        let svc = make_svc();
+
+        // Cancel a task that doesn't exist
+        let reply = svc
+            .handle_cancel_local_task(rpc::CancelLocalTaskRequest {
+                intended_task_id: vec![99, 0, 0, 0, 0, 0, 0, 0],
+                force_kill: false,
+                recursive: false,
+                caller_worker_id: vec![],
+                executor_worker_id: vec![],
+            })
+            .await
+            .unwrap();
+
+        assert!(!reply.attempt_succeeded);
+    }
+
+    #[tokio::test]
+    async fn test_release_unused_actor_workers() {
+        let svc = make_svc();
+
+        // Register two workers, push them to idle
+        let job = ray_common::id::JobID::from_int(1);
+        svc.node_manager.worker_pool().handle_job_started(job);
+
+        for i in 1..=2u8 {
+            let mut wid_bytes = [0u8; 28];
+            wid_bytes[0] = i;
+            let wid = ray_common::id::WorkerID::from_binary(&wid_bytes);
+            let worker = crate::worker_pool::WorkerInfo {
+                worker_id: wid,
+                language: crate::worker_pool::Language::Python,
+                worker_type: crate::worker_pool::WorkerType::Worker,
+                job_id: job,
+                pid: 1000 + i as u32,
+                port: 8000 + i as u16,
+                ip_address: "127.0.0.1".to_string(),
+                is_alive: true,
+            };
+            svc.node_manager
+                .worker_pool()
+                .register_worker(worker)
+                .unwrap();
+            svc.node_manager
+                .worker_pool()
+                .push_worker(wid, crate::worker_pool::Language::Python);
+        }
+        assert_eq!(svc.node_manager.worker_pool().num_idle_workers(), 2);
+
+        // Only worker 1 is in use
+        let mut wid1_bytes = [0u8; 28];
+        wid1_bytes[0] = 1;
+
+        let _ = svc
+            .handle_release_unused_actor_workers(rpc::ReleaseUnusedActorWorkersRequest {
+                worker_ids_in_use: vec![wid1_bytes.to_vec()],
+            })
+            .await
+            .unwrap();
+
+        // Worker 2 should be disconnected, worker 1 should remain idle
+        let mut wid2_bytes = [0u8; 28];
+        wid2_bytes[0] = 2;
+        let wid2 = ray_common::id::WorkerID::from_binary(&wid2_bytes);
+        assert!(svc.node_manager.worker_pool().is_worker_dead(&wid2));
+
+        let wid1 = ray_common::id::WorkerID::from_binary(&wid1_bytes);
+        assert!(!svc.node_manager.worker_pool().is_worker_dead(&wid1));
     }
 }

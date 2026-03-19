@@ -178,18 +178,26 @@ impl GcsNodeManager {
     }
 
     /// Handle UnregisterNode RPC (graceful shutdown).
-    pub async fn handle_unregister_node(&self, node_id_bytes: &[u8]) -> Result<(), tonic::Status> {
+    pub async fn handle_unregister_node(
+        &self,
+        node_id_bytes: &[u8],
+        death_info: Option<ray_proto::ray::rpc::NodeDeathInfo>,
+    ) -> Result<(), tonic::Status> {
         let node_id = NodeID::from_binary(node_id_bytes.try_into().unwrap_or(&[0u8; 28]));
-        self.remove_node(&node_id).await
+        self.remove_node(&node_id, death_info).await
     }
 
     /// Handle node failure (from health check manager).
     pub async fn on_node_failure(&self, node_id: &NodeID) -> Result<(), tonic::Status> {
-        self.remove_node(node_id).await
+        self.remove_node(node_id, None).await
     }
 
     /// Remove a node from the alive set.
-    async fn remove_node(&self, node_id: &NodeID) -> Result<(), tonic::Status> {
+    async fn remove_node(
+        &self,
+        node_id: &NodeID,
+        death_info: Option<ray_proto::ray::rpc::NodeDeathInfo>,
+    ) -> Result<(), tonic::Status> {
         let node = self.alive_nodes.remove(node_id).map(|(_, v)| v);
 
         if let Some(node) = node {
@@ -197,6 +205,10 @@ impl GcsNodeManager {
             let mut dead_node = (*node).clone();
             dead_node.state = 1; // DEAD
             dead_node.end_time_ms = ray_util::time::current_time_ms();
+            // Store death info if provided
+            if death_info.is_some() {
+                dead_node.death_info = death_info;
+            }
 
             let key = hex::encode(&dead_node.node_id);
             let _ = self.table_storage.node_table().put(&key, &dead_node).await;
@@ -330,7 +342,7 @@ mod tests {
 
         let nid = node_id(1);
         let nid_bytes = nid.binary();
-        mgr.handle_unregister_node(&nid_bytes).await.unwrap();
+        mgr.handle_unregister_node(&nid_bytes, None).await.unwrap();
         assert_eq!(mgr.num_alive_nodes(), 0);
         assert!(mgr.is_node_dead(&node_id(1)));
     }
@@ -422,7 +434,7 @@ mod tests {
         // Register then unregister
         mgr.handle_register_node(make_node_info(1)).await.unwrap();
         let nid = node_id(1);
-        mgr.handle_unregister_node(&nid.binary()).await.unwrap();
+        mgr.handle_unregister_node(&nid.binary(), None).await.unwrap();
 
         let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
         // Should get 2 messages: register (ALIVE) + unregister (DEAD)
@@ -471,7 +483,7 @@ mod tests {
         // Don't set pubsub handler — should not panic
         mgr.handle_register_node(make_node_info(1)).await.unwrap();
         let nid = node_id(1);
-        mgr.handle_unregister_node(&nid.binary()).await.unwrap();
+        mgr.handle_unregister_node(&nid.binary(), None).await.unwrap();
     }
 
     /// Test handle_drain_node() behavior: draining a non-existent node should
@@ -499,7 +511,7 @@ mod tests {
         assert!(mgr.is_node_alive(&node_id(1)));
 
         // Unregistering the node should remove the drain entry
-        mgr.handle_unregister_node(&node_id(1).binary())
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
             .await
             .unwrap();
         assert!(mgr.get_draining_nodes().is_empty());
@@ -539,13 +551,13 @@ mod tests {
         assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 0);
 
         // Remove one node — should trigger the remove listener once
-        mgr.handle_unregister_node(&node_id(1).binary())
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
             .await
             .unwrap();
         assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 1);
 
         // Removing an already-dead node should not trigger the listener again
-        mgr.handle_unregister_node(&node_id(1).binary())
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
             .await
             .unwrap();
         assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 1);
@@ -569,10 +581,10 @@ mod tests {
         assert_eq!(mgr.num_alive_nodes(), 5);
 
         // Kill nodes 3 and 5
-        mgr.handle_unregister_node(&node_id(3).binary())
+        mgr.handle_unregister_node(&node_id(3).binary(), None)
             .await
             .unwrap();
-        mgr.handle_unregister_node(&node_id(5).binary())
+        mgr.handle_unregister_node(&node_id(5).binary(), None)
             .await
             .unwrap();
 
@@ -602,7 +614,7 @@ mod tests {
         mgr.handle_register_node(make_node_info(1)).await.unwrap();
         assert!(mgr.get_alive_node(&node_id(1)).is_some());
 
-        mgr.handle_unregister_node(&node_id(1).binary())
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
             .await
             .unwrap();
         assert!(mgr.get_alive_node(&node_id(1)).is_none());
@@ -618,7 +630,7 @@ mod tests {
         for i in 1..=3u8 {
             mgr.handle_register_node(make_node_info(i)).await.unwrap();
         }
-        mgr.handle_unregister_node(&node_id(2).binary())
+        mgr.handle_unregister_node(&node_id(2).binary(), None)
             .await
             .unwrap();
 
@@ -640,7 +652,7 @@ mod tests {
         mgr.handle_register_node(make_node_info(2)).await.unwrap();
 
         // Use unregister for node 1
-        mgr.handle_unregister_node(&node_id(1).binary())
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
             .await
             .unwrap();
         // Use on_node_failure for node 2
@@ -698,5 +710,52 @@ mod tests {
         // Verify updated address
         let node = mgr.get_alive_node(&node_id(1)).unwrap();
         assert_eq!(node.node_manager_address, "192.168.1.1");
+    }
+
+    /// Test that unregister_node with death_info preserves the death info on the node record.
+    #[tokio::test]
+    async fn test_unregister_node_preserves_death_info() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+
+        let death_info = ray_proto::ray::rpc::NodeDeathInfo {
+            reason: 1, // EXPECTED_TERMINATION
+            reason_message: "graceful shutdown".to_string(),
+        };
+
+        mgr.handle_unregister_node(&node_id(1).binary(), Some(death_info))
+            .await
+            .unwrap();
+
+        // The dead node should have the death_info preserved
+        let all_nodes = mgr.handle_get_all_node_info();
+        assert_eq!(all_nodes.len(), 1);
+        let dead_node = &all_nodes[0];
+        assert_eq!(dead_node.state, 1); // DEAD
+        let stored_info = dead_node.death_info.as_ref().expect("death_info should be set");
+        assert_eq!(stored_info.reason, 1);
+        assert_eq!(stored_info.reason_message, "graceful shutdown");
+    }
+
+    /// Test that unregister_node without death_info leaves death_info as None.
+    #[tokio::test]
+    async fn test_unregister_node_without_death_info() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+
+        mgr.handle_unregister_node(&node_id(1).binary(), None)
+            .await
+            .unwrap();
+
+        let all_nodes = mgr.handle_get_all_node_info();
+        let dead_node = &all_nodes[0];
+        assert_eq!(dead_node.state, 1);
+        assert!(dead_node.death_info.is_none());
     }
 }

@@ -291,6 +291,70 @@ impl OwnershipDirectory {
 
         (lost_owned, lost_borrowed)
     }
+
+    /// Handle the death of a node. Processes side-effects:
+    /// - For owned objects pinned at the dead node: clears their pinned location
+    /// - For borrowed objects whose owner was on the dead node: marks owner as dead
+    ///   (removes them from the borrowed table, as the owner can no longer be contacted)
+    ///
+    /// Returns `(owned_objects_affected, borrowed_objects_with_dead_owner)`.
+    pub fn handle_node_death(
+        &self,
+        dead_node_id: &[u8],
+    ) -> (Vec<ObjectID>, Vec<ObjectID>) {
+        let mut inner = self.inner.lock();
+
+        // Clear pinned location for owned objects pinned at the dead node.
+        let mut affected_owned = Vec::new();
+        for (oid, info) in inner.owned_objects.iter_mut() {
+            if info
+                .pinned_at_node_id
+                .as_ref()
+                .is_some_and(|nid| nid == dead_node_id)
+            {
+                info.pinned_at_node_id = None;
+                affected_owned.push(*oid);
+            }
+        }
+
+        // Collect borrowed objects whose owner was on the dead node.
+        let mut dead_owner_borrowed = Vec::new();
+        let mut to_remove = Vec::new();
+        for (oid, info) in inner.borrowed_objects.iter() {
+            if info.owner_address.node_id == dead_node_id {
+                dead_owner_borrowed.push(*oid);
+                to_remove.push(*oid);
+            }
+        }
+
+        // Remove borrowed objects with dead owners (owner can no longer be contacted).
+        for oid in &to_remove {
+            inner.borrowed_objects.remove(oid);
+        }
+
+        (affected_owned, dead_owner_borrowed)
+    }
+
+    /// Get all owned objects with their pinned/spill state.
+    /// Used for re-registration after GCS restart.
+    ///
+    /// Returns a list of `(object_id, pinned_at_node_id, spill_url)`.
+    pub fn get_all_owned_with_locations(
+        &self,
+    ) -> Vec<(ObjectID, Option<Vec<u8>>, Option<String>)> {
+        self.inner
+            .lock()
+            .owned_objects
+            .iter()
+            .map(|(oid, info)| {
+                (
+                    *oid,
+                    info.pinned_at_node_id.clone(),
+                    info.spill_url.clone(),
+                )
+            })
+            .collect()
+    }
 }
 
 impl Default for OwnershipDirectory {
@@ -492,5 +556,176 @@ mod tests {
         assert_eq!(dir.num_borrowed(), 3);
         assert_eq!(dir.all_owned_ids().len(), 5);
         assert_eq!(dir.all_borrowed_ids().len(), 3);
+    }
+
+    // ── Tests for handle_node_death ─────────────────────────────────
+
+    #[test]
+    fn test_handle_node_death_clears_pinned_location() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        dir.add_owned_object(oid, make_address("10.0.0.1", 1000));
+
+        let mut dead_node = vec![0u8; 28];
+        dead_node[0] = 1;
+        dir.set_pinned_at_node(&oid, dead_node.clone());
+        assert!(dir.get_pinned_node(&oid).is_some());
+
+        let (affected_owned, _) = dir.handle_node_death(&dead_node);
+        assert_eq!(affected_owned.len(), 1);
+        assert_eq!(affected_owned[0], oid);
+        // Pinned location should be cleared.
+        assert!(dir.get_pinned_node(&oid).is_none());
+        // Object should still be owned.
+        assert!(dir.is_owned(&oid));
+    }
+
+    #[test]
+    fn test_handle_node_death_removes_dead_owner_borrowed() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        let mut dead_node = vec![0u8; 28];
+        dead_node[0] = 5;
+        dir.add_borrowed_object(oid, make_address_with_node("10.0.0.5", 5));
+
+        assert!(dir.is_borrowed(&oid));
+
+        let (_, dead_owner) = dir.handle_node_death(&dead_node);
+        assert_eq!(dead_owner.len(), 1);
+        assert_eq!(dead_owner[0], oid);
+        // Borrowed object should be removed.
+        assert!(!dir.is_borrowed(&oid));
+    }
+
+    #[test]
+    fn test_handle_node_death_does_not_affect_other_nodes() {
+        let dir = OwnershipDirectory::new();
+
+        // Owned pinned at node 1.
+        let oid1 = ObjectID::from_random();
+        dir.add_owned_object(oid1, make_address("10.0.0.1", 1000));
+        let mut node1 = vec![0u8; 28];
+        node1[0] = 1;
+        dir.set_pinned_at_node(&oid1, node1);
+
+        // Owned pinned at node 2.
+        let oid2 = ObjectID::from_random();
+        dir.add_owned_object(oid2, make_address("10.0.0.1", 1000));
+        let mut node2 = vec![0u8; 28];
+        node2[0] = 2;
+        dir.set_pinned_at_node(&oid2, node2.clone());
+
+        // Borrowed from owner on node 2.
+        let oid3 = ObjectID::from_random();
+        dir.add_borrowed_object(oid3, make_address_with_node("10.0.0.2", 2));
+
+        // Kill node 99 — should affect nothing.
+        let mut dead = vec![0u8; 28];
+        dead[0] = 99;
+        let (aff_owned, aff_borrowed) = dir.handle_node_death(&dead);
+        assert!(aff_owned.is_empty());
+        assert!(aff_borrowed.is_empty());
+
+        // All objects should remain.
+        assert!(dir.get_pinned_node(&oid1).is_some());
+        assert!(dir.get_pinned_node(&oid2).is_some());
+        assert!(dir.is_borrowed(&oid3));
+    }
+
+    #[test]
+    fn test_handle_node_death_mixed() {
+        let dir = OwnershipDirectory::new();
+        let mut dead_node = vec![0u8; 28];
+        dead_node[0] = 3;
+
+        // Owned object pinned at dead node.
+        let oid_owned = ObjectID::from_random();
+        dir.add_owned_object(oid_owned, make_address("10.0.0.1", 1000));
+        dir.set_pinned_at_node(&oid_owned, dead_node.clone());
+
+        // Borrowed object with owner on dead node.
+        let oid_borrowed = ObjectID::from_random();
+        dir.add_borrowed_object(oid_borrowed, make_address_with_node("10.0.0.3", 3));
+
+        // Owned object NOT at dead node.
+        let oid_safe = ObjectID::from_random();
+        dir.add_owned_object(oid_safe, make_address("10.0.0.1", 1000));
+        let mut safe_node = vec![0u8; 28];
+        safe_node[0] = 7;
+        dir.set_pinned_at_node(&oid_safe, safe_node.clone());
+
+        let (aff_owned, aff_borrowed) = dir.handle_node_death(&dead_node);
+        assert_eq!(aff_owned, vec![oid_owned]);
+        assert_eq!(aff_borrowed, vec![oid_borrowed]);
+
+        // Verify state.
+        assert!(dir.get_pinned_node(&oid_owned).is_none());
+        assert!(!dir.is_borrowed(&oid_borrowed));
+        assert_eq!(dir.get_pinned_node(&oid_safe), Some(safe_node));
+    }
+
+    // ── Tests for get_all_owned_with_locations ──────────────────────
+
+    #[test]
+    fn test_get_all_owned_with_locations_empty() {
+        let dir = OwnershipDirectory::new();
+        assert!(dir.get_all_owned_with_locations().is_empty());
+    }
+
+    #[test]
+    fn test_get_all_owned_with_locations_pinned() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        dir.add_owned_object(oid, make_address("10.0.0.1", 1000));
+        let node_id = vec![42u8; 28];
+        dir.set_pinned_at_node(&oid, node_id.clone());
+
+        let locs = dir.get_all_owned_with_locations();
+        assert_eq!(locs.len(), 1);
+        let (id, pinned, spill) = &locs[0];
+        assert_eq!(*id, oid);
+        assert_eq!(pinned.as_ref().unwrap(), &node_id);
+        assert!(spill.is_none());
+    }
+
+    #[test]
+    fn test_get_all_owned_with_locations_spilled() {
+        let dir = OwnershipDirectory::new();
+        let oid = ObjectID::from_random();
+        dir.add_owned_object(oid, make_address("10.0.0.1", 1000));
+        dir.set_spilled(&oid, "s3://bucket/obj".to_string());
+
+        let locs = dir.get_all_owned_with_locations();
+        assert_eq!(locs.len(), 1);
+        let (id, pinned, spill) = &locs[0];
+        assert_eq!(*id, oid);
+        assert!(pinned.is_none());
+        assert_eq!(spill.as_ref().unwrap(), "s3://bucket/obj");
+    }
+
+    #[test]
+    fn test_get_all_owned_with_locations_mixed() {
+        let dir = OwnershipDirectory::new();
+
+        let oid1 = ObjectID::from_random();
+        dir.add_owned_object(oid1, make_address("10.0.0.1", 1000));
+        dir.set_pinned_at_node(&oid1, vec![1u8; 28]);
+
+        let oid2 = ObjectID::from_random();
+        dir.add_owned_object(oid2, make_address("10.0.0.1", 1000));
+        dir.set_spilled(&oid2, "file:///spill/obj2".to_string());
+
+        let oid3 = ObjectID::from_random();
+        dir.add_owned_object(oid3, make_address("10.0.0.1", 1000));
+        // oid3 has no location info.
+
+        let locs = dir.get_all_owned_with_locations();
+        assert_eq!(locs.len(), 3);
+
+        // Borrowed objects should NOT appear.
+        let borrowed_oid = ObjectID::from_random();
+        dir.add_borrowed_object(borrowed_oid, make_address("10.0.0.2", 2000));
+        let locs = dir.get_all_owned_with_locations();
+        assert_eq!(locs.len(), 3); // Still 3, borrowed not included.
     }
 }

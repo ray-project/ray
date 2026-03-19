@@ -44,6 +44,7 @@ Example::
 
 from __future__ import annotations
 
+import asyncio as _asyncio
 import multiprocessing as _mp
 import pickle as _pickle
 import threading as _threading
@@ -127,7 +128,7 @@ class ObjectRef:
     """Reference to an object in the distributed object store."""
 
     __slots__ = (
-        "_binary", "_owner",
+        "_binary", "_owner", "_owner_addr", "_call_site_data",
         # RDT metadata (set only for tensor-transport results)
         "_rdt_source",      # ActorHandle that produced the tensor
         "_rdt_transport",   # e.g. "NIXL"
@@ -141,10 +142,20 @@ class ObjectRef:
         "__weakref__",
     )
 
-    def __init__(self, binary, owner: _PyCoreWorker):
+    def __init__(
+        self,
+        binary,
+        owner: _PyCoreWorker = None,
+        owner_addr=None,
+        call_site_data: str = "",
+        skip_adding_local_ref: bool = False,
+    ):
+        del skip_adding_local_ref
         # Normalize to bytes (PyO3 Vec<u8> may come back as list)
         self._binary = bytes(binary) if isinstance(binary, list) else binary
         self._owner = owner
+        self._owner_addr = owner_addr
+        self._call_site_data = call_site_data
         self._rdt_source = None
         self._rdt_transport = None
         self._rdt_meta = None
@@ -181,6 +192,8 @@ class ObjectRef:
             "rdt_transport": self._rdt_transport,
             "rdt_obj_id": self._rdt_obj_id,
             "rdt_result_info": self._rdt_result_info,
+            "owner_addr": self._owner_addr,
+            "call_site_data": self._call_site_data,
         }
 
     def __setstate__(self, state):
@@ -190,18 +203,49 @@ class ObjectRef:
             self._rdt_transport = state.get("rdt_transport")
             self._rdt_obj_id = state.get("rdt_obj_id")
             self._rdt_result_info = state.get("rdt_result_info")
+            self._owner_addr = state.get("owner_addr")
+            self._call_site_data = state.get("call_site_data", "")
         else:
             self._binary = state
             self._rdt_meta = None
             self._rdt_transport = None
             self._rdt_obj_id = None
             self._rdt_result_info = None
+            self._owner_addr = None
+            self._call_site_data = ""
         self._owner = None
         self._rdt_source = None
         self._target_tensors = None
         self._rdt_pending = None
         self._rdt_error = None
         self._ref_id = self._binary
+
+    def owner_address(self):
+        return self._owner_addr
+
+    def future(self):
+        loop = _asyncio.new_event_loop()
+        try:
+            fut = loop.create_future()
+            self._on_completed(lambda value: fut.set_result(value))
+            return fut
+        finally:
+            loop.close()
+
+    def as_future(self):
+        return self.future()
+
+    def _on_completed(self, callback):
+        def _complete():
+            try:
+                value = _runtime.get(self, timeout=120.0)
+            except Exception as exc:
+                value = exc
+            callback(value)
+
+        t = _threading.Thread(target=_complete, daemon=True)
+        t.start()
+        return self
 
     def _wait_pending(self, timeout=120):
         """Wait for pending metadata resolution."""
@@ -302,10 +346,30 @@ _ref_id_to_binary_lock = _threading.Lock()
 # Shared thread pool for async actor method dispatch
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 _dispatch_pool = _ThreadPoolExecutor(max_workers=256, thread_name_prefix="ray-dispatch")
+_actor_dispatch_pools: dict[bytes, _ThreadPoolExecutor] = {}
+_actor_dispatch_lock = _threading.Lock()
 
 # Track pending metadata resolutions per actor for kill() signaling
 _pending_nixl_refs: dict = {}  # actor_id_key -> list of (event, ref_weakref)
 _pending_nixl_lock = _threading.Lock()
+
+
+def _actor_dispatch_key(actor_id) -> bytes:
+    raw = actor_id.binary() if hasattr(actor_id, "binary") else actor_id
+    return raw if isinstance(raw, bytes) else bytes(raw)
+
+
+def _get_actor_dispatch_pool(actor_id) -> _ThreadPoolExecutor:
+    key = _actor_dispatch_key(actor_id)
+    with _actor_dispatch_lock:
+        pool = _actor_dispatch_pools.get(key)
+        if pool is None:
+            pool = _ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix=f"ray-actor-{key.hex()[:8]}",
+            )
+            _actor_dispatch_pools[key] = pool
+        return pool
 
 
 # =====================================================================
@@ -557,7 +621,7 @@ class _ActorMethodHandle:
                             if ev is not ref._rdt_pending
                         ]
 
-            _dispatch_pool.submit(_async_submit)
+            _get_actor_dispatch_pool(handle._actor_id).submit(_async_submit)
         else:
             # All actor method calls are async to match Ray API semantics.
             # submit_actor_method is synchronous (blocks until the method
@@ -590,7 +654,7 @@ class _ActorMethodHandle:
                 finally:
                     ref._rdt_pending.set()
 
-            _dispatch_pool.submit(_async_cpu_submit)
+            _get_actor_dispatch_pool(handle._actor_id).submit(_async_cpu_submit)
 
         # Check if this method has tensor_transport → mark the ref as RDT
         # (already handled for GPU actor NIXL methods above)
@@ -1254,6 +1318,12 @@ class _RayRuntime:
         old_pool = _dispatch_pool
         _dispatch_pool = _ThreadPoolExecutor(max_workers=256, thread_name_prefix="ray-dispatch")
         old_pool.shutdown(wait=False, cancel_futures=True)
+        global _actor_dispatch_pools
+        with _actor_dispatch_lock:
+            old_actor_pools = list(_actor_dispatch_pools.values())
+            _actor_dispatch_pools = {}
+        for pool in old_actor_pools:
+            pool.shutdown(wait=False, cancel_futures=True)
         # Brief pause lets idle pool threads notice the shutdown sentinel and exit.
         import time as _time
         _time.sleep(0.3)

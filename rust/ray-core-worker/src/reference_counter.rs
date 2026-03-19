@@ -21,6 +21,26 @@ use ray_proto::ray::rpc::Address;
 /// Callback invoked when an object's reference count reaches zero.
 pub type ObjectFreedCallback = Box<dyn Fn(&ObjectID) + Send + Sync>;
 
+/// Callback invoked when an object's total refs (local + submitted + lineage) all reach zero.
+pub type ZeroRefCallback = Box<dyn Fn(&ObjectID) + Send + Sync>;
+
+/// Borrower reference info returned from a finished task.
+/// When a task returns, it may have borrowed references that need to be merged
+/// into the caller's reference table.
+#[derive(Debug, Clone)]
+pub struct BorrowerRefInfo {
+    /// The object ID that was borrowed.
+    pub object_id: ObjectID,
+    /// Owner address for the borrowed object.
+    pub owner_address: Address,
+    /// Additional local ref count the borrower accumulated.
+    pub local_ref_count: u64,
+    /// Locations the borrower discovered for this object.
+    pub locations: Vec<String>,
+    /// Objects contained within this borrowed object.
+    pub contained_in: Vec<ObjectID>,
+}
+
 /// Ownership and reference information for a single object.
 #[derive(Debug, Clone)]
 struct Reference {
@@ -70,6 +90,8 @@ pub struct ReferenceCounter {
     refs: Mutex<HashMap<ObjectID, Reference>>,
     /// Optional callback invoked when an object's reference count reaches zero.
     on_object_freed: Mutex<Option<ObjectFreedCallback>>,
+    /// Callbacks invoked when an object's total refs (local + submitted + lineage) all reach zero.
+    on_zero_ref_callbacks: Mutex<Vec<ZeroRefCallback>>,
 }
 
 impl ReferenceCounter {
@@ -77,12 +99,73 @@ impl ReferenceCounter {
         Self {
             refs: Mutex::new(HashMap::new()),
             on_object_freed: Mutex::new(None),
+            on_zero_ref_callbacks: Mutex::new(Vec::new()),
         }
     }
 
     /// Set a callback that fires when any object's reference count reaches zero.
     pub fn set_object_freed_callback(&self, callback: ObjectFreedCallback) {
         *self.on_object_freed.lock() = Some(callback);
+    }
+
+    /// Register a callback that fires when an object's total refs
+    /// (local + submitted + lineage) all reach zero.
+    pub fn add_on_zero_ref_callback(&self, callback: ZeroRefCallback) {
+        self.on_zero_ref_callbacks.lock().push(callback);
+    }
+
+    /// Fire all zero-ref callbacks for the given object IDs.
+    fn fire_zero_ref_callbacks(&self, object_ids: &[ObjectID]) {
+        if object_ids.is_empty() {
+            return;
+        }
+        let callbacks = self.on_zero_ref_callbacks.lock();
+        for oid in object_ids {
+            for cb in callbacks.iter() {
+                cb(oid);
+            }
+        }
+    }
+
+    /// Merge borrower reference info from a returned task.
+    ///
+    /// When a task finishes execution, it may have borrowed references to objects.
+    /// The caller merges these references so that the objects stay alive as long as
+    /// the caller holds them. This matches C++ `ReferenceCounter::MergeBorrowerRefs`.
+    pub fn merge_borrower_refs(&self, borrower_refs: Vec<BorrowerRefInfo>) {
+        let mut refs = self.refs.lock();
+        for info in borrower_refs {
+            let entry = refs.entry(info.object_id).or_insert_with(Reference::new);
+            // Add the borrower's local ref count to our own.
+            entry.local_ref_count += info.local_ref_count;
+            // Set owner if we don't know it yet.
+            if entry.owner_address.is_none() {
+                entry.owner_address = Some(info.owner_address);
+            }
+            // Merge discovered locations.
+            for loc in info.locations {
+                entry.object_locations.insert(loc);
+            }
+            // Merge contained_in relationships.
+            for parent_id in &info.contained_in {
+                entry.contained_in.insert(*parent_id);
+            }
+            // Update parent's contains set.
+            for parent_id in &info.contained_in {
+                if let Some(parent) = refs.get_mut(parent_id) {
+                    parent.contains.insert(info.object_id);
+                }
+            }
+        }
+    }
+
+    /// Check if an object has any reference (local, submitted, or lineage).
+    /// Returns true if the object is tracked and has at least one non-zero ref count.
+    pub fn has_any_reference(&self, object_id: &ObjectID) -> bool {
+        self.refs
+            .lock()
+            .get(object_id)
+            .is_some_and(|r| r.local_ref_count > 0 || r.submitted_task_ref_count > 0 || r.lineage_ref_count > 0)
     }
 
     /// Add a local reference to an object. Creates the entry if it doesn't exist.
@@ -108,13 +191,14 @@ impl ReferenceCounter {
             }
             deleted = d;
         }
-        // Fire callback outside lock.
+        // Fire callbacks outside lock.
         if !deleted.is_empty() {
             if let Some(ref cb) = *self.on_object_freed.lock() {
                 for oid in &deleted {
                     cb(oid);
                 }
             }
+            self.fire_zero_ref_callbacks(&deleted);
         }
         deleted
     }
@@ -225,13 +309,14 @@ impl ReferenceCounter {
             }
             deleted = d;
         }
-        // Fire callback outside lock.
+        // Fire callbacks outside lock.
         if !deleted.is_empty() {
             if let Some(ref cb) = *self.on_object_freed.lock() {
                 for oid in &deleted {
                     cb(oid);
                 }
             }
+            self.fire_zero_ref_callbacks(&deleted);
         }
         deleted
     }
@@ -278,6 +363,7 @@ impl ReferenceCounter {
                     cb(oid);
                 }
             }
+            self.fire_zero_ref_callbacks(&deleted);
         }
         deleted
     }
@@ -1040,5 +1126,205 @@ mod tests {
         // Update size again.
         rc.update_object_size(&oid1, 4096);
         assert_eq!(rc.get_object_size(&oid1), 4096);
+    }
+
+    // ── Tests for on_zero_ref_callback ──────────────────────────────
+
+    #[test]
+    fn test_zero_ref_callback_fires_on_local_ref_removal() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let count2 = count.clone();
+
+        let rc = ReferenceCounter::new();
+        rc.add_on_zero_ref_callback(Box::new(move |_oid| {
+            count2.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let oid = ObjectID::from_random();
+        rc.add_local_reference(oid);
+        rc.add_local_reference(oid);
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+
+        rc.remove_local_reference(&oid); // ref_count = 1
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+
+        rc.remove_local_reference(&oid); // ref_count = 0 => fires
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_zero_ref_callback_fires_on_submitted_task_finish() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let count2 = count.clone();
+
+        let rc = ReferenceCounter::new();
+        rc.add_on_zero_ref_callback(Box::new(move |_oid| {
+            count2.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let oid = ObjectID::from_random();
+        rc.update_submitted_task_references(&[oid]);
+        rc.update_finished_task_references(&[oid]);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_multiple_zero_ref_callbacks() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let count_a = Arc::new(AtomicUsize::new(0));
+        let count_b = Arc::new(AtomicUsize::new(0));
+        let ca = count_a.clone();
+        let cb = count_b.clone();
+
+        let rc = ReferenceCounter::new();
+        rc.add_on_zero_ref_callback(Box::new(move |_| {
+            ca.fetch_add(1, Ordering::SeqCst);
+        }));
+        rc.add_on_zero_ref_callback(Box::new(move |_| {
+            cb.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let oid = ObjectID::from_random();
+        rc.add_local_reference(oid);
+        rc.remove_local_reference(&oid);
+
+        assert_eq!(count_a.load(Ordering::SeqCst), 1);
+        assert_eq!(count_b.load(Ordering::SeqCst), 1);
+    }
+
+    // ── Tests for merge_borrower_refs ───────────────────────────────
+
+    #[test]
+    fn test_merge_borrower_refs_new_object() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        let addr = make_address();
+
+        rc.merge_borrower_refs(vec![BorrowerRefInfo {
+            object_id: oid,
+            owner_address: addr.clone(),
+            local_ref_count: 2,
+            locations: vec!["node-a".to_string()],
+            contained_in: vec![],
+        }]);
+
+        assert!(rc.has_reference(&oid));
+        let counts = rc.all_reference_counts();
+        assert_eq!(counts[&oid].0, 2); // local_ref_count
+        let owner = rc.get_owner(&oid).unwrap();
+        assert_eq!(owner.ip_address, addr.ip_address);
+        let locs = rc.get_object_locations(&oid);
+        assert!(locs.contains(&"node-a".to_string()));
+    }
+
+    #[test]
+    fn test_merge_borrower_refs_existing_object() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        let addr = make_address();
+
+        rc.add_local_reference(oid);
+        rc.add_object_location(&oid, "node-existing".to_string());
+
+        rc.merge_borrower_refs(vec![BorrowerRefInfo {
+            object_id: oid,
+            owner_address: addr,
+            local_ref_count: 3,
+            locations: vec!["node-new".to_string()],
+            contained_in: vec![],
+        }]);
+
+        let counts = rc.all_reference_counts();
+        // Original 1 + merged 3 = 4
+        assert_eq!(counts[&oid].0, 4);
+        let locs = rc.get_object_locations(&oid);
+        assert_eq!(locs.len(), 2);
+        assert!(locs.contains(&"node-existing".to_string()));
+        assert!(locs.contains(&"node-new".to_string()));
+    }
+
+    #[test]
+    fn test_merge_borrower_refs_with_containment() {
+        let rc = ReferenceCounter::new();
+        let parent = ObjectID::from_random();
+        let child = ObjectID::from_random();
+        let addr = make_address();
+
+        // Parent must exist.
+        rc.add_owned_object(parent, addr.clone(), vec![]);
+
+        rc.merge_borrower_refs(vec![BorrowerRefInfo {
+            object_id: child,
+            owner_address: addr,
+            local_ref_count: 1,
+            locations: vec![],
+            contained_in: vec![parent],
+        }]);
+
+        let refs = rc.refs.lock();
+        let parent_ref = refs.get(&parent).unwrap();
+        assert!(parent_ref.contains.contains(&child));
+        let child_ref = refs.get(&child).unwrap();
+        assert!(child_ref.contained_in.contains(&parent));
+    }
+
+    // ── Tests for has_any_reference ─────────────────────────────────
+
+    #[test]
+    fn test_has_any_reference_local() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        rc.add_local_reference(oid);
+        assert!(rc.has_any_reference(&oid));
+    }
+
+    #[test]
+    fn test_has_any_reference_submitted() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        rc.update_submitted_task_references(&[oid]);
+        assert!(rc.has_any_reference(&oid));
+    }
+
+    #[test]
+    fn test_has_any_reference_lineage() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        // Need to create the entry first; add_lineage_reference only updates existing entries.
+        rc.add_local_reference(oid);
+        rc.add_lineage_reference(&oid);
+        // Remove local ref to test lineage alone.
+        // Note: remove_local_reference removes the entry when total_ref_count() == 0,
+        // so the entry will be gone. But has_any_reference checks lineage too.
+        // We need to keep the entry alive. Use owned object instead.
+        let rc2 = ReferenceCounter::new();
+        let oid2 = ObjectID::from_random();
+        rc2.add_owned_object(oid2, make_address(), vec![]);
+        rc2.add_lineage_reference(&oid2);
+        // owned object has 0 local, 0 submitted, but 1 lineage
+        assert!(rc2.has_any_reference(&oid2));
+    }
+
+    #[test]
+    fn test_has_any_reference_zero_counts() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        // Object exists (via add_owned) but has no ref counts.
+        rc.add_owned_object(oid, make_address(), vec![]);
+        assert!(!rc.has_any_reference(&oid));
+    }
+
+    #[test]
+    fn test_has_any_reference_nonexistent() {
+        let rc = ReferenceCounter::new();
+        assert!(!rc.has_any_reference(&ObjectID::from_random()));
     }
 }

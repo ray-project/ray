@@ -1332,6 +1332,24 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    #[ignore = "Parity gap vs Cython/C++ CoreWorker: Python-facing contract should accept ObjectRef-level semantics, not only raw IDs"]
+    fn test_parity_get_contract_is_not_binary_id_only() {
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        w.put_object(oid, b"value".to_vec(), b"meta".to_vec()).unwrap();
+
+        let results = w.get_objects(&[oid], 1000).unwrap();
+        let obj = results[0].as_ref().unwrap();
+
+        // This test documents that the local Rust-side get path only traffics in
+        // raw RayObject payloads. The Cython/Python contract is richer and is
+        // expected to preserve ObjectRef-based semantics through the boundary.
+        assert_eq!(obj.data.as_ref(), b"value");
+        assert_eq!(obj.metadata.as_ref(), b"meta");
+        panic!("parity gap: this API path remains raw-ID/raw-bytes centric");
+    }
+
     // ── DirectDispatchRayletClient tests ─────────────────────────────
 
     fn make_raylet_client() -> DirectDispatchRayletClient {

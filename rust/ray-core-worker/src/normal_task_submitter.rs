@@ -297,6 +297,20 @@ impl NormalTaskSubmitter {
     pub fn reference_counter(&self) -> &Arc<ReferenceCounter> {
         &self.reference_counter
     }
+
+    /// Get the backlog size (number of tasks waiting for worker leases).
+    ///
+    /// This is used for backlog reporting to the raylet, which uses it
+    /// for autoscaling decisions.
+    pub fn get_backlog_size(&self) -> usize {
+        // In stub mode (no raylet client), all submitted tasks are in the backlog.
+        // With a raylet client, only WaitingForLease tasks count.
+        let status_map = self.task_status.lock();
+        status_map
+            .values()
+            .filter(|s| matches!(s, TaskStatus::WaitingForLease))
+            .count()
+    }
 }
 
 /// Extract required resources from a TaskSpec for the lease request.
@@ -1119,5 +1133,52 @@ mod tests {
 
         let names = received_names.lock().clone();
         assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    // ── Backlog reporting ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_get_backlog_size_empty() {
+        let submitter = make_submitter();
+        assert_eq!(submitter.get_backlog_size(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_backlog_size_waiting_for_lease() {
+        let submitter = make_submitter();
+
+        // Use a mock that blocks (never returns). We'll insert tasks manually.
+        // Easier: just insert into task_status directly.
+        {
+            let mut status = submitter.task_status.lock();
+            status.insert(vec![1], TaskStatus::WaitingForLease);
+            status.insert(vec![2], TaskStatus::WaitingForLease);
+            status.insert(vec![3], TaskStatus::Dispatching);
+            status.insert(vec![4], TaskStatus::Finished);
+        }
+
+        // Only WaitingForLease tasks count as backlog
+        assert_eq!(submitter.get_backlog_size(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_backlog_size_after_dispatch() {
+        let submitter = make_submitter();
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        submitter.submit_task(&TaskSpec::default()).await.unwrap();
+        // After successful dispatch, task moves to Finished — backlog should be 0
+        assert_eq!(submitter.get_backlog_size(), 0);
     }
 }

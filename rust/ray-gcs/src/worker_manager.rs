@@ -138,11 +138,33 @@ impl GcsWorkerManager {
         Ok(())
     }
 
+    /// Handle GetWorkerInfo RPC.
+    pub async fn handle_get_worker_info(
+        &self,
+        worker_id_bytes: &[u8],
+    ) -> Result<Option<ray_proto::ray::rpc::WorkerTableData>, tonic::Status> {
+        let key = hex::encode(worker_id_bytes);
+        self.table_storage
+            .worker_table()
+            .get(&key)
+            .await
+            .map_err(|e| tonic::Status::internal(e.to_string()))
+    }
+
     /// Handle GetAllWorkerInfo RPC.
     pub async fn handle_get_all_worker_info(
         &self,
         limit: Option<usize>,
-    ) -> Result<Vec<ray_proto::ray::rpc::WorkerTableData>, tonic::Status> {
+        filter_exist_paused_threads: bool,
+        filter_is_alive: bool,
+    ) -> Result<
+        (
+            Vec<ray_proto::ray::rpc::WorkerTableData>,
+            i64,
+            i64,
+        ),
+        tonic::Status,
+    > {
         let all = self
             .table_storage
             .worker_table()
@@ -150,11 +172,80 @@ impl GcsWorkerManager {
             .await
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
-        if let Some(limit) = limit {
-            Ok(all.into_values().take(limit).collect())
-        } else {
-            Ok(all.into_values().collect())
+        let total = all.len() as i64;
+        let mut num_filtered = 0i64;
+        let mut filtered = Vec::new();
+
+        for worker in all.into_values() {
+            if filter_exist_paused_threads && worker.num_paused_threads.unwrap_or(0) == 0 {
+                num_filtered += 1;
+                continue;
+            }
+            if filter_is_alive && !worker.is_alive {
+                num_filtered += 1;
+                continue;
+            }
+            filtered.push(worker);
         }
+
+        if let Some(limit) = limit {
+            filtered.truncate(limit);
+        }
+
+        Ok((filtered, total, num_filtered))
+    }
+
+    /// Handle UpdateWorkerDebuggerPort RPC.
+    pub async fn handle_update_worker_debugger_port(
+        &self,
+        worker_id_bytes: &[u8],
+        debugger_port: u32,
+    ) -> Result<(), tonic::Status> {
+        let key = hex::encode(worker_id_bytes);
+        let mut worker = self
+            .table_storage
+            .worker_table()
+            .get(&key)
+            .await
+            .map_err(|e| tonic::Status::internal(e.to_string()))?
+            .ok_or_else(|| tonic::Status::not_found("worker not found"))?;
+        worker.debugger_port = Some(debugger_port);
+        self.table_storage
+            .worker_table()
+            .put(&key, &worker)
+            .await
+            .map(|_| ())
+            .map_err(|e| tonic::Status::internal(e.to_string()))
+    }
+
+    /// Handle UpdateWorkerNumPausedThreads RPC.
+    pub async fn handle_update_worker_num_paused_threads(
+        &self,
+        worker_id_bytes: &[u8],
+        num_paused_threads_delta: i32,
+    ) -> Result<(), tonic::Status> {
+        let key = hex::encode(worker_id_bytes);
+        let mut worker = self
+            .table_storage
+            .worker_table()
+            .get(&key)
+            .await
+            .map_err(|e| tonic::Status::internal(e.to_string()))?
+            .ok_or_else(|| tonic::Status::not_found("worker not found"))?;
+        let current = worker.num_paused_threads.unwrap_or(0) as i64;
+        let next = current + i64::from(num_paused_threads_delta);
+        if next < 0 {
+            return Err(tonic::Status::invalid_argument(
+                "worker paused thread count cannot become negative",
+            ));
+        }
+        worker.num_paused_threads = Some(next as u32);
+        self.table_storage
+            .worker_table()
+            .put(&key, &worker)
+            .await
+            .map(|_| ())
+            .map_err(|e| tonic::Status::internal(e.to_string()))
     }
 
     /// Register a dead-worker listener.
@@ -191,8 +282,125 @@ mod tests {
         };
 
         mgr.handle_add_worker_info(worker).await.unwrap();
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, total, num_filtered) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 1);
+        assert_eq!(total, 1);
+        assert_eq!(num_filtered, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_worker_info() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsWorkerManager::new(storage);
+
+        let worker = ray_proto::ray::rpc::WorkerTableData {
+            worker_address: Some(ray_proto::ray::rpc::Address {
+                worker_id: vec![9, 9, 9],
+                ..Default::default()
+            }),
+            debugger_port: Some(7000),
+            ..Default::default()
+        };
+
+        mgr.handle_add_worker_info(worker).await.unwrap();
+        let got = mgr.handle_get_worker_info(&[9, 9, 9]).await.unwrap().unwrap();
+        assert_eq!(got.debugger_port, Some(7000));
+    }
+
+    #[tokio::test]
+    async fn test_update_worker_debugger_port() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsWorkerManager::new(storage);
+
+        mgr.handle_add_worker_info(ray_proto::ray::rpc::WorkerTableData {
+            worker_address: Some(ray_proto::ray::rpc::Address {
+                worker_id: vec![1, 2, 3],
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        mgr.handle_update_worker_debugger_port(&[1, 2, 3], 8123)
+            .await
+            .unwrap();
+
+        let got = mgr.handle_get_worker_info(&[1, 2, 3]).await.unwrap().unwrap();
+        assert_eq!(got.debugger_port, Some(8123));
+    }
+
+    #[tokio::test]
+    async fn test_update_worker_num_paused_threads() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsWorkerManager::new(storage);
+
+        mgr.handle_add_worker_info(ray_proto::ray::rpc::WorkerTableData {
+            worker_address: Some(ray_proto::ray::rpc::Address {
+                worker_id: vec![4, 5, 6],
+                ..Default::default()
+            }),
+            num_paused_threads: Some(2),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        mgr.handle_update_worker_num_paused_threads(&[4, 5, 6], 3)
+            .await
+            .unwrap();
+
+        let got = mgr.handle_get_worker_info(&[4, 5, 6]).await.unwrap().unwrap();
+        assert_eq!(got.num_paused_threads, Some(5));
+    }
+
+    #[tokio::test]
+    async fn test_get_all_worker_info_filters() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsWorkerManager::new(storage);
+
+        for (wid, paused, alive) in [(1u8, 0, true), (2u8, 2, true), (3u8, 1, false)] {
+            mgr.handle_add_worker_info(ray_proto::ray::rpc::WorkerTableData {
+                worker_address: Some(ray_proto::ray::rpc::Address {
+                    worker_id: vec![wid],
+                    ..Default::default()
+                }),
+                num_paused_threads: Some(paused),
+                is_alive: alive,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        let (paused_only, total, num_filtered) = mgr
+            .handle_get_all_worker_info(None, true, false)
+            .await
+            .unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(num_filtered, 1);
+        assert_eq!(paused_only.len(), 2);
+
+        let (alive_and_paused, _, _) = mgr
+            .handle_get_all_worker_info(None, true, true)
+            .await
+            .unwrap();
+        assert_eq!(alive_and_paused.len(), 1);
+        assert_eq!(
+            alive_and_paused[0]
+                .worker_address
+                .as_ref()
+                .unwrap()
+                .worker_id,
+            vec![2]
+        );
     }
 
     #[tokio::test]
@@ -275,9 +483,15 @@ mod tests {
             mgr.handle_add_worker_info(worker).await.unwrap();
         }
 
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 5);
-        let limited = mgr.handle_get_all_worker_info(Some(3)).await.unwrap();
+        let (limited, _, _) = mgr
+            .handle_get_all_worker_info(Some(3), false, false)
+            .await
+            .unwrap();
         assert_eq!(limited.len(), 3);
     }
 
@@ -357,7 +571,10 @@ mod tests {
             mgr.handle_add_worker_info(worker).await.unwrap();
         }
 
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 10);
     }
 
@@ -454,7 +671,10 @@ mod tests {
         let storage = Arc::new(GcsTableStorage::new(store));
         let mgr = GcsWorkerManager::new(storage);
 
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert!(all.is_empty());
     }
 
@@ -475,7 +695,10 @@ mod tests {
         mgr.handle_report_worker_failure(worker).await.unwrap();
 
         // Should be retrievable
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 1);
     }
 
@@ -501,19 +724,31 @@ mod tests {
         }
 
         // No limit
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), num_workers);
 
         // With limit
-        let limited = mgr.handle_get_all_worker_info(Some(3)).await.unwrap();
+        let (limited, _, _) = mgr
+            .handle_get_all_worker_info(Some(3), false, false)
+            .await
+            .unwrap();
         assert_eq!(limited.len(), 3);
 
         // Limit of 0
-        let zero = mgr.handle_get_all_worker_info(Some(0)).await.unwrap();
+        let (zero, _, _) = mgr
+            .handle_get_all_worker_info(Some(0), false, false)
+            .await
+            .unwrap();
         assert_eq!(zero.len(), 0);
 
         // Limit larger than count
-        let over = mgr.handle_get_all_worker_info(Some(100)).await.unwrap();
+        let (over, _, _) = mgr
+            .handle_get_all_worker_info(Some(100), false, false)
+            .await
+            .unwrap();
         assert_eq!(over.len(), num_workers);
     }
 
@@ -577,7 +812,10 @@ mod tests {
         assert_eq!(mgr.oom_count(), 1);
 
         // All 4 workers should be persisted
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 4);
     }
 
@@ -606,7 +844,10 @@ mod tests {
             .unwrap();
 
         // Worker should still be in the store (overwritten by failure report)
-        let all = mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(mgr.system_error_count(), 1);
     }

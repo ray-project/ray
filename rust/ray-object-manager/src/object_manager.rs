@@ -24,6 +24,7 @@ use crate::object_buffer_pool::ObjectBufferPool;
 use crate::plasma::store::PlasmaStore;
 use crate::pull_manager::{BundlePriority, PullManager};
 use crate::push_manager::PushManager;
+use crate::spill_manager::SpillManager;
 
 /// Information about a locally available object.
 #[derive(Debug, Clone)]
@@ -31,6 +32,13 @@ pub struct LocalObjectInfo {
     pub object_info: ObjectInfo,
     /// Whether this object is being pushed to any remote node.
     pub is_being_pushed: bool,
+}
+
+/// A push request that was deferred because the object was not yet local.
+#[derive(Debug, Clone)]
+struct DeferredPush {
+    object_id: ObjectID,
+    node_id: NodeID,
 }
 
 /// The object manager coordinates inter-node object transfers.
@@ -56,6 +64,10 @@ pub struct ObjectManager {
     memory_monitor: Arc<MemoryMonitor>,
     /// Running sum of used memory (data + metadata).
     used_memory: i64,
+    /// Deferred pushes: push requests for objects not yet local.
+    deferred_pushes: Vec<DeferredPush>,
+    /// Optional spill manager for restoring spilled objects.
+    spill_manager: Option<Arc<SpillManager>>,
 }
 
 impl ObjectManager {
@@ -82,6 +94,8 @@ impl ObjectManager {
             plasma_store,
             memory_monitor,
             used_memory: 0,
+            deferred_pushes: Vec::new(),
+            spill_manager: None,
         }
     }
 
@@ -98,12 +112,21 @@ impl ObjectManager {
     }
 
     /// Push an object to a remote node.
+    ///
+    /// If the object is local, the push starts immediately.
+    /// If not local, the push is deferred and will be initiated when the object
+    /// becomes available via `object_added()`.
     pub fn push(&mut self, object_id: ObjectID, node_id: NodeID) -> bool {
         if let Some(local_obj) = self.local_objects.get(&object_id) {
             let size =
                 (local_obj.object_info.data_size + local_obj.object_info.metadata_size) as u64;
             self.push_manager.start_push(node_id, object_id, size)
         } else {
+            // Defer the push until the object arrives.
+            self.deferred_pushes.push(DeferredPush {
+                object_id,
+                node_id,
+            });
             false
         }
     }
@@ -115,6 +138,7 @@ impl ObjectManager {
         self.used_memory += size;
         self.memory_monitor
             .object_added(object_info.data_size, object_info.metadata_size, false);
+        let obj_size = (object_info.data_size + object_info.metadata_size) as u64;
         self.local_objects.insert(
             object_id,
             LocalObjectInfo {
@@ -123,6 +147,21 @@ impl ObjectManager {
             },
         );
         self.pull_manager.object_available_locally(&object_id);
+
+        // Drain deferred pushes for this object.
+        let deferred: Vec<DeferredPush> = self
+            .deferred_pushes
+            .drain(..)
+            .collect();
+        for dp in deferred {
+            if dp.object_id == object_id {
+                self.push_manager
+                    .start_push(dp.node_id, dp.object_id, obj_size);
+            } else {
+                // Put back deferred pushes for other objects.
+                self.deferred_pushes.push(dp);
+            }
+        }
     }
 
     /// Handle notification that an object was deleted locally.
@@ -230,6 +269,69 @@ impl ObjectManager {
     /// Running sum of used memory (data + metadata).
     pub fn used_memory(&self) -> i64 {
         self.used_memory
+    }
+
+    /// Number of deferred (pending) push requests.
+    pub fn num_deferred_pushes(&self) -> usize {
+        self.deferred_pushes.len()
+    }
+
+    /// Attach a spill manager to enable spill-assisted pulls.
+    pub fn set_spill_manager(&mut self, mgr: Arc<SpillManager>) {
+        self.spill_manager = Some(mgr);
+    }
+
+    /// Try to restore an object from spill storage and make it local.
+    ///
+    /// Returns `true` if the object was successfully restored and is now local.
+    pub fn try_restore_from_spill(&mut self, object_id: &ObjectID) -> bool {
+        let spill_mgr = match &self.spill_manager {
+            Some(m) => m.clone(),
+            None => return false,
+        };
+
+        let url = match spill_mgr.get_spill_url(object_id) {
+            Some(u) => u,
+            None => return false,
+        };
+
+        match spill_mgr.restore_object(&url) {
+            Ok((data, metadata)) => {
+                let info = ObjectInfo {
+                    object_id: *object_id,
+                    data_size: data.len() as i64,
+                    metadata_size: metadata.len() as i64,
+                    ..Default::default()
+                };
+                self.object_added(info);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Handle a pull request from a remote node.
+    ///
+    /// If the object is local, initiates a push immediately.
+    /// If not local but spilled, restores from spill then pushes.
+    /// Otherwise defers the push.
+    pub fn handle_pull_request(
+        &mut self,
+        object_id: ObjectID,
+        requester_node_id: NodeID,
+    ) -> bool {
+        if self.is_object_local(&object_id) {
+            return self.push(object_id, requester_node_id);
+        }
+
+        // Try restoring from spill.
+        if self.try_restore_from_spill(&object_id) {
+            return self.push(object_id, requester_node_id);
+        }
+
+        // Defer the push -- it will fire when the object arrives.
+        self.push(object_id, requester_node_id);
+        false
     }
 
     /// Used memory as a fraction of capacity.
@@ -446,5 +548,65 @@ mod tests {
         }
         assert_eq!(om.num_local_objects(), 5);
         assert_eq!(om.used_memory(), 500);
+    }
+
+    #[test]
+    fn test_deferred_push_served_after_object_arrives() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(50);
+        let remote = make_nid(5);
+
+        // Push for a non-local object is deferred.
+        assert!(!om.push(oid, remote));
+        assert_eq!(om.num_active_pushes(), 0);
+        assert_eq!(om.num_deferred_pushes(), 1);
+
+        // Object arrives -- deferred push should fire.
+        om.object_added(ObjectInfo {
+            object_id: oid,
+            data_size: 256,
+            metadata_size: 0,
+            ..Default::default()
+        });
+        assert_eq!(om.num_active_pushes(), 1);
+        assert_eq!(om.num_deferred_pushes(), 0);
+    }
+
+    #[test]
+    fn test_deferred_push_only_matching_object_served() {
+        let (mut om, _) = make_test_om();
+        let oid1 = make_oid(60);
+        let oid2 = make_oid(61);
+        let remote = make_nid(5);
+
+        om.push(oid1, remote);
+        om.push(oid2, remote);
+        assert_eq!(om.num_deferred_pushes(), 2);
+
+        // Only oid1 arrives.
+        om.object_added(ObjectInfo {
+            object_id: oid1,
+            data_size: 100,
+            ..Default::default()
+        });
+        assert_eq!(om.num_active_pushes(), 1);
+        assert_eq!(om.num_deferred_pushes(), 1); // oid2 still deferred
+    }
+
+    #[test]
+    fn test_spill_assisted_pull_targets() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(70);
+        let spill_node = make_nid(9);
+
+        om.pull(vec![oid], BundlePriority::GetRequest);
+        om.pull_manager_mut()
+            .set_spilled_url(&oid, "s3://bucket/obj70".into(), spill_node);
+
+        let spilled = om.pull_manager().get_spilled_pull_targets();
+        assert_eq!(spilled.len(), 1);
+        assert_eq!(spilled[0].0, oid);
+        assert_eq!(spilled[0].1, "s3://bucket/obj70");
+        assert_eq!(spilled[0].2, spill_node);
     }
 }

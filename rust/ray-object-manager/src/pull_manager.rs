@@ -15,7 +15,7 @@
 //! 2. WAIT_REQUEST — ray.wait() calls
 //! 3. TASK_ARGS (lowest) — task argument dependencies
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ray_common::id::{NodeID, ObjectID};
 
@@ -124,9 +124,16 @@ impl PullManager {
 
     /// Submit a pull request for a bundle of objects.
     /// Returns the bundle request ID.
+    ///
+    /// Duplicate object IDs within the bundle are canonicalized (deduplicated)
+    /// to match C++ behavior.
     pub fn pull(&mut self, objects: Vec<ObjectID>, priority: BundlePriority) -> BundleRequestId {
         let id = self.next_bundle_id;
         self.next_bundle_id += 1;
+
+        // Deduplicate object IDs within the bundle (C++ canonicalization).
+        let mut seen = HashSet::new();
+        let objects: Vec<ObjectID> = objects.into_iter().filter(|oid| seen.insert(*oid)).collect();
 
         // Register individual object requests
         for &oid in &objects {
@@ -672,5 +679,21 @@ mod tests {
         pm.pull(vec![make_oid(2)], BundlePriority::WaitRequest);
         pm.pull(vec![make_oid(3)], BundlePriority::TaskArgs);
         assert_eq!(pm.num_bundles(), 3);
+    }
+
+    #[test]
+    fn test_parity_duplicate_object_refs_in_bundle_are_canonicalized() {
+        let mut pm = PullManager::new(1024 * 1024);
+        let o1 = make_oid(1);
+        let node = make_nid(7);
+
+        pm.pull(vec![o1, o1], BundlePriority::GetRequest);
+        pm.update_object_location(&o1, node);
+
+        // C++ canonicalizes duplicate object refs inside a bundle before queueing,
+        // so the same object should not appear twice as a pull target.
+        let targets = pm.get_next_pull_targets();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, o1);
     }
 }

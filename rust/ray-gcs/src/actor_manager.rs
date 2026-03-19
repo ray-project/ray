@@ -100,6 +100,8 @@ pub struct GcsActorManager {
         ActorID,
         Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>,
     >,
+    /// Pending RestartActorForLineageReconstruction reply channels.
+    lineage_restart_callbacks: DashMap<ActorID, Vec<oneshot::Sender<Result<(), Status>>>>,
     /// Task specs stored for actors being created (needed for scheduling).
     actor_task_specs: DashMap<ActorID, ray_proto::ray::rpc::TaskSpec>,
     /// Node manager for looking up raylet addresses.
@@ -121,6 +123,7 @@ impl GcsActorManager {
             actor_scheduler: OnceLock::new(),
             pubsub_handler: OnceLock::new(),
             create_callbacks: DashMap::new(),
+            lineage_restart_callbacks: DashMap::new(),
             actor_task_specs: DashMap::new(),
             node_manager: None,
             raylet_client: None,
@@ -354,6 +357,161 @@ impl GcsActorManager {
             "Actor creation requested, scheduling in progress"
         );
         Ok(rx)
+    }
+
+    /// Handle RestartActorForLineageReconstruction RPC.
+    pub async fn handle_restart_actor_for_lineage_reconstruction(
+        self: &Arc<Self>,
+        actor_id_bytes: &[u8],
+        target_num_restarts_due_to_lineage_reconstruction: u64,
+    ) -> Result<(), Status> {
+        let actor_id = ActorID::from_binary(actor_id_bytes.try_into().unwrap_or(&[0u8; 16]));
+
+        if let Some(actor) = self.registered_actors.get(&actor_id) {
+            if target_num_restarts_due_to_lineage_reconstruction
+                <= actor.num_restarts_due_to_lineage_reconstruction
+            {
+                return Ok(());
+            }
+            return Err(Status::failed_precondition(format!(
+                "actor {:?} is not dead and cannot be restarted for lineage reconstruction",
+                actor_id
+            )));
+        }
+
+        if let Some(mut pending) = self.lineage_restart_callbacks.get_mut(&actor_id) {
+            let current = self
+                .registered_actors
+                .get(&actor_id)
+                .map(|actor| actor.num_restarts_due_to_lineage_reconstruction)
+                .or_else(|| {
+                    self.dead_actors
+                        .get(&actor_id)
+                        .map(|actor| actor.num_restarts_due_to_lineage_reconstruction)
+                })
+                .unwrap_or(target_num_restarts_due_to_lineage_reconstruction.saturating_sub(1));
+            if target_num_restarts_due_to_lineage_reconstruction <= current + 1 {
+                let (tx, rx) = oneshot::channel();
+                pending.push(tx);
+                drop(pending);
+                return rx
+                    .await
+                    .map_err(|_| Status::internal("lineage restart callback cancelled"))?;
+            }
+        }
+
+        // Early stale-request check: if the actor is already dead with a
+        // lineage reconstruction count >= the target, skip without requiring
+        // a scheduler or task spec.
+        if let Some(actor) = self.dead_actors.get(&actor_id) {
+            if target_num_restarts_due_to_lineage_reconstruction
+                <= actor.num_restarts_due_to_lineage_reconstruction
+            {
+                return Ok(());
+            }
+        }
+
+        let task_spec = self
+            .actor_task_specs
+            .get(&actor_id)
+            .map(|entry| entry.clone())
+            .ok_or_else(|| {
+                Status::failed_precondition(format!(
+                    "actor {:?} has no stored task spec for lineage reconstruction",
+                    actor_id
+                ))
+            })?;
+        let scheduler = self
+            .actor_scheduler
+            .get()
+            .cloned()
+            .ok_or_else(|| Status::internal("actor scheduler not initialized"))?;
+
+        {
+            let mut actor = self
+                .dead_actors
+                .remove(&actor_id)
+                .map(|(_, actor)| Arc::unwrap_or_clone(actor))
+                .ok_or_else(|| Status::invalid_argument("Actor is permanently dead."))?;
+
+            if target_num_restarts_due_to_lineage_reconstruction
+                <= actor.num_restarts_due_to_lineage_reconstruction
+            {
+                self.dead_actors.insert(actor_id, Arc::new(actor));
+                return Ok(());
+            }
+            if target_num_restarts_due_to_lineage_reconstruction
+                != actor.num_restarts_due_to_lineage_reconstruction + 1
+            {
+                let current = actor.num_restarts_due_to_lineage_reconstruction;
+                self.dead_actors.insert(actor_id, Arc::new(actor));
+                return Err(Status::invalid_argument(format!(
+                    "current num_restarts_due_to_lineage_reconstruction: {}, target: {}",
+                    current,
+                    target_num_restarts_due_to_lineage_reconstruction
+                )));
+            }
+            if actor.max_restarts != -1 && actor.num_restarts >= actor.max_restarts {
+                self.dead_actors.insert(actor_id, Arc::new(actor));
+                return Err(Status::invalid_argument("Actor is not restartable."));
+            }
+
+            if let Some(mut c) = self.state_counts.get_mut(&ActorState::Dead) {
+                *c = c.saturating_sub(1);
+            }
+            actor.state = ActorState::Restarting as i32;
+            actor.num_restarts_due_to_lineage_reconstruction += 1;
+            actor.address = None;
+            actor.node_id = None;
+            actor.pid = 0;
+            actor.death_cause = Some(make_actor_died_death_cause(
+                &actor,
+                ray_proto::ray::rpc::actor_died_error_context::Reason::OutOfScope,
+                "Actor is restarting due to lineage reconstruction.",
+            ));
+            *self.state_counts.entry(ActorState::Restarting).or_insert(0) += 1;
+            if !actor.name.is_empty() {
+                self.named_actors
+                    .insert((actor.ray_namespace.clone(), actor.name.clone()), actor_id);
+            }
+            self.publish_actor_state(&actor);
+            self.registered_actors.insert(actor_id, Arc::new(actor));
+        }
+
+        let (tx, rx) = oneshot::channel();
+        self.lineage_restart_callbacks
+            .entry(actor_id)
+            .or_default()
+            .push(tx);
+
+        match scheduler.schedule(&task_spec).await {
+            Ok(result) => {
+                self.on_actor_creation_success(
+                    &actor_id,
+                    result.worker_address,
+                    result.worker_pid,
+                    result.resource_mapping,
+                    result.node_id,
+                );
+                if let Some((_, callbacks)) = self.lineage_restart_callbacks.remove(&actor_id) {
+                    for tx in callbacks {
+                        let _ = tx.send(Ok(()));
+                    }
+                }
+            }
+            Err(e) => {
+                let message = e.message().to_string();
+                self.on_actor_scheduling_failed(&actor_id, message.clone());
+                if let Some((_, callbacks)) = self.lineage_restart_callbacks.remove(&actor_id) {
+                    for tx in callbacks {
+                        let _ = tx.send(Err(Status::internal(message.clone())));
+                    }
+                }
+            }
+        }
+
+        rx.await
+            .map_err(|_| Status::internal("lineage restart callback cancelled"))?
     }
 
     /// Called by scheduler on success. Transitions actor to ALIVE and resolves callbacks.
@@ -728,6 +886,60 @@ impl GcsActorManager {
         Ok(())
     }
 
+    /// Handle ReportActorOutOfScope RPC.
+    pub fn handle_report_actor_out_of_scope(
+        &self,
+        actor_id_bytes: &[u8],
+        num_restarts_due_to_lineage_reconstruction: u64,
+    ) -> Result<(), tonic::Status> {
+        let actor_id = ActorID::from_binary(actor_id_bytes.try_into().unwrap_or(&[0u8; 16]));
+
+        let actor = {
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
+
+                if (actor.num_restarts as u64) > num_restarts_due_to_lineage_reconstruction {
+                    self.registered_actors.insert(actor_id, Arc::new(actor));
+                    return Ok(());
+                }
+
+                let old_state = ActorState::from(actor.state);
+                if let Some(mut c) = self.state_counts.get_mut(&old_state) {
+                    *c = c.saturating_sub(1);
+                }
+                actor.state = ActorState::Dead as i32;
+                *self.state_counts.entry(ActorState::Dead).or_insert(0) += 1;
+
+                actor.death_cause = Some(make_actor_died_death_cause(
+                    &actor,
+                    ray_proto::ray::rpc::actor_died_error_context::Reason::OutOfScope,
+                    "The actor is dead because it has gone out of scope.",
+                ));
+
+                Some(actor)
+            } else {
+                None
+            }
+        };
+
+        if let Some(actor) = actor {
+            self.publish_actor_state(&actor);
+            if !actor.name.is_empty() {
+                self.named_actors
+                    .remove(&(actor.ray_namespace.clone(), actor.name.clone()));
+            }
+            self.dead_actors.insert(actor_id, Arc::new(actor));
+            self.actor_task_specs.remove(&actor_id);
+            if let Some((_, senders)) = self.create_callbacks.remove(&actor_id) {
+                for tx in senders {
+                    let _ = tx.send(Err(Status::cancelled("actor went out of scope")));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Handle node death — kill or restart actors on the dead node.
     ///
     /// Actors with remaining restarts are transitioned to RESTARTING and will
@@ -945,6 +1157,16 @@ impl GcsActorManager {
     pub fn num_registered_actors(&self) -> usize {
         self.registered_actors.len()
     }
+
+    #[cfg(test)]
+    pub(crate) fn force_move_registered_actor_to_dead_for_test(&self, actor_id_bytes: &[u8]) {
+        let actor_id = ActorID::from_binary(actor_id_bytes.try_into().unwrap_or(&[0u8; 16]));
+        if let Some((_, actor)) = self.registered_actors.remove(&actor_id) {
+            let mut actor = Arc::unwrap_or_clone(actor);
+            actor.state = ActorState::Dead as i32;
+            self.dead_actors.insert(actor_id, Arc::new(actor));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1017,6 +1239,162 @@ mod tests {
         assert!(mgr
             .handle_get_named_actor_info("killme", "default")
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_report_actor_out_of_scope_marks_actor_dead() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage);
+
+        mgr.handle_register_actor(make_task_spec(1, "scopey"))
+            .await
+            .unwrap();
+
+        let mut aid = [0u8; 16];
+        aid[0] = 1;
+        mgr.handle_report_actor_out_of_scope(&aid, 0).unwrap();
+
+        let actor = mgr.handle_get_actor_info(&aid).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Dead);
+        assert!(mgr
+            .handle_get_named_actor_info("scopey", "default")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_report_actor_out_of_scope_ignores_stale_restart_count() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage);
+
+        let mut spec = make_task_spec(2, "stale");
+        spec.actor_creation_task_spec
+            .as_mut()
+            .unwrap()
+            .max_actor_restarts = 5;
+        mgr.handle_register_actor(spec).await.unwrap();
+
+        let mut aid = [0u8; 16];
+        aid[0] = 2;
+        let actor_id = ActorID::from_binary(&aid);
+
+        {
+            let (id, actor) = mgr.registered_actors.remove(&actor_id).unwrap();
+            let mut actor = Arc::unwrap_or_clone(actor);
+            actor.state = ActorState::Restarting as i32;
+            actor.num_restarts = 2;
+            mgr.registered_actors.insert(id, Arc::new(actor));
+        }
+
+        mgr.handle_report_actor_out_of_scope(&aid, 1).unwrap();
+
+        let actor = mgr.handle_get_actor_info(&aid).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Restarting);
+    }
+
+    #[tokio::test]
+    async fn test_restart_actor_for_lineage_reconstruction() {
+        use crate::actor_scheduler::tests::{MockCoreWorkerClient, MockRayletClient};
+        use crate::node_manager::GcsNodeManager;
+
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = Arc::new(GcsActorManager::new(storage.clone()));
+
+        let node_mgr = Arc::new(GcsNodeManager::new(storage));
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        node_mgr
+            .handle_register_node(ray_proto::ray::rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                node_manager_address: "127.0.0.1".to_string(),
+                node_manager_port: 10001,
+                state: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let raylet = Arc::new(MockRayletClient::new());
+        raylet.push_reply(Ok(ray_proto::ray::rpc::RequestWorkerLeaseReply {
+            worker_address: Some(ray_proto::ray::rpc::Address {
+                node_id: node_id.clone(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 20001,
+                worker_id: vec![7u8; 28],
+            }),
+            worker_pid: 4321,
+            ..Default::default()
+        }));
+        let worker = Arc::new(MockCoreWorkerClient::new());
+        worker.push_reply(Ok(ray_proto::ray::rpc::PushTaskReply::default()));
+        mgr.set_actor_scheduler(Arc::new(GcsActorScheduler::new(node_mgr, raylet, worker)));
+
+        let mut task_spec = make_task_spec(3, "reconstructable");
+        task_spec
+            .actor_creation_task_spec
+            .as_mut()
+            .unwrap()
+            .max_actor_restarts = 1;
+        mgr.handle_register_actor(task_spec).await.unwrap();
+
+        let actor_id = ActorID::from_binary(&[3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        if let Some((_, actor)) = mgr.registered_actors.remove(&actor_id) {
+            let mut actor = Arc::unwrap_or_clone(actor);
+            actor.state = ActorState::Dead as i32;
+            mgr.dead_actors.insert(actor_id, Arc::new(actor));
+        }
+
+        mgr.handle_restart_actor_for_lineage_reconstruction(
+            &[3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            1,
+        )
+        .await
+        .unwrap();
+
+        let actor = mgr
+            .handle_get_actor_info(&[3u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            .unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Alive);
+        assert_eq!(actor.num_restarts_due_to_lineage_reconstruction, 1);
+        assert_eq!(actor.pid, 4321);
+    }
+
+    #[tokio::test]
+    async fn test_restart_actor_for_lineage_reconstruction_stale_request_is_ignored() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = Arc::new(GcsActorManager::new(storage));
+
+        let mut task_spec = make_task_spec(4, "stale_restart");
+        task_spec
+            .actor_creation_task_spec
+            .as_mut()
+            .unwrap()
+            .max_actor_restarts = 1;
+        mgr.handle_register_actor(task_spec).await.unwrap();
+
+        let actor_id = ActorID::from_binary(&[4u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        if let Some((_, actor)) = mgr.registered_actors.remove(&actor_id) {
+            let mut actor = Arc::unwrap_or_clone(actor);
+            actor.state = ActorState::Dead as i32;
+            actor.num_restarts_due_to_lineage_reconstruction = 1;
+            mgr.dead_actors.insert(actor_id, Arc::new(actor));
+        }
+
+        mgr.handle_restart_actor_for_lineage_reconstruction(
+            &[4u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            1,
+        )
+        .await
+        .unwrap();
+
+        let actor = mgr
+            .handle_get_actor_info(&[4u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            .unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Dead);
+        assert_eq!(actor.num_restarts_due_to_lineage_reconstruction, 1);
     }
 
     #[tokio::test]

@@ -1,14 +1,11 @@
 """RDT Store and actor task helper functions.
 
-RDTStore is implemented in Rust (via _raylet) for performance.
+RDTStore is implemented in Rust (via _raylet).
 Helper functions (__ray_send__, __ray_recv__, etc.) stay in Python
 since they interact with global_worker and Python transport backends.
 """
 
-import threading
-from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -22,155 +19,54 @@ from ray.experimental.rdt.util import (
 if TYPE_CHECKING:
     import torch
 
-# Import RDTStore from Rust if available, fall back to Python.
-try:
-    from _raylet import PyRDTStore as _RustRDTStore
+from _raylet import PyRDTStore as _RustRDTStore
 
-    class RDTStore:
-        """Wrapper around Rust PyRDTStore.
 
-        Delegates all methods to the Rust implementation for GIL-free
-        blocking waits. add_object_primary stays in Python so that
-        get_tensor_transport_manager can be mocked in tests.
-        """
+class RDTStore:
+    """Wrapper around Rust ``PyRDTStore``.
 
-        def __init__(self):
-            self._inner = _RustRDTStore()
+    Delegates all core storage operations to the Rust implementation for
+    GIL-free waits. ``add_object_primary`` stays in Python so transport
+    managers can still be mocked in unit tests.
+    """
 
-        def has_object(self, obj_id):
-            return self._inner.has_object(obj_id)
+    def __init__(self):
+        self._inner = _RustRDTStore()
 
-        def has_tensor(self, tensor):
-            return self._inner.has_tensor(tensor)
+    def has_object(self, obj_id):
+        return self._inner.has_object(obj_id)
 
-        def get_object(self, obj_id):
-            return self._inner.get_object(obj_id)
+    def has_tensor(self, tensor):
+        return self._inner.has_tensor(tensor)
 
-        def add_object(self, obj_id, rdt_object, is_primary=False):
-            return self._inner.add_object(obj_id, rdt_object, is_primary)
+    def get_object(self, obj_id):
+        return self._inner.get_object(obj_id)
 
-        def add_object_primary(self, obj_id, tensors, tensor_transport):
-            self.add_object(obj_id, tensors, is_primary=True)
-            transport_mgr = get_tensor_transport_manager(tensor_transport)
-            return transport_mgr.extract_tensor_transport_metadata(obj_id, tensors)
+    def add_object(self, obj_id, rdt_object, is_primary=False):
+        return self._inner.add_object(obj_id, rdt_object, is_primary)
 
-        def is_primary_copy(self, obj_id):
-            return self._inner.is_primary_copy(obj_id)
+    def add_object_primary(self, obj_id, tensors, tensor_transport):
+        self.add_object(obj_id, tensors, is_primary=True)
+        transport_mgr = get_tensor_transport_manager(tensor_transport)
+        return transport_mgr.extract_tensor_transport_metadata(obj_id, tensors)
 
-        def wait_and_get_object(self, obj_id, timeout=None):
-            return self._inner.wait_and_get_object(obj_id, timeout)
+    def is_primary_copy(self, obj_id):
+        return self._inner.is_primary_copy(obj_id)
 
-        def wait_and_pop_object(self, obj_id, timeout=None):
-            return self._inner.wait_and_pop_object(obj_id, timeout)
+    def wait_and_get_object(self, obj_id, timeout=None):
+        return self._inner.wait_and_get_object(obj_id, timeout)
 
-        def pop_object(self, obj_id):
-            return self._inner.pop_object(obj_id)
+    def wait_and_pop_object(self, obj_id, timeout=None):
+        return self._inner.wait_and_pop_object(obj_id, timeout)
 
-        def wait_tensor_freed(self, tensor, timeout=None):
-            return self._inner.wait_tensor_freed(tensor, timeout)
+    def pop_object(self, obj_id):
+        return self._inner.pop_object(obj_id)
 
-        def get_num_objects(self):
-            return self._inner.get_num_objects()
+    def wait_tensor_freed(self, tensor, timeout=None):
+        return self._inner.wait_tensor_freed(tensor, timeout)
 
-except ImportError:
-    # Fallback pure-Python implementation for environments where _raylet
-    # is not built. This is a copy of the original Python implementation.
-    @dataclass
-    class _RDTObject:
-        data: List[Any]
-        is_primary: bool
-        error: Optional[Exception] = None
-
-    class RDTStore:  # type: ignore[no-redef]
-        def __init__(self):
-            self._rdt_store: Dict[str, deque[_RDTObject]] = defaultdict(deque)
-            self._tensor_to_object_ids: Dict[int, Set[str]] = defaultdict[int, Set[str]](set)
-            self._lock = threading.RLock()
-            self._object_present_cv = threading.Condition(self._lock)
-            self._object_freed_cv = threading.Condition(self._lock)
-
-        def has_object(self, obj_id: str) -> bool:
-            with self._lock:
-                existed = obj_id in self._rdt_store
-                if existed:
-                    return len(self._rdt_store[obj_id]) > 0
-                return existed
-
-        def has_tensor(self, tensor: Any) -> bool:
-            with self._lock:
-                return id(tensor) in self._tensor_to_object_ids
-
-        def get_object(self, obj_id: str) -> Optional[List[Any]]:
-            with self._lock:
-                if self._rdt_store[obj_id][0].error:
-                    raise self._rdt_store[obj_id][0].error
-                return self._rdt_store[obj_id][0].data
-
-        def add_object(self, obj_id: str, rdt_object: Union[List[Any], Exception], is_primary: bool = False):
-            with self._object_present_cv:
-                if isinstance(rdt_object, Exception):
-                    self._rdt_store[obj_id].append(_RDTObject([], is_primary, error=rdt_object))
-                else:
-                    for tensor in rdt_object:
-                        self._tensor_to_object_ids[id(tensor)].add(obj_id)
-                    self._rdt_store[obj_id].append(_RDTObject(rdt_object, is_primary))
-                self._object_present_cv.notify_all()
-
-        def add_object_primary(self, obj_id: str, tensors: List[Any], tensor_transport: str) -> TensorTransportMetadata:
-            self.add_object(obj_id, tensors, is_primary=True)
-            transport_mgr = get_tensor_transport_manager(tensor_transport)
-            return transport_mgr.extract_tensor_transport_metadata(obj_id, tensors)
-
-        def is_primary_copy(self, obj_id: str) -> bool:
-            with self._lock:
-                return self.has_object(obj_id) and self._rdt_store[obj_id][0].is_primary
-
-        def wait_and_get_object(self, obj_id: str, timeout: Optional[float] = None) -> List[Any]:
-            with self._lock:
-                self._wait_object(obj_id, timeout)
-                return self.get_object(obj_id)
-
-        def wait_and_pop_object(self, obj_id: str, timeout: Optional[float] = None) -> List[Any]:
-            with self._lock:
-                self._wait_object(obj_id, timeout)
-                return self.pop_object(obj_id)
-
-        def _wait_object(self, obj_id: str, timeout: Optional[float] = None) -> None:
-            with self._object_present_cv:
-                if not self._object_present_cv.wait_for(lambda: self.has_object(obj_id), timeout=timeout):
-                    raise TimeoutError(
-                        f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, "
-                        "transfer may have failed."
-                    )
-
-        def pop_object(self, obj_id: str) -> List[Any]:
-            with self._lock:
-                queue = self._rdt_store.get(obj_id)
-                assert queue is not None, f"obj_id={obj_id} not found in RDT store"
-                rdt_object = queue.popleft()
-                if len(queue) == 0:
-                    del self._rdt_store[obj_id]
-                if rdt_object.error:
-                    raise rdt_object.error
-                for tensor in rdt_object.data:
-                    self._tensor_to_object_ids[id(tensor)].remove(obj_id)
-                    if len(self._tensor_to_object_ids[id(tensor)]) == 0:
-                        self._tensor_to_object_ids.pop(id(tensor))
-                self._object_freed_cv.notify_all()
-                return rdt_object.data
-
-        def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
-            with self._object_freed_cv:
-                if not self._object_freed_cv.wait_for(
-                    lambda: id(tensor) not in self._tensor_to_object_ids, timeout=timeout
-                ):
-                    raise TimeoutError(
-                        f"Tensor {tensor} not freed from RDT object store after {timeout}s."
-                    )
-
-        def get_num_objects(self) -> int:
-            with self._lock:
-                return sum(len(queue) for queue in self._rdt_store.values())
+    def get_num_objects(self):
+        return self._inner.get_num_objects()
 
 
 # ── Actor task helper functions (stay in Python) ─────────────────────

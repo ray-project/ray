@@ -102,8 +102,11 @@ impl rpc::job_info_gcs_service_server::JobInfoGcsService for JobInfoGcsServiceIm
 
     async fn report_job_error(
         &self,
-        _req: Request<rpc::ReportJobErrorRequest>,
+        req: Request<rpc::ReportJobErrorRequest>,
     ) -> Result<Response<rpc::ReportJobErrorReply>, Status> {
+        if let Some(job_error) = req.into_inner().job_error {
+            self.job_manager.handle_report_job_error(job_error)?;
+        }
         Ok(Response::new(rpc::ReportJobErrorReply::default()))
     }
 
@@ -145,7 +148,7 @@ impl NodeInfoGcsServiceImpl {
         request: rpc::UnregisterNodeRequest,
     ) -> Result<rpc::UnregisterNodeReply, Status> {
         self.node_manager
-            .handle_unregister_node(&request.node_id)
+            .handle_unregister_node(&request.node_id, request.node_death_info)
             .await?;
         Ok(rpc::UnregisterNodeReply::default())
     }
@@ -214,11 +217,37 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
 
     async fn get_all_node_address_and_liveness(
         &self,
-        _req: Request<rpc::GetAllNodeAddressAndLivenessRequest>,
+        req: Request<rpc::GetAllNodeAddressAndLivenessRequest>,
     ) -> Result<Response<rpc::GetAllNodeAddressAndLivenessReply>, Status> {
+        let request = req.into_inner();
         let all_nodes = self.node_manager.handle_get_all_node_info();
-        let node_info_list = all_nodes
+
+        // Build a set of requested node IDs for filtering (if non-empty)
+        let filter_by_ids = !request.node_ids.is_empty();
+        let requested_ids: std::collections::HashSet<Vec<u8>> = if filter_by_ids {
+            request.node_ids.into_iter().collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
+        // Optional state filter
+        let state_filter = request.state_filter;
+
+        let mut node_info_list: Vec<rpc::GcsNodeAddressAndLiveness> = all_nodes
             .into_iter()
+            .filter(|node| {
+                // Filter by node_ids if specified
+                if filter_by_ids && !requested_ids.contains(&node.node_id) {
+                    return false;
+                }
+                // Filter by state if specified
+                if let Some(state) = state_filter {
+                    if node.state != state {
+                        return false;
+                    }
+                }
+                true
+            })
             .map(|node| rpc::GcsNodeAddressAndLiveness {
                 node_id: node.node_id.clone(),
                 node_manager_address: node.node_manager_address.clone(),
@@ -228,6 +257,14 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
                 death_info: node.death_info.clone(),
             })
             .collect();
+
+        // Apply limit if specified
+        if let Some(limit) = request.limit {
+            if limit > 0 {
+                node_info_list.truncate(limit as usize);
+            }
+        }
+
         Ok(Response::new(rpc::GetAllNodeAddressAndLivenessReply {
             node_info_list,
             ..Default::default()
@@ -355,8 +392,15 @@ impl rpc::actor_info_gcs_service_server::ActorInfoGcsService for ActorInfoGcsSer
 
     async fn restart_actor_for_lineage_reconstruction(
         &self,
-        _req: Request<rpc::RestartActorForLineageReconstructionRequest>,
+        req: Request<rpc::RestartActorForLineageReconstructionRequest>,
     ) -> Result<Response<rpc::RestartActorForLineageReconstructionReply>, Status> {
+        let request = req.into_inner();
+        self.actor_manager
+            .handle_restart_actor_for_lineage_reconstruction(
+                &request.actor_id,
+                request.num_restarts_due_to_lineage_reconstruction,
+            )
+            .await?;
         Ok(Response::new(
             rpc::RestartActorForLineageReconstructionReply::default(),
         ))
@@ -415,8 +459,13 @@ impl rpc::actor_info_gcs_service_server::ActorInfoGcsService for ActorInfoGcsSer
 
     async fn report_actor_out_of_scope(
         &self,
-        _req: Request<rpc::ReportActorOutOfScopeRequest>,
+        req: Request<rpc::ReportActorOutOfScopeRequest>,
     ) -> Result<Response<rpc::ReportActorOutOfScopeReply>, Status> {
+        let request = req.into_inner();
+        self.actor_manager.handle_report_actor_out_of_scope(
+            &request.actor_id,
+            request.num_restarts_due_to_lineage_reconstruction,
+        )?;
         Ok(Response::new(rpc::ReportActorOutOfScopeReply::default()))
     }
 }
@@ -618,10 +667,17 @@ impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcs
 
     async fn get_worker_info(
         &self,
-        _req: Request<rpc::GetWorkerInfoRequest>,
+        req: Request<rpc::GetWorkerInfoRequest>,
     ) -> Result<Response<rpc::GetWorkerInfoReply>, Status> {
-        // Single worker lookup not yet supported; return empty.
-        Ok(Response::new(rpc::GetWorkerInfoReply::default()))
+        let request = req.into_inner();
+        let worker_table_data = self
+            .worker_manager
+            .handle_get_worker_info(&request.worker_id)
+            .await?;
+        Ok(Response::new(rpc::GetWorkerInfoReply {
+            worker_table_data,
+            ..Default::default()
+        }))
     }
 
     async fn get_all_worker_info(
@@ -629,13 +685,18 @@ impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcs
         req: Request<rpc::GetAllWorkerInfoRequest>,
     ) -> Result<Response<rpc::GetAllWorkerInfoReply>, Status> {
         let request = req.into_inner();
-        let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
-        let workers = self
+        let limit = request.limit.map(|l| l.max(0) as usize);
+        let filters = request.filters.unwrap_or_default();
+        let filter_exist_paused_threads = filters.exist_paused_threads.unwrap_or(false);
+        let filter_is_alive = filters.is_alive.unwrap_or(false);
+        let (worker_table_data, total, num_filtered) = self
             .worker_manager
-            .handle_get_all_worker_info(limit)
+            .handle_get_all_worker_info(limit, filter_exist_paused_threads, filter_is_alive)
             .await?;
         Ok(Response::new(rpc::GetAllWorkerInfoReply {
-            worker_table_data: workers,
+            worker_table_data,
+            total,
+            num_filtered,
             ..Default::default()
         }))
     }
@@ -655,15 +716,26 @@ impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcs
 
     async fn update_worker_debugger_port(
         &self,
-        _req: Request<rpc::UpdateWorkerDebuggerPortRequest>,
+        req: Request<rpc::UpdateWorkerDebuggerPortRequest>,
     ) -> Result<Response<rpc::UpdateWorkerDebuggerPortReply>, Status> {
+        let request = req.into_inner();
+        self.worker_manager
+            .handle_update_worker_debugger_port(&request.worker_id, request.debugger_port)
+            .await?;
         Ok(Response::new(rpc::UpdateWorkerDebuggerPortReply::default()))
     }
 
     async fn update_worker_num_paused_threads(
         &self,
-        _req: Request<rpc::UpdateWorkerNumPausedThreadsRequest>,
+        req: Request<rpc::UpdateWorkerNumPausedThreadsRequest>,
     ) -> Result<Response<rpc::UpdateWorkerNumPausedThreadsReply>, Status> {
+        let request = req.into_inner();
+        self.worker_manager
+            .handle_update_worker_num_paused_threads(
+                &request.worker_id,
+                request.num_paused_threads_delta,
+            )
+            .await?;
         Ok(Response::new(
             rpc::UpdateWorkerNumPausedThreadsReply::default(),
         ))
@@ -767,11 +839,12 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
         req: Request<rpc::WaitPlacementGroupUntilReadyRequest>,
     ) -> Result<Response<rpc::WaitPlacementGroupUntilReadyReply>, Status> {
         let request = req.into_inner();
-        let pg = self
+        // Wait up to 30 seconds for the PG to become ready
+        let timeout = std::time::Duration::from_secs(30);
+        let ready = self
             .placement_group_manager
-            .handle_get_placement_group(&request.placement_group_id);
-        // Ready if state == Created (1). Encode in GcsStatus: code=0 means ready.
-        let ready = pg.map(|p| p.state == 1).unwrap_or(false);
+            .wait_until_ready(&request.placement_group_id, timeout)
+            .await;
         let status = if ready {
             Some(rpc::GcsStatus {
                 code: 0,
@@ -1117,6 +1190,32 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
     ) -> Result<Response<rpc::autoscaler::DrainNodeReply>, Status> {
         let request = req.into_inner();
         let node_id = ray_common::id::NodeID::from_binary(request.node_id.as_slice());
+
+        // Validate: node must be alive
+        if !self.node_manager.is_node_alive(&node_id) {
+            return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+                is_accepted: false,
+                rejection_reason_message: format!(
+                    "node {} is not alive",
+                    hex::encode(request.node_id)
+                ),
+            }));
+        }
+
+        // Validate: deadline must not be in the past (if set)
+        if request.deadline_timestamp_ms > 0 {
+            let now_ms = ray_util::time::current_time_ms() as i64;
+            if request.deadline_timestamp_ms < now_ms {
+                return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+                    is_accepted: false,
+                    rejection_reason_message: format!(
+                        "deadline {} is in the past (current time: {})",
+                        request.deadline_timestamp_ms, now_ms
+                    ),
+                }));
+            }
+        }
+
         self.node_manager
             .handle_drain_node(&node_id, request.deadline_timestamp_ms);
         Ok(Response::new(rpc::autoscaler::DrainNodeReply {
@@ -1448,6 +1547,51 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reply.job_info_list.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_job_grpc_report_job_error_publishes_pubsub_message() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let pubsub_handler = Arc::new(InternalPubSubHandler::new());
+        job_manager.set_pubsub_handler(pubsub_handler.clone());
+        let svc = JobInfoGcsServiceImpl { job_manager };
+
+        let subscriber_id = b"job-error-sub".to_vec();
+        pubsub_handler.handle_subscribe_command(
+            subscriber_id.clone(),
+            crate::pubsub_handler::ChannelType::RayErrorInfoChannel as i32,
+            vec![],
+        );
+
+        use rpc::job_info_gcs_service_server::JobInfoGcsService;
+        svc.report_job_error(Request::new(rpc::ReportJobErrorRequest {
+            job_error: Some(rpc::ErrorTableData {
+                job_id: vec![9, 0, 0, 0],
+                r#type: "task_error".into(),
+                error_message: "traceback".into(),
+                timestamp: 456.0,
+                ..Default::default()
+            }),
+        }))
+        .await
+        .unwrap();
+
+        let pending = pubsub_handler.pending_messages_for_test(&subscriber_id);
+        assert_eq!(pending.len(), 1);
+        let (msg, _) = &pending[0];
+        assert_eq!(
+            msg.channel_type,
+            crate::pubsub_handler::ChannelType::RayErrorInfoChannel as i32
+        );
+        match msg.inner_message.as_ref() {
+            Some(rpc::pub_message::InnerMessage::ErrorInfoMessage(error)) => {
+                assert_eq!(error.r#type, "task_error");
+                assert_eq!(error.error_message, "traceback");
+                assert_eq!(error.job_id, vec![9, 0, 0, 0]);
+            }
+            other => panic!("expected error info message, got {other:?}"),
+        }
     }
 
     // ─── Node Service ──────────────────────────────────────────────────
@@ -1802,6 +1946,124 @@ mod tests {
         assert_eq!(actor_manager.num_registered_actors(), 0);
     }
 
+    #[tokio::test]
+    async fn test_actor_grpc_report_out_of_scope_marks_dead() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 7;
+        svc.register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.clone(),
+                    name: "scoped_actor".to_string(),
+                    ray_namespace: "default".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        use rpc::actor_info_gcs_service_server::ActorInfoGcsService;
+        svc.report_actor_out_of_scope(Request::new(rpc::ReportActorOutOfScopeRequest {
+            actor_id: actor_id.clone(),
+            num_restarts_due_to_lineage_reconstruction: 0,
+        }))
+        .await
+        .unwrap();
+
+        let actor = actor_manager.handle_get_actor_info(&actor_id).unwrap();
+        assert_eq!(actor.state, crate::actor_manager::ActorState::Dead as i32);
+        assert!(actor_manager
+            .handle_get_named_actor_info("scoped_actor", "default")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_actor_grpc_restart_lineage_reconstruction() {
+        use crate::actor_scheduler::tests::{MockCoreWorkerClient, MockRayletClient};
+        use crate::node_manager::GcsNodeManager;
+
+        let (_, storage) = make_store();
+        let actor_manager = GcsActorManager::new(storage.clone());
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        node_manager
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                node_manager_address: "127.0.0.1".to_string(),
+                node_manager_port: 10001,
+                state: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let raylet = Arc::new(MockRayletClient::new());
+        raylet.push_reply(Ok(rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: node_id.clone(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 20001,
+                worker_id: vec![11u8; 28],
+            }),
+            worker_pid: 9876,
+            ..Default::default()
+        }));
+        let worker = Arc::new(MockCoreWorkerClient::new());
+        worker.push_reply(Ok(rpc::PushTaskReply::default()));
+        actor_manager.set_actor_scheduler(Arc::new(crate::actor_scheduler::GcsActorScheduler::new(
+            node_manager, raylet, worker,
+        )));
+        let actor_manager = Arc::new(actor_manager);
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 8;
+        svc.register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.clone(),
+                    name: "restart_me".to_string(),
+                    ray_namespace: "default".to_string(),
+                    max_actor_restarts: 1,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        actor_manager.force_move_registered_actor_to_dead_for_test(&actor_id);
+
+        use rpc::actor_info_gcs_service_server::ActorInfoGcsService;
+        svc.restart_actor_for_lineage_reconstruction(Request::new(
+            rpc::RestartActorForLineageReconstructionRequest {
+                actor_id: actor_id.clone(),
+                num_restarts_due_to_lineage_reconstruction: 1,
+            },
+        ))
+        .await
+        .unwrap();
+
+        let actor = actor_manager.handle_get_actor_info(&actor_id).unwrap();
+        assert_eq!(actor.state, crate::actor_manager::ActorState::Alive as i32);
+        assert_eq!(actor.num_restarts_due_to_lineage_reconstruction, 1);
+        assert_eq!(actor.pid, 9876);
+    }
+
     // ─── Worker Service ────────────────────────────────────────────────
 
     #[tokio::test]
@@ -1832,6 +2094,8 @@ mod tests {
             .unwrap()
             .into_inner();
         assert_eq!(reply.worker_table_data.len(), 1);
+        assert_eq!(reply.total, 1);
+        assert_eq!(reply.num_filtered, 0);
     }
 
     #[tokio::test]
@@ -1893,6 +2157,179 @@ mod tests {
             .unwrap()
             .into_inner();
         assert_eq!(reply.worker_table_data.len(), 3);
+        assert_eq!(reply.total, 5);
+        assert_eq!(reply.num_filtered, 0);
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_get_worker_info() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+            worker_data: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![9, 8, 7],
+                    ..Default::default()
+                }),
+                debugger_port: Some(7331),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_worker_info(Request::new(rpc::GetWorkerInfoRequest {
+                worker_id: vec![9, 8, 7],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.worker_table_data.unwrap().debugger_port, Some(7331));
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_update_debugger_port() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+            worker_data: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![3, 2, 1],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        svc.update_worker_debugger_port(Request::new(rpc::UpdateWorkerDebuggerPortRequest {
+            worker_id: vec![3, 2, 1],
+            debugger_port: 8123,
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_worker_info(Request::new(rpc::GetWorkerInfoRequest {
+                worker_id: vec![3, 2, 1],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.worker_table_data.unwrap().debugger_port, Some(8123));
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_update_num_paused_threads() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+            worker_data: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![5, 5, 5],
+                    ..Default::default()
+                }),
+                num_paused_threads: Some(2),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        svc.update_worker_num_paused_threads(Request::new(
+            rpc::UpdateWorkerNumPausedThreadsRequest {
+                worker_id: vec![5, 5, 5],
+                num_paused_threads_delta: 4,
+            },
+        ))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_worker_info(Request::new(rpc::GetWorkerInfoRequest {
+                worker_id: vec![5, 5, 5],
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.worker_table_data.unwrap().num_paused_threads, Some(6));
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_get_all_filters_and_counts() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        for (worker_id, paused, is_alive) in [(1u8, 0, true), (2u8, 2, true), (3u8, 1, false)] {
+            svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+                worker_data: Some(rpc::WorkerTableData {
+                    worker_address: Some(rpc::Address {
+                        worker_id: vec![worker_id],
+                        ..Default::default()
+                    }),
+                    num_paused_threads: Some(paused),
+                    is_alive,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        }
+
+        let paused_only = svc
+            .get_all_worker_info(Request::new(rpc::GetAllWorkerInfoRequest {
+                filters: Some(rpc::get_all_worker_info_request::Filters {
+                    exist_paused_threads: Some(true),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(paused_only.total, 3);
+        assert_eq!(paused_only.num_filtered, 1);
+        assert_eq!(paused_only.worker_table_data.len(), 2);
+
+        let alive_and_paused = svc
+            .get_all_worker_info(Request::new(rpc::GetAllWorkerInfoRequest {
+                limit: Some(0),
+                filters: Some(rpc::get_all_worker_info_request::Filters {
+                    exist_paused_threads: Some(true),
+                    is_alive: Some(true),
+                }),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(alive_and_paused.total, 3);
+        assert_eq!(alive_and_paused.num_filtered, 2);
+        assert!(alive_and_paused.worker_table_data.is_empty());
     }
 
     // ─── Placement Group Service ───────────────────────────────────────
@@ -1998,7 +2435,12 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(pg_manager.num_placement_groups(), 0);
+        // GCS-13: PG persists with REMOVED state instead of being deleted
+        assert_eq!(pg_manager.num_placement_groups(), 1);
+        let pg = pg_manager
+            .handle_get_placement_group(&pg_id)
+            .expect("removed PG should still be queryable");
+        assert_eq!(pg.state, 2); // 2 = PlacementGroupState::Removed
     }
 
     #[tokio::test]
@@ -2390,7 +2832,7 @@ mod tests {
                 node_id: node_id_bytes(1),
                 reason: 0,
                 reason_message: "scale down".to_string(),
-                deadline_timestamp_ms: 5000,
+                deadline_timestamp_ms: ray_util::time::current_time_ms() as i64 + 60_000,
                 ..Default::default()
             }))
             .await
@@ -2413,5 +2855,247 @@ mod tests {
             .into_inner();
         // Just verify it doesn't panic and returns default
         let _ = reply;
+    }
+
+    // ─── GCS-5: UnregisterNode preserves death_info ─────────────────
+
+    #[tokio::test]
+    async fn test_unregister_node_passes_death_info_to_manager() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        svc.register_node(rpc::RegisterNodeRequest {
+            node_info: Some(make_node_info(1)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        svc.unregister_node(rpc::UnregisterNodeRequest {
+            node_id: node_id_bytes(1),
+            node_death_info: Some(rpc::NodeDeathInfo {
+                reason: 1,
+                reason_message: "graceful shutdown".to_string(),
+            }),
+        })
+        .await
+        .unwrap();
+
+        let all = svc.get_all_node_info().unwrap();
+        assert_eq!(all.node_info_list.len(), 1);
+        let death_info = all.node_info_list[0]
+            .death_info
+            .as_ref()
+            .expect("death_info should be preserved");
+        assert_eq!(death_info.reason, 1);
+        assert_eq!(death_info.reason_message, "graceful shutdown");
+    }
+
+    // ─── GCS-7: GetAllNodeAddressAndLiveness filters ────────────────
+
+    #[tokio::test]
+    async fn test_get_all_node_address_and_liveness_filter_by_ids() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        for i in 1..=3u8 {
+            svc.register_node(rpc::RegisterNodeRequest {
+                node_info: Some(make_node_info(i)),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .get_all_node_address_and_liveness(Request::new(
+                rpc::GetAllNodeAddressAndLivenessRequest {
+                    node_ids: vec![node_id_bytes(1), node_id_bytes(3)],
+                    ..Default::default()
+                },
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.node_info_list.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_node_address_and_liveness_with_limit() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        for i in 1..=5u8 {
+            svc.register_node(rpc::RegisterNodeRequest {
+                node_info: Some(make_node_info(i)),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .get_all_node_address_and_liveness(Request::new(
+                rpc::GetAllNodeAddressAndLivenessRequest {
+                    limit: Some(2),
+                    ..Default::default()
+                },
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.node_info_list.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_node_address_and_liveness_no_filter() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        for i in 1..=3u8 {
+            svc.register_node(rpc::RegisterNodeRequest {
+                node_info: Some(make_node_info(i)),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .get_all_node_address_and_liveness(Request::new(
+                rpc::GetAllNodeAddressAndLivenessRequest::default(),
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.node_info_list.len(), 3);
+    }
+
+    // ─── GCS-18: Autoscaler DrainNode validation ────────────────────
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_node_not_alive_rejected() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(99), // non-existent node
+                deadline_timestamp_ms: 0,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(!reply.is_accepted);
+        assert!(reply.rejection_reason_message.contains("not alive"));
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_node_past_deadline_rejected() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 1, // way in the past
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(!reply.is_accepted);
+        assert!(reply.rejection_reason_message.contains("past"));
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_node_valid_accepted() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager,
+        };
+
+        let future_deadline = ray_util::time::current_time_ms() as i64 + 60_000;
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: future_deadline,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_node_zero_deadline_accepted() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 0, // no deadline
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
     }
 }

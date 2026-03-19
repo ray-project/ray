@@ -73,6 +73,25 @@ impl GcsJobManager {
         }
     }
 
+    /// Publish a job error via pubsub.
+    fn publish_job_error(&self, error_data: &ray_proto::ray::rpc::ErrorTableData) {
+        if let Some(handler) = self.pubsub_handler.get() {
+            let job_id =
+                JobID::from_binary(error_data.job_id.as_slice().try_into().unwrap_or(&[0u8; 4]));
+            let pub_msg = ray_proto::ray::rpc::PubMessage {
+                channel_type: ChannelType::RayErrorInfoChannel as i32,
+                key_id: job_id.hex().into_bytes(),
+                inner_message: Some(
+                    ray_proto::ray::rpc::pub_message::InnerMessage::ErrorInfoMessage(
+                        error_data.clone(),
+                    ),
+                ),
+                ..Default::default()
+            };
+            handler.publish_pubmessage(pub_msg);
+        }
+    }
+
     /// Initialize from persisted data.
     pub async fn initialize(&self) -> anyhow::Result<()> {
         let all_jobs = self
@@ -183,16 +202,82 @@ impl GcsJobManager {
             .map_err(|e| tonic::Status::internal(e.to_string()))
     }
 
+    /// Handle ReportJobError RPC.
+    pub fn handle_report_job_error(
+        &self,
+        error_data: ray_proto::ray::rpc::ErrorTableData,
+    ) -> Result<(), tonic::Status> {
+        self.publish_job_error(&error_data);
+        Ok(())
+    }
+
     /// Register a listener for job completion.
     pub fn add_finish_listener(&self, callback: JobFinishCallback) {
         self.finish_listeners.write().push(callback);
     }
 
-    /// Handle node death — mark all jobs on that node as finished.
-    pub fn on_node_dead(&self, _node_id: &NodeID) {
-        // In the C++ implementation, this checks driver_address
-        // to match jobs to nodes. For now, we leave this as a no-op
-        // since job-to-node mapping requires more state.
+    /// Handle node death — mark all jobs whose driver was on that node as finished.
+    ///
+    /// Matches C++ `GcsJobManager::OnNodeDead`: iterates running jobs, checks if
+    /// the job's `driver_address.node_id` matches the dead node, and if so marks
+    /// the job as finished (is_dead=true, end_time set) and notifies listeners.
+    ///
+    /// This method is synchronous so it can be called from node-removed listeners.
+    /// Persistence to storage is spawned as a background task.
+    pub fn on_node_dead(&self, node_id: &NodeID) {
+        let node_id_bytes = node_id.binary().to_vec();
+
+        // Collect job IDs whose driver was on this node.
+        let affected_jobs: Vec<JobID> = self
+            .running_jobs
+            .iter()
+            .filter_map(|entry| {
+                let job_id = *entry.key();
+                if let Some(job) = self.job_data.get(&job_id) {
+                    if let Some(ref addr) = job.driver_address {
+                        if addr.node_id == node_id_bytes {
+                            return Some(job_id);
+                        }
+                    }
+                }
+                None
+            })
+            .collect();
+
+        for job_id in &affected_jobs {
+            // Mark finished in-memory
+            self.running_jobs.remove(job_id);
+            self.finished_jobs_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            let updated = if let Some(mut entry) = self.job_data.get_mut(job_id) {
+                entry.is_dead = true;
+                entry.end_time = ray_util::time::current_time_ms();
+                Some(entry.clone())
+            } else {
+                None
+            };
+
+            if let Some(ref updated) = updated {
+                self.publish_job_state(updated);
+
+                // Persist asynchronously
+                let key = hex::encode(&updated.job_id);
+                let storage = Arc::clone(&self.table_storage);
+                let updated_clone = updated.clone();
+                tokio::spawn(async move {
+                    let _ = storage.job_table().put(&key, &updated_clone).await;
+                });
+            }
+
+            // Notify listeners
+            let listeners = self.finish_listeners.read();
+            for listener in listeners.iter() {
+                listener(job_id);
+            }
+
+            tracing::info!(?job_id, ?node_id, "Job finished due to node death");
+        }
     }
 
     /// Get a cached job config.
@@ -215,6 +300,7 @@ impl GcsJobManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pubsub_handler::InternalPubSubHandler;
     use crate::store_client::InMemoryStoreClient;
 
     #[tokio::test]
@@ -319,16 +405,122 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_on_node_dead_is_noop() {
+    async fn test_on_node_dead_finishes_jobs_on_that_node() {
         let store = Arc::new(InMemoryStoreClient::new());
         let storage = Arc::new(GcsTableStorage::new(store));
         let mgr = GcsJobManager::new(storage);
 
-        let mut nid_data = [0u8; 28];
-        nid_data[0] = 1;
-        let nid = NodeID::from_binary(&nid_data);
-        // Should not panic
+        let mut node1_id = vec![0u8; 28];
+        node1_id[0] = 1;
+        let mut node2_id = vec![0u8; 28];
+        node2_id[0] = 2;
+
+        // Job on node 1
+        let job1 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            driver_address: Some(ray_proto::ray::rpc::Address {
+                node_id: node1_id.clone(),
+                ip_address: "10.0.0.1".to_string(),
+                port: 1000,
+                worker_id: vec![],
+            }),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job1).await.unwrap();
+
+        // Job on node 2
+        let job2 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![2, 0, 0, 0],
+            driver_address: Some(ray_proto::ray::rpc::Address {
+                node_id: node2_id.clone(),
+                ip_address: "10.0.0.2".to_string(),
+                port: 2000,
+                worker_id: vec![],
+            }),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job2).await.unwrap();
+
+        assert_eq!(mgr.num_running_jobs(), 2);
+
+        // Kill node 1
+        let nid = NodeID::from_binary(node1_id.as_slice().try_into().unwrap());
         mgr.on_node_dead(&nid);
+
+        // Job 1 should be finished, job 2 still running
+        assert_eq!(mgr.num_running_jobs(), 1);
+        assert_eq!(mgr.finished_jobs_count(), 1);
+
+        // Verify job 1 is marked dead
+        let job1_id = JobID::from_binary(&[1, 0, 0, 0]);
+        let job1_data = mgr.job_data.get(&job1_id).unwrap();
+        assert!(job1_data.is_dead);
+        assert!(job1_data.end_time > 0);
+
+        // Verify job 2 is still alive
+        let job2_id = JobID::from_binary(&[2, 0, 0, 0]);
+        let job2_data = mgr.job_data.get(&job2_id).unwrap();
+        assert!(!job2_data.is_dead);
+    }
+
+    #[tokio::test]
+    async fn test_on_node_dead_calls_finish_listeners() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let finished_ids = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let finished_clone = Arc::clone(&finished_ids);
+        mgr.add_finish_listener(Box::new(move |job_id| {
+            finished_clone.lock().push(*job_id);
+        }));
+
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+
+        let job = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![5, 0, 0, 0],
+            driver_address: Some(ray_proto::ray::rpc::Address {
+                node_id: node_id.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job).await.unwrap();
+
+        let nid = NodeID::from_binary(node_id.as_slice().try_into().unwrap());
+        mgr.on_node_dead(&nid);
+
+        let ids = finished_ids.lock();
+        assert_eq!(ids.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_on_node_dead_no_matching_jobs() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let mut node1_id = vec![0u8; 28];
+        node1_id[0] = 1;
+        let mut node99_id = [0u8; 28];
+        node99_id[0] = 99;
+
+        let job = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            driver_address: Some(ray_proto::ray::rpc::Address {
+                node_id: node1_id.clone(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job).await.unwrap();
+
+        // Kill a different node — no jobs should be affected
+        let nid = NodeID::from_binary(&node99_id);
+        mgr.on_node_dead(&nid);
+        assert_eq!(mgr.num_running_jobs(), 1);
+        assert_eq!(mgr.finished_jobs_count(), 0);
     }
 
     #[tokio::test]
@@ -411,5 +603,44 @@ mod tests {
         };
         mgr.handle_add_job(job_data).await.unwrap();
         mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_report_job_error_publishes_to_pubsub() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        let subscriber_id = b"sub-error".to_vec();
+        handler.handle_subscribe_command(
+            subscriber_id.clone(),
+            ChannelType::RayErrorInfoChannel as i32,
+            vec![],
+        );
+
+        let error = ray_proto::ray::rpc::ErrorTableData {
+            job_id: vec![7, 0, 0, 0],
+            r#type: "worker_crash".into(),
+            error_message: "boom".into(),
+            timestamp: 123.0,
+            ..Default::default()
+        };
+
+        mgr.handle_report_job_error(error.clone()).unwrap();
+
+        let pending = handler.pending_messages_for_test(&subscriber_id);
+        assert_eq!(pending.len(), 1);
+        let (msg, _) = &pending[0];
+        assert_eq!(msg.channel_type, ChannelType::RayErrorInfoChannel as i32);
+        match msg.inner_message.as_ref() {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::ErrorInfoMessage(inner)) => {
+                assert_eq!(inner.job_id, error.job_id);
+                assert_eq!(inner.r#type, error.r#type);
+                assert_eq!(inner.error_message, error.error_message);
+            }
+            other => panic!("expected error info pubsub message, got {other:?}"),
+        }
     }
 }

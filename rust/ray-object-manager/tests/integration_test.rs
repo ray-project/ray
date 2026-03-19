@@ -301,6 +301,354 @@ async fn test_push_multi_chunk_object_via_grpc() {
     handle.abort();
 }
 
+/// Parity-gap test for exact byte preservation across remote push.
+///
+/// The C++ object manager writes received chunk bytes into storage and the
+/// object can be read back exactly. The current Rust receive path only counts
+/// chunks and marks the object as local.
+#[tokio::test]
+#[ignore = "Parity gap vs C++: pushed bytes are not fully written/sealed into storage on receive"]
+async fn test_parity_push_preserves_exact_data_and_metadata_bytes() {
+    use ray_object_manager::plasma::allocator::PlasmaAllocator;
+
+    let dir = tempfile::tempdir().unwrap();
+    let config = ObjectManagerConfig {
+        object_chunk_size: 8,
+        ..ObjectManagerConfig::default()
+    };
+    let store_config = PlasmaStoreConfig {
+        object_store_memory: 1024 * 1024,
+        plasma_directory: dir.path().to_str().unwrap().to_string(),
+        fallback_directory: String::new(),
+        huge_pages: false,
+    };
+    let allocator = Arc::new(PlasmaAllocator::new(
+        1024 * 1024,
+        dir.path().to_str().unwrap(),
+        "",
+        false,
+    ));
+    let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(config, make_nid(2), store)));
+
+    let (addr, handle) = start_object_manager_server(Arc::clone(&receiver_om)).await;
+
+    let endpoint = format!("http://{}", addr);
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = rpc::object_manager_service_client::ObjectManagerServiceClient::new(channel);
+
+    let oid = make_oid(77);
+    let data = b"abcdefgh1234".to_vec();
+    let metadata = b"meta".to_vec();
+    let total_size = (data.len() + metadata.len()) as u64;
+
+    // Send the payload in 8-byte chunks the same way the transport loop would.
+    let combined = [data.clone(), metadata.clone()].concat();
+    for (idx, chunk) in combined.chunks(8).enumerate() {
+        client
+            .push(rpc::PushRequest {
+                push_id: vec![9],
+                object_id: oid.binary(),
+                node_id: make_nid(99).binary(),
+                chunk_index: idx as u32,
+                data_size: data.len() as u64,
+                metadata_size: metadata.len() as u64,
+                data: chunk.to_vec(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+    }
+
+    let om = receiver_om.lock();
+    let (read_data, read_meta) = om.get_object_data(&oid).expect("object should be readable");
+    assert_eq!(read_data, data);
+    assert_eq!(read_meta, metadata);
+
+    handle.abort();
+}
+
+/// Parity-gap test for duplicate chunk handling over the gRPC boundary.
+///
+/// The C++ receive path rejects duplicate chunk completion semantics. The
+/// current Rust receive path counts chunks received and can incorrectly
+/// complete an object when the same chunk is sent twice.
+#[tokio::test]
+async fn test_parity_duplicate_chunk_push_does_not_complete_object() {
+    let config = ObjectManagerConfig {
+        object_chunk_size: 1024,
+        ..ObjectManagerConfig::default()
+    };
+    let store_config = PlasmaStoreConfig {
+        object_store_memory: 1024 * 1024,
+        plasma_directory: String::new(),
+        fallback_directory: String::new(),
+        huge_pages: false,
+    };
+    let allocator = Arc::new(DummyAllocator);
+    let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(config, make_nid(2), store)));
+
+    let (addr, handle) = start_object_manager_server(Arc::clone(&receiver_om)).await;
+
+    let endpoint = format!("http://{}", addr);
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = rpc::object_manager_service_client::ObjectManagerServiceClient::new(channel);
+
+    let oid = make_oid(88);
+    let total_size: u64 = 2048;
+
+    // Send chunk 0 twice instead of chunks 0 and 1.
+    for _ in 0..2 {
+        client
+            .push(rpc::PushRequest {
+                push_id: vec![1],
+                object_id: oid.binary(),
+                node_id: make_nid(99).binary(),
+                chunk_index: 0,
+                data_size: total_size,
+                metadata_size: 0,
+                data: vec![7u8; 1024],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+    }
+
+    let om = receiver_om.lock();
+    assert!(
+        !om.is_object_local(&oid),
+        "duplicate chunk should not complete a 2-chunk object"
+    );
+
+    handle.abort();
+}
+
+/// Parity-gap test for undersized chunk handling over the gRPC boundary.
+///
+/// The C++ object buffer pool validates chunk sizes. The current Rust receive
+/// path can complete objects without validating payload length.
+#[tokio::test]
+async fn test_parity_undersized_chunk_push_does_not_complete_object() {
+    let config = ObjectManagerConfig {
+        object_chunk_size: 1024,
+        ..ObjectManagerConfig::default()
+    };
+    let store_config = PlasmaStoreConfig {
+        object_store_memory: 1024 * 1024,
+        plasma_directory: String::new(),
+        fallback_directory: String::new(),
+        huge_pages: false,
+    };
+    let allocator = Arc::new(DummyAllocator);
+    let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(config, make_nid(2), store)));
+
+    let (addr, handle) = start_object_manager_server(Arc::clone(&receiver_om)).await;
+
+    let endpoint = format!("http://{}", addr);
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = rpc::object_manager_service_client::ObjectManagerServiceClient::new(channel);
+
+    let oid = make_oid(89);
+
+    client
+        .push(rpc::PushRequest {
+            push_id: vec![1],
+            object_id: oid.binary(),
+            node_id: make_nid(99).binary(),
+            chunk_index: 0,
+            data_size: 1024,
+            metadata_size: 0,
+            data: vec![1u8; 1],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let om = receiver_om.lock();
+    assert!(
+        !om.is_object_local(&oid),
+        "undersized chunk should not complete object creation"
+    );
+
+    handle.abort();
+}
+
+/// Out-of-order chunk delivery via gRPC.
+///
+/// Now that chunks are stored by index in a Vec buffer, out-of-order delivery
+/// is safe -- each chunk lands at its correct position and the object completes
+/// when all chunks are received with valid sizes.
+#[tokio::test]
+async fn test_out_of_order_chunk_push_completes_object() {
+    let config = ObjectManagerConfig {
+        object_chunk_size: 1024,
+        ..ObjectManagerConfig::default()
+    };
+    let store_config = PlasmaStoreConfig {
+        object_store_memory: 1024 * 1024,
+        plasma_directory: String::new(),
+        fallback_directory: String::new(),
+        huge_pages: false,
+    };
+    let allocator = Arc::new(DummyAllocator);
+    let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(config, make_nid(2), store)));
+
+    let (addr, handle) = start_object_manager_server(Arc::clone(&receiver_om)).await;
+
+    let endpoint = format!("http://{}", addr);
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = rpc::object_manager_service_client::ObjectManagerServiceClient::new(channel);
+
+    let oid = make_oid(90);
+    let total_size: u64 = 2048;
+
+    // Send chunk 1 before chunk 0.
+    client
+        .push(rpc::PushRequest {
+            push_id: vec![1],
+            object_id: oid.binary(),
+            node_id: make_nid(99).binary(),
+            chunk_index: 1,
+            data_size: total_size,
+            metadata_size: 0,
+            data: vec![2u8; 1024],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    client
+        .push(rpc::PushRequest {
+            push_id: vec![1],
+            object_id: oid.binary(),
+            node_id: make_nid(99).binary(),
+            chunk_index: 0,
+            data_size: total_size,
+            metadata_size: 0,
+            data: vec![1u8; 1024],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let om = receiver_om.lock();
+    assert!(
+        om.is_object_local(&oid),
+        "out-of-order chunk delivery with valid sizes should complete the object"
+    );
+
+    handle.abort();
+}
+
+/// Parity-gap test for deferred push behavior.
+///
+/// In C++, a Pull request for an object that is not local can be retained and
+/// later satisfied when the object is added. The current Rust implementation
+/// drops that behavior.
+#[tokio::test]
+async fn test_parity_pull_for_nonlocal_object_is_served_after_object_arrives() {
+    let om = make_object_manager(1);
+    let oid = make_oid(55);
+
+    let (addr, handle) = start_object_manager_server(Arc::clone(&om)).await;
+
+    let endpoint = format!("http://{}", addr);
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect()
+        .await
+        .unwrap();
+    let mut client = rpc::object_manager_service_client::ObjectManagerServiceClient::new(channel);
+
+    let reply = client
+        .pull(rpc::PullRequest {
+            node_id: make_nid(5).binary(),
+            object_id: oid.binary(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(reply, rpc::PullReply {});
+
+    // Object becomes available after the pull request.
+    {
+        let mut locked = om.lock();
+        locked.object_added(ObjectInfo {
+            object_id: oid,
+            data_size: 256,
+            metadata_size: 0,
+            ..Default::default()
+        });
+    }
+
+    // C++ retains the pending pull and starts a push when the object arrives.
+    let locked = om.lock();
+    assert_eq!(locked.num_active_pushes(), 1);
+
+    handle.abort();
+}
+
+// ─── Spill-Assisted Pull Test ──────────────────────────────────────────
+
+/// Test that pulling a spilled (non-local) object restores it from spill
+/// and then serves the push to the requester.
+#[test]
+fn test_spill_assisted_pull() {
+    use ray_object_manager::spill_manager::{SpillManager, SpillManagerConfig};
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let spill_config = SpillManagerConfig {
+        spill_directory: tmp_dir.path().to_path_buf(),
+        ..Default::default()
+    };
+    let spill_mgr = Arc::new(SpillManager::new(spill_config));
+
+    // Spill an object.
+    let oid = make_oid(123);
+    let data = vec![0xABu8; 256];
+    let metadata = vec![0xCD; 16];
+    spill_mgr.spill_object(&oid, &data, &metadata).unwrap();
+
+    // Create an ObjectManager without the object locally.
+    let config = ObjectManagerConfig::default();
+    let store_config = PlasmaStoreConfig {
+        object_store_memory: 1024 * 1024,
+        plasma_directory: String::new(),
+        fallback_directory: String::new(),
+        huge_pages: false,
+    };
+    let allocator = Arc::new(DummyAllocator);
+    let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+    let mut om = ObjectManager::new(config, make_nid(1), store);
+    om.set_spill_manager(spill_mgr);
+
+    assert!(!om.is_object_local(&oid));
+
+    // handle_pull_request should restore from spill and start a push.
+    let result = om.handle_pull_request(oid, make_nid(5));
+    assert!(result);
+    assert!(om.is_object_local(&oid));
+    assert_eq!(om.num_active_pushes(), 1);
+}
+
 // ─── Phase 15: Spill/Restore Integration Tests ────────────────────────
 
 /// Test the full spill → restore cycle for an object.

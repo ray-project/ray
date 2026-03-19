@@ -676,7 +676,7 @@ mod tests {
 
         // Kill the node — this should cascade to all managers
         let nid = ray_common::id::NodeID::from_binary(node_id.as_slice().try_into().unwrap());
-        node_mgr.handle_unregister_node(&node_id).await.unwrap();
+        node_mgr.handle_unregister_node(&node_id, None).await.unwrap();
 
         // Verify cascade:
         // 1. Node should be dead
@@ -747,7 +747,7 @@ mod tests {
         assert_eq!(all_nodes[0].state, 0); // ALIVE
 
         // Unregister node
-        node_mgr.handle_unregister_node(&node_id).await.unwrap();
+        node_mgr.handle_unregister_node(&node_id, None).await.unwrap();
 
         let all_nodes = node_mgr.handle_get_all_node_info();
         assert_eq!(all_nodes.len(), 1);
@@ -781,7 +781,10 @@ mod tests {
             .await
             .unwrap();
 
-        let all = worker_mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = worker_mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 1);
 
         // Add a worker info
@@ -800,7 +803,10 @@ mod tests {
             .await
             .unwrap();
 
-        let all = worker_mgr.handle_get_all_worker_info(None).await.unwrap();
+        let (all, _, _) = worker_mgr
+            .handle_get_all_worker_info(None, false, false)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 2);
     }
 
@@ -870,7 +876,7 @@ mod tests {
         let mut dead_node_id = vec![0u8; 28];
         dead_node_id[0] = 3;
         node_mgr
-            .handle_unregister_node(&dead_node_id)
+            .handle_unregister_node(&dead_node_id, None)
             .await
             .unwrap();
 
@@ -951,9 +957,10 @@ mod tests {
         assert_eq!(node_mgr.num_alive_nodes(), 1);
         assert_eq!(
             worker_mgr
-                .handle_get_all_worker_info(None)
+                .handle_get_all_worker_info(None, false, false)
                 .await
                 .unwrap()
+                .0
                 .len(),
             1
         );

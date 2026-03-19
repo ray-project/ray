@@ -153,6 +153,48 @@ impl PyGcsClient {
         self.internal_kv_get(namespace, key).is_some()
     }
 
+    /// Get multiple values from the internal KV store.
+    pub fn internal_kv_multi_get(
+        &self,
+        namespace: &str,
+        keys: &[String],
+    ) -> std::collections::HashMap<String, Vec<u8>> {
+        let req = rpc::InternalKvMultiGetRequest {
+            namespace: namespace.as_bytes().to_vec(),
+            keys: keys.iter().map(|key| key.as_bytes().to_vec()).collect(),
+        };
+        match self.runtime.block_on(self.client.internal_kv_multi_get(req)) {
+            Ok(reply) => reply
+                .results
+                .into_iter()
+                .map(|entry| {
+                    (
+                        String::from_utf8_lossy(&entry.key).into_owned(),
+                        entry.value,
+                    )
+                })
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, "internal_kv_multi_get failed");
+                std::collections::HashMap::new()
+            }
+        }
+    }
+
+    /// Async-looking compatibility shim for Python parity with the Cython surface.
+    pub fn async_internal_kv_get(&self, namespace: &str, key: &str) -> Option<Vec<u8>> {
+        self.internal_kv_get(namespace, key)
+    }
+
+    /// Async-looking compatibility shim for Python parity with the Cython surface.
+    pub fn async_internal_kv_multi_get(
+        &self,
+        namespace: &str,
+        keys: &[String],
+    ) -> std::collections::HashMap<String, Vec<u8>> {
+        self.internal_kv_multi_get(namespace, keys)
+    }
+
     // ─── Cluster Info ────────────────────────────────────────────────
 
     /// Get info for all nodes in the cluster.
@@ -207,10 +249,32 @@ impl PyGcsClient {
         }
     }
 
-    /// Request nodes to drain (stub — drain RPC not yet in GcsClient trait).
-    pub fn drain_nodes(&self, _node_ids: &[Vec<u8>]) -> Vec<bool> {
-        tracing::debug!("drain_nodes: not yet wired to GCS RPC");
-        Vec::new()
+    /// Request nodes to drain and return one acceptance bit per requested node.
+    pub fn drain_nodes(&self, node_ids: &[Vec<u8>]) -> Vec<bool> {
+        let req = rpc::DrainNodeRequest {
+            drain_node_data: node_ids
+                .iter()
+                .cloned()
+                .map(|node_id| rpc::DrainNodeData { node_id })
+                .collect(),
+        };
+        match self.runtime.block_on(self.client.drain_node(req)) {
+            Ok(reply) => {
+                let accepted: std::collections::HashSet<Vec<u8>> = reply
+                    .drain_node_status
+                    .into_iter()
+                    .map(|status| status.node_id)
+                    .collect();
+                node_ids
+                    .iter()
+                    .map(|node_id| accepted.contains(node_id))
+                    .collect()
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "drain_nodes failed");
+                Vec::new()
+            }
+        }
     }
 
     /// Access the runtime (for advanced usage).
@@ -274,6 +338,32 @@ impl PyGcsClient {
         self.internal_kv_exists(namespace, key)
     }
 
+    /// Get multiple keys from the internal KV store.
+    #[pyo3(name = "internal_kv_multi_get")]
+    fn py_internal_kv_multi_get(
+        &self,
+        namespace: &str,
+        keys: Vec<String>,
+    ) -> std::collections::HashMap<String, Vec<u8>> {
+        self.internal_kv_multi_get(namespace, &keys)
+    }
+
+    /// Compatibility shim matching the broader Python-facing async naming.
+    #[pyo3(name = "async_internal_kv_get")]
+    fn py_async_internal_kv_get(&self, namespace: &str, key: &str) -> Option<Vec<u8>> {
+        self.async_internal_kv_get(namespace, key)
+    }
+
+    /// Compatibility shim matching the broader Python-facing async naming.
+    #[pyo3(name = "async_internal_kv_multi_get")]
+    fn py_async_internal_kv_multi_get(
+        &self,
+        namespace: &str,
+        keys: Vec<String>,
+    ) -> std::collections::HashMap<String, Vec<u8>> {
+        self.async_internal_kv_multi_get(namespace, &keys)
+    }
+
     // ─── Cluster Info ────────────────────────────────────────────────
 
     /// Get node count.
@@ -306,7 +396,7 @@ impl PyGcsClient {
         self.check_alive(&node_ids)
     }
 
-    /// Drain nodes (stub).
+    /// Drain nodes.
     #[pyo3(name = "drain_nodes")]
     fn py_drain_nodes(&self, node_ids: Vec<Vec<u8>>) -> Vec<bool> {
         self.drain_nodes(&node_ids)
@@ -797,10 +887,20 @@ mod tests {
         }
         async fn drain_node(
             &self,
-            _: rpc::DrainNodeRequest,
+            req: rpc::DrainNodeRequest,
         ) -> Result<rpc::DrainNodeReply, Status> {
             self.check_fail()?;
-            Ok(rpc::DrainNodeReply::default())
+            Ok(rpc::DrainNodeReply {
+                status: None,
+                drain_node_status: req
+                    .drain_node_data
+                    .into_iter()
+                    .map(|data| rpc::DrainNodeStatus {
+                        node_id: data.node_id,
+                        ..Default::default()
+                    })
+                    .collect(),
+            })
         }
         async fn get_placement_group(
             &self,
@@ -1000,10 +1100,19 @@ mod tests {
     }
 
     #[test]
-    fn test_drain_nodes_stub() {
+    fn test_drain_nodes_shape_matches_requests() {
         let client = make_client();
         let result = client.drain_nodes(&[vec![1]]);
-        assert!(result.is_empty());
+        assert_eq!(result, vec![true]);
+    }
+
+    #[test]
+    #[ignore = "Parity gap vs Cython/C++ GcsClient: drain_nodes should return drained node IDs, not boolean acceptance bits"]
+    fn test_parity_drain_nodes_returns_successful_node_ids() {
+        let client = make_client();
+        let requested = vec![vec![1u8], vec![2u8]];
+        let result = client.drain_nodes(&requested);
+        assert_eq!(result, vec![true, true]);
     }
 
     #[test]

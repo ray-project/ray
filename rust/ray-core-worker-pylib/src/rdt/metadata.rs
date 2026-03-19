@@ -22,7 +22,8 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 ///    and each dtype is a `torch.dtype`, stored as opaque Python objects to
 ///    preserve type fidelity for transport backends.
 /// - `tensor_device`: Device string (e.g. `"cuda"`, `"cpu"`), or `None`.
-#[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet"))]
+#[cfg(feature = "python")]
+#[pyo3::pyclass(module = "_raylet")]
 pub struct PyTensorTransportMetadata {
     /// List of (shape, dtype) tuples — stored as Python objects.
     pub tensor_meta: Vec<(Py<PyAny>, Py<PyAny>)>,

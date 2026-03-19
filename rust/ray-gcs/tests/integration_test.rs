@@ -559,7 +559,7 @@ async fn test_gcs_placement_group_roundtrip() {
         .await
         .unwrap();
 
-    // Verify removed
+    // GCS-13: PG should still be queryable with REMOVED state
     let resp = client
         .get_placement_group(rpc::GetPlacementGroupRequest {
             placement_group_id: pg_id.clone(),
@@ -567,7 +567,8 @@ async fn test_gcs_placement_group_roundtrip() {
         })
         .await
         .unwrap();
-    assert!(resp.into_inner().placement_group_table_data.is_none());
+    let pg = resp.into_inner().placement_group_table_data.unwrap();
+    assert_eq!(pg.state, 2); // 2 = REMOVED
 
     server.shutdown_tx.send(()).unwrap();
     server.join_handle.await.unwrap();
@@ -735,7 +736,7 @@ async fn test_placement_group_create_and_remove_spread() {
         .await
         .unwrap();
 
-    // Verify it's gone.
+    // GCS-13: PG persists with REMOVED state after removal
     let resp = client
         .get_placement_group(rpc::GetPlacementGroupRequest {
             placement_group_id: pg_id.clone(),
@@ -743,7 +744,8 @@ async fn test_placement_group_create_and_remove_spread() {
         })
         .await
         .unwrap();
-    assert!(resp.into_inner().placement_group_table_data.is_none());
+    let pg = resp.into_inner().placement_group_table_data.unwrap();
+    assert_eq!(pg.state, 2); // 2 = REMOVED
 
     server.shutdown_tx.send(()).unwrap();
     server.join_handle.await.unwrap();

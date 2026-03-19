@@ -11,7 +11,9 @@
 //! Ported from `python/ray/experimental/rdt/util.py`.
 //! Manages registration and lazy instantiation of tensor transport backends.
 
+#[cfg(feature = "python")]
 use std::collections::HashMap;
+#[cfg(feature = "python")]
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(feature = "python")]

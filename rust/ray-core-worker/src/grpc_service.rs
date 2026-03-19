@@ -363,6 +363,12 @@ impl CoreWorkerServiceImpl {
         &self,
         request: rpc::UpdateObjectLocationBatchRequest,
     ) -> Result<rpc::UpdateObjectLocationBatchReply, Status> {
+        if !request.intended_worker_id.is_empty()
+            && request.intended_worker_id != self.core_worker.worker_id().binary()
+        {
+            return Err(Status::failed_precondition("wrong recipient worker"));
+        }
+
         let node_id_hex = hex::encode(&request.node_id);
         let ref_counter = self.core_worker.reference_counter();
 
@@ -370,6 +376,14 @@ impl CoreWorkerServiceImpl {
             let oid = ObjectID::from_binary(&update.object_id);
             if let Some(plasma_update) = update.plasma_location_update {
                 if plasma_update == rpc::ObjectPlasmaLocationUpdate::Added as i32 {
+                    ref_counter.add_object_location(&oid, node_id_hex.clone());
+                } else {
+                    ref_counter.remove_object_location(&oid, &node_id_hex);
+                }
+            }
+            if let Some(spilled) = &update.spilled_location_update {
+                ref_counter.set_spill_url(&oid, spilled.spilled_url.clone());
+                if spilled.spilled_to_local_storage {
                     ref_counter.add_object_location(&oid, node_id_hex.clone());
                 } else {
                     ref_counter.remove_object_location(&oid, &node_id_hex);
@@ -804,6 +818,7 @@ mod tests {
 
         // Add a location.
         let request = rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
             node_id: node_id.clone(),
             object_location_updates: vec![rpc::ObjectLocationUpdate {
                 object_id: oid.binary(),
@@ -827,6 +842,7 @@ mod tests {
 
         // Remove the location.
         let request = rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
             node_id: node_id.clone(),
             object_location_updates: vec![rpc::ObjectLocationUpdate {
                 object_id: oid.binary(),
@@ -843,6 +859,62 @@ mod tests {
             .reference_counter()
             .get_object_locations(&oid);
         assert!(locs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_update_object_location_batch_sets_spilled_url() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        let node_id = vec![3u8; 28];
+        let request = rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id,
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                spilled_location_update: Some(rpc::ObjectSpilledLocationUpdate {
+                    spilled_url: "s3://bucket/obj".to_string(),
+                    spilled_to_local_storage: false,
+                }),
+                ..Default::default()
+            }],
+        };
+
+        svc.handle_update_object_location_batch(request)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            svc.core_worker.reference_counter().get_spill_url(&oid),
+            Some("s3://bucket/obj".to_string())
+        );
+        assert!(svc
+            .core_worker
+            .reference_counter()
+            .get_object_locations(&oid)
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_update_object_location_batch_rejects_wrong_recipient() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        let err = svc
+            .handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+                intended_worker_id: vec![9u8; 28],
+                node_id: vec![1u8; 28],
+                object_location_updates: vec![rpc::ObjectLocationUpdate {
+                    object_id: oid.binary(),
+                    plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                    ..Default::default()
+                }],
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::FailedPrecondition);
     }
 
     #[tokio::test]

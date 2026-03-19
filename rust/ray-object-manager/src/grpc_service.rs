@@ -75,7 +75,7 @@ impl rpc::object_manager_service_server::ObjectManagerService for ObjectManagerS
         let requester_node_id = NodeID::from_binary(&req.node_id);
 
         let mut om = self.object_manager.lock();
-        om.push(object_id, requester_node_id);
+        om.handle_pull_request(object_id, requester_node_id);
 
         Ok(Response::new(rpc::PullReply {}))
     }

@@ -15,7 +15,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use parking_lot::Mutex;
 use ray_common::id::{NodeID, PlacementGroupID};
+use tokio::sync::Notify;
 
 use crate::table_storage::GcsTableStorage;
 
@@ -59,6 +61,9 @@ pub struct GcsPlacementGroupManager {
     state_counts: [AtomicUsize; 4],
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
+    /// Per-PG notifiers for WaitPlacementGroupUntilReady.
+    /// When a PG transitions to Created, all waiters are notified.
+    pg_ready_notifiers: Mutex<HashMap<PlacementGroupID, Arc<Notify>>>,
 }
 
 impl GcsPlacementGroupManager {
@@ -73,6 +78,7 @@ impl GcsPlacementGroupManager {
                 AtomicUsize::new(0),
             ],
             table_storage,
+            pg_ready_notifiers: Mutex::new(HashMap::new()),
         }
     }
 
@@ -140,41 +146,134 @@ impl GcsPlacementGroupManager {
 
         let state = PlacementGroupState::from(pg_data.state);
         self.state_counts[state.index()].fetch_add(1, Ordering::Relaxed);
+        let is_created = state == PlacementGroupState::Created;
         self.placement_groups.insert(pg_id, pg_data);
+
+        // If the PG is created immediately, notify any waiters
+        if is_created {
+            self.notify_pg_ready(&pg_id);
+        }
 
         tracing::info!(?pg_id, "Placement group created");
         Ok(())
     }
 
+    /// Notify waiters that a placement group is ready (state == Created).
+    fn notify_pg_ready(&self, pg_id: &PlacementGroupID) {
+        let mut notifiers = self.pg_ready_notifiers.lock();
+        if let Some(notify) = notifiers.remove(pg_id) {
+            notify.notify_waiters();
+        }
+    }
+
+    /// Transition a placement group to Created state and notify waiters.
+    /// Called when scheduling succeeds (e.g., bundles are committed).
+    pub fn mark_placement_group_created(&self, pg_id: &PlacementGroupID) {
+        if let Some(mut entry) = self.placement_groups.get_mut(pg_id) {
+            let old_state = PlacementGroupState::from(entry.state);
+            if old_state == PlacementGroupState::Created {
+                return;
+            }
+            entry.state = PlacementGroupState::Created as i32;
+            self.state_counts[old_state.index()].fetch_sub(1, Ordering::Relaxed);
+            self.state_counts[PlacementGroupState::Created.index()]
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        self.notify_pg_ready(pg_id);
+    }
+
+    /// Wait until a placement group transitions to Created state, with a timeout.
+    ///
+    /// Returns true if the PG is (or became) Created within the timeout,
+    /// false if the timeout expired or the PG doesn't exist.
+    pub async fn wait_until_ready(
+        &self,
+        pg_id_bytes: &[u8],
+        timeout: std::time::Duration,
+    ) -> bool {
+        let pg_id = PlacementGroupID::from_binary(pg_id_bytes.try_into().unwrap_or(&[0u8; 18]));
+
+        // Check current state first
+        if let Some(entry) = self.placement_groups.get(&pg_id) {
+            if PlacementGroupState::from(entry.state) == PlacementGroupState::Created {
+                return true;
+            }
+        } else {
+            return false; // PG doesn't exist
+        }
+
+        // Register a notifier and wait
+        let notify = {
+            let mut notifiers = self.pg_ready_notifiers.lock();
+            notifiers
+                .entry(pg_id)
+                .or_insert_with(|| Arc::new(Notify::new()))
+                .clone()
+        };
+
+        match tokio::time::timeout(timeout, notify.notified()).await {
+            Ok(()) => {
+                // Double-check the state (it could have been removed)
+                self.placement_groups
+                    .get(&pg_id)
+                    .map(|e| PlacementGroupState::from(e.state) == PlacementGroupState::Created)
+                    .unwrap_or(false)
+            }
+            Err(_) => {
+                // Timeout — clean up the notifier if we're the only waiter
+                let mut notifiers = self.pg_ready_notifiers.lock();
+                notifiers.remove(&pg_id);
+                false
+            }
+        }
+    }
+
     /// Handle RemovePlacementGroup RPC.
+    ///
+    /// Instead of deleting the PG, we transition it to REMOVED state and persist it.
+    /// This matches C++ behavior: removed PGs remain queryable so recovery can see
+    /// they were intentionally removed.
     pub async fn handle_remove_placement_group(
         &self,
         pg_id_bytes: &[u8],
     ) -> Result<(), tonic::Status> {
         let pg_id = PlacementGroupID::from_binary(pg_id_bytes.try_into().unwrap_or(&[0u8; 18]));
 
-        // Remove from in-memory state
-        let removed = if let Some((_, pg)) = self.placement_groups.remove(&pg_id) {
-            if !pg.name.is_empty() {
-                self.named_placement_groups
-                    .remove(&(pg.ray_namespace.clone(), pg.name.clone()));
+        // Transition to REMOVED state (keep in placement_groups map)
+        let updated = if let Some(mut entry) = self.placement_groups.get_mut(&pg_id) {
+            let old_state = PlacementGroupState::from(entry.state);
+            if old_state == PlacementGroupState::Removed {
+                // Already removed, no-op
+                return Ok(());
             }
-            let old_state = PlacementGroupState::from(pg.state);
+            entry.state = PlacementGroupState::Removed as i32;
+
+            // Update state counts
             self.state_counts[old_state.index()].fetch_sub(1, Ordering::Relaxed);
-            true
+            self.state_counts[PlacementGroupState::Removed.index()]
+                .fetch_add(1, Ordering::Relaxed);
+
+            // Remove from named lookup (removed PGs should not be found by name)
+            if !entry.name.is_empty() {
+                self.named_placement_groups
+                    .remove(&(entry.ray_namespace.clone(), entry.name.clone()));
+            }
+
+            Some(entry.clone())
         } else {
-            false
+            None
         };
 
-        if removed {
+        if let Some(ref pg_data) = updated {
+            // Persist with REMOVED state (not delete)
             let key = hex::encode(pg_id_bytes);
             let _ = self
                 .table_storage
                 .placement_group_table()
-                .delete(&key)
+                .put(&key, pg_data)
                 .await;
 
-            tracing::info!(?pg_id, "Placement group removed");
+            tracing::info!(?pg_id, "Placement group marked as removed");
         }
         Ok(())
     }
@@ -331,7 +430,61 @@ mod tests {
         let mut pg_id = [0u8; 18];
         pg_id[0] = 1;
         mgr.handle_remove_placement_group(&pg_id).await.unwrap();
-        assert_eq!(mgr.num_placement_groups(), 0);
+
+        // PG should still be in the map with REMOVED state (not deleted)
+        assert_eq!(mgr.num_placement_groups(), 1);
+        let pg = mgr.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(PlacementGroupState::from(pg.state), PlacementGroupState::Removed);
+
+        // But should NOT be findable by name
+        assert!(mgr.handle_get_named_placement_group("pg1", "default").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_removed_pg_remains_queryable() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        mgr.handle_create_placement_group(make_pg(1, "persistent_pg"))
+            .await
+            .unwrap();
+
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        mgr.handle_remove_placement_group(&pg_id).await.unwrap();
+
+        // Should be queryable by ID
+        let pg = mgr.handle_get_placement_group(&pg_id);
+        assert!(pg.is_some());
+        let pg = pg.unwrap();
+        assert_eq!(PlacementGroupState::from(pg.state), PlacementGroupState::Removed);
+        assert_eq!(pg.name, "persistent_pg");
+
+        // Should appear in get_all
+        let all = mgr.handle_get_all_placement_groups(None);
+        assert_eq!(all.len(), 1);
+        assert_eq!(PlacementGroupState::from(all[0].state), PlacementGroupState::Removed);
+    }
+
+    #[tokio::test]
+    async fn test_remove_already_removed_pg_is_noop() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        mgr.handle_create_placement_group(make_pg(1, "pg1"))
+            .await
+            .unwrap();
+
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        mgr.handle_remove_placement_group(&pg_id).await.unwrap();
+        // Remove again — should be a no-op
+        mgr.handle_remove_placement_group(&pg_id).await.unwrap();
+
+        let pg = mgr.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(PlacementGroupState::from(pg.state), PlacementGroupState::Removed);
     }
 
     #[tokio::test]
@@ -488,13 +641,14 @@ mod tests {
         let counts = mgr.state_counts();
         assert_eq!(*counts.get(&PlacementGroupState::Created).unwrap_or(&0), 1);
 
-        // Remove pg1 — Pending count should decrement
+        // Remove pg1 — Pending count should decrement, Removed count should increment
         let mut pg_id = [0u8; 18];
         pg_id[0] = 1;
         mgr.handle_remove_placement_group(&pg_id).await.unwrap();
 
         let counts = mgr.state_counts();
         assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 0);
+        assert_eq!(*counts.get(&PlacementGroupState::Removed).unwrap_or(&0), 1);
     }
 
     #[tokio::test]
@@ -542,5 +696,115 @@ mod tests {
         );
         // Unknown values default to Removed
         assert_eq!(PlacementGroupState::from(99), PlacementGroupState::Removed);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ready_already_created() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        // Create PG with Created state
+        let mut pg = make_pg(1, "ready_pg");
+        pg.state = PlacementGroupState::Created as i32;
+        mgr.handle_create_placement_group(pg).await.unwrap();
+
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        let ready = mgr
+            .wait_until_ready(&pg_id, std::time::Duration::from_millis(100))
+            .await;
+        assert!(ready);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ready_nonexistent_pg() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let pg_id = [0u8; 18];
+        let ready = mgr
+            .wait_until_ready(&pg_id, std::time::Duration::from_millis(100))
+            .await;
+        assert!(!ready);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ready_timeout() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        // Create PG in Pending state — will never become Created
+        mgr.handle_create_placement_group(make_pg(1, "pending_pg"))
+            .await
+            .unwrap();
+
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        let ready = mgr
+            .wait_until_ready(&pg_id, std::time::Duration::from_millis(50))
+            .await;
+        assert!(!ready);
+    }
+
+    #[tokio::test]
+    async fn test_wait_until_ready_notify_on_transition() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = Arc::new(GcsPlacementGroupManager::new(storage));
+
+        // Create PG in Pending state
+        mgr.handle_create_placement_group(make_pg(1, "transition_pg"))
+            .await
+            .unwrap();
+
+        let mut pg_id_bytes = [0u8; 18];
+        pg_id_bytes[0] = 1;
+        let pg_id = PlacementGroupID::from_binary(&pg_id_bytes);
+
+        let mgr_clone = Arc::clone(&mgr);
+        let wait_handle = tokio::spawn(async move {
+            mgr_clone
+                .wait_until_ready(&pg_id_bytes, std::time::Duration::from_secs(5))
+                .await
+        });
+
+        // Give the waiter time to register
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Transition to Created
+        mgr.mark_placement_group_created(&pg_id);
+
+        let ready = wait_handle.await.unwrap();
+        assert!(ready);
+    }
+
+    #[tokio::test]
+    async fn test_mark_placement_group_created() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        mgr.handle_create_placement_group(make_pg(1, "pg1"))
+            .await
+            .unwrap();
+
+        let mut pg_id_bytes = [0u8; 18];
+        pg_id_bytes[0] = 1;
+        let pg_id = PlacementGroupID::from_binary(&pg_id_bytes);
+
+        mgr.mark_placement_group_created(&pg_id);
+
+        let pg = mgr.handle_get_placement_group(&pg_id_bytes).unwrap();
+        assert_eq!(
+            PlacementGroupState::from(pg.state),
+            PlacementGroupState::Created
+        );
+
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Created).unwrap_or(&0), 1);
+        assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 0);
     }
 }
