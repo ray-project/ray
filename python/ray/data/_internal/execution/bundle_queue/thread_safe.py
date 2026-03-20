@@ -38,16 +38,16 @@ class ThreadSafeBundleQueue(BundleQueue):
             return self._inner.num_rows()
 
     def _on_enqueue_bundle(self, bundle: RefBundle):
-        self._inner._on_enqueue_bundle(bundle)
+        raise NotImplementedError("Use add() for thread-safe access")
 
     def _on_dequeue_bundle(self, bundle: RefBundle):
-        self._inner._on_dequeue_bundle(bundle)
+        raise NotImplementedError("Use get_next() for thread-safe access")
 
     def _add_inner(self, bundle: RefBundle, **kwargs: Any):
-        self._inner._add_inner(bundle, **kwargs)
+        raise NotImplementedError("Use add() for thread-safe access")
 
     def _get_next_inner(self) -> RefBundle:
-        return self._inner._get_next_inner()
+        raise NotImplementedError("Use get_next() for thread-safe access")
 
     def add(self, bundle: RefBundle, **kwargs: Any):
         with self._lock:
