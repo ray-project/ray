@@ -20,7 +20,7 @@ import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
 import {
-  TaskCpuProfilingLink,
+  TaskCpuProfilingButton,
   TaskCpuStackTraceLink,
   TaskMemoryProfilingButton,
 } from "../common/ProfilingLink";
@@ -356,7 +356,7 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       {isTaskActive && (
         <React.Fragment>
           <br />
-          <TaskCpuProfilingLink
+          <TaskCpuProfilingButton
             taskId={task.task_id}
             attemptNumber={task.attempt_number}
             nodeId={task.node_id}

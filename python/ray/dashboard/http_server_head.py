@@ -81,6 +81,12 @@ def setup_static_dir():
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
+    # Serve bundled speedscope viewer for profile visualization
+    speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+    routes.static("/speedscope-1.5.3", speedscope_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
+    # Serve bundled Catapult trace viewer for chrometrace visualization
+    trace_viewer_dir = os.path.join(build_dir, "trace-viewer")
+    routes.static("/trace-viewer", trace_viewer_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
     return build_dir
 
 

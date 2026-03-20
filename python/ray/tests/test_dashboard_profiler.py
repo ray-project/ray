@@ -117,6 +117,142 @@ def test_profiler_endpoints(ray_start_with_dashboard, native, node_info):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+@pytest.mark.parametrize("node_info", ["node_id", "ip"])
+def test_profiler_pyspy_options(ray_start_with_dashboard, node_info):
+    """Test CPU profiling with py-spy options: gil, idle, nonblocking."""
+    subprocess.check_call(["py-spy", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    node_id = ray_start_with_dashboard.address_info["node_id"]
+    node_ip = ray_start_with_dashboard.address_info["node_ip_address"]
+
+    def get_node_info():
+        if node_info == "node_id":
+            return f"node_id={node_id}"
+        else:
+            return f"ip={node_ip}"
+
+    def get_actor_flamegraph_with_options():
+        # Test with gil=1, idle=1, nonblocking=1
+        response = requests.get(
+            f"{webui_url}/worker/cpu_profile?pid={pid}&{get_node_info()}"
+            "&format=flamegraph&duration=2&gil=1&idle=1&nonblocking=1"
+        )
+        response.raise_for_status()
+        assert response.headers["Content-Type"] == "image/svg+xml", response.headers
+        content = response.content.decode("utf-8")
+        # Sanity check we got the flame graph SVG
+        assert "<!DOCTYPE svg" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_flamegraph_with_options,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+)
+@pytest.mark.parametrize("node_info", ["node_id", "ip"])
+def test_profiler_chrometrace_format(ray_start_with_dashboard, node_info):
+    """Test CPU profiling with chrometrace format and custom rate."""
+    import json
+
+    subprocess.check_call(["py-spy", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    node_id = ray_start_with_dashboard.address_info["node_id"]
+    node_ip = ray_start_with_dashboard.address_info["node_ip_address"]
+
+    def get_node_info():
+        if node_info == "node_id":
+            return f"node_id={node_id}"
+        else:
+            return f"ip={node_ip}"
+
+    def get_actor_chrometrace():
+        # Test chrometrace format with custom rate
+        response = requests.get(
+            f"{webui_url}/worker/cpu_profile?pid={pid}&{get_node_info()}"
+            "&format=chrometrace&duration=2&rate=50"
+        )
+        response.raise_for_status()
+        # Check content type is JSON for chrometrace
+        assert response.headers["Content-Type"] == "application/json", response.headers
+        # Check CORS header is set for Perfetto UI
+        assert (
+            response.headers.get("Access-Control-Allow-Origin") == "*"
+        ), response.headers
+        content = response.content.decode("utf-8")
+        print(content[:1000])  # Print first 1000 chars for debugging
+        # Sanity check that it's valid JSON
+        trace_data = json.loads(content)
+        # Chrome trace format has traceEvents
+        assert "traceEvents" in trace_data, trace_data
+        # Check that we have some events
+        assert len(trace_data["traceEvents"]) > 0, trace_data
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_chrometrace,
+        (requests.RequestException, AssertionError, json.JSONDecodeError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
 @pytest.mark.skipif(sys.version_info >= (3, 12), reason="No memray on python 3.12")
 @pytest.mark.skipif(

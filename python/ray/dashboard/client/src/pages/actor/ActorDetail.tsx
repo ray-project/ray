@@ -10,7 +10,7 @@ import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateNodeLink } from "../../common/links";
 import {
-  CpuProfilingLink,
+  CpuProfilingButton,
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../../common/ProfilingLink";
@@ -205,7 +205,7 @@ const ActorDetailPage = () => {
                   type=""
                 />
                 <br />
-                <CpuProfilingLink
+                <CpuProfilingButton
                   pid={actorDetail.pid}
                   nodeId={actorDetail.address?.nodeId}
                   type=""

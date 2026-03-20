@@ -15,7 +15,7 @@ import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
 import {
-  CpuProfilingLink,
+  CpuProfilingButton,
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../../common/ProfilingLink";
@@ -277,7 +277,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           Log
         </Link>
         <br />
-        <CpuProfilingLink pid={pid} nodeId={nodeId} type="" />
+        <CpuProfilingButton pid={pid} nodeId={nodeId} type="" />
         <br />
         <CpuStackTraceLink pid={pid} nodeId={nodeId} type="" />
         <br />

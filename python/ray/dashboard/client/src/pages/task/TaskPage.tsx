@@ -14,7 +14,7 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import {
-  TaskCpuProfilingLink,
+  TaskCpuProfilingButton,
   TaskCpuStackTraceLink,
   TaskMemoryProfilingButton,
 } from "../../common/ProfilingLink";
@@ -243,7 +243,7 @@ const TaskPageContents = ({
                 label: "Actions",
                 content: (
                   <React.Fragment>
-                    <TaskCpuProfilingLink
+                    <TaskCpuProfilingButton
                       taskId={task_id}
                       attemptNumber={attempt_number}
                       nodeId={node_id}

@@ -8,7 +8,7 @@ import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { JobStatusWithIcon } from "../../common/JobStatus";
 import {
-  CpuProfilingLink,
+  CpuProfilingButton,
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../../common/ProfilingLink";
@@ -186,7 +186,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
                 type="Driver"
               />
               <br />
-              <CpuProfilingLink
+              <CpuProfilingButton
                 pid={job.driver_info?.pid}
                 nodeId={job.driver_node_id}
                 type="Driver"

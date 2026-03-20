@@ -24,7 +24,7 @@ import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { DurationText, getDurationVal } from "../common/DurationText";
 import { ActorLink, generateNodeLink } from "../common/links";
 import {
-  CpuProfilingLink,
+  CpuProfilingButton,
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
@@ -677,7 +677,7 @@ const ActorTable = ({
                         Log
                       </ActorLink>
                       <br />
-                      <CpuProfilingLink
+                      <CpuProfilingButton
                         pid={pid}
                         nodeId={address?.nodeId}
                         type=""
