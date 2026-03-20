@@ -379,13 +379,13 @@ class VLLMEngineConfig(BaseModelExtended):
         if not is_tpu:
             return None
 
-        topology = (self.placement_group_config or {}).get("topology") or self.engine_kwargs.get("topology")
+        topology = (self.placement_group_config or {}).get(
+            "topology"
+        ) or self.engine_kwargs.get("topology")
 
         return topology
 
-    def _create_tpu_placement_group(
-        self, name: str, topology: str
-    ) -> PlacementGroup:
+    def _create_tpu_placement_group(self, name: str, topology: str) -> PlacementGroup:
         """Provisions a multi-host TPU Slice Placement Group.
 
         This enables atomic scheduling on TPUs for SPMD workloads by ensuring
