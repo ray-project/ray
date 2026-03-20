@@ -783,16 +783,22 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        import socket as sock_mod
+
+        s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
+        s.settimeout(5)
+        try:
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        finally:
+            s.close()
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -810,12 +816,16 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        import socket as sock_mod
+
+        s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
+        s.settimeout(5)
+        try:
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
+            s.recv(4096)  # Read response
+        finally:
+            s.close()
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
