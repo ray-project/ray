@@ -296,7 +296,7 @@ class AutoscalerEventLogger:
             launch_type_count = defaultdict(int)
             for req in launch_requests:
                 launch_type_count[req.instance_type] += req.count
-            for instance_type, count in launch_type_count.items():
+            for instance_type, count in sorted(launch_type_count.items()):
                 launch_actions.append({"instance_type": instance_type, "count": count})
                 logger.info(f"Adding {count} node(s) of type {instance_type}.")
 
@@ -319,7 +319,9 @@ class AutoscalerEventLogger:
                 ),
                 TerminationRequest.Cause.IDLE: "idle",
             }
-            for (cause, instance_type), count in termination_by_causes_and_type.items():
+            for (cause, instance_type), count in sorted(
+                termination_by_causes_and_type.items()
+            ):
                 terminate_actions.append(
                     {
                         "cause": cause,
@@ -359,6 +361,9 @@ class AutoscalerEventLogger:
                 if label_constraints:
                     entry["label_constraints"] = label_constraints
                 infeasible_resource_dicts.append(entry)
+            infeasible_resource_dicts.sort(
+                key=lambda d: (d.get("count", 0), sorted(d.get("resources", {}).items()))
+            )
 
         # Convert infeasible gang requests, grouping bundles within each gang.
         infeasible_gang_dicts = []
@@ -379,6 +384,7 @@ class AutoscalerEventLogger:
                         "details": gang.details,
                     }
                 )
+            infeasible_gang_dicts.sort(key=lambda d: d.get("details", ""))
 
         # Convert infeasible cluster resource constraints.
         infeasible_constraint_dicts = []
@@ -395,6 +401,9 @@ class AutoscalerEventLogger:
                 infeasible_constraint_dicts.append(
                     {"resource_requests": resource_requests}
                 )
+            infeasible_constraint_dicts.sort(
+                key=lambda d: len(d.get("resource_requests", []))
+            )
 
         payload_hash = hashlib.sha256(
             json.dumps(
