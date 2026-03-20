@@ -14,7 +14,7 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_batches,
 )
-from ray.data.block import DataBatch
+from ray.data.block import BlockAccessor, DataBatch
 
 
 def _create_chained_transformer(udf, n):
@@ -22,6 +22,7 @@ def _create_chained_transformer(udf, n):
     transform_fns = [
         BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(udf),
+            batch_format="pandas",
             batch_size=1,
             output_block_size_option=OutputBlockSizeOption.of(target_max_block_size=1),
         )
@@ -66,8 +67,16 @@ def test_chained_transforms_release_intermediates_between_batches():
         result = next(result_iter)
         assert result is not None
 
+        # apply_transform returns Arrow blocks, convert to pandas to test the correctness of the result
         pd.testing.assert_frame_equal(
-            result, pd.DataFrame({"id": [(i + 1) * 2**NUM_CHAINED_TRANSFORMS]})
+            BlockAccessor.for_block(result).to_pandas(),
+            pd.DataFrame(
+                {
+                    "id": pd.array(
+                        [(i + 1) * 2**NUM_CHAINED_TRANSFORMS], dtype="int64[pyarrow]"
+                    )
+                }
+            ),
         )
 
         # Trigger GC
