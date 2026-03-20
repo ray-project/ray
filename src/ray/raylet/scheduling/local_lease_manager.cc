@@ -1152,37 +1152,6 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   }
 }
 
-ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
-  ResourceSet total_normal_task_resources;
-  for (auto &entry : leased_workers_) {
-    std::shared_ptr<WorkerInterface> worker = entry.second;
-    auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
-    if (!lease_spec.PlacementGroupBundleId().first.IsNil()) {
-      continue;
-    }
-
-    auto actor_id = worker->GetActorId();
-    if (!actor_id.IsNil() && lease_spec.IsActorCreationTask()) {
-      // This task ID corresponds to an actor creation task.
-      continue;
-    }
-
-    if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_set = allocated_instances->ToResourceSet();
-      // Blocked normal task workers have temporarily released its allocated CPU.
-      if (worker->IsBlocked()) {
-        for (const auto &resource_id : allocated_instances->ResourceIds()) {
-          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
-            resource_set.Set(resource_id, 0);
-          }
-        }
-      }
-      total_normal_task_resources += resource_set;
-    }
-  }
-  return total_normal_task_resources;
-}
-
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = SchedulingClassToIds::GetSchedulingClassDescriptor(sched_cls_id);
