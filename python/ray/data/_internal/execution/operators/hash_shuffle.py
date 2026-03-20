@@ -210,7 +210,10 @@ class ConcatAggregation(ShuffleAggregation):
         result = _combine(blocks)
 
         if self._should_sort and result.num_rows > 0:
-            result = result.sort_by([(k, "ascending") for k in self._key_columns])
+            from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+            sortkey = SortKey(key=list(self._key_columns), descending=False)
+            result = BlockAccessor.for_block(result).sort(sortkey)
 
         yield result
 
