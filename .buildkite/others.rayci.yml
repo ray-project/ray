@@ -49,24 +49,25 @@ steps:
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --production
 
-  - label: ":robot_face: {{matrix}} microcheck test coverage"
+  - label: ":robot_face: {{array.team}} microcheck test coverage"
     tags:
       - skip-on-premerge
       - oss
     if: build.branch == "master"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix linux:__ --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{array.team}} 100 --test-prefix linux:__ --production
       # we use master branch to determine microcheck tests for darwin and windows, because darwin and windows tests do not run on premerge branches
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix darwin:__ --consider-master-branch --production
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
-    matrix:
-      - "core"
-      - "serve"
-      - "data"
-      - "ml"
-      - "rllib"
-      - "ci"
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{array.team}} 100 --test-prefix darwin:__ --consider-master-branch --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{array.team}} 100 --test-prefix windows:__ --consider-master-branch --production
+    array:
+      team:
+        - "core"
+        - "serve"
+        - "data"
+        - "ml"
+        - "rllib"
+        - "ci"
 
   - name: fossa-base
     wanda: ci/docker/fossa.wanda.yaml

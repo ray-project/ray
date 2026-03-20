@@ -22,7 +22,7 @@ steps:
       - ray-core-build
       - ray-dashboard-build
 
-  - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
+  - label: ":kubernetes: chaos {{array.workload}} under {{array.fault}}"
     key: kuberay_tests
     tags:
       - python
@@ -31,18 +31,17 @@ steps:
       - skip-on-premerge
     instance_type: medium
     commands:
-      - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}}
+      - bash ci/k8s/run-chaos-test.sh {{array.fault}} {{array.workload}}
     docker_network: "host"
-    matrix:
-      setup:
-        fault:
-          - "no_fault"
-          - "chaos_network_delay"
-          - "chaos_network_bandwidth"
-        workload:
-          - "test_potato_passer"
-          - "test_streaming_llm"
-          - "test_many_job_submissions"
+    array:
+      fault:
+        - "no_fault"
+        - "chaos_network_delay"
+        - "chaos_network_bandwidth"
+      workload:
+        - "test_potato_passer"
+        - "test_streaming_llm"
+        - "test_many_job_submissions"
     depends_on:
       - manylinux-x86_64
       - forge

@@ -1,17 +1,18 @@
 group: doc
 steps:
   - name: docbuild
-    label: "wanda: docbuild-py{{matrix}}"
+    label: "wanda: docbuild-py{{array.python}}"
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on:
       - oss-ci-base_build-multipy
       - ray-core-build
       - ray-dashboard-build
-    matrix:
-      - "3.10"
+    array:
+      python:
+        - "3.10"
     env:
-      PYTHON: "{{matrix}}"
-      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{matrix}}.lock"
+      PYTHON: "{{array.python}}"
+      REQUIREMENTS_FILE: "python/deplocks/docs/docbuild_depset_py{{array.python}}.lock"
     tags: cibase
 
   - name: docgpubuild
