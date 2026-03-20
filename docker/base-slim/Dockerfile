@@ -33,7 +33,6 @@ APT_PKGS=(
     less
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
