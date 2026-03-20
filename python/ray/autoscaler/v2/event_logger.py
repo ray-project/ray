@@ -5,8 +5,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray._common.observability.autoscaler_event_utils import (
-    build_autoscaler_scheduling_update_rows,
     TERMINATION_CAUSE_REASON_MAP,
+    build_autoscaler_scheduling_update_rows,
 )
 from ray._private.event.event_logger import EventLoggerAdapter
 from ray.autoscaler.v2.utils import ResourceRequestUtil
