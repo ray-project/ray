@@ -335,7 +335,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            topology = self.placement_group_config.get("topology")
+            topology = self._tpu_topology
             if topology:
                 # Create a PG for the multi-host configuration.
                 pg = self._create_tpu_placement_group(name, topology)
