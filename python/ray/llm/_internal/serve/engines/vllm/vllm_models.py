@@ -379,11 +379,7 @@ class VLLMEngineConfig(BaseModelExtended):
         if not is_tpu:
             return None
 
-        topology = None
-        if self.placement_group_config:
-            topology = self.placement_group_config.get("topology")
-        if not topology:
-            topology = self.engine_kwargs.get("topology")
+        topology = (self.placement_group_config or {}).get("topology") or self.engine_kwargs.get("topology")
 
         return topology
 
