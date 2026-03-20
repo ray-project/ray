@@ -47,8 +47,6 @@ PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
 
 std::string PythonRayEvent::GetEntityId() const { return entity_id_; }
 
-bool PythonRayEvent::SupportsMerge() const { return false; }
-
 void PythonRayEvent::Merge(RayEventInterface &&other) {
   RAY_CHECK(false) << "Merge should never be called on PythonRayEvent. "
                    << "The recorder should skip grouping for non-mergeable events.";
