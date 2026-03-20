@@ -210,7 +210,6 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
-            op.update_resource_usage()
             op_usage = op.current_logical_usage()
             op_running_usage = op.running_logical_usage()
             op_pending_usage = op.pending_logical_usage()
@@ -263,6 +262,9 @@ class ResourceManager:
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
+        assert (
+            self._global_usage.is_non_negative()
+        ), f"Global usage should be non-negative, got {self._global_usage}"
         return self._global_usage
 
     def get_global_running_usage(self) -> ExecutionResources:
@@ -296,6 +298,9 @@ class ResourceManager:
             * default_mem_fraction
         )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
+        assert (
+            self._global_limits.is_non_negative()
+        ), f"Global limits should be non-negative, got {self._global_limits}"
         return self._global_limits
 
     def get_op_usage(

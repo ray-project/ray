@@ -207,6 +207,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         return self.visit(expr.expr)
 
     def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
+        if isinstance(expr, PyArrowComputeUDFExpr):
+            args = [self.visit(a) for a in expr.args]
+            return expr.pc_func(*args, *expr.pc_positional, **expr.pc_kwargs)
         raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
 
     def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
@@ -1139,6 +1142,32 @@ class UDFExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class PyArrowComputeUDFExpr(UDFExpr):
+    """A UDFExpr backed by a PyArrow compute function.
+
+    Unlike generic UDFExprs, these can be converted to native
+    ``pyarrow.compute.Expression`` objects, enabling predicate pushdown
+    into file-based datasources (Parquet, CSV, etc.).
+    """
+
+    pc_func: Callable[..., pyarrow.Array] = field(default=None)  # type: ignore[assignment]
+    pc_positional: Tuple[Any, ...] = field(default=())
+    pc_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, PyArrowComputeUDFExpr):
+            return False
+
+        return (
+            super().structurally_equals(other)
+            and self.pc_func is other.pc_func
+            and self.pc_positional == other.pc_positional
+            and self.pc_kwargs == other.pc_kwargs
+        )
+
+
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
     return_dtype: DataType,
@@ -1361,12 +1390,20 @@ def _create_pyarrow_wrapper(
 def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     """Decorator for PyArrow compute functions with automatic format conversion.
 
-    This decorator wraps PyArrow compute functions to automatically convert pandas
+    This decorator wraps arbitrary PyArrow logic to automatically convert pandas
     Series and numpy arrays to PyArrow Arrays, ensuring the function works seamlessly
     regardless of the underlying block format (pandas, arrow, or items).
 
-    Used internally by namespace methods (list, str, struct) that wrap PyArrow
-    compute functions.
+    The resulting UDFExpr is opaque to the optimizer -- it cannot be converted to a
+    native ``pyarrow.compute.Expression`` and therefore will not participate in
+    predicate pushdown. Use this for operations that involve custom logic or that
+    cannot be expressed as a single ``pc.*`` call (e.g., strip with optional
+    characters, cast, list slicing).
+
+    For operations that are a direct 1:1 wrapper around a single ``pc.*`` function,
+    use ``_create_pyarrow_compute_udf`` instead, which produces a
+    :class:`PyArrowComputeUDFExpr` that retains the compute function identity
+    and enables predicate pushdown.
 
     Args:
         return_dtype: The data type of the return value
@@ -1387,15 +1424,35 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 def _create_pyarrow_compute_udf(
     pc_func: Callable[..., pyarrow.Array],
     return_dtype: DataType | None = None,
-) -> Callable[..., "UDFExpr"]:
-    """Create an expression UDF backed by a PyArrow compute function."""
+) -> Callable[..., "PyArrowComputeUDFExpr"]:
+    """Create an expression UDF that is a direct 1:1 wrapper around a ``pc.*`` function.
 
-    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+    Unlike :func:`pyarrow_udf`, the returned :class:`PyArrowComputeUDFExpr` records
+    the original ``pc_func``, positional args, and kwargs.  This allows the optimizer
+    to convert the node into a native ``pyarrow.compute.Expression`` for predicate
+    pushdown into file-based datasources (Parquet, CSV, etc.).
+
+    Use this for operations like ``starts_with``, ``match_regex``, ``ceil``, ``abs``,
+    etc., where the semantics map exactly to a single PyArrow compute call.
+    """
+
+    def wrapper(
+        expr: "Expr", *positional: Any, **kwargs: Any
+    ) -> "PyArrowComputeUDFExpr":
         @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
         def udf(arr: pyarrow.Array) -> pyarrow.Array:
             return pc_func(arr, *positional, **kwargs)
 
-        return udf(expr)
+        udf_expr = udf(expr)
+        return PyArrowComputeUDFExpr(
+            fn=udf_expr.fn,
+            args=udf_expr.args,
+            kwargs=udf_expr.kwargs,
+            data_type=udf_expr.data_type,
+            pc_func=pc_func,
+            pc_positional=positional,
+            pc_kwargs=kwargs,
+        )
 
     return wrapper
 
