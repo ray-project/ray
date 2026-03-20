@@ -36,6 +36,14 @@ message CpuProfilingRequest {
   optional uint32 duration = 3;
   // If using native flag for py-spy
   optional bool native = 4;
+  // Sampling rate in Hz (default 100)
+  optional uint32 rate = 5;
+  // Only include traces holding GIL
+  optional bool gil = 6;
+  // Include idle thread traces
+  optional bool idle = 7;
+  // Don't pause process when sampling
+  optional bool nonblocking = 8;
 }
 
 message CpuProfilingReply {

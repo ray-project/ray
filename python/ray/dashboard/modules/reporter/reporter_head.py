@@ -343,9 +343,14 @@ class ReportHead(SubprocessModule):
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
+        rate = int(req.query.get("rate", 100))
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # py-spy options
+        gil = req.query.get("gil", False) == "1"
+        idle = req.query.get("idle", False) == "1"
+        nonblocking = req.query.get("nonblocking", False) == "1"
         addrs = await self._get_stub_address_by_node_id(NodeID.from_hex(node_id_hex))
         if not addrs:
             raise aiohttp.web.HTTPInternalServerError(
@@ -367,7 +372,14 @@ class ReportHead(SubprocessModule):
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                rate=rate,
+                gil=gil,
+                idle=idle,
+                nonblocking=nonblocking,
             )
         )
 
@@ -393,6 +405,17 @@ class ReportHead(SubprocessModule):
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
+
+        # Handle chrometrace format (JSON) differently
+        if format == "chrometrace":
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+
         return aiohttp.web.Response(
             body=(
                 '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
@@ -504,29 +527,47 @@ class ReportHead(SubprocessModule):
         if duration_s > 60:
             raise ValueError(f"The max duration allowed is 60 seconds: {duration_s}.")
         format = req.query.get("format", "flamegraph")
+        rate = int(req.query.get("rate", 100))
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+        # py-spy options
+        gil = req.query.get("gil", False) == "1"
+        idle = req.query.get("idle", False) == "1"
+        nonblocking = req.query.get("nonblocking", False) == "1"
         logger.info(
             f"Sending CPU profiling request to {build_address(ip, grpc_port)}, pid {pid}, with native={native}"
         )
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
-                pid=pid, duration=duration_s, format=format, native=native
+                pid=pid,
+                duration=duration_s,
+                format=format,
+                native=native,
+                rate=rate,
+                gil=gil,
+                idle=idle,
+                nonblocking=nonblocking,
             )
         )
         if reply.success:
             logger.info(
                 "Returning profiling response, size {}".format(len(reply.output))
             )
-            return aiohttp.web.Response(
-                body=reply.output,
-                headers={
-                    "Content-Type": (
-                        "image/svg+xml" if format == "flamegraph" else "text/plain"
-                    )
-                },
-            )
+            # Determine content type based on format
+            if format == "flamegraph":
+                content_type = "image/svg+xml"
+            elif format == "chrometrace":
+                content_type = "application/json"
+            else:
+                content_type = "text/plain"
+
+            headers = {"Content-Type": content_type}
+            # Add CORS headers for chrometrace to allow Perfetto UI to fetch
+            if format == "chrometrace":
+                headers["Access-Control-Allow-Origin"] = "*"
+
+            return aiohttp.web.Response(body=reply.output, headers=headers)
         else:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
