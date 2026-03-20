@@ -17,6 +17,10 @@ from typing import (
 
 from typing_extensions import override
 
+from python.ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    OpRuntimeMetrics,
+)
+
 if TYPE_CHECKING:
     import pyarrow as pa
 
@@ -34,6 +38,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
+    HashLinkedQueue,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -53,6 +58,7 @@ from ray.data._internal.execution.operators.map_operator import (
     BaseRefBundler,
     MapOperator,
     _map_task,
+    _merge_ref_bundles,
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
@@ -359,30 +365,112 @@ class ActorPoolMapOperator(MapOperator):
                 submitted >= 1
             ), f"Expected at least 1 task launched (launched {submitted})"
 
+    @staticmethod
+    def _dequeue_and_rebundle_by_actor(
+        assignments: List[Tuple[RefBundle, "ActorHandle"]],
+        pending_bundles: List[RefBundle],
+        bundle_queue: "HashLinkedQueue",
+        metrics: OpRuntimeMetrics,
+    ) -> List[Tuple[RefBundle, "ActorHandle"]]:
+        """Dequeue original bundles and rebundle per-block MCF assignments by actor.
+
+        After the MCF solver assigns individual blocks to actors, this groups
+        those assignments by actor, merges blocks into one RefBundle per actor,
+        and dequeues the original bundles from the queue.
+
+        Args:
+            assignments: Per-block (bundle, actor) pairs from the MCF solver.
+            pending_bundles: Original bundles to dequeue from the queue.
+            bundle_queue: The queue holding pending bundles.
+            metrics: Operator metrics for tracking dequeue events.
+
+        Returns:
+            List of (merged_bundle, actor) pairs -- one task per actor.
+        """
+        from collections import OrderedDict
+
+        # Dequeue all original bundles that were disaggregated.
+        for bundle in pending_bundles:
+            bundle_queue.remove(bundle)
+            metrics.on_input_dequeued(bundle, input_index=0)
+
+        # Group per-block assignments by actor, preserving insertion order.
+        actor_blocks: OrderedDict = OrderedDict()
+        for block_bundle, actor in assignments:
+            actor_blocks.setdefault(id(actor), (actor, []))[1].append(block_bundle)
+
+        # One merged bundle per actor.
+        grouped = []
+        for actor, block_bundles in actor_blocks.values():
+            if len(block_bundles) == 1:
+                merged = block_bundles[0]
+            else:
+                merged = _merge_ref_bundles(*block_bundles)
+            grouped.append((merged, actor))
+
+        return grouped
+
     def _try_schedule_tasks_internal(self) -> int:
-        """Try to dispatch tasks from the internal queue. Returns the # of tasks submitted"""
+        """Try to dispatch tasks from the internal queue. Returns the # of tasks submitted.
+
+        When locality is enabled, bundles are disaggregated into per-block
+        bundles so the MCF solver can make block-level assignment decisions.
+        After MCF, blocks assigned to the same actor are rebundled into a
+        single RefBundle and submitted as one task.
+        """
 
         # Collect all pending bundles for batch assignment.
         pending_bundles = list(self._bundle_queue)
         if not pending_bundles:
             return 0
 
-        # Batch-assign bundles to actors via min-cost flow (locality) or
-        # heap-based least-loaded (no locality).
-        assignments = self._actor_pool.select_actors_batch(
-            bundles=pending_bundles,
-            actor_locality_enabled=self._actor_locality_enabled,
-        )
+        if self._actor_locality_enabled:
+            # Disaggregate multi-block bundles into per-block bundles so the
+            # MCF solver sees every block individually.
+            per_block_bundles = []
+            for bundle in pending_bundles:
+                if len(bundle.blocks) == 1:
+                    per_block_bundles.append(bundle)
+                else:
+                    for i, (block_ref, meta) in enumerate(bundle.blocks):
+                        slice = bundle.slices[i] if bundle.slices else None
+                        single = RefBundle(
+                            blocks=((block_ref, meta),),
+                            schema=bundle.schema,
+                            owns_blocks=bundle.owns_blocks,
+                            slices=(slice,) if slice is not None else None,
+                        )
+                        per_block_bundles.append(single)
+
+            assignments = self._actor_pool.select_actors_batch(
+                bundles=per_block_bundles,
+                actor_locality_enabled=True,
+            )
+        else:
+            assignments = self._actor_pool.select_actors_batch(
+                bundles=pending_bundles,
+                actor_locality_enabled=False,
+            )
 
         if not assignments:
             return 0
+
+        if self._actor_locality_enabled:
+            assignments = self._dequeue_and_rebundle_by_actor(
+                assignments,
+                pending_bundles,
+                self._bundle_queue,
+                self._metrics,
+            )
+        else:
+            for bundle, _actor in assignments:
+                self._bundle_queue.remove(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
         from functools import partial
 
         num_submitted_tasks = 0
         for bundle, actor in assignments:
-            self._bundle_queue.remove(bundle)
-            self._metrics.on_input_dequeued(bundle, input_index=0)
             input_blocks = [block for block, _ in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
