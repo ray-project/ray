@@ -56,8 +56,15 @@ class PlacementGroupConfig(BaseModelExtended):
     @model_validator(mode="before")
     @classmethod
     def validate_bundles_exist(cls, values):
-        if isinstance(values, dict) and "bundles" not in values:
-            raise ValueError("placement_group_config must contain 'bundles'")
+        if isinstance(values, dict):
+            has_bundles = "bundles" in values and values["bundles"] is not None
+            # If topology is set, the PG bundles are constructed for the user.
+            has_topology = "topology" in values and values["topology"] is not None
+
+            if not has_bundles and not has_topology:
+                raise ValueError(
+                    "placement_group_config must contain either 'bundles' or 'topology'"
+                )
         return values
 
 
@@ -328,13 +335,18 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            # Use placement_bundles and placement_strategy properties which handle
-            # both custom and default placement group configurations
-            pg = placement_group(
-                bundles=self.placement_bundles,
-                strategy=self.placement_strategy,
-                name=name,
-            )
+            topology = self.placement_group_config.get("topology")
+            if topology:
+                # Create a PG for the multi-host configuration.
+                pg = self._create_tpu_placement_group(name, topology)
+            else:
+                # Use placement_bundles and placement_strategy properties which handle
+                # both custom and default placement group configurations
+                pg = placement_group(
+                    bundles=self.placement_bundles,
+                    strategy=self.placement_strategy,
+                    name=name,
+                )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
         return pg
@@ -359,3 +371,53 @@ class VLLMEngineConfig(BaseModelExtended):
             return gpu_value
 
         return None
+
+    @property
+    def _tpu_topology(self) -> Optional[str]:
+        """Returns the TPU topology string if requested, otherwise None."""
+        is_tpu = self.accelerator_type and "TPU" in str(self.accelerator_type).upper()
+        if not is_tpu:
+            return None
+
+        topology = None
+        if self.placement_group_config:
+            topology = self.placement_group_config.get("topology")
+        if not topology:
+            topology = self.engine_kwargs.get("topology")
+
+        return topology
+
+    def _create_tpu_placement_group(
+        self, name: str, topology: str
+    ) -> Optional[PlacementGroup]:
+        """Provisions a multi-host TPU Slice Placement Group.
+
+        This enables atomic scheduling on TPUs for SPMD workloads by ensuring
+        the requested topology is strictly spread across the physical hosts.
+
+        Args:
+            name: The name prefix for the placement group.
+            topology: The requested TPU topology.
+
+        Returns:
+            PlacementGroup: The created Ray placement group for the TPU slice.
+        """
+        from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
+
+        accel_str = (
+            self.accelerator_type.value
+            if hasattr(self.accelerator_type, "value")
+            else str(self.accelerator_type)
+        )
+        version = get_tpu_version_from_type(accel_str)
+
+        logger.info(
+            f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
+        )
+        slice_pg_wrapper = slice_placement_group(
+            topology=topology,
+            accelerator_version=version,
+            strategy="STRICT_SPREAD",
+            name=name,
+        )
+        return slice_pg_wrapper.placement_group
