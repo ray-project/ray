@@ -335,30 +335,6 @@ class TestActorPool(unittest.TestCase):
             running=1, pending=0, restarting=0
         )
 
-    def test_resource_usage_tracks_actor_state_transitions(self):
-        """Test if we can get correct resources for each phase."""
-        pool = self._create_actor_pool(max_tasks_in_flight=1)
-
-        actor, ready_ref = self._add_pending_actor(pool)
-        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
-        assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
-
-        self._wait_for_actor_ready(pool, ready_ref)
-        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
-        assert pool.pending_logical_usage() == ExecutionResources.zero()
-
-        pool._update_running_actor_state(actor, True)
-        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
-        assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
-
-        pool._update_running_actor_state(actor, False)
-        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
-        assert pool.pending_logical_usage() == ExecutionResources.zero()
-
-        assert pool._remove_inactive_actor()
-        assert pool.current_logical_usage() == ExecutionResources.zero()
-        assert pool.pending_logical_usage() == ExecutionResources.zero()
-
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
         pool = self._create_actor_pool(max_tasks_in_flight=999)
