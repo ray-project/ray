@@ -54,12 +54,10 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   explicit EventAggregatorClientImpl(ClientCallManager &client_call_manager)
       : client_call_manager_(&client_call_manager),
         check_connection_interval_ms_(
-            ::RayConfig::instance()
-                .ray_event_aggregator_check_connection_interval_ms()),
+            ::RayConfig::instance().ray_event_aggregator_check_connection_interval_ms()),
         reconnect_timeout_s_(
             ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s()),
-        grpc_timeout_ms_(
-            ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {}
+        grpc_timeout_ms_(::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {}
 
   /// Constructor with immediate connection.
   ///
@@ -68,12 +66,10 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   EventAggregatorClientImpl(const int port, ClientCallManager &client_call_manager)
       : client_call_manager_(&client_call_manager),
         check_connection_interval_ms_(
-            ::RayConfig::instance()
-                .ray_event_aggregator_check_connection_interval_ms()),
+            ::RayConfig::instance().ray_event_aggregator_check_connection_interval_ms()),
         reconnect_timeout_s_(
             ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s()),
-        grpc_timeout_ms_(
-            ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {
+        grpc_timeout_ms_(::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {
     Connect(port);
   };
 
@@ -98,13 +94,12 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   }
 
   // Use VOID_RETRYABLE_RPC_CLIENT_METHOD for automatic retry with exponential backoff
-  VOID_RETRYABLE_RPC_CLIENT_METHOD(
-      retryable_grpc_client_,
-      rpc::events::EventAggregatorService,
-      AddEvents,
-      grpc_client_,
-      /*method_timeout_ms*/ grpc_timeout_ms_,
-      override)
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   rpc::events::EventAggregatorService,
+                                   AddEvents,
+                                   grpc_client_,
+                                   /*method_timeout_ms*/ grpc_timeout_ms_,
+                                   override)
 
  private:
   // Saved for deferred connection.

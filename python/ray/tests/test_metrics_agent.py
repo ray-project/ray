@@ -336,7 +336,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         dashboard_export_addr,
         config,
     ) = _setup_cluster_for_test
-    enable_ray_event = config.get("enable_ray_event", False) if isinstance(config, dict) else False
+    enable_ray_event = (
+        config.get("enable_ray_event", False) if isinstance(config, dict) else False
+    )
     ray_timeseries = PrometheusTimeseries()
     autoscaler_timeseries = PrometheusTimeseries()
     dashboard_timeseries = PrometheusTimeseries()
@@ -391,9 +393,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # When ray events are enabled, verify event recorder metrics are present.
         if enable_ray_event:
             for metric in _RAY_EVENT_RECORDER_METRICS:
-                assert metric in metric_names, (
-                    f"ray event recorder metric {metric} not in {metric_names}"
-                )
+                assert (
+                    metric in metric_names
+                ), f"ray event recorder metric {metric} not in {metric_names}"
 
         for sample in metric_samples:
             # All Ray metrics have label "Version" and "SessionName".

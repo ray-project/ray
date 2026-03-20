@@ -70,7 +70,8 @@ void RayEventRecorder::StopExportingEvents() {
   }
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
 
-  int64_t flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+  int64_t flush_timeout_ms =
+      RayConfig::instance().task_events_shutdown_flush_timeout_ms();
   absl::Time deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
 
   // ExportEvents() sends one batch at a time. Drain all batches by looping:
