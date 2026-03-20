@@ -4,11 +4,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import anyscale
 from anyscale.job.models import JobConfig, JobState
-from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
-from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
-)
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -69,14 +64,7 @@ class AnyscaleJobManager:
         )
 
         try:
-            if self._uses_new_sdk():
-                self._job_id = self._submit_job_new_sdk(
-                    cmd_to_run, env_vars_for_job, working_dir
-                )
-            else:
-                self._job_id = self._submit_job_legacy(
-                    cmd_to_run, env_vars_for_job, working_dir, upload_path
-                )
+            self._job_id = self._submit_job(cmd_to_run, env_vars_for_job, working_dir)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -90,48 +78,23 @@ class AnyscaleJobManager:
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
-    def _submit_job_legacy(
-        self,
-        cmd_to_run: str,
-        env_vars: Dict[str, str],
-        working_dir: Optional[str] = None,
-        upload_path: Optional[str] = None,
-    ) -> str:
-        """Submit a job using DefaultApi.create_job() and return the job ID."""
-        runtime_env: Dict[str, Any] = {
-            "env_vars": env_vars,
-        }
-        if working_dir:
-            runtime_env["working_dir"] = working_dir
-            if upload_path:
-                runtime_env["upload_path"] = upload_path
-
-        job_request = CreateProductionJob(
-            name=self.cluster_manager.cluster_name,
-            description=f"Smoke test: {self.cluster_manager.smoke_test}",
-            project_id=self.cluster_manager.project_id,
-            config=CreateProductionJobConfig(
-                entrypoint=cmd_to_run,
-                runtime_env=runtime_env,
-                build_id=self.cluster_manager.cluster_env_build_id,
-                compute_config_id=self.cluster_manager.cluster_compute_id,
-                max_retries=0,
-            ),
-        )
-        job_response = DefaultApi.create_job(self._sdk, job_request)
-        return job_response.result.id
-
-    def _submit_job_new_sdk(
+    def _submit_job(
         self,
         cmd_to_run: str,
         env_vars: Dict[str, str],
         working_dir: Optional[str] = None,
     ) -> str:
         """Submit a job using anyscale.job.submit() and return the job ID."""
+        # For the new SDK path, cluster_env_build_id is already an image URI.
+        # For the legacy path, it's a build ID — use the BYOD image instead.
+        if self._uses_new_sdk():
+            image_uri = self.cluster_manager.cluster_env_build_id
+        else:
+            image_uri = self.cluster_manager.test.get_anyscale_byod_image()
         config = JobConfig(
             name=self.cluster_manager.cluster_name,
             entrypoint=cmd_to_run,
-            image_uri=self.cluster_manager.cluster_env_build_id,
+            image_uri=image_uri,
             compute_config=self.cluster_manager.cluster_compute_id,
             env_vars=env_vars,
             working_dir=working_dir,
@@ -177,10 +140,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
-            if self._uses_new_sdk():
-                anyscale.job.terminate(id=self._job_id)
-            else:
-                DefaultApi.terminate_job(self._sdk, self._job_id)
+            anyscale.job.terminate(id=self._job_id)
             logger.info(f"Job {self._job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self._job_id}!"

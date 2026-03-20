@@ -3,14 +3,12 @@ from unittest.mock import patch
 
 import pytest
 from anyscale.job.models import JobState
-from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
 
 from ray_release.anyscale_util import Anyscale
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import JobStartupFailed
 from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
 from ray_release.test import Test
-from ray_release.tests.utils import APIDict
 
 
 class FakeJobStatus:
@@ -23,10 +21,17 @@ class FakeSDK(Anyscale):
         return "fake_project_name"
 
 
+class MockTest(Test):
+    def get_anyscale_byod_image(self) -> str:
+        return "anyscale/ray:nightly-py310-cpu"
+
+
 def _make_job_manager(uses_new_sdk=False):
-    fake_test = Test(
-        name="fake_test",
-        cluster={"byod": {}, "anyscale_sdk_2026": uses_new_sdk},
+    fake_test = MockTest(
+        {
+            "name": "fake_test",
+            "cluster": {"byod": {}, "anyscale_sdk_2026": uses_new_sdk},
+        }
     )
     fake_sdk = FakeSDK()
     cm = ClusterManager(test=fake_test, project_id="fake_project_id", sdk=fake_sdk)
@@ -58,7 +63,7 @@ def test_get_last_logs_long_running_job():
 
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
 def test_submit_job_new_sdk(mock_job):
-    """New SDK path submits via anyscale.job.submit with JobConfig."""
+    """New SDK path uses cluster_env_build_id (image URI) as image_uri."""
     jm = _make_job_manager(uses_new_sdk=True)
     mock_job.submit.return_value = "job_new_123"
 
@@ -75,28 +80,29 @@ def test_submit_job_new_sdk(mock_job):
     assert "FOO" in config.env_vars
 
 
-@patch.object(DefaultApi, "create_job")
-def test_submit_job_legacy(mock_create_job):
-    """Legacy path submits via DefaultApi.create_job."""
+@patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
+def test_submit_job_legacy(mock_job):
+    """Legacy path uses BYOD image as image_uri."""
     jm = _make_job_manager(uses_new_sdk=False)
     jm.cluster_manager.cluster_env_build_id = "bld_legacy_123"
-    mock_create_job.return_value = APIDict(result=APIDict(id="job_legacy_456"))
+    mock_job.submit.return_value = "job_legacy_456"
 
-    jm._run_job("echo hello", {"FOO": "bar"}, upload_path="/tmp/upload")
+    jm._run_job("echo hello", {"FOO": "bar"})
 
     assert jm._job_id == "job_legacy_456"
-    mock_create_job.assert_called_once()
-    job_request = mock_create_job.call_args[0][1]
-    assert job_request.name == "test_cluster_123"
-    assert job_request.config.entrypoint == "echo hello"
-    assert job_request.config.build_id == "bld_legacy_123"
-    assert job_request.config.compute_config_id == "cc_123"
-    assert "FOO" in job_request.config.runtime_env["env_vars"]
+    mock_job.submit.assert_called_once()
+    config = mock_job.submit.call_args[0][0]
+    assert config.name == "test_cluster_123"
+    assert config.entrypoint == "echo hello"
+    # Legacy path uses the BYOD image, not the build ID
+    assert config.image_uri == "anyscale/ray:nightly-py310-cpu"
+    assert config.compute_config == "cc_123"
+    assert "FOO" in config.env_vars
 
 
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
-def test_submit_job_new_sdk_failure_raises_startup_failed(mock_job):
-    """New SDK path wraps exceptions in JobStartupFailed."""
+def test_submit_job_failure_raises_startup_failed(mock_job):
+    """Job submission wraps exceptions in JobStartupFailed."""
     jm = _make_job_manager(uses_new_sdk=True)
     mock_job.submit.side_effect = RuntimeError("API error")
 
@@ -104,38 +110,16 @@ def test_submit_job_new_sdk_failure_raises_startup_failed(mock_job):
         jm._run_job("echo hello", {})
 
 
-@patch.object(DefaultApi, "create_job")
-def test_submit_job_legacy_failure_raises_startup_failed(mock_create_job):
-    """Legacy path wraps exceptions in JobStartupFailed."""
-    jm = _make_job_manager(uses_new_sdk=False)
-    mock_create_job.side_effect = RuntimeError("API error")
-
-    with pytest.raises(JobStartupFailed):
-        jm._run_job("echo hello", {})
-
-
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
-def test_terminate_job_new_sdk(mock_job):
-    """New SDK path terminates via anyscale.job.terminate."""
-    jm = _make_job_manager(uses_new_sdk=True)
-    jm._job_id = "job_123"
-    jm._last_job_result = None  # No terminal state yet
-
-    jm._terminate_job()
-
-    mock_job.terminate.assert_called_once_with(id="job_123")
-
-
-@patch.object(DefaultApi, "terminate_job")
-def test_terminate_job_legacy(mock_terminate):
-    """Legacy path terminates via DefaultApi.terminate_job."""
+def test_terminate_job(mock_job):
+    """Terminate calls anyscale.job.terminate."""
     jm = _make_job_manager(uses_new_sdk=False)
-    jm._job_id = "job_456"
+    jm._job_id = "job_123"
     jm._last_job_result = None
 
     jm._terminate_job()
 
-    mock_terminate.assert_called_once()
+    mock_job.terminate.assert_called_once_with(id="job_123")
 
 
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")

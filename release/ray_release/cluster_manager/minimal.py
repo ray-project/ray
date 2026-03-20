@@ -259,8 +259,6 @@ class MinimalClusterManager(ClusterManager):
 
             time.sleep(1)
 
-        self.cluster_env_build_id = build_id
-
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None
 
