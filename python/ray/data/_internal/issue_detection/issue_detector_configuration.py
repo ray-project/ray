@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import List, Type
 
 from ray.data._internal.issue_detection.detectors import (
-    HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
     HashShuffleAggregatorIssueDetector,
     HashShuffleAggregatorIssueDetectorConfig,
@@ -25,7 +24,9 @@ class IssueDetectorsConfiguration:
     )
     detectors: List[Type[IssueDetector]] = field(
         default_factory=lambda: [
-            HangingExecutionIssueDetector,
+            # FIXME: The hanging detector is disabled because it can block the
+            # scheduling loop.
+            # HangingExecutionIssueDetector,
             HashShuffleAggregatorIssueDetector,
             HighMemoryIssueDetector,
         ]
