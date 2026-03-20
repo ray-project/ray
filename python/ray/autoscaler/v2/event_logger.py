@@ -5,7 +5,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray._common.observability.autoscaler_event_utils import (
-    build_autoscaler_scheduling_update_rows,  # noqa: F401 - re-exported
+    TERMINATION_CAUSE_REASON_MAP,
+    build_autoscaler_scheduling_update_rows,
 )
 from ray._private.event.event_logger import EventLoggerAdapter
 from ray.autoscaler.v2.utils import ResourceRequestUtil
@@ -296,7 +297,7 @@ class AutoscalerEventLogger:
             launch_type_count = defaultdict(int)
             for req in launch_requests:
                 launch_type_count[req.instance_type] += req.count
-            for instance_type, count in launch_type_count.items():
+            for instance_type, count in sorted(launch_type_count.items()):
                 launch_actions.append({"instance_type": instance_type, "count": count})
                 logger.info(f"Adding {count} node(s) of type {instance_type}.")
 
@@ -309,17 +310,9 @@ class AutoscalerEventLogger:
             for req in terminate_requests:
                 termination_by_causes_and_type[(req.cause, req.instance_type)] += 1
 
-            cause_reason_map = {
-                TerminationRequest.Cause.OUTDATED: "outdated",
-                TerminationRequest.Cause.MAX_NUM_NODES: (
-                    "max number of worker nodes reached"
-                ),
-                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE: (
-                    "max number of worker nodes per type reached"
-                ),
-                TerminationRequest.Cause.IDLE: "idle",
-            }
-            for (cause, instance_type), count in termination_by_causes_and_type.items():
+            for (cause, instance_type), count in sorted(
+                termination_by_causes_and_type.items()
+            ):
                 terminate_actions.append(
                     {
                         "cause": cause,
@@ -327,7 +320,7 @@ class AutoscalerEventLogger:
                         "count": count,
                     }
                 )
-                cause_reason = cause_reason_map.get(cause, "unknown")
+                cause_reason = TERMINATION_CAUSE_REASON_MAP.get(cause, "unknown")
                 logger.info(
                     f"Removing {count} nodes of type "
                     f"{instance_type} ({cause_reason})."
@@ -359,6 +352,12 @@ class AutoscalerEventLogger:
                 if label_constraints:
                     entry["label_constraints"] = label_constraints
                 infeasible_resource_dicts.append(entry)
+            infeasible_resource_dicts.sort(
+                key=lambda d: (
+                    d.get("count", 0),
+                    sorted(d.get("resources", {}).items()),
+                )
+            )
 
         # Convert infeasible gang requests, grouping bundles within each gang.
         infeasible_gang_dicts = []
@@ -379,6 +378,7 @@ class AutoscalerEventLogger:
                         "details": gang.details,
                     }
                 )
+            infeasible_gang_dicts.sort(key=lambda d: d.get("details", ""))
 
         # Convert infeasible cluster resource constraints.
         infeasible_constraint_dicts = []
@@ -395,6 +395,9 @@ class AutoscalerEventLogger:
                 infeasible_constraint_dicts.append(
                     {"resource_requests": resource_requests}
                 )
+            infeasible_constraint_dicts.sort(
+                key=lambda d: len(d.get("resource_requests", []))
+            )
 
         payload_hash = hashlib.sha256(
             json.dumps(
