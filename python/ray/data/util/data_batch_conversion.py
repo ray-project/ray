@@ -329,8 +329,11 @@ def _cast_tensor_columns_to_ndarrays(
         for field in arrow_schema:
             if _is_native_tensor_type(field.type) and field.name in df.columns:
                 shape = tuple(field.type.shape)
+                # np.asarray handles both flat numpy arrays (zero-copy) and Python
+                # lists. We need to handle lists as when types_mapper returns None for FixedShapeTensorType,
+                # PyArrow's extension to_pandas_dtype() yields lists not arrays).
                 df[field.name] = [
-                    arr.reshape(shape) if arr is not None else None
+                    np.asarray(arr).reshape(shape) if arr is not None else None
                     for arr in df[field.name]
                 ]
 
