@@ -34,7 +34,6 @@ from benchmark import Benchmark, BenchmarkMetric
 
 import ray
 
-
 # ---------------------------------------------------------------------------
 # UDFs
 # ---------------------------------------------------------------------------
@@ -90,10 +89,8 @@ def build_and_run_pipeline(
     ds = ray.data.range(num_rows)
 
     ds = ds.map_batches(gen_data, batch_size=gen_batch_size)
-    ds._set_name("gen_data")
 
     ds = ds.map_batches(cpu_process, batch_size=cpu_batch_size)
-    ds._set_name("cpu_process")
 
     ds = ds.map_batches(
         FakeGPUInference,
@@ -102,10 +99,8 @@ def build_and_run_pipeline(
         num_gpus=1,
         concurrency=gpu_concurrency,
     )
-    ds._set_name("gpu_inference")
 
     ds = ds.map_batches(consume, batch_size=gpu_batch_size)
-    ds._set_name("consume")
 
     total_rows = 0
     for batch in ds.iter_batches(batch_size=None):
