@@ -1,11 +1,7 @@
-"""
-Minimal Example adapted from https://huggingface.co/docs/transformers/training
-
-Fine-tunes a BERT model using a Yelp review dataset that reports that output accuracy.
-"""
-
 import evaluate
 import numpy as np
+
+# Minimal Example adapted from https://huggingface.co/docs/transformers/training
 from datasets import load_dataset
 from transformers import (
     AutoModelForSequenceClassification,

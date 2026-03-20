@@ -144,15 +144,16 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
-  - title: RL Fine-Tune an LLM using Hugging Face TRL with GRPO
+  - title: RL Post-Train an LLM using HuggingFace TRL with GRPO
     frameworks:
       - transformers
       - trl
     skill_level: intermediate
     use_cases:
       - natural language processing
+      - reinforcement learning
       - rl post-training
-    link: examples/transformers/huggingface_transformer_reinforcement_learning
+    link: examples/transformers/transformer_reinforcement_learning/README
   - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
     frameworks:
       - accelerate

@@ -11,3 +11,5 @@ Colab
 vLLM
 GRPOTrainer
 GRPOConfig
+GRPO
+TRL
