@@ -30,6 +30,21 @@ class ActorPoolScalingRequest:
         return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 
 
+@dataclass(frozen=True)
+class ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
+
+
 @DeveloperAPI
 class AutoscalingActorPool(ABC):
     """Abstract interface of an autoscaling actor pool.
@@ -85,16 +100,6 @@ class AutoscalingActorPool(ABC):
         submitted to the actor pool)."""
         ...
 
-    def num_free_task_slots(self) -> int:
-        """Number of free slots to run tasks.
-
-        This doesn't include task slots for pending actors.
-        """
-        return (
-            self.max_tasks_in_flight_per_actor() * self.num_running_actors()
-            - self.num_tasks_in_flight()
-        )
-
     @abstractmethod
     def scale(self, req: ActorPoolScalingRequest):
         """Applies autoscaling action"""
@@ -107,8 +112,9 @@ class AutoscalingActorPool(ABC):
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
+
         # If there are no running actors, we set the utilization to indicate that the pool should be scaled up immediately.
-        if self.num_running_actors() == 0:
+        if self.current_size() == 0:
             return float("inf")
         else:
             # We compute utilization as a ratio of
@@ -119,8 +125,5 @@ class AutoscalingActorPool(ABC):
             # to queue tasks (to pipeline task execution by overlapping block
             # fetching with the execution of the previous task)
             return self.num_tasks_in_flight() / (
-                self.max_actor_concurrency() * self.num_running_actors()
+                self.max_actor_concurrency() * self.current_size()
             )
-
-    def max_concurrent_tasks(self) -> int:
-        return self.max_actor_concurrency() * self.num_running_actors()

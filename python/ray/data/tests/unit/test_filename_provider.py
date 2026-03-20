@@ -1,65 +1,62 @@
-import pandas as pd
 import pytest
 
-from ray.data.datasource.filename_provider import _DefaultFilenameProvider
+from ray.data.datasource.filename_provider import FilenameProvider
 
 
 @pytest.fixture(params=["csv", None])
 def filename_provider(request):
-    yield _DefaultFilenameProvider(dataset_uuid="", file_format=request.param)
+    yield FilenameProvider(dataset_uuid="", file_format=request.param)
 
 
-def test_default_filename_for_row_is_deterministic(filename_provider):
-    row = {}
-
-    first_filename = filename_provider.get_filename_for_row(
-        row, write_uuid="spam", task_index=0, block_index=0, row_index=0
+def test_default_filename_for_task_includes_task_index(filename_provider):
+    filename_0 = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
     )
-    second_filename = filename_provider.get_filename_for_row(
-        row, write_uuid="spam", task_index=0, block_index=0, row_index=0
+    filename_1 = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=1
     )
+    assert filename_0 != filename_1
+    assert "000000" in filename_0
+    assert "000001" in filename_1
+
+
+def test_default_get_filename_for_task_is_deterministic(filename_provider):
+    """Test the new get_filename_for_task() method is deterministic."""
+
+    first_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
+    )
+    second_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
+    )
+
     assert first_filename == second_filename
 
 
-def test_default_filename_for_block_is_deterministic(filename_provider):
-    block = pd.DataFrame()
-
-    first_filename = filename_provider.get_filename_for_block(
-        block, write_uuid="spam", task_index=0, block_index=0
+def test_default_row_filenames_derived_from_task_are_unique(filename_provider):
+    """Row filenames derived from task filename with block/row index are unique."""
+    task_filename = filename_provider.get_filename_for_task(
+        write_uuid="spam", task_index=0
     )
-    second_filename = filename_provider.get_filename_for_block(
-        block, write_uuid="spam", task_index=0, block_index=0
-    )
-
-    assert first_filename == second_filename
-
-
-def test_default_filename_for_row_is_unique(filename_provider):
-    filenames = [
-        filename_provider.get_filename_for_row(
-            {},
-            write_uuid="spam",
-            task_index=task_index,
-            block_index=block_index,
-            row_index=row_index,
-        )
-        for task_index in range(2)
-        for block_index in range(2)
-        for row_index in range(2)
-    ]
+    filenames = []
+    for block_index in range(2):
+        for row_index in range(4):
+            if "." in task_filename:
+                base, ext = task_filename.rsplit(".", 1)
+                filenames.append(f"{base}_{block_index:06}_{row_index:06}.{ext}")
+            else:
+                filenames.append(f"{task_filename}_{block_index:06}_{row_index:06}")
     assert len(set(filenames)) == len(filenames)
 
 
-def test_default_filename_for_block_is_unique(filename_provider):
+def test_default_get_filename_for_task_is_unique(filename_provider):
+    """Test the new get_filename_for_task() method generates unique filenames."""
     filenames = [
-        filename_provider.get_filename_for_block(
-            pd.DataFrame(),
+        filename_provider.get_filename_for_task(
             write_uuid="spam",
             task_index=task_index,
-            block_index=block_index,
         )
-        for task_index in range(2)
-        for block_index in range(2)
+        for task_index in range(4)
     ]
     assert len(set(filenames)) == len(filenames)
 
