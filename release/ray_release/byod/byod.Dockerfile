@@ -57,6 +57,11 @@ rm -rf /tmp/wrk
 
 "$HOME/anaconda3/bin/pip" install --no-cache-dir -r extra-test-requirements.txt
 
+# Use conda's ssh (not the OS one): LD_LIBRARY_PATH below points at conda's libs,
+# and /usr/bin/ssh would pick up the wrong OpenSSL and error. Therefore, we install
+# conda's ssh.
+"$HOME/anaconda3/bin/conda" install -y -c conda-forge openssh
+
 EOF
 
 # RAY_BACKEND_LOG_JSON=1
