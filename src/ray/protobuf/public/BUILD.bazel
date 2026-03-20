@@ -17,8 +17,6 @@ proto_library(
         ":events_node_lifecycle_event_proto",
         ":events_placement_group_definition_event_proto",
         ":events_placement_group_lifecycle_event_proto",
-        ":events_submission_job_definition_event_proto",
-        ":events_submission_job_lifecycle_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_lifecycle_event_proto",
         "//src/ray/protobuf:events_task_profile_events_proto",
