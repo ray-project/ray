@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
 #include "ray/common/scheduling/scheduling_ids.h"
@@ -102,11 +103,6 @@ class FakeRayletClient : public RayletClientInterface {
       reply.set_rejected(true);
       auto resources_data = reply.mutable_resources_data();
       resources_data->set_node_id(node_id.Binary());
-      resources_data->set_resources_normal_task_changed(true);
-      auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-      normal_task_map[kMemory_ResourceLabel] =
-          static_cast<double>(std::numeric_limits<int>::max());
-      resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
     if (callbacks.size() == 0) {
@@ -153,6 +149,22 @@ class FakeRayletClient : public RayletClientInterface {
       auto callback = drain_raylet_callbacks.front();
       callback(Status::OK(), std::move(reply));
       drain_raylet_callbacks.pop_front();
+      return true;
+    }
+  }
+
+  bool ReplyResizeLocalResourceInstances(
+      const absl::flat_hash_map<std::string, double> &total_resources,
+      const Status &status = Status::OK()) {
+    if (resize_local_resource_instances_callbacks.empty()) {
+      return false;
+    } else {
+      ResizeLocalResourceInstancesReply reply;
+      reply.mutable_total_resources()->insert(total_resources.begin(),
+                                              total_resources.end());
+      auto callback = resize_local_resource_instances_callbacks.front();
+      callback(status, std::move(reply));
+      resize_local_resource_instances_callbacks.pop_front();
       return true;
     }
   }
@@ -268,6 +280,15 @@ class FakeRayletClient : public RayletClientInterface {
     drain_raylet_callbacks.push_back(callback);
   }
 
+  void ResizeLocalResourceInstances(
+      google::protobuf::Map<std::string, double> resources,
+      const ClientCallback<ResizeLocalResourceInstancesReply> &callback) override {
+    last_resize_local_resource_instances_request.clear();
+    last_resize_local_resource_instances_request.insert(resources.begin(),
+                                                        resources.end());
+    resize_local_resource_instances_callbacks.push_back(callback);
+  }
+
   void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
       const ClientCallback<CancelLeasesWithResourceShapesReply> &callback) override {}
@@ -308,7 +329,10 @@ class FakeRayletClient : public RayletClientInterface {
   int num_release_unused_bundles_requested = 0;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
+  absl::flat_hash_map<std::string, double> last_resize_local_resource_instances_request;
   std::list<ClientCallback<DrainRayletReply>> drain_raylet_callbacks = {};
+  std::list<ClientCallback<ResizeLocalResourceInstancesReply>>
+      resize_local_resource_instances_callbacks = {};
   std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};
   std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
