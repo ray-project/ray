@@ -1,7 +1,5 @@
 import time
 
-import anyscale.compute_config
-import anyscale.image
 from anyscale.compute_config.models import ComputeConfig
 from anyscale.sdk.anyscale_client.api.default_api import DefaultApi
 
@@ -63,11 +61,9 @@ class MinimalClusterManager(ClusterManager):
         self.cluster_env_id = create_cluster_env_from_image(
             image=self.test.get_anyscale_byod_image(),
             test_name=self.cluster_env_name,
-            runtime_env=self.test.get_byod_runtime_env(),
-            sdk=self.sdk,
             cluster_env_id=self.cluster_env_id,
             cluster_env_name=self.cluster_env_name,
-            use_new_sdk=self.test.uses_anyscale_sdk_2026(),
+            sdk=self.sdk,
         )
 
     def build_cluster_env(self, timeout: float = 600.0):
@@ -75,7 +71,7 @@ class MinimalClusterManager(ClusterManager):
         assert self.cluster_env_build_id is None
 
         """Poll build status using anyscale.image.get()."""
-        img = anyscale.image.get(name=self.cluster_env_name)
+        img = self.sdk.image.get(name=self.cluster_env_name)
         build_id = img.latest_build_id
         status = (
             str(img.latest_build_status).upper() if img.latest_build_status else None
@@ -91,6 +87,11 @@ class MinimalClusterManager(ClusterManager):
                 f"Link to succeeded cluster env build: "
                 f"{format_link(anyscale_cluster_env_build_url(build_id))}"
             )
+            if img.latest_build_revision is None:
+                raise ClusterEnvBuildError(
+                    f"Build succeeded but revision is missing for "
+                    f"{self.cluster_env_name}"
+                )
             # image_uri for JobConfig: "anyscale/image/{name}:{revision}"
             self.cluster_env_build_id = (
                 f"anyscale/image/{img.name}:{img.latest_build_revision}"
@@ -121,7 +122,7 @@ class MinimalClusterManager(ClusterManager):
                 )
                 next_report = next_report + REPORT_S
 
-            img = anyscale.image.get(name=self.cluster_env_name)
+            img = self.sdk.image.get(name=self.cluster_env_name)
             status = (
                 str(img.latest_build_status).upper()
                 if img.latest_build_status
@@ -136,6 +137,11 @@ class MinimalClusterManager(ClusterManager):
 
             if status == "SUCCEEDED":
                 logger.info("Build succeeded.")
+                if img.latest_build_revision is None:
+                    raise ClusterEnvBuildError(
+                        f"Build succeeded but revision is missing for "
+                        f"{self.cluster_env_name}"
+                    )
                 # image_uri for JobConfig: "anyscale/image/{name}:{revision}"
                 self.cluster_env_build_id = (
                     f"anyscale/image/{img.name}:{img.latest_build_revision}"
@@ -172,10 +178,11 @@ class MinimalClusterManager(ClusterManager):
 
     def _create_cluster_compute_legacy(self, _repeat: bool = True):
         """Create or find a cluster compute using the legacy DefaultApi SDK."""
+        legacy_sdk = self.sdk.legacy_sdk
         paging_token = None
         while not self.cluster_compute_id:
             result = DefaultApi.search_cluster_computes(
-                self.sdk,
+                legacy_sdk,
                 dict(
                     project_id=self.project_id,
                     name=dict(equals=self.cluster_compute_name),
@@ -204,7 +211,7 @@ class MinimalClusterManager(ClusterManager):
             )
             try:
                 result = DefaultApi.create_cluster_compute(
-                    self.sdk,
+                    legacy_sdk,
                     dict(
                         name=self.cluster_compute_name,
                         project_id=self.project_id,
@@ -234,7 +241,9 @@ class MinimalClusterManager(ClusterManager):
 
     def _create_cluster_compute_new_sdk(self, _repeat: bool = True):
         """Create or find a cluster compute using the new anyscale.compute_config API."""
-        result = anyscale.compute_config.list(name=self.cluster_compute_name)
+        # Pagination not needed: names include a content hash (dict_hash),
+        # so >20 versions of the same name is extremely unlikely.
+        result = self.sdk.compute_config.list(name=self.cluster_compute_name)
         for cc in result.results:
             if cc.name.rsplit(":", 1)[0] == self.cluster_compute_name:
                 self.cluster_compute_id = cc.id
@@ -258,10 +267,10 @@ class MinimalClusterManager(ClusterManager):
                 if k in COMPUTE_CONFIG_FIELDS
             }
             config = ComputeConfig(**compute_kwargs)
-            full_name = anyscale.compute_config.create(
+            full_name = self.sdk.compute_config.create(
                 config, name=self.cluster_compute_name
             )
-            version = anyscale.compute_config.get(full_name)
+            version = self.sdk.compute_config.get(full_name)
             self.cluster_compute_id = version.id
         except Exception as e:
             if _repeat:

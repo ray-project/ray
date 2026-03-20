@@ -4,7 +4,7 @@ import re
 import shlex
 import shutil
 import tempfile
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from ray_release.cloud_util import (
     convert_abfss_uri_to_https,
@@ -36,11 +36,7 @@ from ray_release.util import (
     AZURE_CLOUD_STORAGE,
     AZURE_STORAGE_CONTAINER,
     S3_CLOUD_STORAGE,
-    get_anyscale_sdk,
 )
-
-if TYPE_CHECKING:
-    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 TIMEOUT_RETURN_CODE = 124
 
@@ -89,7 +85,6 @@ class AnyscaleJobRunner(CommandRunner):
         cluster_manager: ClusterManager,
         file_manager: JobFileManager,
         working_dir: str,
-        sdk: Optional["AnyscaleSDK"] = None,
         artifact_path: Optional[str] = None,
     ):
         super().__init__(
@@ -97,7 +92,6 @@ class AnyscaleJobRunner(CommandRunner):
             working_dir=working_dir,
         )
         self.file_manager = file_manager
-        self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None

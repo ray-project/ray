@@ -478,9 +478,7 @@ def run_release_test_anyscale(
         cluster_env_id = None
         # If image is provided, create/reuse a custom cluster environment
         if image:
-            cluster_env_id = create_cluster_env_from_image(
-                image, test.get_name(), test.get_byod_runtime_env()
-            )
+            cluster_env_id = create_cluster_env_from_image(image, test.get_name())
             cluster_manager.cluster_env_name = get_custom_cluster_env_name(
                 image, test.get_name()
             )

@@ -1,13 +1,7 @@
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
-
-import anyscale.image
+from typing import Any, Optional
 
 from ray_release.exception import ClusterEnvCreateError
 from ray_release.logger import logger
-
-if TYPE_CHECKING:
-    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-
 
 LAST_LOGS_LENGTH = 100
 
@@ -16,13 +10,16 @@ class Anyscale:
     """
     A wrapper class for latest version of Anyscale SDK.
 
+    Provides lazy-imported access to anyscale.image, anyscale.compute_config,
+    and anyscale.project, as well as the legacy AnyscaleSDK for DefaultApi calls.
+    All imports are deferred to avoid triggering credential lookup at import time.
+
     Methods of this class can be overwritten for testing.
     """
 
     def __init__(self):
-        # We need to late-import Anyscale SDK as merely importing it
-        # will trigger credential lookup on the system.
         self._anyscale_pkg = None
+        self._legacy_sdk = None
 
     def _anyscale(self) -> Any:
         if self._anyscale_pkg is None:
@@ -32,6 +29,25 @@ class Anyscale:
 
         return self._anyscale_pkg
 
+    @property
+    def image(self) -> Any:
+        return self._anyscale().image
+
+    @property
+    def compute_config(self) -> Any:
+        return self._anyscale().compute_config
+
+    @property
+    def legacy_sdk(self) -> Any:
+        """Return a cached AnyscaleSDK instance for legacy DefaultApi calls."""
+        if self._legacy_sdk is None:
+            from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+
+            from ray_release.util import ANYSCALE_HOST
+
+            self._legacy_sdk = AnyscaleSDK(host=str(ANYSCALE_HOST))
+        return self._legacy_sdk
+
     def project_name_by_id(self, project_id: str) -> str:
         return self._anyscale().project.get(project_id).name
 
@@ -40,16 +56,8 @@ class Anyscale:
 the_v2_sdk = Anyscale()
 
 
-def get_project_name(
-    project_id: str, sdk: Optional[Union[Anyscale, "AnyscaleSDK"]] = None
-) -> str:
+def get_project_name(project_id: str, sdk: Optional[Anyscale] = None) -> str:
     sdk = sdk or the_v2_sdk
-
-    if not isinstance(sdk, Anyscale):
-        # Fallback to old SDK if provided.
-        # TODO(aslonnie): remove this once we fully migrate to new SDK.
-        return sdk.get_project(project_id).result.name
-
     return sdk.project_name_by_id(project_id)
 
 
@@ -61,18 +69,18 @@ def get_custom_cluster_env_name(image: str, test_name: str) -> str:
 def create_cluster_env_from_image(
     image: str,
     test_name: str,
-    runtime_env: Dict[str, Any],
-    sdk: Optional["AnyscaleSDK"] = None,
     cluster_env_id: Optional[str] = None,
     cluster_env_name: Optional[str] = None,
-    use_new_sdk: bool = False,
+    sdk: Optional["Anyscale"] = None,
 ) -> str:
     """Register image with anyscale.image APIs and return the cluster env ID."""
+    anyscale_image = (sdk or the_v2_sdk).image
+
     if not cluster_env_name:
         cluster_env_name = get_custom_cluster_env_name(image, test_name)
 
     if not cluster_env_id:
-        for img in anyscale.image.list(name=cluster_env_name):
+        for img in anyscale_image.list(name=cluster_env_name):
             if img.name == cluster_env_name:
                 cluster_env_id = img.id
                 logger.info(f"Cluster env already exists with ID {cluster_env_id}")
@@ -81,15 +89,10 @@ def create_cluster_env_from_image(
     if not cluster_env_id:
         logger.info("Cluster env not found. Creating new one.")
         try:
-            anyscale.image.register(image, name=cluster_env_name, ray_version="nightly")
-            img = anyscale.image.get(name=cluster_env_name)
+            anyscale_image.register(image, name=cluster_env_name, ray_version="nightly")
+            img = anyscale_image.get(name=cluster_env_name)
             cluster_env_id = img.id
         except Exception as e:
-            logger.warning(
-                f"Got exception when trying to create cluster "
-                f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                f"try again..."
-            )
             raise ClusterEnvCreateError("Could not create cluster env.") from e
 
         logger.info(f"Cluster env created with ID {cluster_env_id}")

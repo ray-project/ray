@@ -1,19 +1,16 @@
 import abc
 import copy
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
-from ray_release.anyscale_util import get_project_name
+from ray_release.anyscale_util import Anyscale, get_project_name, the_v2_sdk
 from ray_release.aws import (
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
     add_tags_to_aws_config,
 )
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.test import Test
-from ray_release.util import dict_hash, get_anyscale_sdk
-
-if TYPE_CHECKING:
-    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from ray_release.util import dict_hash
 
 
 class ClusterManager(abc.ABC):
@@ -21,10 +18,10 @@ class ClusterManager(abc.ABC):
         self,
         test: Test,
         project_id: str,
-        sdk: Optional["AnyscaleSDK"] = None,
+        sdk: Optional[Anyscale] = None,
         smoke_test: bool = False,
     ):
-        self.sdk = sdk or get_anyscale_sdk()
+        self.sdk = sdk or the_v2_sdk
 
         self.test = test
         self.smoke_test = smoke_test

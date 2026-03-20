@@ -3,9 +3,9 @@ import sys
 import time
 import unittest
 from typing import Callable
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from ray_release.anyscale_util import create_cluster_env_from_image
+from ray_release.anyscale_util import Anyscale, create_cluster_env_from_image
 from ray_release.cluster_manager.minimal import DefaultApi, MinimalClusterManager
 from ray_release.exception import (
     ClusterComputeCreateError,
@@ -56,6 +56,13 @@ TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
 
 def _fail(*args, **kwargs):
     raise RuntimeError()
+
+
+class FakeAnyscale(Anyscale):
+    """Test fake that avoids credential lookup."""
+
+    def project_name_by_id(self, project_id: str) -> str:
+        return "release_unit_tests"
 
 
 class MockTest(Test):
@@ -113,9 +120,7 @@ def _make_default_api_proxy(sdk):
 class MinimalSessionManagerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.sdk = MockSDK()
-        self.sdk.returns["get_project"] = APIDict(
-            result=APIDict(name="release_unit_tests")
-        )
+        self.sdk.returns["project_name_by_id"] = "release_unit_tests"
 
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
@@ -142,7 +147,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
     def testClusterName(self):
         sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["project_name_by_id"] = "release_unit_tests"
         cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test"}),
             project_id=UNIT_TEST_PROJECT_ID,
@@ -160,7 +165,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
     def testSetClusterEnv(self):
         sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["project_name_by_id"] = "release_unit_tests"
         cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test", "cluster": {"byod": {}}}),
             project_id=UNIT_TEST_PROJECT_ID,
@@ -192,7 +197,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager.create_cluster_compute()
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
+        self.assertEqual(len(self.sdk.call_counter), 2)  # +legacy_sdk access
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailFail(self):
@@ -220,7 +225,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # +legacy_sdk access
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailSucceed(self):
@@ -252,7 +257,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # +legacy_sdk access
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateSucceed(self):
@@ -282,7 +287,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 2)
+        self.assertEqual(len(self.sdk.call_counter), 3)  # +legacy_sdk access
 
         # Test automatic fields
         self.assertEqual(
@@ -294,12 +299,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.cluster_manager.maximum_uptime_minutes,
         )
 
-    @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
-    def testNewSdkFindExisting(self, mock_cc):
-        """New SDK path: find existing compute config."""
-        sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+    def _make_new_sdk_cm(self):
+        sdk = FakeAnyscale()
+        mock_cc = MagicMock()
+        sdk._anyscale_pkg = MagicMock(compute_config=mock_cc)
         cm = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=sdk,
@@ -310,6 +313,12 @@ class MinimalSessionManagerTest(unittest.TestCase):
                 }
             ),
         )
+        return cm, mock_cc
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testNewSdkFindExisting(self):
+        """New SDK path: find existing compute config."""
+        cm, mock_cc = self._make_new_sdk_cm()
         cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
 
         mock_cc.list.return_value = APIDict(
@@ -323,21 +332,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
         mock_cc.create.assert_not_called()
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
-    def testNewSdkCreateSucceed(self, mock_cc):
+    def testNewSdkCreateSucceed(self):
         """New SDK path: no existing, create succeeds."""
-        sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        cm = MinimalClusterManager(
-            project_id=UNIT_TEST_PROJECT_ID,
-            sdk=sdk,
-            test=MockTest(
-                {
-                    "name": "unit_test_new_sdk",
-                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
-                }
-            ),
-        )
+        cm, mock_cc = self._make_new_sdk_cm()
         cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
 
         mock_cc.list.return_value = APIDict(results=[])
@@ -358,21 +355,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertIn("maximum_uptime_minutes", cm.cluster_compute)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.compute_config")
-    def testNewSdkCreateFailFail(self, mock_cc):
+    def testNewSdkCreateFailFail(self):
         """New SDK path: create fails both times."""
-        sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        cm = MinimalClusterManager(
-            project_id=UNIT_TEST_PROJECT_ID,
-            sdk=sdk,
-            test=MockTest(
-                {
-                    "name": "unit_test_new_sdk",
-                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
-                }
-            ),
-        )
+        cm, mock_cc = self._make_new_sdk_cm()
         cm.set_cluster_compute(copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA))
 
         mock_cc.list.return_value = APIDict(results=[])
@@ -444,7 +429,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
     def testClusterComputeExtraTagsNewSchema(self):
         sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk.returns["project_name_by_id"] = "release_unit_tests"
         cluster_manager = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=sdk,
@@ -480,11 +465,10 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
 
 class BuildClusterEnvTest(unittest.TestCase):
-    """Tests for build_cluster_env() which polls anyscale.image.get()."""
+    """Tests for build_cluster_env() which polls sdk.image.get()."""
 
     def _make_cm(self):
-        sdk = MockSDK()
-        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        sdk = FakeAnyscale()
         cm = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=sdk,
@@ -501,9 +485,10 @@ class BuildClusterEnvTest(unittest.TestCase):
         return cm
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildAlreadySucceeded(self, mock_image):
+    def testBuildAlreadySucceeded(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         mock_image.get.return_value = APIDict(
             name="test_image",
             latest_build_id="bld_123",
@@ -515,9 +500,25 @@ class BuildClusterEnvTest(unittest.TestCase):
         mock_image.get.assert_called_once_with(name=cm.cluster_env_name)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildAlreadyFailed(self, mock_image):
+    def testBuildSucceededButNoRevision(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
+        mock_image.get.return_value = APIDict(
+            name="test_image",
+            latest_build_id="bld_123",
+            latest_build_revision=None,
+            latest_build_status="SUCCEEDED",
+        )
+        with self.assertRaisesRegex(ClusterEnvBuildError, "revision is missing"):
+            cm.build_cluster_env(timeout=600)
+        self.assertIsNone(cm.cluster_env_build_id)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testBuildAlreadyFailed(self):
+        cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         mock_image.get.return_value = APIDict(
             latest_build_id="bld_123",
             latest_build_status="FAILED",
@@ -528,9 +529,10 @@ class BuildClusterEnvTest(unittest.TestCase):
         self.assertIsNone(cm.cluster_env_build_id)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildNoBuild(self, mock_image):
+    def testBuildNoBuild(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         mock_image.get.return_value = APIDict(
             latest_build_id=None,
             latest_build_status=None,
@@ -540,9 +542,10 @@ class BuildClusterEnvTest(unittest.TestCase):
             cm.build_cluster_env(timeout=600)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildInProgressThenSucceeds(self, mock_image):
+    def testBuildInProgressThenSucceeds(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         call_count = [0]
 
         def fake_get(name=None):
@@ -567,9 +570,10 @@ class BuildClusterEnvTest(unittest.TestCase):
         self.assertGreaterEqual(mock_image.get.call_count, 4)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildInProgressThenFails(self, mock_image):
+    def testBuildInProgressThenFails(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         call_count = [0]
 
         def fake_get(name=None):
@@ -592,9 +596,10 @@ class BuildClusterEnvTest(unittest.TestCase):
         self.assertIsNone(cm.cluster_env_build_id)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testBuildTimeout(self, mock_image):
+    def testBuildTimeout(self):
         cm = self._make_cm()
+        mock_image = MagicMock()
+        cm.sdk._anyscale_pkg = MagicMock(image=mock_image)
         mock_image.get.return_value = APIDict(
             latest_build_id="bld_123",
             latest_build_status="IN_PROGRESS",
@@ -608,33 +613,37 @@ class BuildClusterEnvTest(unittest.TestCase):
 class CreateClusterEnvTest(unittest.TestCase):
     """Tests for create_cluster_env_from_image() in anyscale_util."""
 
-    @patch("ray_release.anyscale_util.anyscale.image")
-    def testFindExistingEnv(self, mock_image):
+    def _make_sdk(self):
+        sdk = FakeAnyscale()
+        mock_image = MagicMock()
+        sdk._anyscale_pkg = MagicMock(image=mock_image)
+        return sdk, mock_image
+
+    def testFindExistingEnv(self):
+        sdk, mock_image = self._make_sdk()
         mock_image.list.return_value = [
             APIDict(name="my_env", id="env_123"),
         ]
         result = create_cluster_env_from_image(
             image="docker/image:tag",
             test_name="test",
-            runtime_env={},
             cluster_env_name="my_env",
-            use_new_sdk=True,
+            sdk=sdk,
         )
         self.assertEqual(result, "env_123")
         mock_image.list.assert_called_once_with(name="my_env")
         mock_image.register.assert_not_called()
 
-    @patch("ray_release.anyscale_util.anyscale.image")
-    def testCreateEnvSucceed(self, mock_image):
+    def testCreateEnvSucceed(self):
+        sdk, mock_image = self._make_sdk()
         mock_image.list.return_value = []
         mock_image.get.return_value = APIDict(id="new_env_id")
 
         result = create_cluster_env_from_image(
             image="docker/image:tag",
             test_name="test",
-            runtime_env={},
             cluster_env_name="my_env",
-            use_new_sdk=True,
+            sdk=sdk,
         )
         self.assertEqual(result, "new_env_id")
         mock_image.register.assert_called_once_with(
@@ -642,8 +651,8 @@ class CreateClusterEnvTest(unittest.TestCase):
         )
         mock_image.get.assert_called_once_with(name="my_env")
 
-    @patch("ray_release.anyscale_util.anyscale.image")
-    def testCreateEnvFail(self, mock_image):
+    def testCreateEnvFail(self):
+        sdk, mock_image = self._make_sdk()
         mock_image.list.return_value = []
         mock_image.register.side_effect = RuntimeError("API error")
 
@@ -651,21 +660,19 @@ class CreateClusterEnvTest(unittest.TestCase):
             create_cluster_env_from_image(
                 image="docker/image:tag",
                 test_name="test",
-                runtime_env={},
                 cluster_env_name="my_env",
-                use_new_sdk=True,
+                sdk=sdk,
             )
 
-    @patch("ray_release.anyscale_util.anyscale.image")
-    def testExistingIdSkipsList(self, mock_image):
+    def testExistingIdSkipsList(self):
         """When cluster_env_id is already provided, skip listing."""
+        sdk, mock_image = self._make_sdk()
         result = create_cluster_env_from_image(
             image="docker/image:tag",
             test_name="test",
-            runtime_env={},
             cluster_env_id="existing_id",
             cluster_env_name="my_env",
-            use_new_sdk=True,
+            sdk=sdk,
         )
         self.assertEqual(result, "existing_id")
         mock_image.list.assert_not_called()

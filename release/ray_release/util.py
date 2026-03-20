@@ -4,15 +4,12 @@ import json
 import os
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
-
-if TYPE_CHECKING:
-    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 
 class DeferredEnvVar:
@@ -114,20 +111,6 @@ def anyscale_cluster_env_build_url(build_id: str) -> str:
 
 def anyscale_job_url(job_id: str) -> str:
     return f"{ANYSCALE_HOST}/o/anyscale-internal/jobs/{job_id}"
-
-
-_anyscale_sdk = None
-
-
-def get_anyscale_sdk(use_cache: bool = True) -> "AnyscaleSDK":
-    from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
-
-    global _anyscale_sdk
-    if use_cache and _anyscale_sdk:
-        return _anyscale_sdk
-
-    _anyscale_sdk = AnyscaleSDK(host=str(ANYSCALE_HOST))
-    return _anyscale_sdk
 
 
 def exponential_backoff_retry(

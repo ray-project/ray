@@ -77,9 +77,7 @@ class GlueTest(unittest.TestCase):
         self.tempdir = tempfile.mkdtemp()
         self.sdk = MockSDK()
 
-        self.sdk.returns["get_project"] = APIDict(
-            result=APIDict(name="unit_test_project")
-        )
+        self.sdk.returns["project_name_by_id"] = "unit_test_project"
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
@@ -143,14 +141,12 @@ class GlueTest(unittest.TestCase):
                 cluster_manager: ClusterManager,
                 file_manager: JobFileManager,
                 working_dir,
-                sdk=None,
                 artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager,
                     FakeFileManager(cluster_manager),
                     this_tempdir,
-                    sdk=this_sdk,
                     artifact_path=artifact_path,
                 )
                 self.return_dict = this_command_runner_return
@@ -268,7 +264,7 @@ class GlueTest(unittest.TestCase):
                 test=self.test,
                 anyscale_project=self.anyscale_project,
                 result=result,
-                **kwargs
+                **kwargs,
             )
 
     def testInvalidClusterCompute(self):
