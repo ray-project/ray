@@ -21,13 +21,8 @@ class FakeSDK(Anyscale):
         return "fake_project_name"
 
 
-class MockTest(Test):
-    def get_anyscale_byod_image(self) -> str:
-        return "anyscale/ray:nightly-py310-cpu"
-
-
 def _make_job_manager(uses_new_sdk=False):
-    fake_test = MockTest(
+    fake_test = Test(
         {
             "name": "fake_test",
             "cluster": {"byod": {}, "anyscale_sdk_2026": uses_new_sdk},
@@ -38,6 +33,7 @@ def _make_job_manager(uses_new_sdk=False):
     cm.cluster_name = "test_cluster_123"
     cm.cluster_env_name = "test_env"
     cm.cluster_env_build_id = "anyscale/image/test:1"
+    cm.cluster_compute_name = "test_compute_config"
     cm.cluster_compute_id = "cc_123"
     cm.smoke_test = False
     return AnyscaleJobManager(cluster_manager=cm)
@@ -75,16 +71,17 @@ def test_submit_job_new_sdk(mock_job):
     assert config.name == "test_cluster_123"
     assert config.entrypoint == "echo hello"
     assert config.image_uri == "anyscale/image/test:1"
-    assert config.compute_config == "cc_123"
+    assert config.compute_config == "test_compute_config"
     assert config.max_retries == 0
     assert "FOO" in config.env_vars
 
 
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
 def test_submit_job_legacy(mock_job):
-    """Legacy path uses BYOD image as image_uri."""
+    """Legacy path uses {name}:{revision} from build as image_uri."""
     jm = _make_job_manager(uses_new_sdk=False)
-    jm.cluster_manager.cluster_env_build_id = "bld_legacy_123"
+    # Both paths store "{img.name}:{img.latest_build_revision}" in cluster_env_build_id
+    jm.cluster_manager.cluster_env_build_id = "anyscale/image/test_image:3"
     mock_job.submit.return_value = "job_legacy_456"
 
     jm._run_job("echo hello", {"FOO": "bar"})
@@ -94,9 +91,8 @@ def test_submit_job_legacy(mock_job):
     config = mock_job.submit.call_args[0][0]
     assert config.name == "test_cluster_123"
     assert config.entrypoint == "echo hello"
-    # Legacy path uses the BYOD image, not the build ID
-    assert config.image_uri == "anyscale/ray:nightly-py310-cpu"
-    assert config.compute_config == "cc_123"
+    assert config.image_uri == "anyscale/image/test_image:3"
+    assert config.compute_config == "test_compute_config"
     assert "FOO" in config.env_vars
 
 

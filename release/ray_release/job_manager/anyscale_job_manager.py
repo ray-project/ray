@@ -85,17 +85,13 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
     ) -> str:
         """Submit a job using anyscale.job.submit() and return the job ID."""
-        # For the new SDK path, cluster_env_build_id is already an image URI.
-        # For the legacy path, it's a build ID — use the BYOD image instead.
-        if self._uses_new_sdk():
-            image_uri = self.cluster_manager.cluster_env_build_id
-        else:
-            image_uri = self.cluster_manager.test.get_anyscale_byod_image()
+        # cluster_env_build_id stores "anyscale/image/{name}:{revision}"
+        # from anyscale.image.get() after build_cluster_env().
         config = JobConfig(
             name=self.cluster_manager.cluster_name,
             entrypoint=cmd_to_run,
-            image_uri=image_uri,
-            compute_config=self.cluster_manager.cluster_compute_id,
+            image_uri=self.cluster_manager.cluster_env_build_id,
+            compute_config=self.cluster_manager.cluster_compute_name,
             env_vars=env_vars,
             working_dir=working_dir,
             max_retries=0,

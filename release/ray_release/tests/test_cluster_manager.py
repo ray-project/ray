@@ -5,8 +5,6 @@ import unittest
 from typing import Callable
 from unittest.mock import patch
 
-from freezegun import freeze_time
-
 from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.minimal import DefaultApi, MinimalClusterManager
 from ray_release.exception import (
@@ -480,381 +478,9 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.assertEqual(len(instance_tags), 1)
             self.assertIn({"Key": "foo", "Value": "bar"}, instance_tags[0]["Tags"])
 
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testFindCreateClusterEnvExisting(self):
-        # Find existing env and succeed
-        self.cluster_manager.set_cluster_env()
-        self.assertTrue(self.cluster_manager.cluster_env_name)
-        self.assertFalse(self.cluster_manager.cluster_env_id)
-
-        self.sdk.returns["search_cluster_environments"] = APIDict(
-            metadata=APIDict(
-                next_paging_token=None,
-            ),
-            results=[
-                APIDict(
-                    name="no_match",
-                    id="wrong",
-                ),
-                APIDict(name=self.cluster_manager.cluster_env_name, id="correct"),
-            ],
-        )
-        self.cluster_manager.create_cluster_env()
-        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
-        self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testFindCreateClusterEnvFailFail(self):
-        # No existing compute, create new, but fail both times
-        self.cluster_manager.set_cluster_env()
-        self.assertTrue(self.cluster_manager.cluster_env_name)
-        self.assertFalse(self.cluster_manager.cluster_env_id)
-
-        self.sdk.returns["search_cluster_environments"] = APIDict(
-            metadata=APIDict(
-                next_paging_token=None,
-            ),
-            results=[
-                APIDict(
-                    name="no_match",
-                    id="wrong",
-                ),
-            ],
-        )
-        self.sdk.returns["create_byod_cluster_environment"] = fail_always
-        with self.assertRaises(ClusterEnvCreateError):
-            self.cluster_manager.create_cluster_env()
-        # No cluster ID found or created
-        self.assertFalse(self.cluster_manager.cluster_env_id)
-        # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 2)
-        self.assertEqual(self.sdk.call_counter["create_byod_cluster_environment"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testFindCreateClusterEnvFailSucceed(self):
-        # No existing compute, create new, fail once, succeed afterwards
-        self.cluster_manager.set_cluster_env()
-        self.assertTrue(self.cluster_manager.cluster_env_name)
-        self.assertFalse(self.cluster_manager.cluster_env_id)
-
-        self.cluster_manager.cluster_env_id = None
-        self.sdk.reset()
-        self.sdk.returns["search_cluster_environments"] = APIDict(
-            metadata=APIDict(
-                next_paging_token=None,
-            ),
-            results=[
-                APIDict(
-                    name="no_match",
-                    id="wrong",
-                ),
-            ],
-        )
-        self.sdk.returns["create_byod_cluster_environment"] = fail_once(
-            result=APIDict(
-                result=APIDict(
-                    id="correct",
-                )
-            )
-        )
-        self.cluster_manager.create_cluster_env()
-        # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
-        self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 2)
-        self.assertEqual(self.sdk.call_counter["create_byod_cluster_environment"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testFindCreateClusterEnvSucceed(self):
-        # No existing compute, create new, and succeed
-        self.cluster_manager.set_cluster_env()
-        self.assertTrue(self.cluster_manager.cluster_env_name)
-        self.assertFalse(self.cluster_manager.cluster_env_id)
-
-        self.sdk.returns["search_cluster_environments"] = APIDict(
-            metadata=APIDict(
-                next_paging_token=None,
-            ),
-            results=[
-                APIDict(
-                    name="no_match",
-                    id="wrong",
-                ),
-            ],
-        )
-        self.sdk.returns["create_byod_cluster_environment"] = APIDict(
-            result=APIDict(
-                id="correct",
-            )
-        )
-        self.cluster_manager.create_cluster_env()
-        # Both APIs were called twice (retry after fail)
-        self.assertEqual(self.cluster_manager.cluster_env_id, "correct")
-        self.assertEqual(self.sdk.call_counter["search_cluster_environments"], 1)
-        self.assertEqual(self.sdk.call_counter["create_byod_cluster_environment"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterEnvNotFound(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-
-        # Environment build not found
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(results=[])
-        with self.assertRaisesRegex(ClusterEnvBuildError, "No build found"):
-            self.cluster_manager.build_cluster_env(timeout=600)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterEnvPreBuildFailed(self):
-        """Pre-build fails, but is kicked off again."""
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-
-        # Build failed on first lookup
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_failed",
-                    status="failed",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                )
-            ]
-        )
-        self.sdk.returns["create_cluster_environment_build"] = APIDict(
-            result=APIDict(id="new_build_id")
-        )
-        self.sdk.returns["get_build"] = APIDict(
-            result=APIDict(
-                id="build_now_succeeded",
-                status="failed",
-                created_at=0,
-                error_message=None,
-                config_json={},
-            )
-        )
-        with self.assertRaisesRegex(ClusterEnvBuildError, "Cluster env build failed"):
-            self.cluster_manager.build_cluster_env(timeout=600)
-        self.assertFalse(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertEqual(self.sdk.call_counter["create_cluster_environment_build"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 3)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterEnvPreBuildSucceeded(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-        # (Second) build succeeded
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_failed",
-                    status="failed",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                ),
-                APIDict(
-                    id="build_succeeded",
-                    status="succeeded",
-                    created_at=1,
-                    error_message=None,
-                    config_json={},
-                ),
-            ]
-        )
-        self.cluster_manager.build_cluster_env(timeout=600)
-        self.assertTrue(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.cluster_manager.cluster_env_build_id, "build_succeeded")
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterEnvSelectLastBuild(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-        # (Second) build succeeded
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_succeeded",
-                    status="succeeded",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                ),
-                APIDict(
-                    id="build_succeeded_2",
-                    status="succeeded",
-                    created_at=1,
-                    error_message=None,
-                    config_json={},
-                ),
-            ]
-        )
-        self.cluster_manager.build_cluster_env(timeout=600)
-        self.assertTrue(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.cluster_manager.cluster_env_build_id, "build_succeeded_2")
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterBuildFails(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-
-        # Build, but fails after 300 seconds
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_failed",
-                    status="failed",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                ),
-                APIDict(
-                    id="build_succeeded",
-                    status="pending",
-                    created_at=1,
-                    error_message=None,
-                    config_json={},
-                ),
-            ]
-        )
-        with freeze_time() as frozen_time, self.assertRaisesRegex(
-            ClusterEnvBuildError, "Cluster env build failed"
-        ):
-            self.sdk.returns["get_build"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(
-                    result=APIDict(
-                        status="in_progress", error_message=None, config_json={}
-                    )
-                ),
-                after=APIDict(
-                    result=APIDict(status="failed", error_message=None, config_json={})
-                ),
-            )
-            self.cluster_manager.build_cluster_env(timeout=600)
-
-        self.assertFalse(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterEnvBuildTimeout(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-
-        # Build, but timeout after 100 seconds
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_failed",
-                    status="failed",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                ),
-                APIDict(
-                    id="build_succeeded",
-                    status="pending",
-                    created_at=1,
-                    error_message=None,
-                    config_json={},
-                ),
-            ]
-        )
-        with freeze_time() as frozen_time, self.assertRaisesRegex(
-            ClusterEnvBuildTimeout, "Time out when building cluster env"
-        ):
-            self.sdk.returns["get_build"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(
-                    result=APIDict(
-                        status="in_progress", error_message=None, config_json={}
-                    )
-                ),
-                after=APIDict(
-                    result=APIDict(
-                        status="succeeded", error_message=None, config_json={}
-                    )
-                ),
-            )
-            self.cluster_manager.build_cluster_env(timeout=100)
-
-        self.assertFalse(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testBuildClusterBuildSucceed(self):
-        self.cluster_manager.set_cluster_env()
-        self.cluster_manager.cluster_env_id = "correct"
-        # Build, succeed after 300 seconds
-        self.cluster_manager.cluster_env_build_id = None
-        self.sdk.reset()
-        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
-            results=[
-                APIDict(
-                    id="build_failed",
-                    status="failed",
-                    created_at=0,
-                    error_message=None,
-                    config_json={},
-                ),
-                APIDict(
-                    id="build_succeeded",
-                    status="pending",
-                    created_at=1,
-                    error_message=None,
-                    config_json={},
-                ),
-            ]
-        )
-        with freeze_time() as frozen_time:
-            self.sdk.returns["get_build"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(
-                    result=APIDict(
-                        status="in_progress", error_message=None, config_json={}
-                    )
-                ),
-                after=APIDict(
-                    result=APIDict(
-                        status="succeeded", error_message=None, config_json={}
-                    )
-                ),
-            )
-            self.cluster_manager.build_cluster_env(timeout=600)
-
-        self.assertTrue(self.cluster_manager.cluster_env_build_id)
-        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertGreaterEqual(self.sdk.call_counter["get_build"], 9)
-        self.assertEqual(len(self.sdk.call_counter), 2)
-
 
 class NewSdkBuildClusterEnvTest(unittest.TestCase):
-    """Tests for _build_cluster_env_new_sdk() which polls anyscale.image.get()."""
+    """Tests for build_cluster_env() which polls anyscale.image.get()."""
 
     def _make_new_sdk_cm(self):
         sdk = MockSDK()
@@ -879,13 +505,13 @@ class NewSdkBuildClusterEnvTest(unittest.TestCase):
     def testNewSdkBuildAlreadySucceeded(self, mock_image):
         cm = self._make_new_sdk_cm()
         mock_image.get.return_value = APIDict(
+            name="test_image",
             latest_build_id="bld_123",
+            latest_build_revision=3,
             latest_build_status="SUCCEEDED",
-            latest_image_uri="anyscale/image/test:1",
         )
         cm.build_cluster_env(timeout=600)
-        # Stores image URI, not build ID
-        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test:1")
+        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test_image:3")
         mock_image.get.assert_called_once_with(name=cm.cluster_env_name)
 
     @patch("time.sleep", lambda *a, **kw: None)
@@ -923,19 +549,21 @@ class NewSdkBuildClusterEnvTest(unittest.TestCase):
             call_count[0] += 1
             if call_count[0] <= 3:
                 return APIDict(
+                    name="test_image",
                     latest_build_id="bld_123",
+                    latest_build_revision=5,
                     latest_build_status="IN_PROGRESS",
-                    latest_image_uri=None,
                 )
             return APIDict(
+                name="test_image",
                 latest_build_id="bld_123",
+                latest_build_revision=5,
                 latest_build_status="SUCCEEDED",
-                latest_image_uri="anyscale/image/test:2",
             )
 
         mock_image.get.side_effect = fake_get
         cm.build_cluster_env(timeout=600)
-        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test:2")
+        self.assertEqual(cm.cluster_env_build_id, "anyscale/image/test_image:5")
         self.assertGreaterEqual(mock_image.get.call_count, 4)
 
     @patch("time.sleep", lambda *a, **kw: None)
@@ -974,19 +602,6 @@ class NewSdkBuildClusterEnvTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ClusterEnvBuildTimeout, "Time out when building"):
             cm.build_cluster_env(timeout=0)
-        self.assertIsNone(cm.cluster_env_build_id)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale.image")
-    def testNewSdkBuildSucceededButNoImageUri(self, mock_image):
-        cm = self._make_new_sdk_cm()
-        mock_image.get.return_value = APIDict(
-            latest_build_id="bld_123",
-            latest_build_status="SUCCEEDED",
-            latest_image_uri=None,
-        )
-        with self.assertRaisesRegex(ClusterEnvBuildError, "no image URI"):
-            cm.build_cluster_env(timeout=600)
         self.assertIsNone(cm.cluster_env_build_id)
 
 
