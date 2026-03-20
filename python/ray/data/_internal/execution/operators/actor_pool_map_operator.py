@@ -1185,19 +1185,15 @@ class _ActorPool(AutoscalingActorPool):
             else {}
         )
 
-        running = self._running_actors
-        locs_get = locs_priorities.get
-
         # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
         #       and rank[-1] is the lowest)
         return [
             (
                 # Priority/rank of the location (based on the object size).
                 # Defaults to int32 max value (ie no rank)
-                locs_get(state.actor_location, INT32_MAX),
+                locs_priorities.get(state.actor_location, INT32_MAX),
                 # Number of tasks currently in flight at the given actor
                 state.num_tasks_in_flight,
             )
-            for actor in actors
-            for state in (running[actor],)
+            for state in (self._running_actors[actor] for actor in actors)
         ]
