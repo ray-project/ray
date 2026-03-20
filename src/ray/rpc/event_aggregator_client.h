@@ -52,14 +52,28 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   ///
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   explicit EventAggregatorClientImpl(ClientCallManager &client_call_manager)
-      : client_call_manager_(&client_call_manager) {}
+      : client_call_manager_(&client_call_manager),
+        check_connection_interval_ms_(
+            ::RayConfig::instance()
+                .ray_event_aggregator_check_connection_interval_ms()),
+        reconnect_timeout_s_(
+            ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s()),
+        grpc_timeout_ms_(
+            ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {}
 
   /// Constructor with immediate connection.
   ///
   /// \param[in] port Port of the event aggregator server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   EventAggregatorClientImpl(const int port, ClientCallManager &client_call_manager)
-      : client_call_manager_(&client_call_manager) {
+      : client_call_manager_(&client_call_manager),
+        check_connection_interval_ms_(
+            ::RayConfig::instance()
+                .ray_event_aggregator_check_connection_interval_ms()),
+        reconnect_timeout_s_(
+            ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s()),
+        grpc_timeout_ms_(
+            ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms()) {
     Connect(port);
   };
 
@@ -73,11 +87,11 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         client_call_manager_->GetMainService(),
         /*max_pending_requests_bytes=*/std::numeric_limits<uint64_t>::max(),
         /*check_channel_status_interval_milliseconds=*/
-        ::RayConfig::instance().ray_event_aggregator_check_connection_interval_ms(),
+        check_connection_interval_ms_,
         /*server_reconnect_timeout_base_seconds=*/
-        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s(),
+        reconnect_timeout_s_,
         /*server_reconnect_timeout_max_seconds=*/
-        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s() * 2,
+        reconnect_timeout_s_ * 2,
         /*server_unavailable_timeout_callback=*/
         []() { RAY_LOG(WARNING) << "Event aggregator unavailable for extended period"; },
         /*server_name=*/"Event aggregator");
@@ -89,12 +103,16 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
       rpc::events::EventAggregatorService,
       AddEvents,
       grpc_client_,
-      /*method_timeout_ms*/ ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms(),
+      /*method_timeout_ms*/ grpc_timeout_ms_,
       override)
 
  private:
   // Saved for deferred connection.
   ClientCallManager *client_call_manager_;
+  // Config values read once at construction time.
+  int64_t check_connection_interval_ms_;
+  int64_t reconnect_timeout_s_;
+  int64_t grpc_timeout_ms_;
   // The RPC client.
   std::shared_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
   // Retryable client for automatic retry with exponential backoff.

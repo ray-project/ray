@@ -33,6 +33,8 @@ RayEventRecorder::RayEventRecorder(
     : event_aggregator_client_(event_aggregator_client),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
       max_buffer_size_(max_buffer_size),
+      max_batch_size_bytes_(
+          RayConfig::instance().ray_event_recorder_send_batch_size_bytes()),
       metric_source_(metric_source),
       buffer_(max_buffer_size),
       dropped_events_counter_(dropped_events_counter),
@@ -68,8 +70,8 @@ void RayEventRecorder::StopExportingEvents() {
   }
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
 
-  auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
-  auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
+  int64_t flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+  absl::Time deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
 
   // ExportEvents() sends one batch at a time. Drain all batches by looping:
   // wait for in-flight gRPC → check buffer → flush next batch.
@@ -119,8 +121,7 @@ void RayEventRecorder::ExportEvents() {
     return;
   }
 
-  const size_t max_batch_size_bytes =
-      RayConfig::instance().ray_event_recorder_send_batch_size_bytes();
+  const size_t max_batch_size_bytes = max_batch_size_bytes_;
 
   // Group events by entity_id + type (events with same key are merged).
   // Stop grouping when batch size limit is reached.
@@ -132,8 +133,8 @@ void RayEventRecorder::ExportEvents() {
   size_t num_raw_events = 0;
   size_t estimated_batch_size = 0;
   for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++num_raw_events) {
-    auto &event = *it;
-    auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
+    std::unique_ptr<RayEventInterface> &event = *it;
+    RayEventKey key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {
       // New event - check if adding it would exceed batch size
@@ -164,7 +165,7 @@ void RayEventRecorder::ExportEvents() {
 
   // Serialize events and add to request
   rpc::events::AddEventsRequest request;
-  for (auto &event : grouped_events) {
+  for (std::unique_ptr<RayEventInterface> &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
     ray_event.set_node_id(node_id_.Binary());
     *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
@@ -210,7 +211,7 @@ void RayEventRecorder::AddEvents(
     dropped_events_counter_.Record(events_to_remove,
                                    {{"Source", std::string(metric_source_)}});
   }
-  for (auto &event : data_list) {
+  for (std::unique_ptr<RayEventInterface> &event : data_list) {
     buffer_.push_back(std::move(event));
   }
 }

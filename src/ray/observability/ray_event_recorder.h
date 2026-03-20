@@ -67,6 +67,8 @@ class RayEventRecorder : public RayEventRecorderInterface {
 
   // Maximum number of events to store in the buffer (configurable at runtime)
   size_t max_buffer_size_;
+  // Maximum batch size in bytes for a single gRPC send
+  size_t max_batch_size_bytes_;
   std::string_view metric_source_;
   // Bounded queue to store events before sending to the event aggregator.
   // When the queue is full, old events are dropped to make room for new ones.

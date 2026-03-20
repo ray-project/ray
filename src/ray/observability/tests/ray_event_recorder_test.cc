@@ -83,6 +83,20 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     callback(Status::OK(), rpc::events::AddEventsReply{});
   }
 
+  void ReleaseCallbacksWithError() {
+    rpc::ClientCallback<rpc::events::AddEventsReply> callback;
+    {
+      absl::MutexLock lock(&mutex_);
+      if (!pending_callback_) {
+        return;
+      }
+      callback = std::move(*pending_callback_);
+      pending_callback_.reset();
+      hold_callbacks_ = false;
+    }
+    callback(Status::IOError("simulated gRPC failure"), rpc::events::AddEventsReply{});
+  }
+
  private:
   std::vector<rpc::events::RayEvent> recorded_events_ ABSL_GUARDED_BY(mutex_);
   absl::Mutex mutex_;
@@ -495,6 +509,43 @@ TEST_F(RayEventRecorderTest, TestExportSkipsWhenGrpcInProgress) {
             "test_job_id_first");
   EXPECT_EQ(recorded_events[1].driver_job_definition_event().job_id(),
             "test_job_id_second");
+}
+
+TEST_F(RayEventRecorderTest, TestFailedToSendCounter) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Hold callbacks so we can release with error
+  fake_client_->HoldCallbacks();
+
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id");
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+
+  io_service_.run_one();
+
+  // Release callback with error to simulate gRPC failure
+  fake_client_->ReleaseCallbacksWithError();
+
+  // Verify the failed_to_send counter was recorded
+  auto tag_to_value = fake_events_failed_to_send_counter_->GetTagToValue();
+  double total_failed = 0;
+  for (const auto &[tags, value] : tag_to_value) {
+    total_failed += value;
+  }
+  ASSERT_EQ(total_failed, 1);
+
+  // Verify the sent counter was NOT recorded
+  auto sent_tag_to_value = fake_events_sent_counter_->GetTagToValue();
+  ASSERT_TRUE(sent_tag_to_value.empty());
 }
 
 }  // namespace observability

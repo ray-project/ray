@@ -201,18 +201,30 @@ _METRICS.append("ray_health_check_rpc_latency_ms_sum")
 
 @pytest.fixture
 def _setup_cluster_for_test(request, ray_start_cluster):
-    enable_metrics_collection = request.param
+    # Accept either a bool (legacy) or a dict with config options.
+    param = request.param
+    if isinstance(param, bool):
+        param = {"enable_metrics_collection": param}
+    enable_metrics_collection = param.get("enable_metrics_collection", True)
+    enable_ray_event = param.get("enable_ray_event", False)
+
+    system_config = {
+        "metrics_report_interval_ms": 1000,
+        "event_stats_print_interval_ms": 500,
+        "event_stats": True,
+        "enable_metrics_collection": enable_metrics_collection,
+    }
+    if enable_ray_event:
+        system_config["enable_ray_event"] = True
+    if "ray_event_recorder_max_queued_events" in param:
+        system_config["ray_event_recorder_max_queued_events"] = param[
+            "ray_event_recorder_max_queued_events"
+        ]
+
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "event_stats_print_interval_ms": 500,
-            "event_stats": True,
-            "enable_metrics_collection": enable_metrics_collection,
-        }
-    )
+    cluster.add_node(_system_config=system_config)
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -287,7 +299,7 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     dashboard_export_addr = build_address(
         cluster.head_node.node_ip_address, DASHBOARD_METRIC_PORT
     )
-    yield prom_addresses, autoscaler_export_addr, dashboard_export_addr
+    yield prom_addresses, autoscaler_export_addr, dashboard_export_addr, param
 
     ray.get(worker_should_exit.send.remote())
     ray.get(obj_refs)
@@ -295,15 +307,36 @@ def _setup_cluster_for_test(request, ray_start_cluster):
     cluster.shutdown()
 
 
+# Metrics emitted by the ray event recorder (GCS server).
+_RAY_EVENT_RECORDER_METRICS = [
+    "ray_ray_event_recorder_events_sent_total",
+    "ray_ray_event_recorder_dropped_events_total",
+]
+
+
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
-@pytest.mark.parametrize("_setup_cluster_for_test", [True], indirect=True)
+@pytest.mark.parametrize(
+    "_setup_cluster_for_test",
+    [
+        True,
+        {
+            "enable_metrics_collection": True,
+            "enable_ray_event": True,
+            # Tiny buffer to force event drops
+            "ray_event_recorder_max_queued_events": 1,
+        },
+    ],
+    indirect=True,
+)
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 30
     (
         prom_addresses,
         autoscaler_export_addr,
         dashboard_export_addr,
+        config,
     ) = _setup_cluster_for_test
+    enable_ray_event = config.get("enable_ray_event", False) if isinstance(config, dict) else False
     ray_timeseries = PrometheusTimeseries()
     autoscaler_timeseries = PrometheusTimeseries()
     dashboard_timeseries = PrometheusTimeseries()
@@ -354,6 +387,13 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure metrics are recorded.
         for metric in _METRICS:
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
+
+        # When ray events are enabled, verify event recorder metrics are present.
+        if enable_ray_event:
+            for metric in _RAY_EVENT_RECORDER_METRICS:
+                assert metric in metric_names, (
+                    f"ray event recorder metric {metric} not in {metric_names}"
+                )
 
         for sample in metric_samples:
             # All Ray metrics have label "Version" and "SessionName".
