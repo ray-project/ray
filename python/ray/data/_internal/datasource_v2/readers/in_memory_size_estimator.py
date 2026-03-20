@@ -7,8 +7,10 @@ from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockAccessor, BlockColumn
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI(stability="alpha")
 class InMemorySizeEstimator(ABC):
     @abstractmethod
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.array:
@@ -27,6 +29,7 @@ class InMemorySizeEstimator(ABC):
         ...
 
 
+@DeveloperAPI(stability="alpha")
 class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
     """Estimates in-memory sizes by reading files.
 

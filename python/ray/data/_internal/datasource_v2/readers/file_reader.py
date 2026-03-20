@@ -6,8 +6,10 @@ from pyarrow.fs import FileSystem
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI(stability="alpha")
 class FileReader(Reader[FileManifest]):
     """Reader for file-based sources.
 
