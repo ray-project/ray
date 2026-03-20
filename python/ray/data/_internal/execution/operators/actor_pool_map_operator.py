@@ -883,7 +883,7 @@ class _ActorPool(AutoscalingActorPool):
 
             for _ in range(target_num_actors):
                 actor, ready_ref, resource_usage = self._create_actor()
-                self.add_pending_actor(actor, ready_ref, resource_usage)
+                self._add_pending_actor(actor, ready_ref, resource_usage)
 
             # Capture last scale up timestamp
             self._last_upscaled_at = time.time()
@@ -1028,10 +1028,12 @@ class _ActorPool(AutoscalingActorPool):
             ), actor_state
             if not running_actor_state.is_restarting:
                 self._num_restarting_actors += 1
+                self._set_actor_is_pending(actor, True)
                 running_actor_state.is_restarting = True
         else:
             if running_actor_state.is_restarting:
                 self._num_restarting_actors -= 1
+                self._set_actor_is_pending(actor, False)
                 running_actor_state.is_restarting = False
         return running_actor_state
 
