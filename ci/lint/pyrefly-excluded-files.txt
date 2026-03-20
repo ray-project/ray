@@ -343,3 +343,9 @@ python/ray/data/tests/util.py
 python/ray/data/util/data_batch_conversion.py
 python/ray/data/util/expression_utils.py
 python/ray/data/util/torch_utils.py
+python/ray/data/tests/test_gpu_shuffle.py
+python/ray/data/tests/datasource/test_mongo.py
+python/ray/data/tests/datasource/test_kafka.py
+python/ray/data/_internal/gpu_shuffle/rapidsmpf_backend.py
+python/ray/data/_internal/gpu_shuffle/hash_shuffle.py
+python/ray/data/_internal/execution/bundle_queue/base.py
