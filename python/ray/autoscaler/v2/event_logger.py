@@ -432,6 +432,8 @@ class AutoscalerEventLogger:
             self._last_scaling_decision_hash = payload_hash
         except Exception:
             logger.exception("Failed to emit AutoscalerScalingDecisionEvent.")
+            self._last_scaling_decision_hash = ""
+            raise
 
     def _emit_config_definition_event(
         self,
@@ -475,6 +477,7 @@ class AutoscalerEventLogger:
             self._ray_event_publisher.publish(event)
         except Exception:
             logger.exception("Failed to emit AutoscalerConfigDefinitionEvent.")
+            raise
 
     def _emit_node_provisioning_event(
         self,
@@ -531,3 +534,4 @@ class AutoscalerEventLogger:
             self._ray_event_publisher.publish(event)
         except Exception:
             logger.exception("Failed to emit AutoscalerNodeProvisioningEvent.")
+            raise
