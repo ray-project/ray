@@ -731,6 +731,118 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(len(self.sdk.call_counter), 2)
 
 
+class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
+    """Tests for compute config creation using the anyscale.compute_config API."""
+
+    def setUp(self) -> None:
+        self.sdk = MockSDK()
+        self.sdk.returns["get_project"] = APIDict(
+            result=APIDict(name="release_unit_tests")
+        )
+
+        self.cluster_compute = TEST_CLUSTER_COMPUTE_NEW_SCHEMA
+
+        self.cluster_manager = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=self.sdk,
+            test=MockTest(
+                {
+                    "name": f"unit_test__{self.__class__.__name__}",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        self.sdk.reset()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale")
+    def testFindExistingComputeConfig(self, mock_anyscale):
+        """Find existing compute config via anyscale.compute_config.get."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        mock_anyscale.compute_config.get.return_value = APIDict(
+            id="existing_id", name="test:1", config=None
+        )
+
+        self.cluster_manager.create_cluster_compute()
+
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "existing_id")
+        mock_anyscale.compute_config.get.assert_called_once_with(
+            self.cluster_manager.cluster_compute_name
+        )
+        mock_anyscale.compute_config.create.assert_not_called()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale")
+    def testCreateComputeConfigSucceed(self, mock_anyscale):
+        """Compute config not found, create new, and succeed."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        # get: first call raises (not found), second call returns version
+        mock_anyscale.compute_config.get.side_effect = [
+            Exception("not found"),
+            APIDict(id="new_id", name="test:1", config=None),
+        ]
+        mock_anyscale.compute_config.create.return_value = "test:1"
+
+        self.cluster_manager.create_cluster_compute()
+
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "new_id")
+        mock_anyscale.compute_config.create.assert_called_once()
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 2)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale")
+    def testCreateComputeConfigCreateFailFail(self, mock_anyscale):
+        """Compute config not found, create fails both times."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        # get always raises (not found)
+        mock_anyscale.compute_config.get.side_effect = Exception("not found")
+        # create always fails
+        mock_anyscale.compute_config.create.side_effect = Exception("create failed")
+
+        with self.assertRaises(ClusterComputeCreateError):
+            self.cluster_manager.create_cluster_compute()
+
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+        # get called once per attempt (lookup), create called once per attempt
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 2)
+        self.assertEqual(mock_anyscale.compute_config.create.call_count, 2)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    @patch("ray_release.cluster_manager.minimal.anyscale")
+    def testCreateComputeConfigCreateFailSucceed(self, mock_anyscale):
+        """Compute config not found, create fails once, succeeds on retry."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        # get: raises on lookups (attempts 1 and 2), succeeds on post-create fetch
+        mock_anyscale.compute_config.get.side_effect = [
+            Exception("not found"),  # attempt 1: lookup
+            Exception("not found"),  # attempt 2: lookup
+            APIDict(id="new_id", name="test:1", config=None),  # attempt 2: post-create
+        ]
+        # create: fails once, then succeeds
+        mock_anyscale.compute_config.create.side_effect = [
+            Exception("create failed"),
+            "test:1",
+        ]
+
+        self.cluster_manager.create_cluster_compute()
+
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "new_id")
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 3)
+        self.assertEqual(mock_anyscale.compute_config.create.call_count, 2)
+
+
 if __name__ == "__main__":
     import pytest
 

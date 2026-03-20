@@ -56,6 +56,18 @@ NEW_COMPUTE_CONFIG_KEYS = {
     "worker_nodes",
     "advanced_instance_config",
 }
+# All fields accepted by the anyscale.compute_config.models.ComputeConfig
+# dataclass. Used to filter the cluster compute dict before constructing the
+# model (to strip keys like idle_termination_minutes that are not part of it).
+COMPUTE_CONFIG_MODEL_FIELDS = NEW_COMPUTE_CONFIG_KEYS | {
+    "cloud_resource",
+    "min_resources",
+    "max_resources",
+    "zones",
+    "enable_cross_zone_scaling",
+    "flags",
+    "auto_select_worker_config",
+}
 LEGACY_COMPUTE_CONFIG_KEYS = {
     "aws",
     "cloud_id",
