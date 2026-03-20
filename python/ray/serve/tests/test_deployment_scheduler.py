@@ -744,21 +744,18 @@ class TestScaleDownReplicaSelection:
         }
 
     @staticmethod
-    def _wait_for_upscale_or_downscale(
-        app_name: str, deployment_name: str, timeout: int = 30
+    def _wait_for_upscale(
+        expected_num_replicas: int,
+        handle,
+        timeout: int = 30,
     ):
-        def check_upscale_or_downscale():
-            deployment_info = (
-                serve.status().applications[app_name].deployments[deployment_name]
-            )
-            return deployment_info.status in [
-                DeploymentStatus.DOWNSCALING,
-                DeploymentStatus.UPSCALING,
-            ]
+        replica_tag_set = set()
 
-        wait_for_condition(
-            check_upscale_or_downscale, timeout=timeout, retry_interval_ms=10
-        )
+        def check_new_replica():
+            replica_tag_set.add(handle.get_info.remote().result()["replica_tag"])
+            return len(replica_tag_set) == expected_num_replicas
+
+        wait_for_condition(check_new_replica, timeout=timeout, retry_interval_ms=50)
 
     @staticmethod
     def _wait_until_min_replica(
@@ -787,8 +784,11 @@ class TestScaleDownReplicaSelection:
     ):
         @serve.deployment(name=deployment_name)
         class TestDeployment:
-            async def get_node_id(self):
-                return ray.get_runtime_context().get_node_id()
+            async def get_info(self):
+                return {
+                    "node_id": ray.get_runtime_context().get_node_id(),
+                    "replica_tag": serve.get_replica_context().replica_tag,
+                }
 
         return serve.run(
             TestDeployment.options(
@@ -849,14 +849,14 @@ class TestScaleDownReplicaSelection:
             primary_node_id = primary_node.node_id
 
             # The first replica is always the fallback node
-            assert handle.get_node_id.remote().result() == fallback_node_id
+            assert handle.get_info.remote().result()["node_id"] == fallback_node_id
 
             # After calling the deployment will scale up
             # resulting in some replicas on the fallback node and some replicas on the primary node.
             # After some time, the deployment will scale down to min replica.
-            self._wait_for_upscale_or_downscale(
-                app_name=app_name,
-                deployment_name=deployment_name,
+            self._wait_for_upscale(
+                expected_num_replicas=num_fallback_replicas + num_match_replicas,
+                handle=handle,
                 timeout=30,
             )
             self._wait_until_min_replica(
@@ -867,7 +867,7 @@ class TestScaleDownReplicaSelection:
             )
             # Replica on the fallback node should be removed first
             # so the remaining replica should be on the primary node.
-            assert handle.get_node_id.remote().result() == primary_node_id
+            assert handle.get_info.remote().result()["node_id"] == primary_node_id
         finally:
             serve.shutdown()
 
@@ -915,13 +915,13 @@ class TestScaleDownReplicaSelection:
             second_node_id = second_node.node_id
 
             # The first replica is always the first node
-            assert handle.get_node_id.remote().result() == first_node_id
+            assert handle.get_info.remote().result()["node_id"] == first_node_id
             # After calling the deployment will scale up
             # resulting in some replicas on the first node and some replicas on the second node.
             # After some time, the deployment will scale down.
-            self._wait_for_upscale_or_downscale(
-                app_name=app_name,
-                deployment_name=deployment_name,
+            self._wait_for_upscale(
+                expected_num_replicas=3,
+                handle=handle,
                 timeout=30,
             )
             self._wait_until_min_replica(
@@ -933,7 +933,7 @@ class TestScaleDownReplicaSelection:
             # Replica on the first node should be removed first.
             # Because the first node has only 1 replica.
             # So the remaining replica(s) should be on the 2nd node.
-            assert handle.get_node_id.remote().result() == second_node_id
+            assert handle.get_info.remote().result()["node_id"] == second_node_id
         finally:
             serve.shutdown()
 
@@ -968,14 +968,14 @@ class TestScaleDownReplicaSelection:
             cluster.wait_for_nodes()
 
             # The first replica is always the head node
-            assert handle.get_node_id.remote().result() == head_node_id
+            assert handle.get_info.remote().result()["node_id"] == head_node_id
 
             # After calling the deployment will scale up
             # resulting in some replicas on the head node and some replicas on the new node.
             # After some time, the deployment will scale down to min replica.
-            self._wait_for_upscale_or_downscale(
-                app_name=app_name,
-                deployment_name=deployment_name,
+            self._wait_for_upscale(
+                expected_num_replicas=3,
+                handle=handle,
                 timeout=30,
             )
             self._wait_until_min_replica(
@@ -986,7 +986,7 @@ class TestScaleDownReplicaSelection:
             )
             # Even though the head node had 1 replica compared to 2 replicas on the worker node
             # the remaining replica should still be onthe head node.
-            assert handle.get_node_id.remote().result() == head_node_id
+            assert handle.get_info.remote().result()["node_id"] == head_node_id
         finally:
             serve.shutdown()
 
