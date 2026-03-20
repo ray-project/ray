@@ -85,18 +85,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         util = actor_pool.get_pool_util()
 
         if util >= self._actor_pool_scaling_up_threshold:
-            # Skip scaling up if the current free task slots can handle all pending work.
-            if _estimate_expected_tasks(
-                op_state
-            ) <= _estimate_total_available_task_slots(actor_pool):
-                return ActorPoolScalingRequest.no_op(
-                    reason="enough free task slots to consume the existing inputs"
-                )
-
             # Do not scale up if either
             #   - Actor Pool is at max size already
             #   - Op is throttled (ie exceeding allocated resource quota)
-            elif actor_pool.current_size() >= actor_pool.max_size():
+            if actor_pool.current_size() >= actor_pool.max_size():
                 return ActorPoolScalingRequest.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
                 return ActorPoolScalingRequest.no_op(
