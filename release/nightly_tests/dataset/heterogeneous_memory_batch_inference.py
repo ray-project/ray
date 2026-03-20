@@ -33,6 +33,8 @@ import numpy as np
 from benchmark import Benchmark, BenchmarkMetric
 
 import ray
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data.datasource import Datasink
 
 # ---------------------------------------------------------------------------
 # UDFs
@@ -69,9 +71,13 @@ class FakeGPUInference:
         return batch
 
 
-def consume(batch):
-    """Terminal op: discard data."""
-    return {"n": [len(batch["prediction"])]}
+class NullDatasink(Datasink):
+    """Datasink that discards all data."""
+
+    def write(self, blocks, ctx: TaskContext):
+        # Use this empty loop to drain the generator.
+        for _ in blocks:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -100,13 +106,8 @@ def build_and_run_pipeline(
         concurrency=gpu_concurrency,
     )
 
-    ds = ds.map_batches(consume, batch_size=gpu_batch_size)
-
-    total_rows = 0
-    for batch in ds.iter_batches(batch_size=None):
-        total_rows += sum(batch["n"])
-
-    return total_rows
+    result = ds.write_datasink(NullDatasink())
+    return result.num_rows
 
 
 # ---------------------------------------------------------------------------
