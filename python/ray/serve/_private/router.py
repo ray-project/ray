@@ -964,6 +964,11 @@ class AsyncioRouter:
                 )
                 return result
 
+            # Request was rejected by the replica. Cancel the result so that
+            # done callbacks run. Without this, same-loop gRPC
+            # streaming results never finalize and the counter leaks.
+            result.cancel()
+
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
             # currently no `await` statements between getting the ref and returning,
