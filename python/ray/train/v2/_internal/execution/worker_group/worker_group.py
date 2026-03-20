@@ -995,12 +995,13 @@ class WorkerGroup(ExecutionGroup):
         # Group workers by local world i.e. (node) or (node, replica group).
         local_world_to_workers = collections.defaultdict(list)
         if replica_group_size is not None:
-            group_to_node_ips = collections.defaultdict(list)
+            # Use OrderedDict for OrderedSet
+            group_to_node_ips = collections.defaultdict(collections.OrderedDict)
             for idx, worker in enumerate(workers):
                 group_idx = idx // replica_group_size
                 key = (worker.metadata.node_ip, group_idx)
                 local_world_to_workers[key].append(worker)
-                group_to_node_ips[group_idx].append(worker.metadata.node_ip)
+                group_to_node_ips[group_idx][worker.metadata.node_ip] = 0  # dummy value
         else:
             for worker in workers:
                 local_world_to_workers[worker.metadata.node_ip].append(worker)
@@ -1010,7 +1011,7 @@ class WorkerGroup(ExecutionGroup):
             if replica_group_size is not None:
                 group_idx = world_rank // replica_group_size
                 key = (worker.metadata.node_ip, group_idx)
-                node_ips = group_to_node_ips[group_idx]
+                node_ips = list(group_to_node_ips[group_idx].keys())
             else:
                 key = worker.metadata.node_ip
             peers = local_world_to_workers[key]
