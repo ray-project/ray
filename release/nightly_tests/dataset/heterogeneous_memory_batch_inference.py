@@ -12,6 +12,18 @@ nodes' local object store is full. This benchmark exercises that scenario.
 
 Pipeline: range -> gen_data -> cpu_process -> gpu_inference -> write
 All UDFs are fake (sleep-based). Inference is the bottleneck.
+
+Data size:
+  - 400k rows x ~1 MB/row = ~400 GB total
+  - Per CPU task: 1024 rows x 1 MB = ~1 GB
+  - Per GPU task: 256 rows x 1 MB = ~256 MB
+
+Cluster (heterogeneous_memory_compute.yaml):
+  - 1 head node: m5.2xlarge (8 vCPUs, 32 GiB, no tasks scheduled)
+  - 10 CPU workers: m5.2xlarge (8 vCPUs, 32 GiB, ~12 GiB object store each)
+  - 2 GPU workers: r5.4xlarge (128 GiB, ~48 GiB object store each, 4 logical
+    GPUs, 0 CPUs — only GPU tasks scheduled here)
+  - Total object store: ~216 GiB (120 GiB CPU + 96 GiB GPU)
 """
 
 import argparse
