@@ -592,9 +592,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     len(write_returns),
                 )
             except Exception as e:
-                logger.warning(
-                    "[on_write_complete] Failed to load checkpoint results: %s", e
-                )
+                raise RuntimeError(
+                    "Failed to load checkpoint results; aborting commit to avoid data loss."
+                ) from e
 
         valid_results = [
             r
