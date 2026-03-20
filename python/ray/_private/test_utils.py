@@ -1333,7 +1333,7 @@ class ResourceKillerActor:
                     logger.error(
                         f"Failed to kill resource {to_kill}, may retry later. Error: {result}"
                     )
-                else:
+                elif result is True:
                     logger.info(f"Successfully killed resource: {to_kill}")
                     self.killed.add(to_kill)
 
@@ -1353,11 +1353,11 @@ class ResourceKillerActor:
         """
         raise NotImplementedError
 
-    async def _kill_resource(self, *args: Hashable):
+    async def _kill_resource(self, *args: Hashable) -> bool:
         """Implemented by subclasses to kill resources.
 
-        Should raise an exception if killing the resource failed, in which case it may
-        be retried.
+        The method should return False or raise an exception if killing the resource
+        failed, in which case it may be retried.
         """
         raise NotImplementedError
 
@@ -1409,8 +1409,11 @@ class RayletKiller(NodeKillerBase):
     async def _kill_resource(
         self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
     ):
-        if node_to_kill_port is not None:
-            self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+        if node_to_kill_port is None:
+            return False
+
+        self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+        return True
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
@@ -1434,8 +1437,11 @@ class EC2InstanceTerminator(NodeKillerBase):
     async def _kill_resource(
         self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
     ):
-        if node_to_kill_ip is not None:
-            _terminate_ec2_instance(node_to_kill_ip)
+        if node_to_kill_ip is None:
+            return False
+
+        _terminate_ec2_instance(node_to_kill_ip)
+        return True
 
 
 @ray.remote(num_cpus=0)
@@ -1454,6 +1460,7 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         # Anyscale should then terminate it shortly after without updating
         # the drain deadline.
         _execute_command_on_node("ray stop --force", node_to_kill_ip)
+        return True
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1534,22 +1541,24 @@ class WorkerKillerActor(ResourceKillerActor):
         process_to_kill_pid: int,
         process_to_kill_node_id: str,
     ):
-        if process_to_kill_pid is not None:
+        if process_to_kill_pid is None:
+            return False
 
-            @ray.remote
-            def kill_process(pid: int):
-                proc = psutil.Process(pid)
-                proc.kill()
+        @ray.remote
+        def kill_process(pid: int):
+            proc = psutil.Process(pid)
+            proc.kill()
 
-            scheduling_strategy = (
-                ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                    node_id=process_to_kill_node_id,
-                    soft=False,
-                )
+        scheduling_strategy = (
+            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=process_to_kill_node_id,
+                soft=False,
             )
-            await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
-                process_to_kill_pid
-            )
+        )
+        await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+            process_to_kill_pid
+        )
+        return True
 
 
 def get_and_run_resource_killer(
