@@ -1363,27 +1363,20 @@ class ResourceKillerActor:
 
     async def stop_run(self):
         was_running = self.is_running
-        if was_running:
-            self._cleanup()
-
         self.is_running = False
         return was_running
 
-    async def get_killed_nodes(self) -> Set[Any]:
+    async def get_killed_nodes(self) -> Set[Hashable]:
         """Get the set of nodes that were killed."""
         await self.done
         return self.killed.copy()
 
-    def _cleanup(self):
-        """Cleanup any resources created by the killer.
-
-        Overriding this method is optional.
-        """
-        pass
-
 
 class NodeKillerBase(ResourceKillerActor):
     async def _find_resources_to_kill(self) -> List[Tuple[str, str, str]]:
+        def _resource_from_node_info(n: Dict) -> Tuple[str, str, str]:
+            return (n["NodeID"], n["NodeManagerAddress"], n["NodeManagerPort"])
+
         nodes_to_kill = []
         while not nodes_to_kill and self.is_running:
             worker_nodes = [
@@ -1391,7 +1384,7 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"]
                 and (node["NodeID"] != self.head_node_id)
-                and (node["NodeID"] not in self.killed)
+                and (_resource_from_node_info(node) not in self.killed)
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), worker_nodes))
@@ -1406,13 +1399,7 @@ class NodeKillerBase(ResourceKillerActor):
 
             # Collect nodes to kill, limited by batch size.
             for candidate in candidates[: self.batch_size_to_kill]:
-                nodes_to_kill.append(
-                    (
-                        candidate["NodeID"],
-                        candidate["NodeManagerAddress"],
-                        candidate["NodeManagerPort"],
-                    )
-                )
+                nodes_to_kill.append(_resource_from_node_info(candidate))
 
         return nodes_to_kill
 
@@ -1492,13 +1479,6 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
             raise e
 
         assert is_accepted, "Drain node request was rejected"
-
-    def _cleanup(self):
-        for thread in self._kill_threads.copy():
-            thread.join()
-            self._kill_threads.remove(thread)
-
-        assert not self._kill_threads
 
 
 @ray.remote(num_cpus=0)
