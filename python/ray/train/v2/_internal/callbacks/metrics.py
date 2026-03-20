@@ -34,7 +34,7 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
             TrainControllerStateType.INITIALIZING
         )
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Shutdown metrics before controller shuts down."""
         for metric in self._metrics.values():
             metric.reset()

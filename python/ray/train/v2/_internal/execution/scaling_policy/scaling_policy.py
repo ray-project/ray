@@ -165,7 +165,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
         self._send_resource_request()
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Cancel the resource request when the controller shuts down."""
         self._cancel_resource_request()
 

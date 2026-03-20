@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -420,7 +421,7 @@ def test_request_and_clear():
         assert_resource_request_called_with()
 
     # Test cancel_request is called when the controller is shutting down.
-    policy.before_controller_shutdown()
+    asyncio.run(policy.before_controller_shutdown())
     mock_coordinator.cancel_request.remote.assert_called_once()
 
 

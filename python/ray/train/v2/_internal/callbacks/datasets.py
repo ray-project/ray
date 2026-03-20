@@ -169,7 +169,7 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     # ControllerCallback
     # --------------------------
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         try:
             ray.get(self._shutdown_refs, timeout=5)
         except GetTimeoutError:

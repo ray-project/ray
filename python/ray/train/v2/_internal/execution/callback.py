@@ -109,7 +109,7 @@ class ControllerCallback(RayTrainCallback):
         """
         return None
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Called before `TrainController.run` exits,
         after the control loop has exited."""
         pass
