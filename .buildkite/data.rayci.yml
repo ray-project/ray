@@ -68,17 +68,14 @@ steps:
     tags: cibase
 
   # type check
-  # FIXME: The PR that added pyrefly was out of sync with the main branch. Since we made
-  # changes to the codebase since then, there are a few files that aren't ignored and
-  # causing the type check to fail on master.
-  # - label: ":python: pyrefly type check"
-  #   tags:
-  #     - data
-  #   instance_type: small
-  #   commands:
-  #     - bash ci/lint/pyrefly-check.sh
-  #   depends_on: data9build-multipy
-  #   job_env: data9build-py3.10
+  - label: ":python: pyrefly type check"
+    tags:
+      - data
+    instance_type: small
+    commands:
+      - bash ci/lint/pyrefly-check.sh
+    depends_on: data9build-multipy
+    job_env: data9build-py3.10
 
   # tests
   - label: ":database: data: arrow v9 tests"
