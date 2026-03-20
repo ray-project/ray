@@ -825,9 +825,7 @@ python/ray/dashboard/modules/dashboard_sdk.py
     DOC103: Function `get_job_submission_client_cluster_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_use_tls: Optional[bool], cookies: Optional[Dict[str, Any]], headers: Optional[Dict[str, Any]], metadata: Optional[Dict[str, Any]]].
 --------------------
 python/ray/dashboard/modules/event/event_head.py
-    DOC101: Function `_list_cluster_events_impl`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `_list_cluster_events_impl`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `_list_cluster_events_impl`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [all_events: , executor: ThreadPoolExecutor, option: ListApiOptions].
 --------------------
 python/ray/dashboard/modules/event/event_utils.py
     DOC107: Function `monitor_events`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
