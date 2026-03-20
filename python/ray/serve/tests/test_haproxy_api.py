@@ -222,6 +222,9 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                     ServerConfig(name="api_server1", host="127.0.0.1", port=8001),
                     ServerConfig(name="api_server2", host="127.0.0.1", port=8002),
                 ],
+                fallback_server=ServerConfig(
+                    name="api_fallback_server", host="127.0.0.1", port=8500
+                ),
             ),
             "web_backend": BackendConfig(
                 name="web_backend",
@@ -335,6 +338,8 @@ backend api_backend
     # Servers in this backend
     server api_server1 127.0.0.1:8001 check
     server api_server2 127.0.0.1:8002 check
+    # Fallback to head node's Serve proxy when no ingress replicas are available
+    server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
     log global
     balance leastconn
@@ -1604,6 +1609,57 @@ async def test_404_error_message(haproxy_api_cleanup):
         assert (
             "Ping http://.../-/routes for available routes" in response.text
         ), f"Error message should contain routes hint. Got: {response.text}"
+
+
+@pytest.mark.asyncio
+async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
+    """Test that HAProxy starts successfully with tcp_nodelay enabled."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        config = HAProxyConfig(
+            http_options=HTTPOptions(
+                host="127.0.0.1",
+                port=8000,
+                keep_alive_timeout_s=58,
+            ),
+            stats_port=8404,
+            pass_health_checks=True,
+            socket_path=socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+            tcp_nodelay=True,
+        )
+
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=config_file_path,
+        )
+
+        haproxy_api_cleanup(api)
+
+        await api.start()
+
+        assert api._proc is not None, "HAProxy process should exist"
+        assert api._is_running(), "HAProxy should be running"
+
+        # Verify config file contains the tcp_nodelay directive
+        with open(config_file_path, "r") as f:
+            config_content = f.read()
+            assert (
+                "option http-no-delay" in config_content
+            ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
+
+        await api.stop()
 
 
 if __name__ == "__main__":

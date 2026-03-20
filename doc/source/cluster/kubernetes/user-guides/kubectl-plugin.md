@@ -209,6 +209,7 @@ You can submit a RayJob without specifying a YAML file. The command generates a 
 | worker memory                                 | 4Gi                            |
 | worker GPU                                    | 0                              |
 | TTL to clean up RayClsuter after job finished | 0                              |
+| Deadline before RayJob reaches Running        | 0                              |
 
 ```text
 $ kubectl ray job submit --name rayjob-sample --working-dir . -- python sample_code.py

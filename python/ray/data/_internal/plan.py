@@ -398,7 +398,10 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.infer_metadata().input_files
+        input_files = self._logical_plan.dag.infer_metadata().input_files
+        if input_files is None:
+            return None
+        return list(set(input_files))
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -441,7 +444,7 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -519,6 +522,7 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
+                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()

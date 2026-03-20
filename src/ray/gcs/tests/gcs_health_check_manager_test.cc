@@ -139,10 +139,10 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
   }
 
   instrumented_io_context io_service;
-  std::shared_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;
   ray::observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;
+  std::shared_ptr<gcs::GcsHealthCheckManager> health_check;
   const int64_t initial_delay_ms = 100;
   const int64_t timeout_ms = 10;
   const int64_t period_ms = 10;
