@@ -44,6 +44,9 @@ config = LLMConfig(
     model_loading_config={
         "model_id": "microsoft/Phi-tiny-MoE-instruct"
     },
+    deployment_config={
+        "num_replicas": 2
+    },
     engine_kwargs={
         "data_parallel_size": 2,  # Number of DP replicas
         "tensor_parallel_size": 1,  # TP size per replica
