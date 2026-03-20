@@ -1,3 +1,18 @@
+## My Fork — Harshad Khetpal (DevOps / MLOps Engineer)
+
+I use this fork of Ray for **distributed ML training and large-scale data processing** on Kubernetes. Ray clusters handle hyperparameter sweeps, distributed training, and parallel data pipelines.
+
+My Setup
+---------
+- KubeRay operator for native Kubernetes Ray cluster management
+- Ray Tune for distributed hyperparameter optimization across GPU node pools
+- Ray Data for scalable data preprocessing pipelines feeding training jobs
+- Autoscaler configured for cost-optimized spot/preemptible instance usage
+
+Why I forked this
+------------------
+Experimenting with custom Ray Serve deployments for low-latency model serving and exploring Ray AIR for unified training + serving pipelines.
+
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=master
