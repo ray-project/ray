@@ -793,6 +793,7 @@ class DeploymentBroadcastResponse:
     def _ensure_scheduled(self) -> concurrent.futures.Future:
         """Schedule the coroutine on the router's loop exactly once."""
         if self._scheduled_future is None:
+            assert self._loop is not None, "Cannot schedule without an event loop."
             self._scheduled_future = asyncio.run_coroutine_threadsafe(
                 self._coro, self._loop
             )
@@ -834,6 +835,7 @@ class DeploymentBroadcastResponse:
             else:
                 # No event loop (local testing mode).
                 self._replica_results = await self._coro
+        assert self._replica_results is not None
         return self._replica_results
 
     def results(
