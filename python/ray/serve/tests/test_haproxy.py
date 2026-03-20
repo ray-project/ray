@@ -816,7 +816,6 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
             s.settimeout(5)
             s.connect(SOCKET_PATH)
             s.sendall(f"set server {backend}/{server} state {state}\n".encode())
-            s.recv(4096)  # Read response
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
