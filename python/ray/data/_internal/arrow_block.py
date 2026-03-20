@@ -271,6 +271,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas as pd
 
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
         ctx = DataContext.get_current()
 
         # types_mapper preserves Arrow dtypes through the pandas round-trip:
@@ -284,10 +286,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return None
             return pd.ArrowDtype(t)
 
-        return self._table.to_pandas(
+        df = self._table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
             types_mapper=_types_mapper,
         )
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
+        return df
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
