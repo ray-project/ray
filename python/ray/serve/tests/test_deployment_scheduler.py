@@ -804,8 +804,8 @@ class TestScaleDownReplicaSelection:
     def test_downscale_fallback_node(self, ray_cluster):
         cluster = ray_cluster
 
-        primary_label = {"region": "us-west"}
-        fallback_label = {"region": "us-east"}
+        primary_label = {"type": "primary"}
+        fallback_label = {"type": "fallback"}
 
         ray_actor_options = {
             "num_cpus": 0.25,
@@ -817,6 +817,7 @@ class TestScaleDownReplicaSelection:
         num_match_replicas = 2
 
         cluster.add_node(num_cpus=0)
+        cluster.wait_for_nodes()
         fallback_node = cluster.add_node(
             num_cpus=1,
             labels=fallback_label,
@@ -876,7 +877,8 @@ class TestScaleDownReplicaSelection:
     def test_downscale_prefers_nodes_with_fewer_total_replicas(self, ray_cluster):
         cluster = ray_cluster
         cluster.add_node(num_cpus=0)
-        primary_label = {"region": "us-south"}
+        cluster.wait_for_nodes()
+        primary_label = {"type": "primary"}
         first_node = cluster.add_node(
             num_cpus=1,
             labels=primary_label,
