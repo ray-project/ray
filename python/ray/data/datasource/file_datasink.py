@@ -18,7 +18,7 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
-    _DefaultFilenameProvider,
+    _split_base_and_ext,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI
@@ -61,7 +61,7 @@ class _FileDatasink(Datasink[None]):
             open_stream_args = {}
 
         if filename_provider is None:
-            filename_provider = _DefaultFilenameProvider(
+            filename_provider = FilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
@@ -215,14 +215,13 @@ class RowBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
+        task_filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME],
+            ctx.task_idx,
+        )
+        base, ext = _split_base_and_ext(task_filename)
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
-            filename = self.filename_provider.get_filename_for_row(
-                row,
-                ctx.kwargs[WRITE_UUID_KWARG_NAME],
-                ctx.task_idx,
-                block_index,
-                row_index,
-            )
+            filename = f"{base}_{block_index:06}_{row_index:06}{ext}"
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
 
@@ -273,8 +272,8 @@ class BlockBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        filename = self.filename_provider.get_filename_for_block(
-            block, ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_path = posixpath.join(self.path, filename)
 
