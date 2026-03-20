@@ -10,7 +10,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import timeit
 import traceback
@@ -1325,10 +1324,15 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            results = await asyncio.gather(*[self._kill_resource(*to_kill) for to_kill in to_kills], return_exceptions=True)
+            results = await asyncio.gather(
+                *[self._kill_resource(*to_kill) for to_kill in to_kills],
+                return_exceptions=True,
+            )
             for to_kill, result in zip(to_kills, results):
                 if isinstance(result, Exception):
-                    logger.error(f"Failed to kill resource {to_kill}, may retry later. Error: {result}")
+                    logger.error(
+                        f"Failed to kill resource {to_kill}, may retry later. Error: {result}"
+                    )
                 else:
                     logger.info(f"Successfully killed resource: {to_kill}")
                     self.killed.add(to_kill)
@@ -1415,7 +1419,9 @@ class NodeKillerBase(ResourceKillerActor):
 
 @ray.remote(num_cpus=0)
 class RayletKiller(NodeKillerBase):
-    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
         if node_to_kill_port is not None:
             self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
 
@@ -1438,7 +1444,9 @@ class RayletKiller(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminator(NodeKillerBase):
-    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
         if node_to_kill_ip is not None:
             _terminate_ec2_instance(node_to_kill_ip)
 
@@ -1449,7 +1457,9 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
         super().__init__(*args, **kwargs)
         self._grace_period_s = grace_period_s
 
-    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
         self._drain_node(node_id)
         await asyncio.sleep(self._grace_period_s)
         # Anyscale extends the drain deadline if you shut down the instance
@@ -1539,7 +1549,10 @@ class WorkerKillerActor(ResourceKillerActor):
         return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
     async def _kill_resource(
-        self, process_to_kill_task_id: str, process_to_kill_pid: int, process_to_kill_node_id: str
+        self,
+        process_to_kill_task_id: str,
+        process_to_kill_pid: int,
+        process_to_kill_node_id: str,
     ):
         if process_to_kill_pid is not None:
 
