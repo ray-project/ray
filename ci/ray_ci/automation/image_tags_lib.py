@@ -12,34 +12,13 @@ from ci.ray_ci.automation.crane_lib import (
 )
 from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import GPU_PLATFORM
+from ci.ray_ci.supported_images import format_platform_tag
 
 logger = logging.getLogger(__name__)
 
 
 class ImageTagsError(Exception):
     """Error raised when image tag operations fail."""
-
-
-def format_platform_tag(platform: str) -> str:
-    """
-    Format platform as -cpu, -tpu, or shortened CUDA version.
-
-    Examples:
-        cpu -> -cpu
-        tpu -> -tpu
-        cu12.1.1-cudnn8 -> -cu121
-        cu12.3.2-cudnn9 -> -cu123
-    """
-    if platform == "cpu":
-        return "-cpu"
-    if platform == "tpu":
-        return "-tpu"
-    # cu12.3.2-cudnn9 -> -cu123
-    platform_base = platform.split("-", 1)[0]
-    parts = platform_base.split(".")
-    if len(parts) < 2:
-        raise ImageTagsError(f"Unrecognized GPU platform format: {platform}")
-    return f"-{parts[0]}{parts[1]}"
 
 
 def format_python_tag(python_version: str) -> str:

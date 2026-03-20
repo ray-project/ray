@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
+from ci.ray_ci.supported_images import build_platform_reverse_map
+
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import Test
@@ -126,6 +128,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
+def _sanitize_array_value(value: str) -> str:
+    """Strip dots and dashes from a value to match rayci array key suffix format."""
+    return value.replace(".", "").replace("-", "")
+
+
 def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     """Get the base image build step for a job that depends on it."""
     config = get_global_config()
@@ -133,12 +140,37 @@ def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
     image_name = image_repository.split("/")[-1]
     if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return "forge"
-    if image_name == "ray-ml":
-        return config["release_image_step_ray_ml"]
-    elif image_name == "ray-llm":
-        return config["release_image_step_ray_llm"]
+
+    # Parse python version and tag_suffix from base_image tag.
+    # Tag format: {build_id}-py{version}-{tag_suffix}
+    tag = base_image.split(":")[-1]
+    parts = tag.split("-")
+    py_idx = next((i for i, p in enumerate(parts) if p.startswith("py")), None)
+    if py_idx is not None and py_idx + 1 < len(parts):
+        python_version = parts[py_idx][2:]  # e.g., "310"
+        tag_suffix = parts[py_idx + 1]  # e.g., "cpu", "cu128"
     else:
-        return config["release_image_step_ray"]
+        python_version = None
+        tag_suffix = None
+
+    if image_name == "ray-ml":
+        # ray-ml publish step only has a python dimension (no platform dimension)
+        base_key = config["release_image_step_ray_ml"]
+        return f"{base_key}--python{python_version}"
+    elif image_name == "ray-llm":
+        base_key = config["release_image_step_ray_llm"]
+    else:
+        base_key = config["release_image_step_ray"]
+
+    platform_map = build_platform_reverse_map()
+    if tag_suffix is None or tag_suffix not in platform_map:
+        raise ValueError(
+            f"Unknown tag_suffix '{tag_suffix}' for {image_name} image. "
+            f"Known suffixes: {sorted(platform_map.keys())}"
+        )
+    platform = platform_map[tag_suffix]
+    sanitized_platform = _sanitize_array_value(platform)
+    return f"{base_key}--platform{sanitized_platform}-python{python_version}"
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:

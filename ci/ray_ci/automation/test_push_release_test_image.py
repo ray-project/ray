@@ -3,7 +3,6 @@ import sys
 import pytest
 
 from ci.ray_ci.automation.image_tags_lib import (
-    format_platform_tag,
     format_python_tag,
 )
 from ci.ray_ci.automation.push_release_test_image import ReleaseTestImagePushContext
@@ -44,22 +43,6 @@ class TestFormatPythonTag:
     )
     def test_format_python_tag(self, python_version, expected):
         assert format_python_tag(python_version) == expected
-
-
-class TestFormatPlatformTag:
-    @pytest.mark.parametrize(
-        ("platform", "expected"),
-        [
-            ("cpu", "-cpu"),
-            ("cu11.7.1-cudnn8", "-cu117"),
-            ("cu11.8.0-cudnn8", "-cu118"),
-            ("cu12.1.1-cudnn8", "-cu121"),
-            ("cu12.3.2-cudnn9", "-cu123"),
-            ("cu12.8.1-cudnn", "-cu128"),
-        ],
-    )
-    def test_format_platform_tag(self, platform, expected):
-        assert format_platform_tag(platform) == expected
 
 
 class TestWandaImageName:

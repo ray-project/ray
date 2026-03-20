@@ -188,27 +188,61 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
 
 
 def test_get_prerequisite_step():
-    config = get_global_config()
+    ecr = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
+    # ray-ml: returns config value as-is (hardcoded suffixed key)
     assert (
         get_prerequisite_step(
-            "ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base"
+            f"{ecr}/ray-ml:abc123-py310-gpu",
+            f"{ecr}/ray-ml:abc123-py310-gpu",
         )
-        == config["release_image_step_ray_ml"]
+        == "anyscalemlbuild--python310"
     )
+    # ray-llm: constructs suffixed key
     assert (
         get_prerequisite_step(
-            "ray-project/ray-llm:abc123-custom", "ray-project/ray-llm:abc123-base"
+            f"{ecr}/ray-llm:abc123-py311-cu128",
+            f"{ecr}/ray-llm:abc123-py311-cu128",
         )
-        == config["release_image_step_ray_llm"]
+        == "anyscalellmbuild--platformcu1281cudnn-python311"
     )
+    # ray-llm: cu130 variant
     assert (
         get_prerequisite_step(
-            "ray-project/ray:abc123-custom", "ray-project/ray:abc123-base"
+            f"{ecr}/ray-llm:abc123-py312-cu130",
+            f"{ecr}/ray-llm:abc123-py312-cu130",
         )
-        == config["release_image_step_ray"]
+        == "anyscalellmbuild--platformcu1300cudnn-python312"
     )
+    # ray: constructs suffixed key for cpu
     assert (
-        get_prerequisite_step("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base")
+        get_prerequisite_step(
+            f"{ecr}/ray:abc123-py310-cpu",
+            f"{ecr}/ray:abc123-py310-cpu",
+        )
+        == "anyscalebuild--platformcpu-python310"
+    )
+    # ray: constructs suffixed key for cuda
+    assert (
+        get_prerequisite_step(
+            f"{ecr}/ray:abc123-py312-cu123",
+            f"{ecr}/ray:abc123-py312-cu123",
+        )
+        == "anyscalebuild--platformcu1232cudnn9-python312"
+    )
+    # ray: cu130 variant
+    assert (
+        get_prerequisite_step(
+            f"{ecr}/ray:abc123-py312-cu130",
+            f"{ecr}/ray:abc123-py312-cu130",
+        )
+        == "anyscalebuild--platformcu1300cudnn-python312"
+    )
+    # anyscale base image: returns forge
+    assert (
+        get_prerequisite_step(
+            "anyscale/ray:abc123-custom",
+            "anyscale/ray:abc123-base",
+        )
         == "forge"
     )
 

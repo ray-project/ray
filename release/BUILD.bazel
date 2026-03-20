@@ -501,6 +501,7 @@ py_library(
         ":test_automation",
         ":util",
         ":wheels",
+        "//ci/ray_ci:supported_images",
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
         bk_require("azure-storage-blob"),

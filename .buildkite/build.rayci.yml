@@ -1,18 +1,19 @@
 group: build
 steps:
-  - label: ":arrow_up: upload: wheel py{{matrix}} (x86_64)"
+  - label: ":arrow_up: upload: wheel py{{array.python}} (x86_64)"
     key: linux_wheels_upload
     instance_type: small
     commands:
       - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
-        --wanda-image-name=ray-wheel-py{{matrix}}
+        --wanda-image-name=ray-wheel-py{{array.python}}
       - ./ci/build/copy_build_artifacts.sh wheel
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
-      - "3.14"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+        - "3.14"
     depends_on:
       - ray-wheel-build
       - forge
@@ -81,16 +82,17 @@ steps:
     job_env: manylinux-x86_64
 
   - name: ray-image-cpu-build
-    label: "wanda: ray py{{matrix}} cpu (x86_64)"
+    label: "wanda: ray py{{array.python}} cpu (x86_64)"
     wanda: ci/docker/ray-image-cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -101,16 +103,17 @@ steps:
       - raycpubase
 
   - name: ray-image-tpu-build
-    label: "wanda: ray py{{matrix}} tpu (x86_64)"
+    label: "wanda: ray py{{array.python}} tpu (x86_64)"
     wanda: ci/docker/ray-image-tpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -136,29 +139,28 @@ steps:
       - forge
 
   - name: ray-image-cuda-build
-    label: "wanda: ray py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    label: "wanda: ray py{{array.python}} cu{{array.cuda}} (x86_64)"
     wanda: ci/docker/ray-image-cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        cuda:
-          - "11.7.1-cudnn8"
-          - "11.8.0-cudnn8"
-          - "12.1.1-cudnn8"
-          - "12.3.2-cudnn9"
-          - "12.4.1-cudnn"
-          - "12.5.1-cudnn"
-          - "12.6.3-cudnn"
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+      cuda:
+        - "11.7.1-cudnn8"
+        - "11.8.0-cudnn8"
+        - "12.1.1-cudnn8"
+        - "12.3.2-cudnn9"
+        - "12.4.1-cudnn"
+        - "12.5.1-cudnn"
+        - "12.6.3-cudnn"
+        - "12.8.1-cudnn"
+        - "12.9.1-cudnn"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -168,13 +170,13 @@ steps:
       - ray-wheel-build
       - raycudabase
 
-  - label: ":crane: publish: ray py{{matrix}} (x86_64)"
+  - label: ":crane: publish: ray py{{array.python}} (x86_64)"
     key: ray_images_push
     instance_type: small
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:push_ray_image --
-        --python-version {{matrix}}
+        --python-version {{array.python}}
         --platform cpu
         --platform tpu
         --platform cu11.7.1-cudnn8
@@ -188,11 +190,12 @@ steps:
         --platform cu12.9.1-cudnn
         --image-type ray
         --architecture x86_64
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     depends_on:
       - ray-image-cpu-build
       - ray-image-tpu-build
@@ -204,16 +207,17 @@ steps:
       - skip-on-premerge
 
   - name: ray-extra-image-cpu-build
-    label: "wanda: ray-extra py{{matrix}} cpu (x86_64)"
+    label: "wanda: ray-extra py{{array.python}} cpu (x86_64)"
     wanda: ci/docker/ray-extra-image-cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -224,29 +228,28 @@ steps:
       - raycpubaseextra
 
   - name: ray-extra-image-cuda-build
-    label: "wanda: ray-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    label: "wanda: ray-extra py{{array.python}} cu{{array.cuda}} (x86_64)"
     wanda: ci/docker/ray-extra-image-cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        cuda:
-          - "11.7.1-cudnn8"
-          - "11.8.0-cudnn8"
-          - "12.1.1-cudnn8"
-          - "12.3.2-cudnn9"
-          - "12.4.1-cudnn"
-          - "12.5.1-cudnn"
-          - "12.6.3-cudnn"
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+      cuda:
+        - "11.7.1-cudnn8"
+        - "11.8.0-cudnn8"
+        - "12.1.1-cudnn8"
+        - "12.3.2-cudnn9"
+        - "12.4.1-cudnn"
+        - "12.5.1-cudnn"
+        - "12.6.3-cudnn"
+        - "12.8.1-cudnn"
+        - "12.9.1-cudnn"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -257,22 +260,21 @@ steps:
       - raycudabaseextra
 
   - name: ray-llm-image-cuda-build
-    label: "wanda: ray-llm py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    label: "wanda: ray-llm py{{array.python}} cu{{array.cuda}} (x86_64)"
     wanda: ci/docker/ray-llm-image-cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.12"
-        cuda:
-          - "13.0.0-cudnn"
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
             cuda: "12.8.1-cudnn"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -283,22 +285,21 @@ steps:
       - ray-llmbase
 
   - name: ray-llm-extra-image-cuda-build
-    label: "wanda: ray-llm-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
+    label: "wanda: ray-llm-extra py{{array.python}} cu{{array.cuda}} (x86_64)"
     wanda: ci/docker/ray-llm-extra-image-cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.12"
-        cuda:
-          - "13.0.0-cudnn"
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
             cuda: "12.8.1-cudnn"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""
     tags:
       - python_dependencies
@@ -308,13 +309,13 @@ steps:
       - ray-wheel-build
       - ray-llmbaseextra
 
-  - label: ":crane: publish: ray-extra py{{matrix}} (x86_64)"
+  - label: ":crane: publish: ray-extra py{{array.python}} (x86_64)"
     key: ray_extra_images_push
     instance_type: small
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:push_ray_image --
-        --python-version {{matrix}}
+        --python-version {{array.python}}
         --platform cpu
         --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
@@ -327,11 +328,12 @@ steps:
         --platform cu12.9.1-cudnn
         --image-type ray-extra
         --architecture x86_64
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     depends_on:
       - ray-extra-image-cpu-build
       - ray-extra-image-cuda-build
@@ -341,22 +343,21 @@ steps:
       - oss
       - skip-on-premerge
 
-  - label: ":crane: publish: ray-llm py{{matrix.python}} {{matrix.platform}} (x86_64)"
+  - label: ":crane: publish: ray-llm py{{array.python}} {{array.platform}} (x86_64)"
     key: ray_llm_images_cuda_push
     instance_type: small
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:push_ray_image --
-        --python-version {{matrix.python}}
-        --platform {{matrix.platform}}
+        --python-version {{array.python}}
+        --platform {{array.platform}}
         --image-type ray-llm
         --architecture x86_64
-    matrix:
-      setup:
-        python:
-          - "3.12"
-        platform:
-          - cu13.0.0-cudnn
+    array:
+      python:
+        - "3.12"
+      platform:
+        - cu13.0.0-cudnn
       adjustments:
         - with:
             python: "3.11"
@@ -369,22 +370,21 @@ steps:
       - oss
       - skip-on-premerge
 
-  - label: ":crane: publish: ray-llm-extra py{{matrix.python}} {{matrix.platform}} (x86_64)"
+  - label: ":crane: publish: ray-llm-extra py{{array.python}} {{array.platform}} (x86_64)"
     key: ray_llm_extra_images_cuda_push
     instance_type: small
     commands:
       - bazel run //.buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:push_ray_image --
-        --python-version {{matrix.python}}
-        --platform {{matrix.platform}}
+        --python-version {{array.python}}
+        --platform {{array.platform}}
         --image-type ray-llm-extra
         --architecture x86_64
-    matrix:
-      setup:
-        python:
-          - "3.12"
-        platform:
-          - cu13.0.0-cudnn
+    array:
+      python:
+        - "3.12"
+      platform:
+        - cu13.0.0-cudnn
       adjustments:
         - with:
             python: "3.11"

@@ -4,7 +4,12 @@ Validates ray-images.json is well-formed and internally consistent.
 
 import pytest
 
-from ci.ray_ci.supported_images import get_image_config, load_supported_images
+from ci.ray_ci.supported_images import (
+    build_platform_reverse_map,
+    format_platform_tag,
+    get_image_config,
+    load_supported_images,
+)
 
 IMAGE_TYPES = list(load_supported_images().keys())
 REQUIRED_KEYS = ["defaults", "python", "platforms", "architectures"]
@@ -72,3 +77,41 @@ class TestRayImagesSchema:
             assert isinstance(
                 v, str
             ), f"{image_type}: architecture {v!r} is {type(v).__name__}, not str"
+
+
+class TestFormatPlatformTag:
+    @pytest.mark.parametrize(
+        ("platform", "expected"),
+        [
+            ("cpu", "-cpu"),
+            ("tpu", "-tpu"),
+            ("cu12.1.1-cudnn8", "-cu121"),
+            ("cu12.3.2-cudnn9", "-cu123"),
+            ("cu13.0.0-cudnn", "-cu130"),
+        ],
+    )
+    def test_format_platform_tag(self, platform, expected):
+        assert format_platform_tag(platform) == expected
+
+    def test_invalid_platform_raises_error(self):
+        with pytest.raises(ValueError):
+            format_platform_tag("invalid")
+
+
+class TestBuildPlatformReverseMap:
+    def test_all_platforms_covered(self):
+        reverse_map = build_platform_reverse_map()
+        for image_type in IMAGE_TYPES:
+            for platform in get_image_config(image_type)["platforms"]:
+                short = format_platform_tag(platform).lstrip("-")
+                assert short in reverse_map, (
+                    f"Platform '{platform}' ({image_type}) maps to "
+                    f"'{short}' which is missing from reverse map"
+                )
+                assert reverse_map[short] == platform
+
+    def test_known_mappings(self):
+        reverse_map = build_platform_reverse_map()
+        assert reverse_map["cpu"] == "cpu"
+        assert reverse_map["cu123"] == "cu12.3.2-cudnn9"
+        assert reverse_map["cu130"] == "cu13.0.0-cudnn"
