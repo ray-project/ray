@@ -1,0 +1,2 @@
+torch==2.9.1
+cupy-cuda13x

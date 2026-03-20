@@ -25,6 +25,13 @@ def _apply_scaling_factors(
     The computation uses the difference between desired and current to scale.
 
     """
+    # When scaling from zero, the scaling factor is not meaningful: the
+    # entire desired count would be treated as the delta and amplified,
+    # creating a feedback loop that compounds every control-loop tick.
+    # Return the raw desired value and let bounds handle the rest.
+    if current_num_replicas == 0:
+        return math.ceil(desired_num_replicas)
+
     replicas_delta = desired_num_replicas - current_num_replicas
     scaling_factor = (
         autoscaling_config.get_upscaling_factor()
