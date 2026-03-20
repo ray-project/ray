@@ -44,9 +44,6 @@ class AnyscaleJobManager:
         self.cluster_startup_timeout = 600
         self._duration = None
 
-    def _uses_new_sdk(self) -> bool:
-        return self.cluster_manager.test.uses_anyscale_sdk_2026()
-
     def _run_job(
         self,
         cmd_to_run: str,
@@ -64,7 +61,18 @@ class AnyscaleJobManager:
         )
 
         try:
-            self._job_id = self._submit_job(cmd_to_run, env_vars_for_job, working_dir)
+            # cluster_env_build_id stores "anyscale/image/{name}:{revision}"
+            # from anyscale.image.get() after build_cluster_env().
+            config = JobConfig(
+                name=self.cluster_manager.cluster_name,
+                entrypoint=cmd_to_run,
+                image_uri=self.cluster_manager.cluster_env_build_id,
+                compute_config=self.cluster_manager.cluster_compute_name,
+                env_vars=env_vars_for_job,
+                working_dir=working_dir,
+                max_retries=0,
+            )
+            self._job_id = anyscale.job.submit(config)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -77,26 +85,6 @@ class AnyscaleJobManager:
 
         logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
-
-    def _submit_job(
-        self,
-        cmd_to_run: str,
-        env_vars: Dict[str, str],
-        working_dir: Optional[str] = None,
-    ) -> str:
-        """Submit a job using anyscale.job.submit() and return the job ID."""
-        # cluster_env_build_id stores "anyscale/image/{name}:{revision}"
-        # from anyscale.image.get() after build_cluster_env().
-        config = JobConfig(
-            name=self.cluster_manager.cluster_name,
-            entrypoint=cmd_to_run,
-            image_uri=self.cluster_manager.cluster_env_build_id,
-            compute_config=self.cluster_manager.cluster_compute_name,
-            env_vars=env_vars,
-            working_dir=working_dir,
-            max_retries=0,
-        )
-        return anyscale.job.submit(config)
 
     def save_last_job_status(self, status):
         if status and hasattr(status, "id") and status.id != self._job_id:

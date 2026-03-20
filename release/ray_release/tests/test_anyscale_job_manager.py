@@ -58,14 +58,14 @@ def test_get_last_logs_long_running_job():
 
 
 @patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
-def test_submit_job_new_sdk(mock_job):
-    """New SDK path uses cluster_env_build_id (image URI) as image_uri."""
-    jm = _make_job_manager(uses_new_sdk=True)
-    mock_job.submit.return_value = "job_new_123"
+def test_submit_job(mock_job):
+    """_run_job submits via anyscale.job.submit with correct JobConfig fields."""
+    jm = _make_job_manager()
+    mock_job.submit.return_value = "job_123"
 
     jm._run_job("echo hello", {"FOO": "bar"})
 
-    assert jm._job_id == "job_new_123"
+    assert jm._job_id == "job_123"
     mock_job.submit.assert_called_once()
     config = mock_job.submit.call_args[0][0]
     assert config.name == "test_cluster_123"
@@ -73,26 +73,6 @@ def test_submit_job_new_sdk(mock_job):
     assert config.image_uri == "anyscale/image/test:1"
     assert config.compute_config == "test_compute_config"
     assert config.max_retries == 0
-    assert "FOO" in config.env_vars
-
-
-@patch("ray_release.job_manager.anyscale_job_manager.anyscale.job")
-def test_submit_job_legacy(mock_job):
-    """Legacy path uses {name}:{revision} from build as image_uri."""
-    jm = _make_job_manager(uses_new_sdk=False)
-    # Both paths store "{img.name}:{img.latest_build_revision}" in cluster_env_build_id
-    jm.cluster_manager.cluster_env_build_id = "anyscale/image/test_image:3"
-    mock_job.submit.return_value = "job_legacy_456"
-
-    jm._run_job("echo hello", {"FOO": "bar"})
-
-    assert jm._job_id == "job_legacy_456"
-    mock_job.submit.assert_called_once()
-    config = mock_job.submit.call_args[0][0]
-    assert config.name == "test_cluster_123"
-    assert config.entrypoint == "echo hello"
-    assert config.image_uri == "anyscale/image/test_image:3"
-    assert config.compute_config == "test_compute_config"
     assert "FOO" in config.env_vars
 
 
@@ -135,15 +115,6 @@ def test_terminate_job_skips_when_terminal(mock_job):
     jm.save_last_job_status(FakeJobStatus(state=JobState.SUCCEEDED))
     jm._terminate_job()
     mock_job.terminate.assert_not_called()
-
-
-def test_uses_new_sdk():
-    """_uses_new_sdk() returns True when anyscale_sdk_2026 is set."""
-    jm_new = _make_job_manager(uses_new_sdk=True)
-    assert jm_new._uses_new_sdk() is True
-
-    jm_legacy = _make_job_manager(uses_new_sdk=False)
-    assert jm_legacy._uses_new_sdk() is False
 
 
 if __name__ == "__main__":
