@@ -782,6 +782,7 @@ class TestScaleDownReplicaSelection:
         *,
         ray_actor_options: dict,
         placement_group_bundles: list[dict] = None,
+        placement_group_bundle_label_selector: list[dict] = None,
         autoscaling_config: dict = None,
     ):
         @serve.deployment(name=deployment_name)
@@ -793,6 +794,7 @@ class TestScaleDownReplicaSelection:
             TestDeployment.options(
                 ray_actor_options=ray_actor_options,
                 placement_group_bundles=placement_group_bundles,
+                placement_group_bundle_label_selector=placement_group_bundle_label_selector,
                 autoscaling_config=autoscaling_config,
             ).bind(),
             name=app_name,
@@ -884,9 +886,11 @@ class TestScaleDownReplicaSelection:
         serve.start()
 
         ray_actor_options = {
-            "num_cpus": 1,
+            "num_cpus": 0,
             "label_selector": primary_label,
         }
+        placement_group_bundles = [{"CPU": 0.25}] * 4
+        placement_group_bundle_label_selector = [primary_label]
         app_name = "downscale_fewer_total_replicas_app"
         deployment_name = "test_deployment"
         first_node_id = first_node.node_id
@@ -896,6 +900,8 @@ class TestScaleDownReplicaSelection:
                 app_name,
                 deployment_name=deployment_name,
                 ray_actor_options=ray_actor_options,
+                placement_group_bundles=placement_group_bundles,
+                placement_group_bundle_label_selector=placement_group_bundle_label_selector,
                 autoscaling_config={
                     "min_replicas": 1,
                     "max_replicas": 3,
