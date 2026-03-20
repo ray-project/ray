@@ -42,6 +42,11 @@ try:
 except ImportError:
     OBSTORE_AVAILABLE = False
     obstore_parse_scheme = None
+    logger.warning(
+        "obstore is not installed — falling back to the PyArrow download "
+        "path, which is significantly slower for large or numerous files. "
+        "Install it with: pip install obstore"
+    )
 
 
 def plan_download_op(
