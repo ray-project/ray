@@ -2326,6 +2326,9 @@
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
+        # vLLM 0.17.0 eagerly imports xgrammar -> ICU 78 -> CXXABI_1.3.15.
+        # System libstdc++ only has 1.3.13; prepend conda's newer copy.
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
@@ -3979,6 +3982,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4000,6 +4005,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4022,6 +4029,7 @@
       type: llm-cu128
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4039,6 +4047,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4056,6 +4066,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4077,6 +4089,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4097,6 +4111,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4117,6 +4133,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4136,6 +4154,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4155,6 +4175,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4175,6 +4197,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4195,6 +4219,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4215,6 +4241,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4235,6 +4263,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4255,6 +4285,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_lmcache_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4278,6 +4310,7 @@
       type: llm-cu128
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_four_L4_gpu_head_node.yaml
 
@@ -4299,6 +4332,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4319,6 +4354,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4338,6 +4375,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4356,6 +4395,7 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       type: llm-cu128
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
@@ -4376,6 +4416,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4399,6 +4441,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4460,6 +4504,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4485,6 +4531,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4510,6 +4558,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4536,6 +4586,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4813,6 +4865,8 @@
   cluster:
     byod:
       type: llm-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4887,6 +4941,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4913,6 +4969,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4963,6 +5021,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4988,6 +5048,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -5013,6 +5075,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_tune_pytorch_asha.sh
     cluster_compute: ci/aws.yaml
 
@@ -5038,6 +5102,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -5064,6 +5130,8 @@
   cluster:
     byod:
       type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      runtime_env:
+        - LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
       post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
