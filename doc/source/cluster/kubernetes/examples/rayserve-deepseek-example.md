@@ -81,8 +81,7 @@ serveConfigV2: |
               min_replicas: 1
               max_replicas: 1
           runtime_env:
-            env_vars:
-              VLLM_USE_V1: "1"
+            env_vars: {}
           engine_kwargs:
             tensor_parallel_size: 8
             pipeline_parallel_size: 2
