@@ -113,6 +113,7 @@ class TestHangingExecutionIssueDetector:
 
         # Set a short issue detection interval for testing
         ctx = DataContext.get_current()
+        ctx.issue_detectors_config.detectors = [HangingExecutionIssueDetector]
         detector_cfg = ctx.issue_detectors_config.hanging_detector_config
         detector_cfg.detection_time_interval_s = 0.00
 
