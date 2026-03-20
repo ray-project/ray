@@ -13,6 +13,8 @@ proto_library(
         ":events_autoscaler_config_definition_event_proto",
         ":events_autoscaler_node_provisioning_event_proto",
         ":events_autoscaler_scaling_decision_event_proto",
+        ":events_driver_job_definition_event_proto",
+        ":events_driver_job_lifecycle_event_proto",
         ":events_node_definition_event_proto",
         ":events_node_lifecycle_event_proto",
         ":events_placement_group_definition_event_proto",
