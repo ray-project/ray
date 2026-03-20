@@ -185,7 +185,6 @@ class ActorPoolMapOperator(MapOperator):
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
 
     def _create_actor_pool_config(
@@ -766,8 +765,6 @@ class _ActorPool(AutoscalingActorPool):
                 purposes.
             debounce_period_s: Debounce period for scaling down after scaling
                 up.
-            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
-                on exit hook.
         """
         super().__init__(config=config)
 
@@ -1135,18 +1132,6 @@ class _ActorPool(AutoscalingActorPool):
 
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
-
-    def get_actor_info(self) -> ActorPoolInfo:
-        """Returns current snapshot of actors' being used in the pool"""
-        return ActorPoolInfo(
-            running=self.num_alive_actors(),
-            pending=self.num_pending_actors(),
-            restarting=self.num_restarting_actors(),
-        )
-
-    @override
-    def per_actor_resource_usage(self) -> ExecutionResources:
-        return self._per_actor_resource_usage
 
     def _rank_actors(
         self,
