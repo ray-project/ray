@@ -807,8 +807,8 @@ class _MapWorker:
         ray.data._map_actor_context = None
 
 
-@dataclass
-class _FlowEdges:
+@dataclass(frozen=True)
+class _FlowNetworkEdges:
     """Parallel arrays describing a set of edges in a flow network."""
 
     starts: "np.ndarray"
@@ -817,8 +817,8 @@ class _FlowEdges:
     unit_costs: "np.ndarray"
 
     @staticmethod
-    def concatenate(*edge_groups: "_FlowEdges") -> "_FlowEdges":
-        """Concatenate multiple _FlowEdges into one, iterating edges once."""
+    def concatenate(*edge_groups: "_FlowNetworkEdges") -> "_FlowNetworkEdges":
+        """Concatenate multiple _FlowNetworkEdges into one, iterating edges once."""
         total = sum(len(e.starts) for e in edge_groups)
         starts = np.empty(total, dtype=np.int32)
         ends = np.empty(total, dtype=np.int32)
@@ -832,7 +832,7 @@ class _FlowEdges:
             max_flows[offset : offset + n] = e.max_flows
             unit_costs[offset : offset + n] = e.unit_costs
             offset += n
-        return _FlowEdges(
+        return _FlowNetworkEdges(
             starts=starts, ends=ends, max_flows=max_flows, unit_costs=unit_costs
         )
 
@@ -1375,60 +1375,11 @@ class _ActorPool(AutoscalingActorPool):
             num_bundles + 1, num_bundles + num_actors + 1, dtype=np.int32
         )
 
-        def _build_bundle_actor_edges() -> _FlowEdges:
-            """Build bipartite bundle->actor edges with locality-aware costs.
-
-            Edge costs encode two objectives:
-              Primary: maximize local data (prefer co-located actors)
-              Secondary: prefer least-loaded actors (tiebreaker)
-
-            The locality cost is (max_local_bytes - local_bytes_on_actor_node),
-            which is 0 for the best-located actor and positive for others. This
-            gives the same optimal assignment as (total_bytes - local_bytes)
-            since the per-bundle offset doesn't affect the flow solution.
-
-            We combine them into a single cost:
-              cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
-
-            load_tiebreaker_scale > max possible num_tasks_in_flight, so any
-            locality difference always dominates the load tiebreaker.
-            """
-            num_edges = num_bundles * num_actors
-
-            actor_locations = [
-                self._running_actors[actor].actor_location for actor in available_actors
-            ]
-            actor_tasks_in_flight = [
-                self._running_actors[actor].num_tasks_in_flight
-                for actor in available_actors
-            ]
-            load_tiebreaker_scale = max_in_flight + 1
-
-            costs = np.empty(num_edges, dtype=np.int64)
-            for bundle_idx, bundle in enumerate(bundles):
-                preferred_locs = bundle.get_preferred_object_locations()
-                max_local = max(preferred_locs.values(), default=0)
-                offset = bundle_idx * num_actors
-                for actor_idx, actor_location in enumerate(actor_locations):
-                    local_bytes = preferred_locs.get(actor_location, 0)
-                    locality_cost = max_local - local_bytes
-                    costs[offset + actor_idx] = (
-                        locality_cost * load_tiebreaker_scale
-                        + actor_tasks_in_flight[actor_idx]
-                    )
-
-            return _FlowEdges(
-                starts=np.repeat(bundle_nodes, num_actors),
-                ends=np.tile(actor_nodes, num_bundles),
-                max_flows=np.ones(num_edges, dtype=np.int64),
-                unit_costs=costs,
-            )
-
         # --- Build the three edge sections ---
 
         # Source -> each bundle: each bundle assigned at most once.
         count = len(bundle_nodes)
-        source_edges = _FlowEdges(
+        source_edges = _FlowNetworkEdges(
             starts=np.full(count, source_node, dtype=np.int32),
             ends=bundle_nodes,
             max_flows=np.full(count, 1, dtype=np.int64),
@@ -1436,11 +1387,17 @@ class _ActorPool(AutoscalingActorPool):
         )
 
         # Bundle -> actor: bipartite edges with locality-aware costs.
-        bundle_actor_edges = _build_bundle_actor_edges()
+        bundle_actor_edges = self._build_bundle_actor_edges(
+            bundles,
+            available_actors,
+            max_in_flight,
+            bundle_nodes,
+            actor_nodes,
+        )
 
         # Actor -> sink: limits how many bundles each actor can accept.
         # Each actor has a different max_flow (remaining task slots).
-        sink_edges = _FlowEdges(
+        sink_edges = _FlowNetworkEdges(
             starts=actor_nodes,
             ends=np.full(num_actors, sink_node, dtype=np.int32),
             max_flows=np.array(actor_remaining_slots, dtype=np.int64),
@@ -1448,7 +1405,7 @@ class _ActorPool(AutoscalingActorPool):
         )
 
         # Concatenate all sections and build the solver.
-        all_flow_edges = _FlowEdges.concatenate(
+        all_flow_edges = _FlowNetworkEdges.concatenate(
             source_edges, bundle_actor_edges, sink_edges
         )
         solver = min_cost_flow.SimpleMinCostFlow()
@@ -1488,6 +1445,64 @@ class _ActorPool(AutoscalingActorPool):
                 assignments.append((bundles[bundle_idx], available_actors[actor_idx]))
 
         return assignments
+
+    def _build_bundle_actor_edges(
+        self,
+        bundles: List[RefBundle],
+        available_actors: List[ActorHandle],
+        max_in_flight: int,
+        bundle_nodes: "np.ndarray",
+        actor_nodes: "np.ndarray",
+    ) -> "_FlowNetworkEdges":
+        """Build bipartite bundle->actor edges with locality-aware costs.
+
+        Edge costs encode two objectives:
+          Primary: maximize local data (prefer co-located actors)
+          Secondary: prefer least-loaded actors (tiebreaker)
+
+        The locality cost is (max_local_bytes - local_bytes_on_actor_node),
+        which is 0 for the best-located actor and positive for others. This
+        gives the same optimal assignment as (total_bytes - local_bytes)
+        since the per-bundle offset doesn't affect the flow solution.
+
+        We combine them into a single cost:
+          cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
+
+        load_tiebreaker_scale > max possible num_tasks_in_flight, so any
+        locality difference always dominates the load tiebreaker.
+        """
+        num_bundles = len(bundles)
+        num_actors = len(available_actors)
+        num_edges = num_bundles * num_actors
+
+        actor_locations = [
+            self._running_actors[actor].actor_location for actor in available_actors
+        ]
+        actor_tasks_in_flight = [
+            self._running_actors[actor].num_tasks_in_flight
+            for actor in available_actors
+        ]
+        load_tiebreaker_scale = max_in_flight + 1
+
+        costs = np.empty(num_edges, dtype=np.int64)
+        for bundle_idx, bundle in enumerate(bundles):
+            preferred_locs = bundle.get_preferred_object_locations()
+            max_local = max(preferred_locs.values(), default=0)
+            offset = bundle_idx * num_actors
+            for actor_idx, actor_location in enumerate(actor_locations):
+                local_bytes = preferred_locs.get(actor_location, 0)
+                locality_cost = max_local - local_bytes
+                costs[offset + actor_idx] = (
+                    locality_cost * load_tiebreaker_scale
+                    + actor_tasks_in_flight[actor_idx]
+                )
+
+        return _FlowNetworkEdges(
+            starts=np.repeat(bundle_nodes, num_actors),
+            ends=np.tile(actor_nodes, num_bundles),
+            max_flows=np.ones(num_edges, dtype=np.int64),
+            unit_costs=costs,
+        )
 
     def _select_actors_no_locality(
         self,
