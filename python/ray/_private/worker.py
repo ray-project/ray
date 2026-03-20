@@ -3392,8 +3392,11 @@ def _make_remote(function_or_class, options):
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
+        is_generator_callable = inspect.isgeneratorfunction(
+            function_or_class
+        ) or inspect.isasyncgenfunction(function_or_class)
         ray_option_utils.validate_task_options(
-            options, in_options=False, function=function_or_class
+            options, in_options=False, is_generator_callable=is_generator_callable
         )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
