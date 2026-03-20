@@ -1157,7 +1157,7 @@ def _ray_start_chaos_cluster(request):
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
-            killed_node_ids
+            killed
         ), f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
