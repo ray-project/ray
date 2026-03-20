@@ -768,6 +768,7 @@ class RDTManager:
     def fetch_and_get_rdt_objects(
         self,
         object_ids: List[str],
+        timeout: Optional[float] = None,
         use_object_store: bool = False,
     ) -> Dict[str, List[Any]]:
         """
@@ -779,12 +780,36 @@ class RDTManager:
 
         Args:
             object_ids: The object IDs of the RDT objects.
+            timeout: The user-specified timeout from ray.get, or None for no
+                user timeout. The actual deadline is the minimum of this and
+                RDT_FETCH_FAIL_TIMEOUT_SECONDS.
             use_object_store: Whether to fetch through the object store or through
                 the designated tensor transport.
 
         Returns:
             A dict mapping object ID to the RDT object (list of tensors).
+
+        Raises:
+            GetTimeoutError: If the user-specified timeout is exceeded.
+            TimeoutError: If RDT_FETCH_FAIL_TIMEOUT_SECONDS is exceeded.
         """
+        from ray.exceptions import GetTimeoutError, ObjectFetchTimedOutError
+
+        rdt_timeout = ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        now = time.time()
+        if timeout is not None and timeout >= 0:
+            rdt_deadline = now + rdt_timeout
+            user_deadline = now + timeout
+            if user_deadline < rdt_deadline:
+                deadline = user_deadline
+                user_timeout_is_smaller = True
+            else:
+                deadline = rdt_deadline
+                user_timeout_is_smaller = False
+        else:
+            deadline = now + rdt_timeout
+            user_timeout_is_smaller = False
+
         rdt_store = self.rdt_store
         result: Dict[str, List[Any]] = {}
 
@@ -804,7 +829,6 @@ class RDTManager:
         # exactly one secondary copy, even if another secondary copy of the
         # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
-        trigger_exception = None
         try:
             for object_id in object_ids:
                 if object_id in result:
@@ -820,6 +844,17 @@ class RDTManager:
             # transfers that were already started.
             while fetch_requests:
                 object_id, fetch_request = fetch_requests.popitem()
+                if time.time() > deadline:
+                    if user_timeout_is_smaller:
+                        raise GetTimeoutError(
+                            f"ray.get timed out after {timeout}s."
+                        )
+                    else:
+                        raise ObjectFetchTimedOutError(
+                            object_ref_hex=object_id,
+                            owner_address="",
+                            call_site="",
+                        )
                 result[object_id] = self._wait_fetch(object_id, fetch_request)
             return result
         finally:

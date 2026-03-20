@@ -907,15 +907,11 @@ class Worker:
         for e in out:
             _unhandled_error_handler(e)
 
-    def deserialize_objects(
-        self,
-        serialized_objects,
-        object_refs,
-        fetch_rdt_objects: bool = False,
-        use_object_store: bool = False,
-    ):
-        rdt_objects: Dict[str, List["torch.Tensor"]] = {}
+    @staticmethod
+    def _get_rdt_ids(serialized_objects, object_refs) -> List[str]:
+        """Extract RDT object IDs from serialized objects."""
         rdt_ids: List[str] = []
+        seen: set = set()
         for obj_ref, (_, metadata, tensor_transport) in zip(
             object_refs, serialized_objects
         ):
@@ -934,19 +930,25 @@ class Worker:
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in rdt_objects and object_id not in rdt_ids:
-                # If using a non-object store transport, then tensors will be sent
-                # out-of-band. Collect all IDs so we can pipeline the fetches.
-                # The user can set use_object_store to fetch the RDT object
-                # through the object store.
+            if object_id not in seen:
+                seen.add(object_id)
                 rdt_ids.append(object_id)
 
-        if rdt_ids:
-            if fetch_rdt_objects:
-                rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
-                    rdt_ids, use_object_store
-                )
-            else:
+        return rdt_ids
+
+    def deserialize_objects(
+        self,
+        serialized_objects,
+        object_refs,
+        rdt_objects: Optional[Dict[str, List[Any]]] = None,
+    ):
+        if rdt_objects is None:
+            # Get the RDT objects. The _ray_system concurrency group is
+            # responsible for fetching these in the background. Here, we just
+            # wait for the objects to appear locally.
+            rdt_objects = {}
+            rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+            if rdt_ids:
                 rdt_objects = self.rdt_manager.get_rdt_objects(rdt_ids)
 
         # Function actor manager or the import thread may call pickle.loads
@@ -1020,11 +1022,21 @@ class Worker:
         if skip_deserialization:
             return None, debugger_breakpoint
 
+        # Get any RDT objects. This will launch a fetch per RDT object that is
+        # not already local.
+        rdt_objects = {}
+        rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
+        if rdt_ids:
+            rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
+                rdt_ids,
+                timeout=timeout,
+                use_object_store=use_object_store,
+            )
+
         values = self.deserialize_objects(
             serialized_objects,
             object_refs,
-            fetch_rdt_objects=True,
-            use_object_store=use_object_store,
+            rdt_objects=rdt_objects,
         )
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.

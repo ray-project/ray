@@ -1,11 +1,4 @@
-"""Unit tests for fetch_and_get_rdt_objects pipelined fetch/wait ordering.
-
-Verifies that RDTManager.fetch_and_get_rdt_objects issues ALL fetch_multiple_tensors
-calls before issuing ANY wait_fetch_complete call, eliminating serial
-transfer latency for one-sided transports like NIXL.
-
-These tests run without a Ray cluster and require only CPUs.
-"""
+"""Unit tests for RDTManager."""
 import re
 import sys
 from dataclasses import dataclass
@@ -44,6 +37,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
 
     call_log: List = []
     fail_on_wait: set = set()
+    wait_delay: float = 0
 
     def tensor_transport_backend(self) -> str:
         return _BACKEND_NAME
@@ -76,6 +70,9 @@ class _PipelineCheckingTransport(TensorTransportManager):
         return FetchRequest(obj_id=obj_id, tensors=[f"val:{obj_id}"])
 
     def wait_fetch_complete(self, fetch_request: FetchRequest) -> List[Any]:
+        if self.__class__.wait_delay > 0:
+            import time
+            time.sleep(self.__class__.wait_delay)
         self.__class__.call_log.append(("wait", fetch_request.obj_id))
         if fetch_request.obj_id in self.__class__.fail_on_wait:
             raise RuntimeError(f"wait failed for {fetch_request.obj_id}")
@@ -156,6 +153,7 @@ def clear_call_log():
     """Reset the pipeline transport's call log and error config before each test."""
     _PipelineCheckingTransport.call_log.clear()
     _PipelineCheckingTransport.fail_on_wait.clear()
+    _PipelineCheckingTransport.wait_delay = 0
 
 
 def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTManager:
@@ -278,6 +276,27 @@ def test_wait_fetch_called_for_all_requests_on_exception():
     assert set(waited) == set(object_ids), (
         f"All fetched objects must be waited on even if one fails; waited={waited}"
     )
+
+
+def test_object_fetch_timed_out_error():
+    """fetch_and_get_rdt_objects raises ObjectFetchTimedOutError when RDT timeout is hit."""
+    from ray.exceptions import ObjectFetchTimedOutError
+
+    object_ids = ["obj1", "obj2"]
+    manager = _build_manager(object_ids)
+    # Make wait_fetch_complete slow enough to exceed a very short timeout.
+    _PipelineCheckingTransport.wait_delay = 0.2
+
+    with pytest.raises(ObjectFetchTimedOutError):
+        # timeout=None means no user timeout, so only RDT timeout applies.
+        # We monkeypatch the constant to a very small value.
+        import ray._private.ray_constants as rc
+        original = rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = 0.1
+        try:
+            manager.fetch_and_get_rdt_objects(object_ids)
+        finally:
+            rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = original
 
 
 if __name__ == "__main__":
