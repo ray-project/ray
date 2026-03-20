@@ -42,11 +42,8 @@ try:
 except ImportError:
     OBSTORE_AVAILABLE = False
     obstore_parse_scheme = None
-    logger.warning(
-        "obstore is not installed — falling back to the PyArrow download "
-        "path, which is significantly slower for large or numerous files. "
-        "Install it with: pip install obstore"
-    )
+
+_obstore_fallback_warned = False
 
 
 def plan_download_op(
@@ -472,6 +469,14 @@ def download_bytes_threaded(
                 )
             )
         else:
+            global _obstore_fallback_warned
+            if not _obstore_fallback_warned and not use_obstore:
+                _obstore_fallback_warned = True
+                logger.warning(
+                    "obstore is not installed — falling back to the PyArrow "
+                    "download path, which is significantly slower for large "
+                    "or numerous files. Install it with: pip install obstore"
+                )
             uri_bytes = _download_uris_with_pyarrow(
                 uris, uri_column_name, data_context, filesystem=filesystem
             )
