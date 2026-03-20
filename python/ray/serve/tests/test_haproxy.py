@@ -784,9 +784,8 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(5)
-        try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
             s.connect(SOCKET_PATH)
             s.sendall(b"show stat\n")
             chunks = []
@@ -795,8 +794,6 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
                 if not data:
                     break
                 chunks.append(data)
-        finally:
-            s.close()
         return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
@@ -815,14 +812,11 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(5)
-        try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
             s.connect(SOCKET_PATH)
             s.sendall(f"set server {backend}/{server} state {state}\n".encode())
             s.recv(4096)  # Read response
-        finally:
-            s.close()
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
