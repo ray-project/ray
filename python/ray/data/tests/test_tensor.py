@@ -619,6 +619,7 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
         expected_df["two"] = _create_possibly_ragged_ndarray(
             expected_df["two"].to_numpy()
         )
+    expected_df["one"] = expected_df["one"].astype("int64[pyarrow]")
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
