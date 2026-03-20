@@ -23,11 +23,8 @@ from ray.air.constants import (
 from ray.cloudpickle import cloudpickle
 from ray.tune import Checkpoint
 from ray.tune.logger import (
-    CSVLogger,
     CSVLoggerCallback,
-    JsonLogger,
     JsonLoggerCallback,
-    TBXLogger,
     TBXLoggerCallback,
 )
 from ray.tune.logger.aim import AimLoggerCallback
@@ -90,17 +87,6 @@ class LoggerSuite(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def testLegacyCSV(self):
-        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
-        t = Trial(evaluated_params=config, trial_id="csv", logdir=self.test_dir)
-        logger = CSVLogger(config=config, logdir=self.test_dir, trial=t)
-        logger.on_result(result(2, 4))
-        logger.on_result(result(2, 5))
-        logger.on_result(result(2, 6, score=[1, 2, 3], hello={"world": 1}))
-        logger.close()
-
-        self._validate_csv_result()
-
     def testCSV(self):
         config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(evaluated_params=config, trial_id="csv", logdir=self.test_dir)
@@ -149,17 +135,6 @@ class LoggerSuite(unittest.TestCase):
             [int(row["episode_reward_mean"]) for row in results], [4, 5, 6]
         )
 
-    def testJSONLegacyLogger(self):
-        config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
-        t = Trial(evaluated_params=config, trial_id="json", logdir=self.test_dir)
-        logger = JsonLogger(config=config, logdir=self.test_dir, trial=t)
-        logger.on_result(result(0, 4))
-        logger.on_result(result(1, 5))
-        logger.on_result(result(2, 6, score=[1, 2, 3], hello={"world": 1}))
-        logger.close()
-
-        self._validate_json_result(config)
-
     def testJSON(self):
         config = {"a": 2, "b": 5, "c": {"c": {"D": 123}, "e": None}}
         t = Trial(evaluated_params=config, trial_id="json", logdir=self.test_dir)
@@ -199,24 +174,6 @@ class LoggerSuite(unittest.TestCase):
             loaded_config = cloudpickle.load(fp)
 
         self.assertEqual(loaded_config, config)
-
-    def testLegacyTBX(self):
-        config = {
-            "a": 2,
-            "b": [1, 2],
-            "c": {"c": {"D": 123}},
-            "d": np.int64(1),
-            "e": np.bool_(True),
-            "f": None,
-        }
-        t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
-        logger.on_result(result(0, 4))
-        logger.on_result(result(1, 5))
-        logger.on_result(result(2, 6, score=[1, 2, 3], hello={"world": 1}))
-        logger.close()
-
-        self._validate_tbx_result()
 
     def testTBX(self):
         config = {
@@ -272,16 +229,6 @@ class LoggerSuite(unittest.TestCase):
 
         self.assertEqual(len(results), 3)
         self.assertSequenceEqual([int(res) for res in results], [4, 5, 6])
-
-    def testLegacyBadTBX(self):
-        config = {"b": (1, 2, 3)}
-        t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
-        logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
-        logger.on_result(result(0, 4))
-        logger.on_result(result(2, 4, score=[1, 2, 3], hello={"world": 1}))
-        with self.assertLogs("ray.tune.logger", level="INFO") as cm:
-            logger.close()
-        assert "INFO" in cm.output[0]
 
     def testBadTBX(self):
         config = {"b": (1, 2, 3)}
