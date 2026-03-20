@@ -104,7 +104,7 @@ def build_and_run_pipeline(
 
     total_rows = 0
     for batch in ds.iter_batches(batch_size=None):
-        total_rows += batch["n"][0]
+        total_rows += sum(batch["n"])
 
     return total_rows
 
