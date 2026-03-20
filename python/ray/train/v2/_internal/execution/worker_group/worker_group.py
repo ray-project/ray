@@ -315,31 +315,18 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder.with_sync_actor(sync_actor)
 
             # Create workers and (if applicable) replica groups.
-            if self._manages_replica_groups:
-                workers = []
-                for i in range(worker_group_context.num_workers):
-                    workers.extend(
-                        self._create_workers(
-                            1,
-                            pg_handle.placement_group,
-                            worker_group_context.resources_per_worker,
-                            # TODO: change after we support replica groups of size > 1.
-                            [i],
-                            starting_world_rank=i,
-                            world_size=worker_group_context.num_workers,
-                        )
-                    )
-            else:
-                create_workers_start = time_monotonic()
-                workers = self._create_workers(
-                    worker_group_context.num_workers,
-                    pg_handle.placement_group,
-                    worker_group_context.resources_per_worker,
-                )
-                logger.debug(
-                    f"[Worker Group Initialization] {worker_group_context.num_workers} worker actors created in "
-                    f"{time_monotonic() - create_workers_start:.2f}s."
-                )
+            create_workers_start = time_monotonic()
+            # TODO: change after we support replica groups of size > 1.
+            workers = self._create_workers(
+                worker_group_context.num_workers,
+                pg_handle.placement_group,
+                worker_group_context.resources_per_worker,
+                replica_group_size=1 if self._manages_replica_groups else None,
+            )
+            logger.debug(
+                f"[Worker Group Initialization] {worker_group_context.num_workers} worker actors created in "
+                f"{time_monotonic() - create_workers_start:.2f}s."
+            )
             self._replica_groups = [
                 ReplicaGroup(
                     # TODO: change after we support replica groups of size > 1.
@@ -446,6 +433,7 @@ class WorkerGroup(ExecutionGroup):
         placement_group_bundle_indices: Optional[List[int]] = None,
         starting_world_rank: int = 0,
         world_size: Optional[int] = None,
+        replica_group_size: Optional[int] = None,
     ) -> List[Worker]:
         """Create worker actors at placement group bundle indices.
 
@@ -462,6 +450,11 @@ class WorkerGroup(ExecutionGroup):
                 different data, so all local rank 0's must download data to node).
             world_size: The total world size of the worker group.
                 If None, uses the number of workers.
+            replica_group_size: If set, workers are divided into replica groups
+                of this size. num_workers must be divisible by this value.
+                local_rank and local_world_size are computed per
+                (node, replica group) pair. If None, all workers are treated
+                as a single group.
 
         Returns:
             Sorted list of Workers.
@@ -507,7 +500,7 @@ class WorkerGroup(ExecutionGroup):
         ]
 
         return WorkerGroup._assign_worker_ranks(
-            workers, starting_world_rank, world_size
+            workers, starting_world_rank, world_size, replica_group_size
         )
 
     def _init_train_context(
@@ -962,6 +955,7 @@ class WorkerGroup(ExecutionGroup):
         workers: List[Worker],
         starting_world_rank: int = 0,
         world_size: Optional[int] = None,
+        replica_group_size: Optional[int] = None,
     ) -> List[Worker]:
         """Assign world ranks to workers by increasing node id and GPU id.
 
@@ -972,11 +966,22 @@ class WorkerGroup(ExecutionGroup):
             starting_world_rank: The starting world rank for this list of workers.
             world_size: The total world size of the worker group.
                 If None, uses the number of workers.
+            replica_group_size: If set, workers are divided into replica groups
+                of this size. len(workers) must be divisible by this value.
+                local_rank and local_world_size are computed per
+                (node, replica group) pair. If None, all workers are treated
+                as a single group.
 
         Returns:
             workers: Workers sorted by increasing world rank,
                 with the `DistributedContext` set.
         """
+        if replica_group_size is not None:
+            assert len(workers) % replica_group_size == 0, (
+                f"num_workers ({len(workers)}) must be divisible by "
+                f"replica_group_size ({replica_group_size})"
+            )
+
         is_tpu = False
         if len(workers) > 0:
             is_tpu = workers[0].resources.get("TPU", 0) > 0
@@ -987,15 +992,31 @@ class WorkerGroup(ExecutionGroup):
         else:
             workers = WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(workers)
 
-        node_ip_to_workers = collections.defaultdict(list)
-        for worker in workers:
-            node_ip_to_workers[worker.metadata.node_ip].append(worker)
-        node_ips = list(node_ip_to_workers.keys())
+        # Group workers by local world i.e. (node) or (node, replica group).
+        local_world_to_workers = collections.defaultdict(list)
+        if replica_group_size is not None:
+            group_to_node_ips = collections.defaultdict(list)
+            for idx, worker in enumerate(workers):
+                group_idx = idx // replica_group_size
+                key = (worker.metadata.node_ip, group_idx)
+                local_world_to_workers[key].append(worker)
+                group_to_node_ips[group_idx].append(worker.metadata.node_ip)
+        else:
+            for worker in workers:
+                local_world_to_workers[worker.metadata.node_ip].append(worker)
+            node_ips = list(local_world_to_workers.keys())
 
         for world_rank, worker in enumerate(workers):
+            if replica_group_size is not None:
+                group_idx = world_rank // replica_group_size
+                key = (worker.metadata.node_ip, group_idx)
+                node_ips = group_to_node_ips[group_idx]
+            else:
+                key = worker.metadata.node_ip
+            peers = local_world_to_workers[key]
             distributed_context = DistributedContext(
-                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
-                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
+                local_rank=peers.index(worker),
+                local_world_size=len(peers),
                 world_rank=starting_world_rank + world_rank,
                 world_size=world_size if world_size is not None else len(workers),
                 node_rank=node_ips.index(worker.metadata.node_ip),
