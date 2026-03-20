@@ -676,6 +676,9 @@ storage_path = "/mnt/cluster_storage/ray_train_tp_dtensor"  # Use persistent/sha
 run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
+    worker_runtime_env={
+        "pip": ["torch==2.9.1", "transformers==4.44.2", "datasets==2.21.0"],
+    },
 )
 
 # Initialize and launch the trainer
