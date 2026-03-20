@@ -885,10 +885,7 @@ class TestScaleDownReplicaSelection:
         ray.init(address=cluster.address, ignore_reinit_error=True)
         serve.start()
 
-        ray_actor_options = {
-            "num_cpus": 0,
-            "label_selector": primary_label,
-        }
+        ray_actor_options = {"num_cpus": 0}
         placement_group_bundles = [{"CPU": 0.25}] * 4
         placement_group_bundle_label_selector = [primary_label]
         app_name = "downscale_fewer_total_replicas_app"
