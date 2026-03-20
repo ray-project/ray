@@ -106,8 +106,7 @@ def build_and_run_pipeline(
         concurrency=gpu_concurrency,
     )
 
-    result = ds.write_datasink(NullDatasink())
-    return result.num_rows
+    ds.write_datasink(NullDatasink())
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +115,7 @@ def build_and_run_pipeline(
 
 
 def main(args):
-    total_rows = build_and_run_pipeline(
+    build_and_run_pipeline(
         num_rows=args.num_rows,
         gen_batch_size=args.gen_batch_size,
         cpu_batch_size=args.cpu_batch_size,
@@ -125,7 +124,6 @@ def main(args):
     )
 
     return {
-        BenchmarkMetric.NUM_ROWS: int(total_rows),
         "num_rows_input": int(args.num_rows),
         "gpu_concurrency": int(args.gpu_concurrency),
     }
