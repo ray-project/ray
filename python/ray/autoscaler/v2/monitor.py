@@ -38,6 +38,7 @@ from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
     IConfigReader,
+    Provider,
     ReadOnlyProviderConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
@@ -124,6 +125,8 @@ class AutoscalerMonitor:
                 )
                 self.event_logger = AutoscalerEventLogger(
                     export_event_logger=ray_event_logger,
+                    log_cluster_shape=config_reader.get_cached_autoscaling_config().provider
+                    != Provider.READ_ONLY,
                 )
             except Exception:
                 logger.exception("Failed to initialize export event logger.")

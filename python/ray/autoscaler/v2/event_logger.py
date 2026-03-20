@@ -45,10 +45,12 @@ class AutoscalerEventLogger:
         export_event_logger: Optional[EventLoggerAdapter] = None,
         ray_event_publisher: Optional["DashboardHeadRayEventPublisher"] = None,
         session_name: str = "",
+        log_cluster_shape: bool = True,
     ):
         self._export_event_logger = export_event_logger
         self._ray_event_publisher = ray_event_publisher
         self._session_name = session_name
+        self._log_cluster_shape = log_cluster_shape
         self._last_scaling_decision_hash: str = ""
 
     def log_node_provisioning(
@@ -130,10 +132,15 @@ class AutoscalerEventLogger:
             )
         elif self._export_event_logger is not None:
             # Legacy export-event path.
+            # When log_cluster_shape is False (e.g. READ_ONLY providers),
+            # suppress launch/terminate/resize messages — only infeasible
+            # warnings are emitted.
             self._log_export_events(
                 cluster_resources=cluster_resources,
-                launch_requests=launch_requests,
-                terminate_requests=terminate_requests,
+                launch_requests=launch_requests if self._log_cluster_shape else None,
+                terminate_requests=(
+                    terminate_requests if self._log_cluster_shape else None
+                ),
                 infeasible_requests=infeasible_requests,
                 infeasible_gang_requests=infeasible_gang_requests,
                 infeasible_cluster_resource_constraints=(
