@@ -435,6 +435,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         all_data_files = []
         upsert_keys_tables = []
         block_schemas = []
+        per_block_write_results = []
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
 
         for block in blocks:
@@ -443,10 +444,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 block_schemas.append(pa_table.schema)
 
                 # Extract join key values for copy-on-write upsert
+                per_block_upsert_keys = None
                 if use_copy_on_write_upsert:
                     upsert_cols = self._get_upsert_cols()
                     if len(upsert_cols) > 0:
-                        upsert_keys_tables.append(pa_table.select(upsert_cols))
+                        per_block_upsert_keys = pa_table.select(upsert_cols)
+                        upsert_keys_tables.append(per_block_upsert_keys)
 
                 # Write data files to storage with retry for transient errors
                 def _write_data_files():
@@ -467,6 +470,25 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     max_backoff_s=iceberg_config.write_file_retry_max_backoff_s,
                 )
                 all_data_files.extend(data_files)
+                per_block_write_results.append(
+                    IcebergWriteResult(
+                        data_files=data_files,
+                        upsert_keys=per_block_upsert_keys,
+                        schemas=[pa_table.schema],
+                    )
+                )
+            else:
+                per_block_write_results.append(None)
+
+        # Store per-block IcebergWriteResult in the task context so the checkpoint writer
+        # can persist metadata alongside each block's checkpointed IDs.
+        #
+        # This avoids coupling a task-level write result (covering multiple blocks) with a
+        # single block's checkpoint file. If a task crashes after checkpointing some blocks
+        # but before checkpointing others, recovering a task-level write result would allow
+        # uncheckpointed rows to be reprocessed while still committing previously-written
+        # data files for those rows, resulting in duplicate data.
+        ctx.kwargs["_datasink_write_return_per_block"] = per_block_write_results
 
         # Combine all upsert key tables into one
         from ray.data._internal.arrow_ops.transform_pyarrow import concat

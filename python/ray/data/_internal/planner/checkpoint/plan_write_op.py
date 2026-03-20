@@ -61,8 +61,9 @@ def _generate_checkpoint_writing_transform(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
         it1, it2 = itertools.tee(blocks, 2)
+        per_block_write_return = ctx.kwargs.get("_datasink_write_return_per_block")
         write_result_written = False
-        for block in it1:
+        for i, block in enumerate(it1):
             ba = BlockAccessor.for_block(block)
             if ba.num_rows() > 0:
                 if data_context.checkpoint_config.id_column not in ba.column_names():
@@ -72,9 +73,13 @@ def _generate_checkpoint_writing_transform(
                         f"this column."
                     )
             write_result = None
-            if not write_result_written and ba.num_rows() > 0:
-                write_result = ctx.kwargs.get("_datasink_write_return")
-                write_result_written = write_result is not None
+            if ba.num_rows() > 0:
+                if isinstance(per_block_write_return, list):
+                    if i < len(per_block_write_return):
+                        write_result = per_block_write_return[i]
+                elif not write_result_written:
+                    write_result = ctx.kwargs.get("_datasink_write_return")
+                    write_result_written = write_result is not None
             checkpoint_writer.write_block_checkpoint(ba, write_result=write_result)
 
         return list(it2)
