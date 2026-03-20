@@ -778,9 +778,7 @@ class HAProxyApi(ProxyApi):
 
                 # Read until EOF (HAProxy closes connection after response)
                 try:
-                    result_bytes = await asyncio.wait_for(
-                        reader.read(), timeout=5.0
-                    )
+                    result_bytes = await asyncio.wait_for(reader.read(), timeout=5.0)
                 except asyncio.TimeoutError:
                     raise RuntimeError(
                         f"Timeout while sending command '{command}' to HAProxy socket"
