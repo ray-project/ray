@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -229,6 +229,31 @@ def test_basic_scaling(make_autoscaler):
         return True
 
     wait_for_condition(verify, retry_interval_ms=2000)
+
+
+class TestAutoscalerMonitor(AutoscalerMonitor):
+    """Lightweight wrapper for testing _run() without full init."""
+
+    def __init__(self, gcs_address, gcs_client, autoscaler):
+        self.gcs_address = gcs_address
+        self.gcs_client = gcs_client
+        self.autoscaler = autoscaler
+        self._session_name = "test"
+
+
+def test_raise_AuthenticationError_v2(make_autoscaler):
+    autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
+    gcs_client = autoscaler._gcs_client
+    gcs_address = gcs_client.address
+
+    monitor = TestAutoscalerMonitor(gcs_address, gcs_client, autoscaler)
+
+    def flaky():
+        raise ray.exceptions.AuthenticationError("WrongClusterID")
+
+    with patch.object(autoscaler, "update_autoscaling_state", side_effect=flaky):
+        with pytest.raises(ray.exceptions.AuthenticationError):
+            monitor._run()
 
 
 if __name__ == "__main__":

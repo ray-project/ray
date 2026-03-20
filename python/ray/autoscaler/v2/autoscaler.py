@@ -44,6 +44,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
+from ray.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +296,9 @@ class Autoscaler:
                         logger.exception("Failed to emit node provisioning event.")
 
             return autoscaling_state
+        except AuthenticationError as e:
+            logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")
+            raise
         except Exception as e:
             logger.exception(e)
             return None
