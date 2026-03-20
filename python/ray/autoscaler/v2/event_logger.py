@@ -362,7 +362,10 @@ class AutoscalerEventLogger:
                     entry["label_constraints"] = label_constraints
                 infeasible_resource_dicts.append(entry)
             infeasible_resource_dicts.sort(
-                key=lambda d: (d.get("count", 0), sorted(d.get("resources", {}).items()))
+                key=lambda d: (
+                    d.get("count", 0),
+                    sorted(d.get("resources", {}).items()),
+                )
             )
 
         # Convert infeasible gang requests, grouping bundles within each gang.
