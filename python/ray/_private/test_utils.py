@@ -15,6 +15,7 @@ import time
 import timeit
 import traceback
 import uuid
+from collections.abc import Hashable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -1277,12 +1278,7 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 class ResourceKillerActor:
-    """Abstract base class used to implement resource killers for chaos testing.
-
-    Subclasses should implement _find_resource_to_kill, which should find a resource
-    to kill. This method should return the args to _kill_resource, which is another
-    abstract method that should kill the resource and add it to the `killed` set.
-    """
+    """Abstract base class used to implement resource killers for chaos testing."""
 
     def __init__(
         self,
@@ -1299,9 +1295,7 @@ class ResourceKillerActor:
         self.head_node_id = head_node_id
 
         # Set to track the killed nodes.
-        # Protected by a lock to support multithreaded subclasses.
-        self._killed = set()
-        self._killed_lock = threading.Lock()
+        self.killed = set()
 
         self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
@@ -1313,22 +1307,6 @@ class ResourceKillerActor:
 
     def ready(self):
         pass
-
-    def _add_killed(self, node_id: Any):
-        with self._killed_lock:
-            self._killed.add(node_id)
-
-    def _remove_killed(self, node_id: Any):
-        with self._killed_lock:
-            self._killed.discard(node_id)
-
-    def _is_killed(self, node_id: Any) -> bool:
-        with self._killed_lock:
-            return node_id in self._killed
-
-    def _num_killed(self) -> int:
-        with self._killed_lock:
-            return len(self._killed)
 
     async def run(self):
         self.is_running = True
@@ -1347,22 +1325,35 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            for to_kill in to_kills:
-                self._kill_resource(*to_kill)
-            if self.max_to_kill is not None and self._num_killed() >= self.max_to_kill:
+            results = await asyncio.gather(*[self._kill_resource(*to_kill) for to_kill in to_kills], return_exceptions=True)
+            for to_kill, result in zip(to_kills, results):
+                if isinstance(result, Exception):
+                    logger.error(f"Failed to kill resource {to_kill}, may retry later. Error: {result}")
+                else:
+                    logger.info(f"Successfully killed resource: {to_kill}")
+                    self.killed.add(to_kill)
+
+            if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
+
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
         await self.stop_run()
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Hashable]:
+        """Implemented by subclasses to discover resources to kill.
+
+        Should return a list of "resources" to kill, which will be passed into
+        _kill_resource.
+        """
         raise NotImplementedError
 
-    def _kill_resource(self, *args):
-        """To be implemented by subclasses.
+    async def _kill_resource(self, *args: Hashable):
+        """Implemented by subclasses to kill resources.
 
-        The subclass should add any successfully-killed nodes to
+        Should raise an exception if killing the resource failed, in which case it may
+        be retried.
         """
         raise NotImplementedError
 
@@ -1374,10 +1365,10 @@ class ResourceKillerActor:
         self.is_running = False
         return was_running
 
-    async def get_total_killed(self) -> Set[Any]:
-        """Get the set of node IDs that were killed."""
+    async def get_killed_nodes(self) -> Set[Any]:
+        """Get the set of nodes that were killed."""
         await self.done
-        return self._killed
+        return self.killed.copy()
 
     def _cleanup(self):
         """Cleanup any resources created by the killer.
@@ -1388,7 +1379,7 @@ class ResourceKillerActor:
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, str, str]]:
         nodes_to_kill = []
         while not nodes_to_kill and self.is_running:
             worker_nodes = [
@@ -1396,7 +1387,7 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"]
                 and (node["NodeID"] != self.head_node_id)
-                and (not self._is_killed(node["NodeID"]))
+                and (node["NodeID"] not in self.killed)
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), worker_nodes))
@@ -1424,22 +1415,9 @@ class NodeKillerBase(ResourceKillerActor):
 
 @ray.remote(num_cpus=0)
 class RayletKiller(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
+    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
         if node_to_kill_port is not None:
-            try:
-                self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
-            except Exception:
-                logger.exception(
-                    f"Failed to kill raylet on node {node_id} at "
-                    f"{node_to_kill_ip}:{node_to_kill_port}"
-                )
-                return
-
-            logging.info(
-                f"Killed node {node_id} at address: "
-                f"{node_to_kill_ip}, port: {node_to_kill_port}"
-            )
-            self._add_killed(node_id)
+            self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
@@ -1460,65 +1438,25 @@ class RayletKiller(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminator(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
+    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
         if node_to_kill_ip is not None:
-            try:
-                _terminate_ec2_instance(node_to_kill_ip)
-            except Exception:
-                logger.exception(
-                    f"Failed to terminate instance {node_id=}, "
-                    f"address={node_to_kill_ip}"
-                )
-                return
-
-            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
-            self._add_killed(node_id)
+            _terminate_ec2_instance(node_to_kill_ip)
 
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
     def __init__(self, *args, grace_period_s: int = 30, **kwargs):
         super().__init__(*args, **kwargs)
-
         self._grace_period_s = grace_period_s
-        self._kill_threads: Set[threading.Thread] = set()
 
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
-        assert not self._is_killed(node_id)
-
-        # Clean up any completed threads.
-        for thread in self._kill_threads.copy():
-            if not thread.is_alive():
-                thread.join()
-                self._kill_threads.remove(thread)
-
-        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            try:
-                self._drain_node(node_id)
-                time.sleep(self._grace_period_s)
-                # Anyscale extends the drain deadline if you shut down the instance
-                # directly. To work around this, we force-stop Ray on the node.
-                # Anyscale should then terminate it shortly after without updating
-                # the drain deadline.
-                _execute_command_on_node("ray stop --force", node_to_kill_ip)
-            except Exception:
-                logger.exception(f"Failed to kill node {node_id=}, {node_to_kill_ip=}")
-                self._remove_killed(node_id)
-
-        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
-        thread = threading.Thread(
-            target=_kill_node_with_grace_period,
-            args=(node_id, node_to_kill_ip),
-            daemon=True,
-        )
-        thread.start()
-
-        # NOTE(edoakes): we eagerly add the node ID to the killed set here even though
-        # it isn't confirmed yet. We will remove it if the command to kill the node
-        # fails. The ResourceKillerActor may exit its `run` before we ensure that all
-        # of the nodes were actually killed.
-        self._add_killed(node_id)
-        self._kill_threads.add(thread)
+    async def _kill_resource(self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int):
+        self._drain_node(node_id)
+        await asyncio.sleep(self._grace_period_s)
+        # Anyscale extends the drain deadline if you shut down the instance
+        # directly. To work around this, we force-stop Ray on the node.
+        # Anyscale should then terminate it shortly after without updating
+        # the drain deadline.
+        _execute_command_on_node("ray stop --force", node_to_kill_ip)
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1573,7 +1511,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, int, str]]:
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1600,15 +1538,13 @@ class WorkerKillerActor(ResourceKillerActor):
 
         return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
-    def _kill_resource(
-        self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+    async def _kill_resource(
+        self, process_to_kill_task_id: str, process_to_kill_pid: int, process_to_kill_node_id: str
     ):
         if process_to_kill_pid is not None:
 
             @ray.remote
-            def kill_process(pid):
-                import psutil
-
+            def kill_process(pid: int):
                 proc = psutil.Process(pid)
                 proc.kill()
 
@@ -1618,14 +1554,9 @@ class WorkerKillerActor(ResourceKillerActor):
                     soft=False,
                 )
             )
-            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+            await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
                 process_to_kill_pid
             )
-            logging.info(
-                f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
-            )
-            # Store both task_id and pid because retried tasks have same task_id.
-            self._add_killed((process_to_kill_task_id, process_to_kill_pid))
 
 
 def get_and_run_resource_killer(
