@@ -7,7 +7,7 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.16.0"
+ARG VLLM_SCRIPTS_REF="v0.17.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -30,8 +30,13 @@ else
     exit 1
 fi
 
+# Hash verification is disabled because uv pip compile generates hashes from
+# PyPI, but unsafe-best-match may download from the CUDA index which serves
+# different builds of some packages (e.g. triton). The lock file still pins
+# exact versions, so integrity is maintained through version pinning.
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
+    --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
