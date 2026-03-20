@@ -385,7 +385,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
     def _create_tpu_placement_group(
         self, name: str, topology: str
-    ) -> Optional[PlacementGroup]:
+    ) -> PlacementGroup:
         """Provisions a multi-host TPU Slice Placement Group.
 
         This enables atomic scheduling on TPUs for SPMD workloads by ensuring
