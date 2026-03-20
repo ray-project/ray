@@ -1,6 +1,5 @@
 import copy
 import json
-import signal
 import time
 import uuid
 from typing import (
@@ -43,20 +42,7 @@ class SGLangServer:
                 "`pip install sglang[all]` to install required dependencies."
             ) from e
 
-        # TODO(issue-61108): remove this once sglang#18752 is merged and included
-        # in the minimum supported SGLang version for this example.
-        original_signal_func = signal.signal
-
-        def noop_signal_handler(sig, action):
-            # Returns default handler to satisfy signal.signal() return signature
-            return signal.SIG_DFL
-
-        try:
-            # Override signal.signal with our no-op function
-            signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
-        finally:
-            signal.signal = original_signal_func
+        self.engine = sglang.Engine(**self.engine_kwargs)
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
