@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 
@@ -16,6 +15,7 @@ from ray.serve._private.deployment_scheduler import (
 )
 from ray.serve._private.test_utils import check_apps_running, get_node_id
 from ray.serve._private.utils import get_head_node_id
+from ray.serve.schema import DeploymentStatus, ReplicaState
 from ray.tests.conftest import *  # noqa
 
 
@@ -733,21 +733,66 @@ async def test_e2e_serve_fallback_strategy_unschedulable(
 
 class TestScaleDownReplicaSelection:
     @staticmethod
+    def _quick_upscale_config():
+        return {
+            "target_ongoing_requests": 0.01,
+            "upscale_delay_s": 0.05,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.1,
+            "downscale_delay_s": 1,
+            "aggregation_function": "max",
+        }
+
+    @staticmethod
+    def _wait_for_upscale_or_downscale(
+        app_name: str, deployment_name: str, timeout: int = 30
+    ):
+        def check_upscale_or_downscale():
+            deployment_info = (
+                serve.status().applications[app_name].deployments[deployment_name]
+            )
+            return deployment_info.status in [
+                DeploymentStatus.DOWNSCALING,
+                DeploymentStatus.UPSCALING,
+            ]
+
+        wait_for_condition(
+            check_upscale_or_downscale, timeout=timeout, retry_interval_ms=10
+        )
+
+    @staticmethod
+    def _wait_until_min_replica(
+        app_name: str, deployment_name: str, min_replicas: int, timeout: int = 30
+    ):
+        def check_min_replicas():
+            deployment_info = (
+                serve.status().applications[app_name].deployments[deployment_name]
+            )
+            return (
+                deployment_info.status == DeploymentStatus.HEALTHY
+                and deployment_info.replica_states[ReplicaState.RUNNING] == min_replicas
+            )
+
+        wait_for_condition(check_min_replicas, timeout=timeout)
+
+    @staticmethod
     def _deploy_test_app(
         app_name: str,
+        deployment_name: str = "test_deployment",
         *,
         ray_actor_options: dict,
+        placement_group_bundles: list[dict] = None,
         autoscaling_config: dict = None,
     ):
-        @serve.deployment
+        @serve.deployment(name=deployment_name)
         class TestDeployment:
-            def get_node_id(self, delay_s: float = 0):
-                time.sleep(delay_s)
+            async def get_node_id(self):
                 return ray.get_runtime_context().get_node_id()
 
         return serve.run(
             TestDeployment.options(
                 ray_actor_options=ray_actor_options,
+                placement_group_bundles=placement_group_bundles,
                 autoscaling_config=autoscaling_config,
             ).bind(),
             name=app_name,
@@ -761,27 +806,26 @@ class TestScaleDownReplicaSelection:
         fallback_label = {"region": "us-east"}
 
         ray_actor_options = {
-            "num_cpus": 1,
+            "num_cpus": 0.25,
             "label_selector": primary_label,
             "fallback_strategy": [{"label_selector": fallback_label}],
         }
 
-        num_fallback_replicas = 3
+        num_fallback_replicas = 4
         num_match_replicas = 2
 
         cluster.add_node(num_cpus=0)
-        cluster.add_node(
-            num_cpus=num_fallback_replicas,
+        fallback_node = cluster.add_node(
+            num_cpus=1,
             labels=fallback_label,
         )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address, ignore_reinit_error=True)
         serve.start()
         app_name = "downscale_fallback_app"
+        deployment_name = "test_deployment"
 
-        fallback_node_id = ray.get(
-            get_node_id.options(label_selector=fallback_label).remote()
-        )
+        fallback_node_id = fallback_node.node_id
 
         try:
             handle = self._deploy_test_app(
@@ -790,43 +834,50 @@ class TestScaleDownReplicaSelection:
                 autoscaling_config={
                     "min_replicas": 1,
                     "max_replicas": num_fallback_replicas + num_match_replicas,
-                    "target_ongoing_requests": 0.01,
-                    "upscale_delay_s": 0.1,
-                    "metrics_interval_s": 0.2,
-                    "look_back_period_s": 0.2,
-                    "downscale_delay_s": 0.1,
+                    **self._quick_upscale_config(),
                 },
             )
             wait_for_condition(check_apps_running, apps=[app_name])
 
-            cluster.add_node(
-                num_cpus=num_match_replicas,
+            primary_node = cluster.add_node(
+                num_cpus=1,
                 labels=primary_label,
             )
             cluster.wait_for_nodes()
-            primary_node_id = ray.get(
-                get_node_id.options(label_selector=primary_label).remote()
-            )
+            primary_node_id = primary_node.node_id
 
             # The first replica is always the fallback node
-            assert handle.get_node_id.remote(delay_s=1).result() == fallback_node_id
+            assert handle.get_node_id.remote().result() == fallback_node_id
+
             # After calling the deployment will scale up
-            time.sleep(5)
-            # After some time, the deployment will scale down
+            # resulting in some replicas on the fallback node and some replicas on the primary node.
+            # After some time, the deployment will scale down to min replica.
+            self._wait_for_upscale_or_downscale(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                timeout=30,
+            )
+            self._wait_until_min_replica(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                min_replicas=1,
+                timeout=30,
+            )
             # Replica on the fallback node should be removed first
-            # so the remaining replica should be on the primary node
+            # so the remaining replica should be on the primary node.
             assert handle.get_node_id.remote().result() == primary_node_id
         finally:
             serve.shutdown()
+
+    # TODO: Add test for downscale placement group fallback_strategy when it's added to deployment options.
 
     def test_downscale_prefers_nodes_with_fewer_total_replicas(self, ray_cluster):
         cluster = ray_cluster
         cluster.add_node(num_cpus=0)
         primary_label = {"region": "us-south"}
-        cluster.add_node(
+        first_node = cluster.add_node(
             num_cpus=1,
             labels=primary_label,
-            resources={"node_1": 1},
         )
         cluster.wait_for_nodes()
         ray.init(address=cluster.address, ignore_reinit_error=True)
@@ -837,43 +888,102 @@ class TestScaleDownReplicaSelection:
             "label_selector": primary_label,
         }
         app_name = "downscale_fewer_total_replicas_app"
-        first_node_id = ray.get(get_node_id.options(resources={"node_1": 1}).remote())
+        deployment_name = "test_deployment"
+        first_node_id = first_node.node_id
 
         try:
             handle = self._deploy_test_app(
                 app_name,
+                deployment_name=deployment_name,
                 ray_actor_options=ray_actor_options,
                 autoscaling_config={
                     "min_replicas": 1,
                     "max_replicas": 3,
-                    "target_ongoing_requests": 0.01,
-                    "upscale_delay_s": 0.1,
-                    "metrics_interval_s": 0.2,
-                    "look_back_period_s": 0.2,
-                    "downscale_delay_s": 0.1,
+                    **self._quick_upscale_config(),
                 },
             )
             wait_for_condition(check_apps_running, apps=[app_name])
 
-            cluster.add_node(
+            second_node = cluster.add_node(
                 num_cpus=2,
                 labels=primary_label,
-                resources={"node_2": 1},
             )
             cluster.wait_for_nodes()
-            second_node_id = ray.get(
-                get_node_id.options(resources={"node_2": 1}).remote()
-            )
+            second_node_id = second_node.node_id
 
             # The first replica is always the first node
-            assert handle.get_node_id.remote(delay_s=1).result() == first_node_id
+            assert handle.get_node_id.remote().result() == first_node_id
             # After calling the deployment will scale up
-            time.sleep(5)
-            # After some time, the deployment will scale down
-            # Replica on the first node should be removed first
-            # Because the first node has only 1 replica
-            # So the remaining replica(s) should be on the 2nd node
+            # resulting in some replicas on the first node and some replicas on the second node.
+            # After some time, the deployment will scale down.
+            self._wait_for_upscale_or_downscale(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                timeout=30,
+            )
+            self._wait_until_min_replica(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                min_replicas=1,
+                timeout=30,
+            )
+            # Replica on the first node should be removed first.
+            # Because the first node has only 1 replica.
+            # So the remaining replica(s) should be on the 2nd node.
             assert handle.get_node_id.remote().result() == second_node_id
+        finally:
+            serve.shutdown()
+
+    def test_downscale_prefers_not_head_node(self, ray_cluster):
+        cluster = ray_cluster
+        head_node = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address, ignore_reinit_error=True)
+        serve.start()
+
+        ray_actor_options = {
+            "num_cpus": 1,
+        }
+        app_name = "downscale_prefers_not_head_app"
+        deployment_name = "test_deployment"
+        head_node_id = head_node.node_id
+
+        try:
+            handle = self._deploy_test_app(
+                app_name,
+                deployment_name=deployment_name,
+                ray_actor_options=ray_actor_options,
+                autoscaling_config={
+                    "min_replicas": 1,
+                    "max_replicas": 3,
+                    **self._quick_upscale_config(),
+                },
+            )
+            wait_for_condition(check_apps_running, apps=[app_name])
+
+            cluster.add_node(num_cpus=2)
+            cluster.wait_for_nodes()
+
+            # The first replica is always the head node
+            assert handle.get_node_id.remote().result() == head_node_id
+
+            # After calling the deployment will scale up
+            # resulting in some replicas on the head node and some replicas on the new node.
+            # After some time, the deployment will scale down to min replica.
+            self._wait_for_upscale_or_downscale(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                timeout=30,
+            )
+            self._wait_until_min_replica(
+                app_name=app_name,
+                deployment_name=deployment_name,
+                min_replicas=1,
+                timeout=30,
+            )
+            # Even though the head node had 1 replica compared to 2 replicas on the worker node
+            # the remaining replica should still be onthe head node.
+            assert handle.get_node_id.remote().result() == head_node_id
         finally:
             serve.shutdown()
 

@@ -1,6 +1,5 @@
 import copy
 import logging
-import sys
 import uuid
 import warnings
 from abc import ABC, abstractmethod
@@ -226,7 +225,7 @@ class DeploymentSchedulingInfo:
     deployment_id: DeploymentID
     scheduling_policy: Any
     actor_resources: Optional[Resources] = None
-    label_selector: Optional[Dict] = None
+    label_selector: Optional[Dict[str, str]] = None
     placement_group_bundles: Optional[List[Resources]] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_strategy: Optional[str] = None
@@ -1083,16 +1082,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
         gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
-        """Select which replicas to stop for a downscale request.
-        1st prioritize replicas that are not in the RUNNING state
-        2nd prioritize replicas on fallback nodes
-        (nodes that don't match the label selector or bundle label selector)
-        3rd prioritize replicas on nodes with fewest replicas so we can relinquish them
-        4th prioritize newer replicas over older replicas since older replicas
-
-        Note that this algorithm doesn't consider
-        other non-serve actors on the same node. See more at
-        https://github.com/ray-project/ray/issues/20599.
+        """Select which replicas to stop for a downscale request in the following priority:
+        1. Prioritize replicas that are not in the RUNNING state.
+        2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        3. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
+            Head node is always deprioritized to last.
+        4. Prioritize newer replicas over older replicas.
+        Note that this algorithm doesn't consider other non-serve actors on the same node.
+        See more at https://github.com/ray-project/ray/issues/20599.
 
         For gang deployments, the same priority order is applied, but entire
         gangs are selected atomically instead of individual replicas.
@@ -1131,32 +1128,24 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id
             )
 
-        # Prioritize scaling down replicas on fallback nodes first
-        # then prioritize replicas on nodes other than the head node
-        # since we cannot relinquish the head node.
-        def key(
-            node_and_num_running_replicas_of_all_deployments: Tuple[
-                str, Set[ReplicaID]
-            ],
-        ) -> Tuple[int, int]:
-            node_id, replica_set = node_and_num_running_replicas_of_all_deployments
+        # Prioritize based on following priority:
+        # 1. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        # 2. Prioritize replicas not on the head node because we can't relinquish the head node.
+        # 3. Prioritize replicas on nodes with fewer total replicas so we can relinquish them.
+        def scale_down_priority(
+            node_and_replicas: Tuple[str, Set[ReplicaID]],
+        ) -> Tuple[int, int, int]:
+            node_id, all_replicas = node_and_replicas
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
-            is_preferred_node = True
-            # If there are label selectors or bundle label selectors
-            # then nodes that don't match any of the labels are not preferred
-            # and are deprioritized for keeping upscaled replicas.
-            if len(labels_to_check) > 0:
-                is_preferred_node = any(
-                    node_labels_match_selector(node_labels, labels)
-                    for labels in labels_to_check
-                )
-            num_replicas = (
-                len(replica_set) if node_id != self._head_node_id else sys.maxsize
+            match_labels = not labels_to_check or any(
+                node_labels_match_selector(node_labels, labels)
+                for labels in labels_to_check
             )
-            return int(is_preferred_node), num_replicas
+            is_head_node = node_id == self._head_node_id
+            return int(match_labels), int(is_head_node), len(all_replicas)
 
         for node_id, _ in sorted(
-            node_to_running_replicas_of_all_deployments.items(), key=key
+            node_to_running_replicas_of_all_deployments.items(), key=scale_down_priority
         ):
             if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
