@@ -13,12 +13,10 @@ proto_library(
         ":events_autoscaler_config_definition_event_proto",
         ":events_autoscaler_node_provisioning_event_proto",
         ":events_autoscaler_scaling_decision_event_proto",
-        ":events_driver_job_definition_event_proto",
-        ":events_driver_job_lifecycle_event_proto",
         ":events_node_definition_event_proto",
         ":events_node_lifecycle_event_proto",
-        ":events_submission_job_definition_event_proto",
-        ":events_submission_job_lifecycle_event_proto",
+        ":events_placement_group_definition_event_proto",
+        ":events_placement_group_lifecycle_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_lifecycle_event_proto",
         "//src/ray/protobuf:events_task_profile_events_proto",
@@ -99,29 +97,6 @@ proto_library(
 cc_proto_library(
     name = "events_driver_job_lifecycle_event_cc_proto",
     deps = [":events_driver_job_lifecycle_event_proto"],
-)
-
-proto_library(
-    name = "events_submission_job_definition_event_proto",
-    srcs = ["events_submission_job_definition_event.proto"],
-)
-
-cc_proto_library(
-    name = "events_submission_job_definition_event_cc_proto",
-    deps = [":events_submission_job_definition_event_proto"],
-)
-
-proto_library(
-    name = "events_submission_job_lifecycle_event_proto",
-    srcs = ["events_submission_job_lifecycle_event.proto"],
-    deps = [
-        "@com_google_protobuf//:timestamp_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "events_submission_job_lifecycle_event_cc_proto",
-    deps = [":events_submission_job_lifecycle_event_proto"],
 )
 
 proto_library(
@@ -216,4 +191,26 @@ proto_library(
 cc_proto_library(
     name = "runtime_environment_cc_proto",
     deps = [":runtime_environment_proto"],
+)
+
+proto_library(
+    name = "events_placement_group_definition_event_proto",
+    srcs = ["events_placement_group_definition_event.proto"],
+    deps = ["//src/ray/protobuf:common_proto"],
+)
+
+cc_proto_library(
+    name = "events_placement_group_definition_event_cc_proto",
+    deps = [":events_placement_group_definition_event_proto"],
+)
+
+proto_library(
+    name = "events_placement_group_lifecycle_event_proto",
+    srcs = ["events_placement_group_lifecycle_event.proto"],
+    deps = ["@com_google_protobuf//:timestamp_proto"],
+)
+
+cc_proto_library(
+    name = "events_placement_group_lifecycle_event_cc_proto",
+    deps = [":events_placement_group_lifecycle_event_proto"],
 )
