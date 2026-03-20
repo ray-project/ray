@@ -3,8 +3,9 @@ import warnings
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.execution_callback import ExecutionCallback
     import pyarrow.fs
+
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
 
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -192,11 +193,14 @@ class Planner:
         ):
             self._supports_checkpointing = True
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
+
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config, data_file_dir, data_file_fs
             )
+
             callbacks.append(checkpoint_callback)
             load_checkpoint = checkpoint_callback.load_checkpoint
+
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
