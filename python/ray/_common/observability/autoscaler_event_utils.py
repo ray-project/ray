@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from ray.core.generated.instance_manager_pb2 import TerminationRequest
 
-_TERMINATION_CAUSE_REASON_MAP = {
+TERMINATION_CAUSE_REASON_MAP = {
     TerminationRequest.Cause.OUTDATED: "outdated",
     TerminationRequest.Cause.MAX_NUM_NODES: "max number of worker nodes reached",
     TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE: (
@@ -46,7 +46,7 @@ def build_autoscaler_scheduling_update_rows(
     if terminate_actions:
         for terminate_action in terminate_actions:
             cause = terminate_action["cause"]
-            cause_reason = _TERMINATION_CAUSE_REASON_MAP.get(cause, "unknown")
+            cause_reason = TERMINATION_CAUSE_REASON_MAP.get(cause, "unknown")
             rows.append(
                 {
                     "severity": "INFO",

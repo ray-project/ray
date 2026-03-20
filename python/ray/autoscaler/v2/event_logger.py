@@ -5,7 +5,8 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray._common.observability.autoscaler_event_utils import (
-    build_autoscaler_scheduling_update_rows,  # noqa: F401 - re-exported
+    build_autoscaler_scheduling_update_rows,
+    TERMINATION_CAUSE_REASON_MAP,
 )
 from ray._private.event.event_logger import EventLoggerAdapter
 from ray.autoscaler.v2.utils import ResourceRequestUtil
@@ -309,16 +310,6 @@ class AutoscalerEventLogger:
             for req in terminate_requests:
                 termination_by_causes_and_type[(req.cause, req.instance_type)] += 1
 
-            cause_reason_map = {
-                TerminationRequest.Cause.OUTDATED: "outdated",
-                TerminationRequest.Cause.MAX_NUM_NODES: (
-                    "max number of worker nodes reached"
-                ),
-                TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE: (
-                    "max number of worker nodes per type reached"
-                ),
-                TerminationRequest.Cause.IDLE: "idle",
-            }
             for (cause, instance_type), count in sorted(
                 termination_by_causes_and_type.items()
             ):
@@ -329,7 +320,7 @@ class AutoscalerEventLogger:
                         "count": count,
                     }
                 )
-                cause_reason = cause_reason_map.get(cause, "unknown")
+                cause_reason = TERMINATION_CAUSE_REASON_MAP.get(cause, "unknown")
                 logger.info(
                     f"Removing {count} nodes of type "
                     f"{instance_type} ({cause_reason})."
