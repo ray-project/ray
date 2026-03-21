@@ -105,7 +105,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-python -m pip install -U torch==2.9.1 torchvision==0.24.1 "transformers==4.47.1" "datasets==2.21.0"
+python -m pip install -U torch==2.9.1 torchvision==0.24.1 "transformers==4.48.0" "datasets==2.21.0"
 python -m pip show torch transformers datasets
 ```
 
@@ -677,7 +677,7 @@ run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
     worker_runtime_env={
-        "pip": ["torch==2.9.1", "torchvision==0.24.1", "transformers==4.47.1", "datasets==2.21.0"],
+        "pip": ["torch==2.9.1", "torchvision==0.24.1", "transformers==4.48.0", "datasets==2.21.0"],
     },
 )
 
