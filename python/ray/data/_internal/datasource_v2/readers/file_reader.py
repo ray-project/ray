@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Iterator, List, Optional
 
 import pyarrow as pa
@@ -11,7 +11,7 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class FileReader(Reader[FileManifest]):
+class FileReader(ABC, Reader[FileManifest]):
     """Reader for file-based sources.
 
     This reader uses PyArrow's Dataset API which automatically handles:
