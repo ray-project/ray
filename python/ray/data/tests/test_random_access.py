@@ -10,7 +10,7 @@ def test_deprecation_warning(ray_start_regular_shared):
     ds = ray.data.range(10)
     with pytest.warns(
         RayDeprecationWarning,
-        match="`to_random_access_dataset\(\)` is unmaintained and will be removed in a future release.",
+        match=r"`to_random_access_dataset\(\)` is unmaintained and will be removed in a future release.",
     ):
         ds.to_random_access_dataset("id")
 
@@ -25,7 +25,8 @@ def test_basic(ray_start_regular_shared, pandas):
             lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
         )
 
-    rad = ds.to_random_access_dataset("key", num_workers=1)
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("key", num_workers=1)
 
     def expected(i):
         return {"id": i, "key": i * 2, "embedding": i**2}
@@ -46,7 +47,8 @@ def test_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10).repartition(20)
     assert ds._plan.initial_num_blocks() == 20
 
-    rad = ds.to_random_access_dataset("id")
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("id")
     for i in range(10):
         assert ray.get(rad.get_async(i)) == {"id": i}
 
@@ -54,13 +56,15 @@ def test_empty_blocks(ray_start_regular_shared):
 def test_errors(ray_start_regular_shared):
     ds = ray.data.range(10)
     with pytest.raises(ValueError):
-        ds.to_random_access_dataset("invalid")
+        with pytest.warns(RayDeprecationWarning):
+            ds.to_random_access_dataset("invalid")
 
 
 def test_stats(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=10)
 
-    rad = ds.to_random_access_dataset("id", num_workers=1)
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("id", num_workers=1)
     stats = rad.stats()
     assert "Accesses per worker: 0 min, 0 max, 0 mean" in stats, stats
     ray.get(rad.get_async(0))
