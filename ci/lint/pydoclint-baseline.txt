@@ -891,7 +891,6 @@ python/ray/dashboard/modules/reporter/profile_manager.py
     DOC101: Method `CpuProfilingManager.cpu_profile`: Docstring contains fewer arguments than in function signature.
     DOC107: Method `CpuProfilingManager.cpu_profile`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC111: Method `CpuProfilingManager.cpu_profile`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Method `CpuProfilingManager.cpu_profile`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [format: ].
     DOC101: Method `MemoryProfilingManager.get_profile_result`: Docstring contains fewer arguments than in function signature.
     DOC111: Method `MemoryProfilingManager.get_profile_result`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
     DOC103: Method `MemoryProfilingManager.get_profile_result`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [profiler_filename: str].
