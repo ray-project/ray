@@ -36,9 +36,11 @@ URI_DOWNLOAD_MAX_WORKERS = 16
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 
 # Range-split downloads: files above this threshold (bytes) are downloaded as
-# parallel get_range requests instead of a single get.  0 = disabled (default).
+# parallel get_range requests instead of a single get.  Default 4 MB — below
+# the crossover where ranged overhead exceeds the single-GET time, but above
+# it large/skewed workloads see 10-25x speedup.  Set to 0 to disable.
 RAY_DATA_OBSTORE_RANGE_THRESHOLD = int(
-    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", "0")
+    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", str(4 * 1024 * 1024))
 )
 RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = int(
     os.environ.get("RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", str(8 * 1024 * 1024))
@@ -594,11 +596,18 @@ def download_bytes_threaded(
             global _obstore_fallback_warned
             if not _obstore_fallback_warned and not use_obstore:
                 _obstore_fallback_warned = True
-                logger.warning(
-                    "obstore is not installed — falling back to the PyArrow "
-                    "download path, which is significantly slower for large "
-                    "or numerous files. Install it with: pip install obstore"
-                )
+                if not RAY_DATA_USE_OBSTORE:
+                    logger.info(
+                        "obstore disabled via RAY_DATA_USE_OBSTORE=0 — "
+                        "using the PyArrow download path."
+                    )
+                else:
+                    logger.warning(
+                        "obstore is not installed — falling back to the "
+                        "PyArrow download path, which is significantly "
+                        "slower for large or numerous files. "
+                        "Install it with: pip install obstore"
+                    )
             uri_bytes = _download_uris_with_pyarrow(
                 uris, uri_column_name, data_context, filesystem=filesystem
             )
