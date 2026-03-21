@@ -276,10 +276,6 @@ def _run_data_config_resource_test(data_config):
     num_workers = 2
     # Resources used by training workers.
     cpus_per_worker, gpus_per_worker = 2, 1
-    # Resources used by the trainer actor.
-    default_trainer_cpus, default_trainer_gpus = 1, 0
-    num_train_cpus = num_workers * cpus_per_worker + default_trainer_cpus
-    num_train_gpus = num_workers * gpus_per_worker + default_trainer_gpus
 
     original_execution_options = data_config._get_execution_options("train")
 
@@ -293,19 +289,18 @@ def _run_data_config_resource_test(data_config):
                 if original_execution_options.is_resource_limits_default():
                     # If the original resource limits are default, the new resource
                     # limits should be the default as well.
-                    # And the new exclude_resources should be the resources used by
-                    # Train + user-defined exclude_resources.
+                    # Under the V2 cluster autoscaler (default), training resources
+                    # are registered with the AutoscalingCoordinator directly, so
+                    # exclude_resources should remain as user-configured.
                     assert new_execution_options.is_resource_limits_default()
                     exclude_resources = new_execution_options.exclude_resources
                     assert (
                         exclude_resources.cpu
-                        == num_train_cpus
-                        + original_execution_options.exclude_resources.cpu
+                        == original_execution_options.exclude_resources.cpu
                     )
                     assert (
                         exclude_resources.gpu
-                        == num_train_gpus
-                        + original_execution_options.exclude_resources.gpu
+                        == original_execution_options.exclude_resources.gpu
                     )
                 else:
                     # If the original resource limits are not default, the new resource
@@ -342,7 +337,7 @@ def _run_data_config_resource_test(data_config):
 
 
 def test_data_config_default_resource_limits(shutdown_only):
-    """Test that DataConfig should exclude training resources from Data."""
+    """Test that DataConfig preserves user-configured exclude_resources."""
     execution_options = ExecutionOptions()
     execution_options.exclude_resources = execution_options.exclude_resources.copy(
         cpu=2, gpu=1
