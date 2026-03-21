@@ -674,6 +674,13 @@ class PhysicalOperator(Operator):
         """
         return self._estimated_output_num_rows
 
+    def num_output_splits(self) -> int:
+        """Returns the number of splits for this operator's output is partitioned into.
+
+        Most operators have a single output split.
+        """
+        return 1
+
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -903,12 +910,16 @@ class PhysicalOperator(Operator):
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
 
-    def update_resource_usage(self) -> None:
-        """Updates resource usage of this operator at runtime.
+    def refresh_state(self):
+        """Refreshes the state of the operator at runtime.
 
         This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for dynamic resource usage updates due to
-        restarting actors, retrying tasks, lost objects, etc.
+        Subclasses can override it to account for asynchronous updates, like restarting
+        actors, retrying tasks, or lost objects which are NOT transparent to the
+        StreamingExecutor.
+
+        TODO: Currently this method is synchronous. We should consider making this async,
+        or calling it in an asynchronous context.
         """
         pass
 
