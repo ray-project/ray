@@ -29,6 +29,8 @@ import "src/ray/protobuf/public/events_node_definition_event.proto";
 import "src/ray/protobuf/public/events_node_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_placement_group_definition_event.proto";
 import "src/ray/protobuf/public/events_placement_group_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_submission_job_definition_event.proto";
+import "src/ray/protobuf/public/events_submission_job_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_autoscaler_config_definition_event.proto";
 import "src/ray/protobuf/public/events_autoscaler_scaling_decision_event.proto";
 import "src/ray/protobuf/public/events_autoscaler_node_provisioning_event.proto";
@@ -65,9 +67,11 @@ message RayEvent {
     ACTOR_LIFECYCLE_EVENT = 10;
     PLACEMENT_GROUP_DEFINITION_EVENT = 11;
     PLACEMENT_GROUP_LIFECYCLE_EVENT = 12;
-    AUTOSCALER_CONFIG_DEFINITION_EVENT = 13;
-    AUTOSCALER_SCALING_DECISION_EVENT = 14;
-    AUTOSCALER_NODE_PROVISIONING_EVENT = 15;
+    SUBMISSION_JOB_DEFINITION_EVENT = 13;
+    SUBMISSION_JOB_LIFECYCLE_EVENT = 14;
+    AUTOSCALER_CONFIG_DEFINITION_EVENT = 15;
+    AUTOSCALER_SCALING_DECISION_EVENT = 16;
+    AUTOSCALER_NODE_PROVISIONING_EVENT = 17;
   }
 
   // The severities of events that can be generated.
@@ -119,13 +123,15 @@ message RayEvent {
 
   PlacementGroupDefinitionEvent placement_group_definition_event = 19;
   PlacementGroupLifecycleEvent placement_group_lifecycle_event = 20;
+  SubmissionJobDefinitionEvent submission_job_definition_event = 21;
+  SubmissionJobLifecycleEvent submission_job_lifecycle_event = 22;
 
-  AutoscalerConfigDefinitionEvent autoscaler_config_definition_event = 21;
-  AutoscalerScalingDecisionEvent autoscaler_scaling_decision_event = 22;
-  AutoscalerNodeProvisioningEvent autoscaler_node_provisioning_event = 23;
+  AutoscalerConfigDefinitionEvent autoscaler_config_definition_event = 23;
+  AutoscalerScalingDecisionEvent autoscaler_scaling_decision_event = 24;
+  AutoscalerNodeProvisioningEvent autoscaler_node_provisioning_event = 25;
 
   // Hostname of the process that emitted this event.
-  string source_hostname = 24;
+  string source_hostname = 26;
   // PID of the process that emitted this event.
-  int32 source_pid = 25;
+  int32 source_pid = 27;
 }
