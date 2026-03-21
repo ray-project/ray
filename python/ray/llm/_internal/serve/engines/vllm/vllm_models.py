@@ -175,20 +175,20 @@ class VLLMEngineConfig(BaseModelExtended):
         engine_kwargs["model"] = self.actual_hf_model_id
         engine_kwargs["served_model_name"] = [self.model_id]
 
-        # Handle distributed_executor_backend based on GPU/CPU mode
-        if not self.use_gpu:
+        # Handle distributed_executor_backend based on GPU/TPU/CPU mode
+        if not self.use_gpu and not self.use_tpu:
             # For CPU mode, always use "mp" backend
             engine_kwargs["distributed_executor_backend"] = "mp"
         elif (
             "distributed_executor_backend" in engine_kwargs
             and engine_kwargs["distributed_executor_backend"] != "ray"
         ):
-            # For GPU mode, only "ray" backend is allowed
+            # For GPU and TPU modes, only "ray" backend is allowed
             raise ValueError(
                 "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
             )
         else:
-            # For GPU mode, use "ray" backend (default)
+            # For GPU and TPU modes, use "ray" backend (default)
             engine_kwargs["distributed_executor_backend"] = "ray"
 
         if "enable_log_requests" not in engine_kwargs:
