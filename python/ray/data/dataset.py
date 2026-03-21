@@ -6603,6 +6603,7 @@ class Dataset:
             by the specified key.
         """
         import warnings
+
         from ray.util.annotations import RayDeprecationWarning
 
         warnings.warn(
