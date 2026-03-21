@@ -171,6 +171,14 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
     )
 
+    topology: Optional[str] = Field(
+        default=None,
+        description=(
+            "The physical topology of the slice (e.g. '4x4', '2x2x4'). "
+            "Required when deploying on multi-host TPU configurations."
+        ),
+    )
+
     use_cpu: Optional[bool] = Field(
         default=None,
         description=(
