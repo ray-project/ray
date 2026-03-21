@@ -20,7 +20,7 @@ async def test_vllm_engine_start_with_tpu_topology(
             model_source=model_smolvlm_256m,
         ),
         accelerator_type="TPU-V6E",
-        placement_group_config={"topology": "4x4"},
+        topology="4x4",
         engine_kwargs=dict(
             use_tqdm_on_load=False,
             enforce_eager=True,
@@ -62,7 +62,7 @@ async def test_vllm_engine_start_with_tpu_topology(
     ray.util.remove_placement_group(pg)
 
 
-def test_tpu_slice_placement_group_creation():
+def test_tpu_slice_placement_group_creation_default_resources():
     """
     Verifies that requesting a multi-host TPU topology correctly intercepts
     standard PG creation and returns a STRICT_SPREAD SlicePlacementGroup.
@@ -70,7 +70,7 @@ def test_tpu_slice_placement_group_creation():
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        placement_group_config={"topology": "4x4"},
+        topology="4x4",
         llm_engine="vLLM",
     )
 
@@ -81,7 +81,38 @@ def test_tpu_slice_placement_group_creation():
 
     assert pg.strategy == "STRICT_SPREAD"
 
-    # 4x4 v6e = 16 chips.
+    # 4x4 v6e = 16 chips. We default to 1 TPU chip per bundle.
+    assert pg.bundle_count == 16
+    for bundle in pg.bundle_specs:
+        assert "TPU" in bundle
+        assert bundle["TPU"] == 1
+
+    ray.util.remove_placement_group(pg)
+
+
+def test_tpu_slice_placement_group_creation_host_resources():
+    """
+    Verifies that explicitly providing host-level bundles via
+    placement_group_config correctly overrides the 1-chip default.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        placement_group_config={
+            "strategy": "STRICT_SPREAD",
+            "bundles": [{"TPU": 4}],
+        },
+        llm_engine="vLLM",
+    )
+
+    engine_config = llm_config.get_engine_config()
+    pg = engine_config.get_or_create_pg()
+
+    assert isinstance(pg, PlacementGroup)
+
+    assert pg.strategy == "STRICT_SPREAD"
+    # We should provision 4 host-level bundles instead of the default 16 chip-level bundles.
     assert pg.bundle_count == 4
     for bundle in pg.bundle_specs:
         assert "TPU" in bundle

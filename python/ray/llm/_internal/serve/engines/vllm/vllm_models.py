@@ -56,15 +56,8 @@ class PlacementGroupConfig(BaseModelExtended):
     @model_validator(mode="before")
     @classmethod
     def validate_bundles_exist(cls, values):
-        if isinstance(values, dict):
-            has_bundles = "bundles" in values and values["bundles"] is not None
-            # If topology is set, the PG bundles are constructed for the user.
-            has_topology = "topology" in values and values["topology"] is not None
-
-            if not has_bundles and not has_topology:
-                raise ValueError(
-                    "placement_group_config must contain either 'bundles' or 'topology'"
-                )
+        if isinstance(values, dict) and "bundles" not in values:
+            raise ValueError("placement_group_config must contain 'bundles'")
         return values
 
 
@@ -86,6 +79,13 @@ class VLLMEngineConfig(BaseModelExtended):
     accelerator_type: Optional[GPUType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
+    )
+    topology: Optional[str] = Field(
+        default=None,
+        description=(
+            "The physical topology of the TPU slice. "
+            "Required when deploying on multi-host TPU configurations."
+        ),
     )
     use_cpu: Optional[bool] = Field(
         default=None,
@@ -110,6 +110,19 @@ class VLLMEngineConfig(BaseModelExtended):
         # Validate through PlacementGroupConfig, then dump back to dict
         validated = PlacementGroupConfig(**value)
         return validated.model_dump()
+
+    @model_validator(mode="after")
+    def validate_topology_requirements(self):
+        """Ensures that if a topology is requested, the necessary hardware hints are provided."""
+        if self.topology:
+            if not self.accelerator_type:
+                raise ValueError(
+                    "`accelerator_type` must be specified when `topology` is set "
+                    "so Ray Serve can correctly provision the multi-host slice."
+                )
+            if isinstance(self.use_cpu, bool) and self.use_cpu:
+                raise ValueError("Cannot specify a `topology` when `use_cpu=True`.")
+        return self
 
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
@@ -218,6 +231,7 @@ class VLLMEngineConfig(BaseModelExtended):
             mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
             use_cpu=llm_config.use_cpu,
+            topology=llm_config.topology,
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -256,14 +270,19 @@ class VLLMEngineConfig(BaseModelExtended):
             bundles = []
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
-                if self.accelerator_type and self.use_gpu:
+                if self.accelerator_type and (self.use_gpu or self.use_tpu):
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
             return bundles
 
-        # Default bundles: Generate based on GPU/CPU mode
-        if self.use_gpu:
+        # Default bundles: Generate based on TPU/GPU/CPU mode
+        if self.use_tpu:
+            # TPU mode
+            bundle = {"TPU": 1}
+            if self.accelerator_type:
+                bundle[self.ray_accelerator_type()] = 0.001
+        elif self.use_gpu:
             # GPU mode: replica actor contributes CPU to first bundle via merge
             bundle = {"GPU": 1}
             if self.accelerator_type:
@@ -280,8 +299,8 @@ class VLLMEngineConfig(BaseModelExtended):
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
         # Explicit use_cpu setting takes precedence over all other configurations
-        if isinstance(self.use_cpu, bool):
-            return not self.use_cpu
+        if isinstance(self.use_cpu, bool) and self.use_cpu:
+            return False
 
         # Check placement_group_config bundles for explicit GPU specification
         if self.placement_group_config:
@@ -311,6 +330,26 @@ class VLLMEngineConfig(BaseModelExtended):
             GPUType.NVIDIA_A100_40G.value,
             GPUType.NVIDIA_A100_80G.value,
         )
+
+    @property
+    def use_tpu(self) -> bool:
+        """Returns True if vLLM is configured to use TPU resources."""
+        # Explicit use_cpu setting takes precedence over all other configurations
+        if isinstance(self.use_cpu, bool) and self.use_cpu:
+            return False
+
+        # Check placement_group_config bundles for explicit TPU specification
+        if self.placement_group_config:
+            bundles = self.placement_group_config.get("bundles", [])
+            if bundles:
+                # If any bundle has TPU > 0, we use TPU
+                return any(bundle.get("TPU", 0) > 0 for bundle in bundles)
+
+        # Default behavior based on accelerator_type
+        if self.accelerator_type:
+            return "TPU" in str(self.accelerator_type).upper()
+
+        return False
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
@@ -375,21 +414,16 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def _tpu_topology(self) -> Optional[str]:
         """Returns the TPU topology string if requested, otherwise None."""
-        is_tpu = self.accelerator_type and "TPU" in str(self.accelerator_type).upper()
-        if not is_tpu:
+        if not self.use_tpu:
             return None
 
-        topology = (self.placement_group_config or {}).get(
-            "topology"
-        ) or self.engine_kwargs.get("topology")
-
-        return topology
+        return self.topology or self.engine_kwargs.get("topology")
 
     def _create_tpu_placement_group(self, name: str, topology: str) -> PlacementGroup:
         """Provisions a multi-host TPU Slice Placement Group.
 
         This enables atomic scheduling on TPUs for SPMD workloads by ensuring
-        the requested topology is strictly spread across the physical hosts.
+        the requested topology is spread across the physical hosts in a slice.
 
         Args:
             name: The name prefix for the placement group.
@@ -410,9 +444,18 @@ class VLLMEngineConfig(BaseModelExtended):
         logger.info(
             f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
         )
+
+        # If the user specified placement_bundles for TPU, we assume resources are identical
+        # for each TPU bundle (i.e. to specify host-level resources) Otherwise, default to 1
+        # TPU chip per bundle to support tensor parallelism.
+        worker_bundle = (
+            self.placement_bundles[-1] if self.placement_bundles else {"TPU": 1}
+        )
+
         slice_pg_wrapper = slice_placement_group(
             topology=topology,
             accelerator_version=version,
+            resources_per_bundle=worker_bundle,
             strategy="STRICT_SPREAD",
             name=name,
         )
