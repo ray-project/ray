@@ -33,6 +33,7 @@ BENCHMARK_MATRIX = [
 STRATEGIES = [
     (ShuffleStrategy.HASH_SHUFFLE, "actor"),
     (ShuffleStrategy.ACTORLESS_HASH_SHUFFLE, "actorless"),
+    (ShuffleStrategy.ACTORLESS_HASH_SHUFFLE, "actorless_pre_map_merge"),
 ]
 
 KEY_COLUMNS = ["column00"]  # l_orderkey
@@ -69,6 +70,15 @@ def run_one(ds, sf, num_partitions, strategy, label):
     ds.context.shuffle_strategy = strategy
     if strategy == ShuffleStrategy.ACTORLESS_HASH_SHUFFLE:
         ds.context.override_object_store_memory_limit_fraction = 0.5
+
+    # Configure pre-map merge when requested.
+    if label == "actorless_pre_map_merge":
+        ds.context.set_config("actorless_shuffle_compaction_strategy", "pre_map_merge")
+        ds.context.set_config(
+            "actorless_shuffle_pre_map_merge_threshold", 1024 * 1024 * 1024
+        )  # 1 GB
+    else:
+        ds.context.set_config("actorless_shuffle_compaction_strategy", "none")
 
     name = f"sf{sf}_{label}_p{num_partitions}"
     print(f"  [{label}] sf={sf}, partitions={num_partitions} ... ", end="", flush=True)
@@ -183,30 +193,22 @@ def main():
     print(f"Results written to {args.output}")
 
     # Print summary table.
+    num_strategies = len(STRATEGIES)
     print()
-    print(
-        f"{'SF':>6} {'Partitions':>12} {'Actor (s)':>12} {'Actorless (s)':>14} {'Speedup':>10}"
-    )
-    print("-" * 60)
+    header = f"{'SF':>6} {'Partitions':>12}"
+    for _, label in STRATEGIES:
+        header += f" {label + ' (s)':>20}"
+    print(header)
+    print("-" * len(header))
 
-    for i in range(0, len(results), 2):
-        actor = results[i]
-        actorless = results[i + 1]
-        actor_t = actor["avg_time"]
-        actorless_t = actorless["avg_time"]
-
-        actor_str = f"{actor_t:.1f}" if actor_t else "FAIL"
-        actorless_str = f"{actorless_t:.1f}" if actorless_t else "FAIL"
-
-        if actor_t and actorless_t:
-            speedup = f"{actor_t / actorless_t:.2f}x"
-        else:
-            speedup = "N/A"
-
-        print(
-            f"{actor['sf']:>6} {actor['num_partitions']:>12} {actor_str:>12} "
-            f"{actorless_str:>14} {speedup:>10}"
-        )
+    for i in range(0, len(results), num_strategies):
+        row_results = results[i : i + num_strategies]
+        line = f"{row_results[0]['sf']:>6} {row_results[0]['num_partitions']:>12}"
+        for entry in row_results:
+            t = entry["avg_time"]
+            t_str = f"{t:.1f}" if t else "FAIL"
+            line += f" {t_str:>20}"
+        print(line)
 
 
 if __name__ == "__main__":

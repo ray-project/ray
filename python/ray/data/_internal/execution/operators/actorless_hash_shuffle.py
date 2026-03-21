@@ -81,31 +81,46 @@ BlockTransformer = Callable[[Block], Block]
 
 @ray.remote
 def _shuffle_map(
-    block: Block,
+    *blocks: Block,
     key_columns: List[str],
     num_partitions: int,
     block_transformer: Optional[BlockTransformer] = None,
 ):
-    """Map stage: hash-partition a block and return shards as task outputs.
+    """Map stage: hash-partition one or more blocks and return shards.
+
+    When pre-map merge is enabled, multiple input blocks are passed and
+    concatenated before hash-partitioning, reducing the number of map tasks
+    and thus the M×N intermediate object count.
 
     Must be called with ``num_returns=num_partitions + 1``. Returns
     ``num_partitions + 1`` objects:
 
-    - Index 0: ``(BlockMetadata, List[int])`` — input block metadata and the
-      list of non-empty partition IDs.
+    - Index 0: ``(BlockMetadata, List[int], Dict)`` — input block metadata,
+      list of non-empty partition IDs, and per-partition shard sizes.
     - Index 1..N: the partition shard (``pa.Table``) or ``None`` for empty
       partitions.
 
     Args:
-        block: Input block to shuffle.
+        *blocks: One or more input blocks to shuffle. Multiple blocks are
+            concatenated before partitioning (pre-map merge).
         key_columns: Columns used for hash-partitioning.
         num_partitions: Total number of output partitions (M).
         block_transformer: Optional transform applied before partitioning.
 
     Returns:
-        A tuple of ``(BlockMetadata, List[int])`` and the partition shards (``pa.Table``) or ``None`` for empty partitions.
+        A tuple of ``(BlockMetadata, List[int], Dict)`` and the partition
+        shards (``pa.Table``) or ``None`` for empty partitions.
     """
     stats = BlockExecStats.builder()
+
+    # Concatenate multiple blocks when pre-map merge is active.
+    if len(blocks) == 1:
+        block = blocks[0]
+    else:
+        builder = ArrowBlockBuilder()
+        for b in blocks:
+            builder.add_block(b)
+        block = builder.build()
 
     if block_transformer is not None:
         block = block_transformer(block)
@@ -264,6 +279,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     _DEFAULT_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_COMPACTION_THRESHOLD = 0
+    _DEFAULT_COMPACTION_STRATEGY = "none"  # "none" | "pre_map_merge"
+    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -311,7 +328,13 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             list
         )
 
-        # -- Compaction tracking -----------------------------------------------
+        # -- Compaction strategy -----------------------------------------------
+        self._compaction_strategy: str = data_context.get_config(
+            "actorless_shuffle_compaction_strategy",
+            self._DEFAULT_COMPACTION_STRATEGY,
+        )
+
+        # -- Post-map compaction tracking -------------------------------------
         self._compaction_threshold: int = data_context.get_config(
             "actorless_shuffle_compaction_threshold",
             self._DEFAULT_COMPACTION_THRESHOLD,
@@ -319,6 +342,15 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._next_compact_task_idx: int = 0
         self._compact_tasks: Dict[int, MetadataOpTask] = {}
         self._compact_resource_usage = ExecutionResources.zero()
+
+        # -- Pre-map merge buffer ---------------------------------------------
+        self._pre_map_merge_threshold: int = data_context.get_config(
+            "actorless_shuffle_pre_map_merge_threshold",
+            self._DEFAULT_PRE_MAP_MERGE_THRESHOLD,
+        )
+        self._merge_buffer_refs: List[ObjectRef] = []
+        self._merge_buffer_bytes: int = 0
+        self._merge_buffer_bundles: List[RefBundle] = []
 
         # -- Reduce task tracking ---------------------------------------------
         self._reduce_tasks: Dict[int, DataOpTask] = {}
@@ -353,110 +385,156 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         self._shuffle_metrics.on_input_received(input_bundle)
 
-        for block_ref, block_metadata in zip(
-            input_bundle.block_refs, input_bundle.metadata
-        ):
-            cur_task_idx = self._next_map_task_idx
-            self._next_map_task_idx += 1
+        if self._compaction_strategy == "pre_map_merge":
+            # Buffer blocks and flush when accumulated size reaches threshold.
+            for block_ref, block_metadata in zip(
+                input_bundle.block_refs, input_bundle.metadata
+            ):
+                self._merge_buffer_refs.append(block_ref)
+                self._merge_buffer_bytes += block_metadata.size_bytes or 0
+            self._merge_buffer_bundles.append(input_bundle)
 
-            shuffle_task_resources = {
-                "num_cpus": self._DEFAULT_MAP_TASK_NUM_CPUS,
-            }
+            if self._merge_buffer_bytes >= self._pre_map_merge_threshold:
+                self._flush_merge_buffer()
+        else:
+            # Default: submit one map task per block immediately.
+            for block_ref, block_metadata in zip(
+                input_bundle.block_refs, input_bundle.metadata
+            ):
+                self._submit_map_task([block_ref], [input_bundle])
 
-            map_refs = _shuffle_map.options(
-                **shuffle_task_resources,
-                num_returns=self._num_partitions + 1,
-            ).remote(
-                block_ref,
-                self._key_columns,
-                self._num_partitions,
-            )
-            metadata_ref = map_refs[0]
-            shard_refs = map_refs[1:]
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
+        # Flush any remaining blocks in the pre-map merge buffer.
+        if self._compaction_strategy == "pre_map_merge":
+            self._flush_merge_buffer()
 
-            def _on_map_done(task_idx: int, shard_refs: List[ObjectRef]):
-                task = self._map_tasks.pop(task_idx)
-                self._map_resource_usage = self._map_resource_usage.subtract(
-                    task.get_requested_resource_bundle()
-                )
+    def _flush_merge_buffer(self) -> None:
+        """Drain the pre-map merge buffer and submit a single merged map task."""
+        if not self._merge_buffer_refs:
+            return
+        block_refs = self._merge_buffer_refs
+        bundles = self._merge_buffer_bundles
+        self._merge_buffer_refs = []
+        self._merge_buffer_bytes = 0
+        self._merge_buffer_bundles = []
 
-                input_block_metadata, non_empty_pids, shard_sizes = ray.get(
-                    task.get_waitable(), timeout=60
-                )
+        logger.info(
+            f"Pre-map merge: flushing {len(block_refs)} blocks into one map task"
+        )
+        self._submit_map_task(block_refs, bundles)
 
-                # Only add refs for non-empty partitions.
-                for pid in non_empty_pids:
-                    self._partition_buffers[pid].append(shard_refs[pid])
-                    rows, nbytes = shard_sizes.get(pid, (0, 0))
-                    self._partition_row_counts[pid] += rows
-                    self._partition_bytes[pid] += nbytes
-                    self._maybe_compact_partition(pid)
+    def _submit_map_task(
+        self,
+        block_refs: List[ObjectRef],
+        input_bundles: List[RefBundle],
+    ) -> None:
+        """Submit a map task for one or more input blocks.
 
-                # Drop local list so empty-partition refs (with no other
-                # references) are reclaimed by Ray's reference counting.
-                del shard_refs
+        Args:
+            block_refs: ObjectRefs of the input blocks.
+            input_bundles: The RefBundles that own the input blocks (kept alive
+                until the map task completes, then destroyed).
+        """
+        cur_task_idx = self._next_map_task_idx
+        self._next_map_task_idx += 1
 
-                # Free the input block now that the map task has consumed it.
-                input_bundle.destroy_if_owned()
+        shuffle_task_resources = {
+            "num_cpus": self._DEFAULT_MAP_TASK_NUM_CPUS,
+        }
 
-                self._total_input_rows += input_block_metadata.num_rows or 0
-                self._total_input_bytes += input_block_metadata.size_bytes or 0
-                self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
+        map_refs = _shuffle_map.options(
+            **shuffle_task_resources,
+            num_returns=self._num_partitions + 1,
+        ).remote(
+            *block_refs,
+            key_columns=self._key_columns,
+            num_partitions=self._num_partitions,
+        )
+        metadata_ref = map_refs[0]
+        shard_refs = map_refs[1:]
 
-                # Update shuffle metrics.
-                self._shuffle_metrics.on_output_taken(input_bundle)
-                self._shuffle_metrics.on_task_output_generated(
-                    cur_task_idx,
-                    RefBundle(
-                        [(task.get_waitable(), input_block_metadata)],
-                        schema=None,
-                        owns_blocks=False,
-                    ),
-                )
-                self._shuffle_metrics.on_task_finished(
-                    cur_task_idx,
-                    None,
-                    task_exec_stats=None,
-                    task_exec_driver_stats=None,
-                )
-
-                if self._shuffle_bar is not None:
-                    self._shuffle_bar.update(
-                        increment=input_block_metadata.num_rows or 0
-                    )
-
-            task = MetadataOpTask(
-                task_index=cur_task_idx,
-                object_ref=metadata_ref,
-                task_done_callback=functools.partial(
-                    _on_map_done, cur_task_idx, shard_refs
-                ),
-                task_resource_bundle=ExecutionResources.from_resource_dict(
-                    shuffle_task_resources
-                ),
-            )
-            self._map_tasks[cur_task_idx] = task
-            self._map_resource_usage = self._map_resource_usage.add(
+        def _on_map_done(task_idx: int, shard_refs: List[ObjectRef]):
+            task = self._map_tasks.pop(task_idx)
+            self._map_resource_usage = self._map_resource_usage.subtract(
                 task.get_requested_resource_bundle()
             )
 
+            input_block_metadata, non_empty_pids, shard_sizes = ray.get(
+                task.get_waitable(), timeout=60
+            )
+
+            # Only add refs for non-empty partitions.
+            for pid in non_empty_pids:
+                self._partition_buffers[pid].append(shard_refs[pid])
+                rows, nbytes = shard_sizes.get(pid, (0, 0))
+                self._partition_row_counts[pid] += rows
+                self._partition_bytes[pid] += nbytes
+                self._maybe_compact_partition(pid)
+
+            # Drop local list so empty-partition refs (with no other
+            # references) are reclaimed by Ray's reference counting.
+            del shard_refs
+
+            # Free the input blocks now that the map task has consumed them.
+            for bundle in input_bundles:
+                bundle.destroy_if_owned()
+
+            self._total_input_rows += input_block_metadata.num_rows or 0
+            self._total_input_bytes += input_block_metadata.size_bytes or 0
+            self._shuffled_blocks_stats.append(input_block_metadata.to_stats())
+
             # Update shuffle metrics.
-            self._shuffle_metrics.on_task_submitted(
+            for bundle in input_bundles:
+                self._shuffle_metrics.on_output_taken(bundle)
+            self._shuffle_metrics.on_task_output_generated(
                 cur_task_idx,
                 RefBundle(
-                    [(block_ref, block_metadata)], schema=None, owns_blocks=False
+                    [(task.get_waitable(), input_block_metadata)],
+                    schema=None,
+                    owns_blocks=False,
                 ),
-                task_id=task.get_task_id(),
+            )
+            self._shuffle_metrics.on_task_finished(
+                cur_task_idx,
+                None,
+                task_exec_stats=None,
+                task_exec_driver_stats=None,
             )
 
             if self._shuffle_bar is not None:
-                _, _, num_rows = estimate_total_num_of_blocks(
-                    cur_task_idx + 1,
-                    self.upstream_op_num_outputs(),
-                    self._shuffle_metrics,
-                    total_num_tasks=None,
-                )
-                self._shuffle_bar.update(total=num_rows)
+                self._shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
+
+        task = MetadataOpTask(
+            task_index=cur_task_idx,
+            object_ref=metadata_ref,
+            task_done_callback=functools.partial(
+                _on_map_done, cur_task_idx, shard_refs
+            ),
+            task_resource_bundle=ExecutionResources.from_resource_dict(
+                shuffle_task_resources
+            ),
+        )
+        self._map_tasks[cur_task_idx] = task
+        self._map_resource_usage = self._map_resource_usage.add(
+            task.get_requested_resource_bundle()
+        )
+
+        # Update shuffle metrics.
+        self._shuffle_metrics.on_task_submitted(
+            cur_task_idx,
+            RefBundle([(block_refs[0], None)], schema=None, owns_blocks=False),
+            task_id=task.get_task_id(),
+        )
+
+        if self._shuffle_bar is not None:
+            _, _, num_rows = estimate_total_num_of_blocks(
+                cur_task_idx + 1,
+                self.upstream_op_num_outputs(),
+                self._shuffle_metrics,
+                total_num_tasks=None,
+            )
+            self._shuffle_bar.update(total=num_rows)
 
     # -- Compaction -----------------------------------------------------------
 
@@ -689,6 +767,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._reduce_tasks.clear()
         self._partition_buffers.clear()
         self._compacted_partition_buffers.clear()
+        self._merge_buffer_refs.clear()
+        self._merge_buffer_bundles.clear()
+        self._merge_buffer_bytes = 0
 
     # -- Stats / metrics ------------------------------------------------------
 
@@ -725,6 +806,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
         reduces_done = reduces_submitted - len(self._reduce_tasks)
         parts = [f"map: {maps_done}/{self._next_map_task_idx}"]
+        if self._merge_buffer_refs:
+            parts.append(f"merge_buf: {len(self._merge_buffer_refs)}")
         if self._next_compact_task_idx > 0:
             parts.append(f"compact: {compacts_done}/{self._next_compact_task_idx}")
         parts.append(f"reduce: {reduces_done}/{self._num_partitions}")

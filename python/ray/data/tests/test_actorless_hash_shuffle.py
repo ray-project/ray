@@ -129,6 +129,65 @@ def test_compaction_with_sort():
         ctx.set_config("actorless_shuffle_compaction_threshold", 10)
 
 
+# ---------------------------------------------------------------------------
+# Pre-map merge tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def pre_map_merge_ctx():
+    """Enable pre-map merge with a low threshold for testing."""
+    ctx = DataContext.get_current()
+    ctx.set_config("actorless_shuffle_compaction_strategy", "pre_map_merge")
+    # 1 byte threshold forces a flush after every input bundle.
+    # Use a realistic threshold (e.g., 1 KB) to batch multiple blocks.
+    yield ctx
+    ctx.set_config("actorless_shuffle_compaction_strategy", "none")
+    ctx.remove_config("actorless_shuffle_pre_map_merge_threshold")
+
+
+def test_pre_map_merge_basic(pre_map_merge_ctx):
+    """Pre-map merge with a small threshold should produce correct results."""
+    pre_map_merge_ctx.set_config(
+        "actorless_shuffle_pre_map_merge_threshold", 1024
+    )  # 1 KB
+    ds = ray.data.range(100, override_num_blocks=20).repartition(4, shuffle=True)
+    assert _sum_dataset(ds) == sum(range(100))
+    assert ds.materialize().num_blocks() == 4
+
+
+def test_pre_map_merge_large_threshold(pre_map_merge_ctx):
+    """Large threshold merges all blocks into one map task."""
+    pre_map_merge_ctx.set_config(
+        "actorless_shuffle_pre_map_merge_threshold", 1024 * 1024 * 1024
+    )  # 1 GB
+    n = 5_000
+    ds = ray.data.range(n, override_num_blocks=50).repartition(8, shuffle=True)
+    assert _sum_dataset(ds) == sum(range(n))
+
+
+def test_pre_map_merge_with_sort(pre_map_merge_ctx):
+    """Pre-map merge + sort should produce correctly sorted partitions."""
+    pre_map_merge_ctx.set_config(
+        "actorless_shuffle_pre_map_merge_threshold", 1024
+    )  # 1 KB
+    ds = ray.data.range(100, override_num_blocks=20).sort("id")
+    blocks = ds.get_internal_block_refs()
+    for block_ref in blocks:
+        block = ray.get(block_ref)
+        col = block.column("id").to_pylist()
+        assert col == sorted(col), f"Block not sorted: {col}"
+
+
+def test_pre_map_merge_single_block(pre_map_merge_ctx):
+    """Single input block should work fine with pre-map merge."""
+    pre_map_merge_ctx.set_config(
+        "actorless_shuffle_pre_map_merge_threshold", 1024
+    )  # 1 KB
+    ds = ray.data.range(50, override_num_blocks=1).repartition(4, shuffle=True)
+    assert _sum_dataset(ds) == sum(range(50))
+
+
 if __name__ == "__main__":
     import sys
 
