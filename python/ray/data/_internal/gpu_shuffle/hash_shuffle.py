@@ -16,6 +16,7 @@ from typing import (
 import pyarrow as pa
 
 import ray
+import ray.exceptions
 from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
 from ray.data._internal.execution.interfaces import (
@@ -164,7 +165,9 @@ class GPUShuffleActor:
             exec_stats = exec_stats_builder.build()
             stats = yield block
             if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+                object.__setattr__(
+                    exec_stats, "block_ser_time_s", stats.object_creation_dur_s
+                )
             yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
 
 
