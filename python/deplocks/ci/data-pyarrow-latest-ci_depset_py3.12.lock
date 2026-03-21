@@ -1,8 +1,8 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
---extra-index-url https://download.pytorch.org/whl/cu121
+--extra-index-url https://download.pytorch.org/whl/cu128
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
+--find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 absl-py==1.4.0 \
@@ -2484,69 +2484,104 @@ numpy==2.2.6 \
     #   torchtext
     #   torchvision
     #   webdataset
-nvidia-cublas-cu12==12.1.3.1 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:ee53ccca76a6fc08fb9701aa95b6ceb242cdaab118c3bb152af4e579af792728
+nvidia-cublas-cu12==12.8.3.14 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:3f0e05e7293598cf61933258b73e66a160c27d59c4422670bf0b79348c04be44 \
+    --hash=sha256:93a4e0e386cc7f6e56c822531396de8170ed17068a1e18f987574895044cd8c3 \
+    --hash=sha256:9ae5eae500aead01fc4bdfc458209df638b1a3551557ce11a78eea9ece602ae9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   nvidia-cudnn-cu12
     #   nvidia-cusolver-cu12
     #   torch
-nvidia-cuda-cupti-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:e54fde3983165c624cb79254ae9818a456eb6e87a7fd4d56a2352c24ee542d7e
+nvidia-cuda-cupti-cu12==12.8.57 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:8e0b2eb847de260739bee4a3f66fac31378f4ff49538ff527a38a01a9a39f950 \
+    --hash=sha256:bbed719c52a476958a74cfc42f2b95a3fd6b3fd94eb40134acc4601feb4acac3 \
+    --hash=sha256:ff154211724fd824e758ce176b66007b558eea19c9a5135fc991827ee147e317
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cuda-nvrtc-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:339b385f50c309763ca65456ec75e17bbefcbbf2893f462cb8b90584cd27a1c2
+nvidia-cuda-nvrtc-cu12==12.8.61 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:9c8887bf5e5dffc441018ba8c5dc59952372a6f4806819e8c1f03d62637dbeea \
+    --hash=sha256:a0fa9c2a21583105550ebd871bd76e2037205d56f33f128e69f6d2a55e0af9ed \
+    --hash=sha256:b1f376bf58111ca73dde4fd4df89a462b164602e074a76a2c29c121ca478dcd4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cuda-runtime-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:6e258468ddf5796e25f1dc591a31029fa317d97a0a94ed93468fc86301d61e40
+nvidia-cuda-runtime-cu12==12.8.57 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:534ccebd967b6a44292678fa5da4f00666029cb2ed07a79515ea41ef31fe3ec7 \
+    --hash=sha256:75342e28567340b7428ce79a5d6bb6ca5ff9d07b69e7ce00d2c7b4dc23eff0be \
+    --hash=sha256:89be637e3ee967323865b85e0f147d75f9a5bd98360befa37481b02dd57af8f5
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cudnn-cu12==8.9.2.26 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:5ccb288774fdfb07a7e7025ffec286971c06d8d7b4fb162525334616d7629ff9
+nvidia-cudnn-cu12==9.7.1.26 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:6d011159a158f3cfc47bf851aea79e31bcff60d530b70ef70474c84cac484d07 \
+    --hash=sha256:7b805b9a4cf9f3da7c5f4ea4a9dff7baf62d1a612d6154a7e0d2ea51ed296241 \
+    --hash=sha256:848a61d40ef3b32bd4e1fadb599f0cf04a4b942fbe5fb3be572ad75f9b8c53ef
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cufft-cu12==11.0.2.54 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:794e3948a1aa71fd817c3775866943936774d1c14e7628c74f6f7417224cdf56
+nvidia-cufft-cu12==11.3.3.41 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:68509dcd7e3306e69d0e2d8a6d21c8b25ed62e6df8aac192ce752f17677398b5 \
+    --hash=sha256:da650080ab79fcdf7a4b06aa1b460e99860646b176a43f6208099bdc17836b6a \
+    --hash=sha256:f9760612886786601d27a0993bb29ce1f757e6b8b173499d0ecfa850d31b50f8
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-curand-cu12==10.3.2.106 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:9d264c5036dde4e64f1de8c50ae753237c12e0b1348738169cd0f8a536c0e1e0
+nvidia-cufile-cu12==1.13.0.11 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:2acbee65dc2eaf58331f0798c5e6bcdd790c4acb26347530297e63528c9eba5d \
+    --hash=sha256:483f434c541806936b98366f6d33caef5440572de8ddf38d453213729da3e7d4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cusolver-cu12==11.4.5.107 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd
+nvidia-curand-cu12==10.3.9.55 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:570d82475fe7f3d8ed01ffbe3b71796301e0e24c98762ca018ff8ce4f5418e1f \
+    --hash=sha256:8387d974240c91f6a60b761b83d4b2f9b938b7e0b9617bae0f0dafe4f5c36b86 \
+    --hash=sha256:b6bb90c044fa9b07cedae2ef29077c4cf851fb6fdd6d862102321f359dca81e9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-cusparse-cu12==12.1.0.106 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c
+nvidia-cusolver-cu12==11.7.2.55 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:0fd9e98246f43c15bee5561147ad235dfdf2d037f5d07c9d41af3f7f72feb7cc \
+    --hash=sha256:4d1354102f1e922cee9db51920dba9e2559877cf6ff5ad03a00d853adafb191b \
+    --hash=sha256:a5a516c55da5c5aba98420d9bc9bcab18245f21ec87338cc1f930eb18dd411ac
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   torch
+nvidia-cusparse-cu12==12.5.7.53 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:3c1b61eb8c85257ea07e9354606b26397612627fdcd327bfd91ccf6155e7c86d \
+    --hash=sha256:82c201d6781bacf6bb7c654f0446728d0fe596dfdd82ef4a04c204ce3e107441 \
+    --hash=sha256:d869c6146ca80f4305b62e02d924b4aaced936f8173e3cef536a67eed2a91af1
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   nvidia-cusolver-cu12
     #   torch
-nvidia-nccl-cu12==2.20.5 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:057f6bf9685f75215d0c53bf3ac4a10b3e6578351de307abad9e18a99182af56
+nvidia-cusparselt-cu12==0.6.3 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:8371549623ba601a06322af2133c4a44350575f5a3108fb75f3ef20b822ad5f1 \
+    --hash=sha256:e5c8a26c36445dd2e6812f1177978a24e2d37cacce7e090f297a688d1ec44f46
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
-nvidia-nvjitlink-cu12==12.9.86 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:994a05ef08ef4b0b299829cde613a424382aff7efb08a7172c1fa616cc3af2ca \
-    --hash=sha256:cc6fcec260ca843c10e34c936921a1c426b351753587fdd638e8cff7b16bb9db \
-    --hash=sha256:e3f1171dbdc83c5932a45f0f4c99180a70de9bd2718c1ab77d14104f6d7147f9
+nvidia-nccl-cu12==2.26.2 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:5c196e95e832ad30fbbb50381eb3cbd1fadd5675e587a548563993609af19522 \
+    --hash=sha256:694cf3879a206553cc9d7dbda76b13efaf610fdb70a50cba303de1b0d1530ac6
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   torch
+nvidia-nvjitlink-cu12==12.8.61 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:1166a964d25fdc0eae497574d38824305195a5283324a21ccb0ce0c802cbf41c \
+    --hash=sha256:45fd79f2ae20bd67e8bc411055939049873bfd8fac70ff13bd4865e0b9bdab17 \
+    --hash=sha256:9b80ecab31085dda3ce3b41d043be0ec739216c3fc633b8abe212d5a30026df0
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   nvidia-cufft-cu12
     #   nvidia-cusolver-cu12
     #   nvidia-cusparse-cu12
-nvidia-nvtx-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
-    --hash=sha256:dc21cf308ca5691e7c04d962e213f8a4aa9bbfa23d95412f452254c2caeb09e5
+    #   torch
+nvidia-nvtx-cu12==12.8.55 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
+    --hash=sha256:2dd0780f1a55c21d8e06a743de5bd95653de630decfff40621dbde78cc307102 \
+    --hash=sha256:9022681677aef1313458f88353ad9c0d2fbbe6402d6b07c9f00ba0e3ca8774d3 \
+    --hash=sha256:c38405335fbc0f0bf363eaeaeb476e8dfa8bae82fada41d25ace458b9ba9f3db
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
@@ -2560,31 +2595,31 @@ opencensus-context==0.1.3 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opencensus
-opentelemetry-api==1.34.1 \
-    --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
-    --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
+opentelemetry-api==1.39.0 \
+    --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
+    --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.55b1 \
-    --hash=sha256:d13ec0b22bf394113ff1ada5da98133a4b051779b803dae183188e26c4bd9ee0 \
-    --hash=sha256:f364fbbff9e5de37a112ff104d1185fb1d7e2046c5ab5911e5afebc7ab3ddf0e
+opentelemetry-exporter-prometheus==0.60b0 \
+    --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
+    --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-opentelemetry-sdk==1.34.1 \
-    --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
-    --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
+opentelemetry-sdk==1.39.0 \
+    --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
+    --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.55b1 \
-    --hash=sha256:5da81dfdf7d52e3d37f8fe88d5e771e191de924cfff5f550ab0b8f7b2409baed \
-    --hash=sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3
+opentelemetry-semantic-conventions==0.60b0 \
+    --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
+    --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   opentelemetry-sdk
@@ -3042,18 +3077,18 @@ proto-plus==1.26.1 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   google-api-core
     #   google-cloud-bigquery-storage
-protobuf==5.29.5 \
-    --hash=sha256:3f1c6468a2cfd102ff4703976138844f78ebd1fb45f49011afc5139e9e283079 \
-    --hash=sha256:3f76e3a3675b4a4d867b52e4a5f5b78a2ef9565549d4037e06cf7b0942b1d3fc \
-    --hash=sha256:470f3af547ef17847a28e1f47200a1cbf0ba3ff57b7de50d22776607cd2ea353 \
-    --hash=sha256:63848923da3325e1bf7e9003d680ce6e14b07e55d0473253a690c3a8b8fd6e61 \
-    --hash=sha256:6cf42630262c59b2d8de33954443d94b746c952b01434fc58a417fdbd2e84bd5 \
-    --hash=sha256:6f642dc9a61782fa72b90878af134c5afe1917c89a568cd3476d758d3c3a0736 \
-    --hash=sha256:7318608d56b6402d2ea7704ff1e1e4597bee46d760e7e4dd42a3d45e24b87f2e \
-    --hash=sha256:bc1463bafd4b0929216c35f437a8e28731a2b7fe3d98bb77a600efced5a15c84 \
-    --hash=sha256:e38c5add5a311f2a6eb0340716ef9b039c1dfa428b28f25a7838ac329204a671 \
-    --hash=sha256:ef91363ad4faba7b25d844ef1ada59ff1604184c0bcd8b39b8a6bef15e1af238 \
-    --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
+protobuf==5.29.6 \
+    --hash=sha256:36ade6ff88212e91aef4e687a971a11d7d24d6948a66751abc1b3238648f5d05 \
+    --hash=sha256:62e8a3114992c7c647bce37dcc93647575fc52d50e48de30c6fcb28a6a291eb1 \
+    --hash=sha256:6b9edb641441b2da9fa8f428760fc136a49cf97a52076010cf22a2ff73438a86 \
+    --hash=sha256:76e07e6567f8baf827137e8d5b8204b6c7b6488bbbff1bf0a72b383f77999c18 \
+    --hash=sha256:7e6ad413275be172f67fdee0f43484b6de5a904cc1c3ea9804cb6fe2ff366eda \
+    --hash=sha256:831e2da16b6cc9d8f1654c041dd594eda43391affd3c03a91bea7f7f6da106d6 \
+    --hash=sha256:a8866b2cff111f0f863c1b3b9e7572dc7eaea23a7fae27f6fc613304046483e6 \
+    --hash=sha256:b5a169e664b4057183a34bdc424540e86eea47560f3c123a0d64de4e137f9269 \
+    --hash=sha256:cb4c86de9cd8a7f3a256b9744220d87b847371c6b2f10bde87768918ef33ba49 \
+    --hash=sha256:da9ee6a5424b6b30fd5e45c5ea663aef540ca95f9ad99d1e887e819cdf9b8723 \
+    --hash=sha256:e3387f44798ac1106af0233c04fb8abf543772ff241169946f698b3a9a3d3ab9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   google-api-core
@@ -4185,9 +4220,9 @@ strictyaml==1.7.3 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   pyiceberg
-sympy==1.13.1 \
-    --hash=sha256:9cebf7e04ff162015ce31c9c6c9144daa34a93bd082f54fd8f12deca4f47515f \
-    --hash=sha256:db36cdc64bf61b9b24578b6f7bab1ecdd2452cf008f34faa33776680c26d66f8
+sympy==1.13.3 \
+    --hash=sha256:54612cf55a62755ee71824ce692986f23c88ffa77207b30c1368eda4a7060f73 \
+    --hash=sha256:b27fd2c6530e0ab39e275fc9b683895367e51d5da91baa8d3d64db2565fec4d9
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   torch
@@ -4312,38 +4347,46 @@ toolz==0.12.1 \
     #   dask
     #   distributed
     #   partd
-torch==2.3.0+cu121 \
-    --hash=sha256:002027d18a9c054f08fe9cf7a729e041229e783e065a71349015dcccc9a7137e \
-    --hash=sha256:0a12aa9aa6bc442dff8823ac8b48d991fd0771562eaa38593f9c8196d65f7007 \
-    --hash=sha256:3cc15e4c2682a85518121a2050d6be7976d98fc4843bbc13b6f5bee275a1b6ee \
-    --hash=sha256:58ac08166e7a3665362960ff013edd06c90a0926de62de47a930c03563b0ac0f \
-    --hash=sha256:5df7e3cb3961018a891e4edef1e0bc1f3304a8d943f81b24a8c6bf687ca49a67 \
-    --hash=sha256:77b690e7e0fd472a5d0146394f74fac82ab1e10b822baa9b955dec0667fe83c6 \
-    --hash=sha256:9598b959f564ee3ebe3603b0ba01d24174ca8016feca98104f0301f1490617ca \
-    --hash=sha256:d7620f3c92e33030274b7b369a93d13ec3b35c965e790d6df27fc6d964a4c829 \
-    --hash=sha256:f15b6f549eebc6e6b22b26754e4f1d7e4469bcd2d4ba1eaab57268ad80bcca96 \
-    --hash=sha256:f7876ec20b42dd569e7a11c5af36febccc03830f63dfdedbd4026506e086cab6
+torch==2.7.0+cu128 \
+    --hash=sha256:1704e5dd66c9221e4e8b6ae2d80cbf54e129571e643f5fa9ca78cc6d2096403a \
+    --hash=sha256:2f155388b1200e08f3e901bb3487ff93ca6d63cde87c29b97bb6762a8f63b373 \
+    --hash=sha256:3559e98be824c2b12ab807319cd61c6174d73a524c9961317de8e8a44133c5c5 \
+    --hash=sha256:47c895bcab508769d129d717a4b916b10225ae3855723aeec8dff8efe5346207 \
+    --hash=sha256:58c749f52ddc9098155c77d6c74153bb13d8978fd6e1063b5d7b41d4644f5af5 \
+    --hash=sha256:633f35e8b1b1f640ef5f8a98dbd84f19b548222ce7ba8f017fe47ce6badc106a \
+    --hash=sha256:6bba7dca5d9a729f1e8e9befb98055498e551efaf5ed034824c168b560afc1ac \
+    --hash=sha256:78e13c26c38ae92d6841cf9ce760d7e9d52bca3e3183de371812e84274b054dc \
+    --hash=sha256:7c0f08d1c44a02abad389373dddfce75904b969a410be2f4e5109483dd3dc0ce \
+    --hash=sha256:8614a167d6a163273fb130f586802f3243479862b53ee2843941c10cc5761da6 \
+    --hash=sha256:ac1849553ee673dfafb44c610c60cb60a2890f0e117f43599a526cf777eb8b8c \
+    --hash=sha256:b1f0cdd0720ad60536deb5baa427b782fd920dd4fcf72e244d32974caafa3b9e \
+    --hash=sha256:bf88f647d76d79da9556ca55df49e45aff1d66c12797886364343179dd09a36c \
+    --hash=sha256:c4bbc0b4be60319ba1cefc90be9557b317f0b3c261eeceb96ca6e0343eec56bf \
+    --hash=sha256:c52c4b869742f00b12cb34521d1381be6119fa46244791704b00cc4a3cb06850 \
+    --hash=sha256:d2f69f909da5dc52113ec66a851d62079f3d52c83184cf64beebdf12ca2f705c \
+    --hash=sha256:f446f97b20cb070747b103fb640df941b88cb68c8d3b01538287d05d56a7e874 \
+    --hash=sha256:fa05ac6ebed4777de7a5eff398c1f17b697c02422516748ce66a8151873e5a0e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   nixl
     #   torchmetrics
     #   torchtext
     #   torchvision
-torch-cluster==1.6.3+pt23cu121 \
-    --hash=sha256:572f6ba91cf9a3b02c2e5640d467d4b1b25b7351182d2412d452e8e564ed0cb7
+torch-cluster==1.6.3+pt27cu128 \
+    --hash=sha256:eb42ac6afff68cf4e1b32e6d1e6d1915149ec9fffbcdc3a652475261a676446e
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-torch-scatter==2.1.2+pt23cu121 \
-    --hash=sha256:8b2aeb75905fcccf06d79ea02759b786952cadf86e24b0dc1def86c2e321d384
+torch-scatter==2.1.2+pt27cu128 \
+    --hash=sha256:dfcc9b3d2d6e255944def5f4f0ed91c41e5267de7c56fd31c54547d475c5392c
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-torch-sparse==0.6.18+pt23cu121 \
-    --hash=sha256:84901dfad8e44dd070b0c2ab905f43c58888ef24fdadf778184d9829385612e3
+torch-sparse==0.6.18+pt27cu128 \
+    --hash=sha256:0ed476785cab6be08ee1d7f58c80f6cd82870ee381c5909993154319ff802637
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-torch-spline-conv==1.2.2+pt23cu121 \
-    --hash=sha256:965517230344323c8962976d815e2698931eb77e5f3075084bebd5d18b2f5863
+torch-spline-conv==1.2.2+pt27cu128 \
+    --hash=sha256:29a1f48688fa7825368480ebea98057f7a6386d7a12cb8cd84dac441544a568c
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
@@ -4361,17 +4404,19 @@ torchtext==0.18.0+cpu \
     --hash=sha256:c760e672265cd6f3e4a7c8d4a78afe9e9617deacda926a743479ee0418d4207d \
     --hash=sha256:f4dc0083c5b1b73109dd7f4fbade067f6ba1cd76a349dec35b4ba7e0599d3f66
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-torchvision==0.18.0+cu121 \
-    --hash=sha256:13e1b48dc5ce41ccb8100ab3dd26fdf31d8f1e904ecf2865ac524493013d0df5 \
-    --hash=sha256:1bfe0c67fd5461a3a593f8f17e1544f07a6bd6686e155200dd244947074fcd51 \
-    --hash=sha256:1d637b1428a076dfaff71ca0a5b8ef200b5b5ff7dfe2ed9359be0eff43734e5a \
-    --hash=sha256:1e516779520fc92157d6cb245ac0fd3f79872fe81c84b8593a8f2e998106f5b1 \
-    --hash=sha256:3e5557512ec9a31a6ce33a1107827427ef50ad65e88cd35012161d7392ef144b \
-    --hash=sha256:4ab207a0f35c8c2a43da91f19ee9248520239633dc8e11a9e4a2e77b076bb9db \
-    --hash=sha256:611bb0b42c51de0c1bbcc8e90f88b4d48c8b99451bdb2e4761028b93cb086437 \
-    --hash=sha256:700f6019bebee9e0ee8b0bcbdb1588809c94a2eb947a1fde2e06adc34b60da2a \
-    --hash=sha256:c2483b2cc62278fbaa6b67d2a9d808d245044f8b64a821596eae68ec6a0d5ed0 \
-    --hash=sha256:e09966baf7945085d7725ac7c944172c632516643d603bde5855f6b3cf68efcf
+torchvision==0.22.0+cu128 \
+    --hash=sha256:03b454b867f7a0aa9861a463042141448c4f15bec784def19eed39a57fac217b \
+    --hash=sha256:06c101f40e1ff94869be14487c91fd5352e376f202fdeafb8f53c58cee2fbeb5 \
+    --hash=sha256:17d50ffb1df6320da16b85395f1078bf369250ea144f3bb405088aca3d5f030f \
+    --hash=sha256:209c29d78cf2003cf4e22c9b651790f57171334998ee3125594d130526aeaa50 \
+    --hash=sha256:59df5a550113a80ce523047066eaaedb168c69482da88c3ab246716ab45ba092 \
+    --hash=sha256:90a0dacad36b1ea8de912af8583cbe780b4a1bdf9cb85870fe548fdec212ab31 \
+    --hash=sha256:a87393c86649b7e56b4bf859fe95922ee6ec1c1f3b430246fb1a5b51f8aee37a \
+    --hash=sha256:c92a353ff82db3312644b5b26d410b586b72969b535948d584c247569f75605c \
+    --hash=sha256:cdd90b768b01b0d638cb06a6c211b550b275c0c207b5210b7cbb5cea8dde11db \
+    --hash=sha256:ee4fa6d4052d9ae25c1233289947fbfa4b88d23710254ab1772b108c1fc5fb4d \
+    --hash=sha256:f3ac527d58b4c2043eb8d9e29fc56cd1751f36f2aaa6dc75e34ec54c951bcb9c \
+    --hash=sha256:f5dae1307c34813425c0b753530c035e1cc72af0bded395d1ba64dcb2872889f
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 tornado==6.5.2 \
     --hash=sha256:06ceb1300fd70cb20e43b1ad8aaee0266e69e7ced38fa910ad2e03285009ce7c \
@@ -4401,6 +4446,22 @@ tqdm==4.67.1 \
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
+triton==3.3.0 ; sys_platform == 'linux' \
+    --hash=sha256:0f12a8611eff721d3fd837d0cc2a1f2f8a4d382ec3fc3a8d6a07a5b1e535c81c \
+    --hash=sha256:36936c23df3056a1e93313485e6a2396de7dbf53fd93b445f321b6e951639e43 \
+    --hash=sha256:4198996c9fa3fd811e3bc007f0fc9853c784be3dae6d30714f579c5106d70616 \
+    --hash=sha256:577017fb881a885cf924fd506dae65b7c87800bf6e16b65456ab06288872d5a0 \
+    --hash=sha256:66e2bd1b791c451456923cfcdfc2a691cfc22495dc040e2995ab8ec575391962 \
+    --hash=sha256:6cbb1b3c214d17e06e2c12399747f645fb7e8b72cb24271557cdce0893c764c6 \
+    --hash=sha256:8cf975f47838c495a6a1a71007abad31b56312924a97d78874412de3232a7993 \
+    --hash=sha256:c2cbe91a94a6acbcd2cb6ba80b5b67e5088a8161fd6e50201efc7b87299b4729 \
+    --hash=sha256:c7744bcd8846326c98f66c1b8b6de94dde794b9978d563a74ea724619b11e2d5 \
+    --hash=sha256:d7da55d7cb5a6a84b32435b0b7631c5f3b4676018a4c731b55da719c9d7708b1 \
+    --hash=sha256:eb796898430f3697b4f72351f219dd7957bc57d570fceecb081c118d24cdd388 \
+    --hash=sha256:f32225c241aa4d298ce38089ed53b72964eaa935bb0135aee9d6521b15b2a5b9
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   torch
 typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via

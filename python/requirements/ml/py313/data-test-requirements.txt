@@ -34,5 +34,5 @@ jaxlib
 tensorflow-datasets
 tensorflow-metadata>=1.17.0
 tf-keras
-torchvision==0.18.0
+torchvision==0.22.0
 confluent-kafka
