@@ -65,7 +65,7 @@ async def test_vllm_engine_start_with_tpu_topology(
 def test_tpu_slice_placement_group_creation_default_resources():
     """
     Verifies that requesting a multi-host TPU topology correctly intercepts
-    standard PG creation and returns a STRICT_SPREAD SlicePlacementGroup.
+    standard PG creation and returns a PACK SlicePlacementGroup.
     """
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
@@ -79,7 +79,7 @@ def test_tpu_slice_placement_group_creation_default_resources():
 
     assert isinstance(pg, PlacementGroup)
 
-    assert pg.strategy == "STRICT_SPREAD"
+    assert pg.strategy == "PACK"
 
     # 4x4 v6e = 16 chips. We default to 1 TPU chip per bundle.
     assert pg.bundle_count == 16

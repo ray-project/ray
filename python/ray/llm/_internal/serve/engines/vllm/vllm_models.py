@@ -114,7 +114,9 @@ class VLLMEngineConfig(BaseModelExtended):
     @model_validator(mode="after")
     def validate_topology_requirements(self):
         """Ensures that if a topology is requested, the necessary hardware hints are provided."""
-        if self.topology:
+        requested_topology = self.topology or self.engine_kwargs.get("topology")
+
+        if requested_topology:
             if not self.accelerator_type:
                 raise ValueError(
                     "`accelerator_type` must be specified when `topology` is set "
@@ -456,7 +458,7 @@ class VLLMEngineConfig(BaseModelExtended):
             topology=topology,
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
-            strategy="STRICT_SPREAD",
+            strategy=self.placement_strategy,
             name=name,
         )
         return slice_pg_wrapper.placement_group
