@@ -910,10 +910,21 @@ class Worker:
         use_object_store: bool = False,
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
-        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+        for obj_ref, (_, metadata, tensor_transport) in zip(
+            object_refs, serialized_objects
+        ):
             if tensor_transport is None:
                 # The object is not an RDT object, so we cannot use other external transport to
                 # fetch it.
+                continue
+
+            # Assures that the upstream task didn't error out. This logic comes from the
+            # serialization_context deserialize_objects path. RDT tensors are only used
+            # if the metadata field contains that constant
+            if not metadata:
+                continue
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] != ray_constants.OBJECT_METADATA_TYPE_PYTHON:
                 continue
 
             object_id = obj_ref.hex()
@@ -1417,6 +1428,7 @@ def init(
     cgroup_path: Optional[str] = None,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
+    proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1536,6 +1548,11 @@ def init(
             The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers must be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
+        proxy_server_url:[Experimental] The server url to redirect dashboard backend requests to.
+            By default, the dashboard requests will be directed to the Ray api server.
+            If you have a custom server to serve the dashboard requests,
+            you can set this option to override the server url.
+            Ex: proxy_server_url=http://historyserver:8080
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
             By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
@@ -1789,6 +1806,7 @@ def init(
     if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
+    services.find_gcs_addresses.cache_clear()
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -1878,6 +1896,7 @@ def init(
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
             resource_isolation_config=resource_isolation_config,
+            proxy_server_url=proxy_server_url,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -2051,6 +2070,7 @@ def init(
             FutureWarning,
         )
 
+    services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2140,6 +2160,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    services.find_gcs_addresses.cache_clear()
 
 
 atexit.register(shutdown, True)
