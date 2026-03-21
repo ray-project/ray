@@ -244,18 +244,6 @@ def _estimate_total_available_task_slots(actor_pool: "AutoscalingActorPool") -> 
     )
 
 
-def _estimate_expected_tasks(
-    op_state: OpState,
-) -> float:
-    # Each task consumes `average_num_inputs_per_task` input blocks on average,
-    # so the total expected number of tasks:
-    #
-    #   ceil(num enqueued blocks / avg_inputs_per_task)
-    #
-    avg_input_blocks_per_task = op_state.op.metrics.average_num_inputs_per_task or 1
-    return math.ceil(op_state.total_enqueued_input_blocks() / avg_input_blocks_per_task)
-
-
 def _get_max_scale_up(
     actor_pool: AutoscalingActorPool,
     budget: ExecutionResources,
