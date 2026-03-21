@@ -113,6 +113,7 @@ py_test_module_list(
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
         "test_deployment_topology.py",
         "test_failure.py",
         "test_failure_2.py",
@@ -538,6 +539,7 @@ py_test_module_list(
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
         "test_gang_scheduling.py",
         "test_standalone_2.py",
     ],
