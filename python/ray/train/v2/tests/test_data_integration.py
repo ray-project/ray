@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -808,7 +809,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
             )
 
         # Simulate controller shutdown
-        policy.before_controller_shutdown()
+        asyncio.run(policy.before_controller_shutdown())
         mock_coordinator.cancel_request.remote.assert_called_once_with(
             requester_id="train-test-run-123",
         )
