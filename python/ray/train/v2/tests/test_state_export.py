@@ -135,7 +135,6 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
             "placement_strategy": "PACK",
             "use_gpu": False,
             "use_tpu": False,
-            "bundle_label_selector": [],
         },
         "datasets": ["dataset_1"],
         "data_config": {"all": {}, "enable_shard_locality": True},
@@ -385,6 +384,64 @@ def test_export_oneof_datasets_to_split(enable_export_api_write):
     assert "all" not in ds_settings["data_config"]
 
 
+def test_export_oneof_bundle_label_selector(enable_export_api_write):
+    """Test that proto oneof fields are exported with only the active variant set.
+
+    In ExportTrainRunEventData.RunSettings.ScalingConfig, `bundle_label_selector` is a oneof:
+    - `label_selector_single` (StringMap)
+    - `label_selector_list` (StringMapList)
+    """
+    state_actor = get_or_create_state_actor()
+
+    run_single = create_mock_train_run(RunStatus.RUNNING, id="with_single")
+    run_single.run_settings.scaling_config.bundle_label_selector = {"k": "v"}
+
+    run_list = create_mock_train_run(RunStatus.RUNNING, id="with_list")
+    run_list.run_settings.scaling_config.bundle_label_selector = [
+        {"k1": "v1"},
+        {"k2": "v2"},
+    ]
+
+    run_none = create_mock_train_run(RunStatus.RUNNING, id="with_none")
+
+    ray.get(
+        [
+            state_actor.create_or_update_train_run.remote(run_single),
+            state_actor.create_or_update_train_run.remote(run_list),
+            state_actor.create_or_update_train_run.remote(run_none),
+        ]
+    )
+
+    runs = _get_exported_data()
+    assert len(runs) == 3
+
+    runs_by_id = {run["event_data"]["id"]: run for run in runs}
+    assert set(runs_by_id.keys()) == {"with_single", "with_list", "with_none"}
+
+    # Verify single dict selector
+    single_scaling = runs_by_id["with_single"]["event_data"]["run_settings"][
+        "scaling_config"
+    ]
+    assert single_scaling["label_selector_single"] == {"values": {"k": "v"}}
+    assert "label_selector_list" not in single_scaling
+
+    # Verify list of dicts selector
+    list_scaling = runs_by_id["with_list"]["event_data"]["run_settings"][
+        "scaling_config"
+    ]
+    assert list_scaling["label_selector_list"] == {
+        "values": [{"values": {"k1": "v1"}}, {"values": {"k2": "v2"}}]
+    }
+    assert "label_selector_single" not in list_scaling
+
+    # Verify unset selector
+    none_scaling = runs_by_id["with_none"]["event_data"]["run_settings"][
+        "scaling_config"
+    ]
+    assert "label_selector_single" not in none_scaling
+    assert "label_selector_list" not in none_scaling
+
+
 def test_export_multiple_source_types(enable_export_api_write):
     """Test that multiple source types (Run and RunAttempt) can be written to the same file."""
     state_actor = get_or_create_state_actor()
@@ -536,6 +593,8 @@ def test_export_optional_fields(enable_export_api_write):
     assert "resources_per_worker" not in run_settings["scaling_config"]
     assert "accelerator_type" not in run_settings["scaling_config"]
     assert "topology" not in run_settings["scaling_config"]
+    assert "label_selector_single" not in run_settings["scaling_config"]
+    assert "label_selector_list" not in run_settings["scaling_config"]
     assert "data_config" in run_settings
     assert "execution_options" not in run_settings["data_config"]
     assert "storage_filesystem" not in run_settings["run_config"]
@@ -566,9 +625,9 @@ def test_export_optional_fields(enable_export_api_write):
         run_settings["scaling_config"]["topology"]
         == run_with_optional.run_settings.scaling_config.topology
     )
-    assert run_settings["scaling_config"]["bundle_label_selector"] == [
-        {"values": {"k": "v"}}
-    ]
+    assert run_settings["scaling_config"]["label_selector_single"] == {
+        "values": {"k": "v"}
+    }
     assert (
         run_settings["data_config"]["datasets"]["values"]
         == run_with_optional.run_settings.data_config.datasets_to_split

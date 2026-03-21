@@ -271,10 +271,11 @@ def to_proto_scaling_config(
     if scaling_config.bundle_label_selector is not None:
         selectors = scaling_config.bundle_label_selector
         if isinstance(selectors, dict):
-            selectors = [selectors]
-        proto_scaling_config.bundle_label_selector.extend(
-            [ProtoTrainRun.ScalingConfig.StringMap(values=s) for s in selectors]
-        )
+            proto_scaling_config.label_selector_single.values.update(selectors)
+        else:
+            proto_scaling_config.label_selector_list.values.extend(
+                [ProtoTrainRun.ScalingConfig.StringMap(values=s) for s in selectors]
+            )
 
     return proto_scaling_config
 

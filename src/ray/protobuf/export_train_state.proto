@@ -126,6 +126,9 @@ message ExportTrainRunEventData {
     message StringMap {
       map<string, string> values = 1;
     }
+    message StringMapList {
+      repeated StringMap values = 1;
+    }
     message StringFloatMap {
       map<string, double> values = 1;
     }
@@ -154,7 +157,10 @@ message ExportTrainRunEventData {
     // The topology for the Train run.
     optional string topology = 8;
     // The bundle label selector for the Train run.
-    repeated StringMap bundle_label_selector = 9;
+    oneof bundle_label_selector {
+      StringMapList label_selector_list = 9;
+      StringMap label_selector_single = 10;
+    }
   }
 
   // Configuration for dataset splitting and execution options within Ray Train.
