@@ -6,7 +6,7 @@ import numpy as np
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.block import BlockAccessor, BlockColumn
+from ray.data.block import BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
 
@@ -48,7 +48,7 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
 
         self._encoding_ratio = None
 
-    def estimate_in_memory_sizes(self, manifest: FileManifest) -> BlockColumn:
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         assert np.all(manifest.file_sizes >= 0)
 
         for path, file_size in zip(manifest.paths, manifest.file_sizes):
