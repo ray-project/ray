@@ -40,6 +40,19 @@ class BundleConfig(BaseModelExtended):
 
     CPU: float = Field(default=0.0, ge=0.0, description="Number of CPUs per bundle")
     GPU: float = Field(default=1.0, ge=0.0, description="Number of GPUs per bundle")
+    TPU: float = Field(default=0.0, ge=0.0, description="Number of TPUs per bundle")
+
+    @model_validator(mode="before")
+    @classmethod
+    def override_gpu_default_for_tpu(cls, data: Any) -> Any:
+        """Prevents legacy GPU=1.0 default from being added to TPU bundles."""
+        if isinstance(data, dict):
+            # If the user asks for TPUs but didn't explicitly specify GPUs,
+            # override the legacy default to 0. This prevents `use_gpu`
+            # automatically being set to True.
+            if data.get("TPU", 0) > 0 and "GPU" not in data:
+                data["GPU"] = 0.0
+        return data
 
     class Config:
         extra = "allow"  # Allow arbitrary resource types
@@ -124,6 +137,13 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             if isinstance(self.use_cpu, bool) and self.use_cpu:
                 raise ValueError("Cannot specify a `topology` when `use_cpu=True`.")
+
+            if "TPU" not in str(self.accelerator_type).upper():
+                raise ValueError(
+                    f"Multi-host `topology` is currently only supported for TPU deployments. "
+                    f"Received accelerator_type: '{self.accelerator_type}'"
+                )
+
         return self
 
     runtime_env: Optional[Dict[str, Any]] = None
