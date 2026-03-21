@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Iterator, List, Optional
 
 import pyarrow as pa
@@ -42,6 +43,7 @@ class FileReader(Reader[FileManifest]):
         self._limit = limit
         self._filesystem = filesystem
 
+    @abstractmethod
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
