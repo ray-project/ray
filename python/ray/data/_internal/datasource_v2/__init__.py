@@ -1,3 +1,3 @@
 from typing import TypeVar
 
-InputBucket = TypeVar("InputBucket")
+InputSplit = TypeVar("InputSplit")
