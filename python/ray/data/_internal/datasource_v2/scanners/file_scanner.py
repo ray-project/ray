@@ -6,7 +6,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class FileScanner(Scanner[FileManifest]):
     """Base scanner for file-based datasources.
 
@@ -55,7 +55,7 @@ class FileScanner(Scanner[FileManifest]):
             if size > 0:
                 # Slice the underlying block
                 block = manifest.as_block()
-                sliced_block = block.slice(start, size)
+                sliced_block = block.slice(start, size)  # pyrefly: ignore[not-callable]
                 partitions.append(FileManifest(sliced_block))
                 start += size
 

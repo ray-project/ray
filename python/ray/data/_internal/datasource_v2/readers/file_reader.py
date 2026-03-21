@@ -9,7 +9,7 @@ from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class FileReader(Reader[FileManifest]):
     """Reader for file-based sources.
 

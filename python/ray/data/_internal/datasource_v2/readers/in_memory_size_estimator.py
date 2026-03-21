@@ -10,10 +10,10 @@ from ray.data.block import BlockAccessor, BlockColumn
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class InMemorySizeEstimator(ABC):
     @abstractmethod
-    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.array:
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         """Estimate the in-memory sizes of the paths in the given manifest.
 
         Some `FilePartitioner` implementations use this method to ensure that each
@@ -29,7 +29,7 @@ class InMemorySizeEstimator(ABC):
         ...
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
     """Estimates in-memory sizes by reading files.
 

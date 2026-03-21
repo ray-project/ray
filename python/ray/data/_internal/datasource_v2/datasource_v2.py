@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DatasourceCategory(Enum):
     """Categories of datasources with different capability profiles.
 
@@ -60,7 +60,7 @@ class DatasourceCategory(Enum):
     STREAMING = "streaming"
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 

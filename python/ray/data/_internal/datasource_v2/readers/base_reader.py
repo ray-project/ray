@@ -7,7 +7,7 @@ from ray.data._internal.datasource_v2 import InputSplit
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class Reader(ABC, Generic[InputSplit]):
     """Abstract base class for reading data from input buckets.
 
