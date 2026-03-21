@@ -113,5 +113,5 @@ def _populate_cluster_compute_variables(test: "Test") -> Dict:
     cloud_id = get_test_cloud_id(test)
     cloud_name = get_test_cloud_name(test)
     env["ANYSCALE_CLOUD_ID"] = cloud_id
-    env["ANYSCALE_CLOUD"] = cloud_name
+    env["ANYSCALE_CLOUD_NAME"] = cloud_name
     return env
