@@ -444,7 +444,15 @@ class ActorPoolMapOperator(MapOperator):
         if not pending_bundles:
             return 0
 
-        if self._actor_locality_enabled:
+        # Only disaggregate into per-block bundles when locality is enabled
+        # AND min_rows_per_bundle is not set. When min_rows_per_bundle is set,
+        # bundles were intentionally created by the bundler and should not be
+        # split apart.
+        disaggregate = (
+            self._actor_locality_enabled and self._min_rows_per_bundle is None
+        )
+
+        if disaggregate:
             # Disaggregate multi-block bundles into per-block bundles so the
             # MCF solver sees every block individually.
             per_block_bundles = []
@@ -466,6 +474,13 @@ class ActorPoolMapOperator(MapOperator):
                 bundles=per_block_bundles,
                 actor_locality_enabled=True,
             )
+        elif self._actor_locality_enabled:
+            # Locality enabled but bundles were intentionally bundled
+            # (min_rows_per_bundle set) — assign whole bundles, not per-block.
+            assignments = self._actor_pool.select_actors_batch(
+                bundles=pending_bundles,
+                actor_locality_enabled=True,
+            )
         else:
             assignments = self._actor_pool.select_actors_batch(
                 bundles=pending_bundles,
@@ -475,7 +490,7 @@ class ActorPoolMapOperator(MapOperator):
         if not assignments:
             return 0
 
-        if self._actor_locality_enabled:
+        if disaggregate:
             assignments = self._dequeue_and_rebundle_by_actor(
                 assignments,
                 pending_bundles,
@@ -517,6 +532,11 @@ class ActorPoolMapOperator(MapOperator):
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
                 self._actor_pool.on_task_completed(actor_to_return)
+                # If there are remaining bundles in the queue, try to schedule
+                # them now that an actor is free. This is needed because the MCF
+                # solver may not assign all blocks in a single round.
+                if self._bundle_queue.num_blocks() > 0:
+                    self._try_schedule_tasks_internal()
 
             self._submit_data_task(
                 gen, bundle, partial(_task_done_callback, actor_to_return=actor)
