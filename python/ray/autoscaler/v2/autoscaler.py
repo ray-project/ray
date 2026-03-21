@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from queue import Queue
 from typing import List, Optional
@@ -88,6 +89,18 @@ class Autoscaler:
             gcs_client=self._gcs_client,
         )
         self._scheduler = ResourceDemandScheduler(self._event_logger)
+
+        # Emit the initial config definition event and track config hash
+        # so we can detect changes in subsequent loop iterations.
+        self._last_config_hash: str = hashlib.sha256(config.dump().encode()).hexdigest()
+        self._last_provisioning_hash: str = ""
+        if self._event_logger is not None:
+            try:
+                self._event_logger.log_config_definition(config)
+            except Exception:
+                # Reset so the next iteration retries this event.
+                self._last_config_hash = ""
+                logger.exception("Failed to emit config definition event.")
 
     def _init_cloud_instance_provider(
         self, config: AutoscalingConfig, config_reader: IConfigReader
@@ -204,7 +217,24 @@ class Autoscaler:
             self._config_reader.refresh_cached_autoscaling_config()
             autoscaling_config = self._config_reader.get_cached_autoscaling_config()
 
-            return Reconciler.reconcile(
+            # Emit a config definition event when the config changes.
+            current_config_hash = hashlib.sha256(
+                autoscaling_config.dump().encode()
+            ).hexdigest()
+            if current_config_hash != self._last_config_hash:
+                self._last_config_hash = current_config_hash
+                logger.info("Autoscaling config changed, emitting new config event.")
+                if self._event_logger is not None:
+                    try:
+                        self._event_logger.log_config_definition(autoscaling_config)
+                    except Exception:
+                        # Reset so the next iteration retries this event.
+                        self._last_config_hash = ""
+                        logger.exception(
+                            "Failed to emit config definition event on change."
+                        )
+
+            autoscaling_state = Reconciler.reconcile(
                 instance_manager=self._instance_manager,
                 scheduler=self._scheduler,
                 cloud_provider=self._cloud_instance_provider,
@@ -219,6 +249,59 @@ class Autoscaler:
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
             )
+
+            # Emit a node provisioning event when the provisioning state
+            # changes (new pending requests, allocations, or failures).
+            if autoscaling_state is not None and self._event_logger is not None:
+                # Hash only the three provisioning-relevant fields.
+                # The full AutoscalingState also contains infeasible request
+                # fields that are unrelated to provisioning and would cause
+                # false-positive change detections here.
+                # Sort each list before serializing to produce a stable
+                # hash regardless of the order the instance manager
+                # returns items in.
+                provisioning_bytes = (
+                    b"\x00".join(
+                        r.SerializeToString()
+                        for r in sorted(
+                            autoscaling_state.pending_instance_requests,
+                            key=lambda r: (
+                                r.instance_type_name,
+                                r.ray_node_type_name,
+                            ),
+                        )
+                    )
+                    + b"|"
+                    + b"\x00".join(
+                        i.SerializeToString()
+                        for i in sorted(
+                            autoscaling_state.pending_instances,
+                            key=lambda i: i.instance_id,
+                        )
+                    )
+                    + b"|"
+                    + b"\x00".join(
+                        f.SerializeToString()
+                        for f in sorted(
+                            autoscaling_state.failed_instance_requests,
+                            key=lambda f: (
+                                f.instance_type_name,
+                                f.start_ts,
+                            ),
+                        )
+                    )
+                )
+                provisioning_hash = hashlib.sha256(provisioning_bytes).hexdigest()
+                if provisioning_hash != self._last_provisioning_hash:
+                    self._last_provisioning_hash = provisioning_hash
+                    try:
+                        self._event_logger.log_node_provisioning(autoscaling_state)
+                    except Exception:
+                        # Reset so the next iteration retries this event.
+                        self._last_provisioning_hash = ""
+                        logger.exception("Failed to emit node provisioning event.")
+
+            return autoscaling_state
         except AuthenticationError as e:
             logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")
             raise

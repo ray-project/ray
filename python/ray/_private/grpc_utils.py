@@ -1,13 +1,25 @@
 import os
+import time
 from concurrent import futures
 from typing import Any, Optional, Sequence, Tuple
 
 import grpc
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import aio as aiogrpc
 
 import ray
 from ray._common.tls_utils import load_certs_from_env
 from ray._private.authentication import authentication_utils
+
+
+def protobuf_timestamp_now() -> Timestamp:
+    """Return the current wall-clock time as a protobuf ``Timestamp``."""
+    return epoch_to_protobuf_timestamp(time.time())
+
+
+def epoch_to_protobuf_timestamp(epoch: float) -> Timestamp:
+    """Convert a Unix epoch (seconds) to a protobuf ``Timestamp``."""
+    return Timestamp(seconds=int(epoch), nanos=int((epoch % 1) * 1e9))
 
 
 def init_grpc_channel(

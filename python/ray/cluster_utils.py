@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 cluster_not_supported = os.name == "nt"
 
 
+def _deep_merge(base: dict, overrides: dict) -> dict:
+    """Recursively merge *overrides* into *base* in place and return *base*."""
+    for key, value in overrides.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 @DeveloperAPI
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
@@ -85,6 +95,7 @@ class AutoscalingCluster:
         """
         subprocess.check_call(["ray", "stop", "--force"])
         _, fake_config = tempfile.mkstemp()
+        self._config_file = fake_config
         with open(fake_config, "w") as f:
             f.write(json.dumps(self._config))
         cmd = [
@@ -119,6 +130,7 @@ class AutoscalingCluster:
                 {
                     "RAY_enable_autoscaler_v2": "1",
                     "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+                    "RAY_NODE_TYPE_NAME": "ray.head.default",
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
                 }
             )
@@ -126,6 +138,28 @@ class AutoscalingCluster:
             env.update(override_env)
         subprocess.check_call(cmd, env=env)
         ray._private.services.find_gcs_addresses.cache_clear()
+
+    def update_config(self, config_overrides: dict) -> None:
+        """Update the autoscaling config file for a running cluster.
+
+        The autoscaler's ``FileConfigReader`` re-reads the config file every
+        loop iteration, so changes take effect within one update interval.
+
+        Args:
+            config_overrides: Dict that is deep-merged into the current config.
+                For example, to change max_workers for a node type::
+
+                    cluster.update_config({
+                        "available_node_types": {
+                            "type-1": {"max_workers": 5},
+                        },
+                    })
+        """
+        with open(self._config_file) as f:
+            config = json.load(f)
+        _deep_merge(config, config_overrides)
+        with open(self._config_file, "w") as f:
+            json.dump(config, f)
 
     def shutdown(self):
         """Terminate the cluster."""
