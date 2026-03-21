@@ -376,6 +376,7 @@ class ActorPoolMapOperator(MapOperator):
     def _dequeue_and_rebundle_by_actor(
         assignments: List[Tuple[RefBundle, "ActorHandle"]],
         pending_bundles: List[RefBundle],
+        all_per_block_bundles: List[RefBundle],
         bundle_queue: "HashLinkedQueue",
         metrics: OpRuntimeMetrics,
     ) -> List[Tuple[RefBundle, "ActorHandle"]]:
@@ -383,11 +384,14 @@ class ActorPoolMapOperator(MapOperator):
 
         After the MCF solver assigns individual blocks to actors, this groups
         those assignments by actor, merges blocks into one RefBundle per actor,
-        and dequeues the original bundles from the queue.
+        and dequeues the original bundles from the queue. Any per-block bundles
+        that were not assigned (due to insufficient actor slots) are re-enqueued.
 
         Args:
             assignments: Per-block (bundle, actor) pairs from the MCF solver.
             pending_bundles: Original bundles to dequeue from the queue.
+            all_per_block_bundles: All per-block bundles that were fed to the
+                solver, including those that may not have been assigned.
             bundle_queue: The queue holding pending bundles.
             metrics: Operator metrics for tracking dequeue events.
 
@@ -400,6 +404,15 @@ class ActorPoolMapOperator(MapOperator):
         for bundle in pending_bundles:
             bundle_queue.remove(bundle)
             metrics.on_input_dequeued(bundle, input_index=0)
+
+        # Identify which per-block bundles were assigned.
+        assigned_block_ids = {id(block_bundle) for block_bundle, _ in assignments}
+
+        # Re-enqueue any per-block bundles that were NOT assigned.
+        for block_bundle in all_per_block_bundles:
+            if id(block_bundle) not in assigned_block_ids:
+                bundle_queue.add(block_bundle)
+                metrics.on_input_queued(block_bundle, input_index=0)
 
         # Group per-block assignments by actor, preserving insertion order.
         actor_blocks: OrderedDict = OrderedDict()
@@ -466,6 +479,7 @@ class ActorPoolMapOperator(MapOperator):
             assignments = self._dequeue_and_rebundle_by_actor(
                 assignments,
                 pending_bundles,
+                per_block_bundles,
                 self._bundle_queue,
                 self._metrics,
             )

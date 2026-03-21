@@ -964,12 +964,12 @@ def test_actor_pool_input_queue_draining(
        while all actors are busy, the operator does not crash.
     2. When `has_next()` is called after inputs are complete and there are blocks
        in the bundle queue but actors are busy, it handles this gracefully.
-    3. Once actors become available, `has_next()` drains the queue.
+    3. Once actors become available, `has_next()` drains the queue block by block.
 
-    The bug: `select_actors()` has an assertion `assert self.can_schedule_task()`
-    which crashes when called with no available actors. Both `all_inputs_done()`
-    (via `_try_schedule_task(strict=False)`) and `has_next()` call
-    `_try_schedule_tasks_internal()` which invokes `select_actors()`.
+    With per-block disaggregation (locality-enabled scheduling), each actor slot
+    processes one block at a time. A 5-block bundle is disaggregated into 5
+    per-block bundles; with 1 actor slot, 1 block is assigned and 4 are
+    re-enqueued for future scheduling rounds.
     """
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
@@ -1001,7 +1001,9 @@ def test_actor_pool_input_queue_draining(
     assert op._actor_pool.num_pending_actors() == 0
     assert op._actor_pool.num_running_actors() == 1
 
-    # Add inputs to fill a bundle and launch a task (saturating the single actor)
+    # Add inputs to fill a bundle and launch a task (saturating the single actor).
+    # With per-block disaggregation: 5-block bundle → 1 block assigned (1 slot),
+    # 4 blocks re-enqueued.
     for _ in range(MIN_ROWS_PER_BUNDLE):
         op.add_input(input_op.get_next(), 0)
 
@@ -1015,12 +1017,11 @@ def test_actor_pool_input_queue_draining(
     # 1 task should be running now
     assert op.num_active_tasks() == 1
 
-    # - Partial bundle (4 blocks) should be still in the bundler
-    # - Bundle queue is empty
+    # - Partial bundle (4 blocks) in the bundler
+    # - 4 re-enqueued blocks in the queue (from the disaggregated 5-block bundle)
     assert op._block_ref_bundler.num_blocks() == MIN_ROWS_PER_BUNDLE - 1
-    assert op.internal_input_queue_num_blocks() == MIN_ROWS_PER_BUNDLE - 1
-
-    assert op._bundle_queue.num_bundles() == 0
+    assert op._bundle_queue.num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+    assert op.internal_input_queue_num_blocks() == 2 * (MIN_ROWS_PER_BUNDLE - 1)
 
     # KEY TEST PART 1: Calling all_inputs_done() while actor is busy should NOT crash.
     # This drains the bundler to the queue (task can't be dispatched since actor is busy)
@@ -1028,13 +1029,14 @@ def test_actor_pool_input_queue_draining(
 
     # Now:
     #   - Bundler should be drained
-    #   - Partial bundle should now be in the queue (exactly 1 bundle)
+    #   - Queue has 4 re-enqueued singles + 4-block bundle from bundler flush,
+    #     which gets disaggregated into singles → 8 single-block bundles total.
+    #     Actor is busy so nothing gets assigned.
     assert op._block_ref_bundler.num_blocks() == 0
 
-    assert op._bundle_queue.num_bundles() == 1
-    assert op._bundle_queue.num_blocks() == MIN_ROWS_PER_BUNDLE - 1
-
-    assert op.internal_input_queue_num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+    total_remaining_blocks = 2 * (MIN_ROWS_PER_BUNDLE - 1)
+    assert op._bundle_queue.num_blocks() == total_remaining_blocks
+    assert op.internal_input_queue_num_blocks() == total_remaining_blocks
 
     # Actor is still busy
     assert op.num_active_tasks() == 1
@@ -1049,21 +1051,19 @@ def test_actor_pool_input_queue_draining(
     # Actor is still busy
     assert op.num_active_tasks() == 1
     assert not op.can_add_input(), "Actor should be busy, cannot accept input"
-    # The bundle should still be in the queue since actor was busy
+    # Blocks should still be in the queue since actor was busy
     assert (
-        op._bundle_queue.num_bundles() == 1
-    ), "Bundle should remain in queue since actor was busy"
+        op._bundle_queue.num_blocks() == total_remaining_blocks
+    ), "Blocks should remain in queue since actor was busy"
 
-    # Now complete the running task to free up the actor
-    run_op_tasks_sync(op, only_existing=True)
+    # Drain the queue block by block: each round frees 1 slot → 1 block dispatched.
+    while op._bundle_queue.num_blocks() > 0:
+        # Complete the running task to free up the actor
+        run_op_tasks_sync(op, only_existing=True)
+        # has_next() dispatches the next block
+        op.has_next()
 
-    # Now has_next() should dispatch the remaining bundle
-    assert op.has_next()
-
-    # The queue should be drained (task dispatched)
-    assert op._bundle_queue.num_bundles() == 0
     assert op._bundle_queue.num_blocks() == 0
-    assert op.internal_input_queue_num_blocks() == 0
     assert op.num_active_tasks() == 1
 
     # Complete remaining work
