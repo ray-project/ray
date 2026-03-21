@@ -4268,7 +4268,7 @@
 
 - name: llm_serve_sglang_e2e
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
