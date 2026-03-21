@@ -137,17 +137,28 @@ def _sanitize_chat_completion_request(
     This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
     objects that cannot be pickled for Ray remote calls.
 
-    References:
-    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    Workaround logic adapted from vLLM (credits: @gcalmettes):
+    - vLLM PR: https://github.com/vllm-project/vllm/pull/9951
     - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
     - Related Issue: https://github.com/pydantic/pydantic/issues/9541
     - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
 
     TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
     """
-    from vllm.tokenizers.mistral import maybe_serialize_tool_calls
+    for i, message in enumerate(request.messages):
+        if message.get("role") == "assistant":
+            if (tool_calls_validator := message.get("tool_calls", None)) is not None:
+                try:
+                    validated_tool_calls = list(tool_calls_validator)
+                except (TypeError, ValueError) as e:
+                    raise ValueError(
+                        "Validating messages' `tool_calls` raised an error. "
+                        "Please ensure `tool_calls` are iterable of tool calls."
+                    ) from e
+            else:
+                validated_tool_calls = []
 
-    maybe_serialize_tool_calls(request)
+            request.messages[i]["tool_calls"] = validated_tool_calls
 
     return request
 
@@ -705,9 +716,9 @@ class OpenAiIngress(DeploymentProtocol):
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
                 )
 
             if isinstance(result, ScoreResponse):

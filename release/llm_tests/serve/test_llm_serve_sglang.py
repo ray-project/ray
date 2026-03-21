@@ -226,5 +226,42 @@ def test_sglang_embeddings(sglang_embedding_client):
     assert emb_batch_resp.data[1].embedding
 
 
+# ---------------------------------------------------------------------------
+# Protocol decoupling tests — verify modules are importable without vLLM
+# and that SGLang protocol models are wired correctly.
+# ---------------------------------------------------------------------------
+
+
+class TestSGLangProtocolDecoupling:
+    """Verify modules are importable without vLLM and SGLang models are wired."""
+
+    def test_modules_importable_without_vllm(self):
+        """openai_api_models, ingress, llm_server, and ray.serve.llm should
+        all import without vLLM installed."""
+        from ray.llm._internal.serve.core.configs import openai_api_models  # noqa: F401
+        from ray.llm._internal.serve.core.ingress import ingress  # noqa: F401
+        from ray.llm._internal.serve.core.server.llm_server import LLMServer
+        import ray.serve.llm  # noqa: F401
+
+        assert LLMServer._default_engine_cls is None
+
+    def test_error_response_round_trip(self):
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ErrorInfo,
+            ErrorResponse,
+        )
+
+        resp = ErrorResponse(error=ErrorInfo(message="bad", code=400, type="Invalid"))
+        assert resp.error.message == "bad"
+        assert resp.error.code == 400
+        assert resp.model_dump()["error"]["message"] == "bad"
+
+    def test_score_request_is_sglang_scoring_request(self):
+        from sglang.srt.entrypoints.openai.protocol import ScoringRequest
+        from ray.llm._internal.serve.core.configs.openai_api_models import ScoreRequest
+
+        assert issubclass(ScoreRequest, ScoringRequest)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-xvs", __file__]))
