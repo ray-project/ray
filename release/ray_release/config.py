@@ -5,6 +5,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+import anyscale
 import jsonschema
 import yaml
 
@@ -76,11 +77,6 @@ LEGACY_COMPUTE_CONFIG_KEYS = {
     "aws_advanced_configurations",
     "advanced_configurations_json",
     "gcp_advanced_configurations_json",
-}
-
-CLOUD_ID_TO_NAME = {
-    "cld_kvedZWag2qA8i5BjxUevf5i7": "anyscale_v2_default_cloud",
-    "cld_wy5a6nhazplvu32526ams61d98": "serve_release_tests_cloud",
 }
 
 
@@ -431,7 +427,8 @@ def get_test_cloud_name(test: Test) -> str:
     if cloud_name:
         return cloud_name
     cloud_id = get_test_cloud_id(test)
-    return CLOUD_ID_TO_NAME[cloud_id]
+    cloud = anyscale.cloud.get(id=cloud_id)
+    return cloud.name
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
