@@ -35,6 +35,19 @@ URI_DOWNLOAD_MAX_WORKERS = 16
 
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 
+# Range-split downloads: files above this threshold (bytes) are downloaded as
+# parallel get_range requests instead of a single get.  0 = disabled (default).
+RAY_DATA_OBSTORE_RANGE_THRESHOLD = int(
+    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", "0")
+)
+RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = int(
+    os.environ.get("RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", str(8 * 1024 * 1024))
+)
+RAY_DATA_OBSTORE_MAX_CONCURRENCY = int(
+    os.environ.get("RAY_DATA_OBSTORE_MAX_CONCURRENCY", "128")
+)
+_FILE_SIZE_COLUMN_PREFIX = "__ray_file_size__"
+
 try:
     from obstore import parse_scheme as obstore_parse_scheme
 
@@ -284,6 +297,7 @@ async def _download_uris_with_obstore(
     uris: List[str],
     uri_column_name: str,
     filesystem: Optional["pa.fs.FileSystem"] = None,
+    file_sizes: Optional[List[Optional[int]]] = None,
 ) -> List[Optional[bytes]]:
     """Download URIs concurrently using obstore's async API.
 
@@ -292,11 +306,20 @@ async def _download_uris_with_obstore(
     If a PyArrow *filesystem* is provided, its credentials are extracted
     and forwarded to obstore's store construction.
 
+    When ``RAY_DATA_OBSTORE_RANGE_THRESHOLD`` is set to a positive value,
+    files larger than the threshold are downloaded as parallel range chunks
+    via ``get_range_async``.  The *file_sizes* list, when provided by the
+    upstream ``PartitionActor``, lets the function skip the HEAD request
+    for files whose size is already known.
+
     Args:
         uris: URIs to download.
         uri_column_name: Column name (used only for error logging).
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store.
+        file_sizes: Optional per-URI file sizes from the PartitionActor.
+            ``0`` or ``None`` entries trigger a HEAD request when range
+            splitting is enabled.
 
     Returns:
         Downloaded bytes in the same order as *uris*.  ``None`` entries
@@ -309,27 +332,54 @@ async def _download_uris_with_obstore(
     retry_config = {"max_retries": 10}
     fs_kwargs = _extract_credentials_from_filesystem(filesystem)
 
+    range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
+    range_chunk_size = RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE
+    max_conc = RAY_DATA_OBSTORE_MAX_CONCURRENCY
+    if range_threshold > 0 and max_conc <= 0:
+        logger.warning(
+            "RAY_DATA_OBSTORE_RANGE_THRESHOLD is set but "
+            "RAY_DATA_OBSTORE_MAX_CONCURRENCY=%d is invalid. "
+            "Range downloads require a positive concurrency limit to avoid "
+            "socket exhaustion. Disabling range splitting.",
+            max_conc,
+        )
+        range_threshold = 0
+    sem = (
+        asyncio.Semaphore(max_conc) if (range_threshold > 0 and max_conc > 0) else None
+    )
+
+    # obstore's reqwest client rejects http:// by default. Auto-enable it
+    # to maintain parity with PyArrow (which accepts http:// via fsspec),
+    # but warn about unencrypted traffic.
+    if any(uri.startswith("http://") for uri in uris):
+        fs_kwargs["client_options"] = {"allow_http": True}
+        logger.warning(
+            "Downloading over unencrypted HTTP. " "Consider using https:// instead."
+        )
+
     def _get_store(store_url: str):
-        # Cache one ObjectStore per (scheme, netloc). For cloud storage this
-        # means one store per bucket (e.g. s3://bucket-a and s3://bucket-b get
-        # separate stores sharing the same credentials). For HTTP(S) each host
-        # gets its own store. The cache avoids re-initialising the Rust HTTP
-        # client and credential chain for every URI in the batch.
         if store_url not in store_cache:
             store_cache[store_url] = from_url(
                 store_url, retry_config=retry_config, **fs_kwargs
             )
         return store_cache[store_url]
 
-    async def _download_one(uri: str) -> Optional[bytes]:
+    async def _download_one_simple(uri: str) -> Optional[bytes]:
         try:
             store_url, path = _split_uri(uri)
             store = _get_store(store_url)
-            result = await obs.get_async(store, path)
-            return bytes(await result.bytes_async())
+            if sem is not None:
+                async with sem:
+                    result = await obs.get_async(store, path)
+                    return bytes(await result.bytes_async())
+            else:
+                # No semaphore, indicate we not using range splitting.
+                # Number of concurrent connections controlled by PartitionActor.
+                result = await obs.get_async(store, path)
+                return bytes(await result.bytes_async())
         except OSError as e:
             logger.debug(
-                f"OSError reading uri '{uri}' for column " f"'{uri_column_name}': {e}"
+                f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
             )
             return None
         except Exception as e:
@@ -339,7 +389,70 @@ async def _download_uris_with_obstore(
             )
             return None
 
-    tasks = [_download_one(uri) for uri in uris]
+    async def _download_one_ranged(uri: str, size: int) -> Optional[bytes]:
+        """Download a single large file using parallel range requests."""
+        try:
+            store_url, path = _split_uri(uri)
+            store = _get_store(store_url)
+            result = bytearray(size)
+
+            async def _fetch_range(start: int, end: int) -> None:
+                async with sem:
+                    chunk = await obs.get_range_async(store, path, start=start, end=end)
+                    result[start:end] = chunk
+
+            ranges = [
+                (start, min(start + range_chunk_size, size))
+                for start in range(0, size, range_chunk_size)
+            ]
+            await asyncio.gather(*[_fetch_range(s, e) for s, e in ranges])
+            return bytes(result)
+        except OSError as e:
+            logger.debug(
+                f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error reading uri '{uri}' for column "
+                f"'{uri_column_name}': {e}"
+            )
+            return None
+
+    if range_threshold <= 0:
+        tasks = [_download_one_simple(uri) for uri in uris]
+        return list(await asyncio.gather(*tasks))
+
+    # --- Range-split path ---
+    sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
+
+    # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
+    # regardless of batch size, which is negligible compared to the speedup
+    # from correctly routing large files to ranged download.
+    unknown_indices = [i for i, s in enumerate(sizes) if not s or s <= 0]
+    if unknown_indices:
+
+        async def _head(idx: int):
+            try:
+                store_url, path = _split_uri(uris[idx])
+                store = _get_store(store_url)
+                if sem is not None:
+                    async with sem:
+                        meta = await obs.head_async(store, path)
+                else:
+                    meta = await obs.head_async(store, path)
+                sizes[idx] = meta["size"] if isinstance(meta, dict) else meta.size
+            except Exception:
+                sizes[idx] = 0
+
+        await asyncio.gather(*[_head(i) for i in unknown_indices])
+
+    tasks = []
+    for uri, size in zip(uris, sizes):
+        if size and size > range_threshold:
+            tasks.append(_download_one_ranged(uri, size))
+        else:
+            tasks.append(_download_one_simple(uri))
     return list(await asyncio.gather(*tasks))
 
 
@@ -457,6 +570,12 @@ def download_bytes_threaded(
         if len(uris) == 0:
             continue
 
+        # Read pre-computed file sizes from the PartitionActor if available.
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+        file_sizes = None
+        if size_col in output_block.column_names:
+            file_sizes = output_block.column(size_col).to_pylist()
+
         # Intentionally check only the first URI to determine the download backend.
         # Checking every URI would add O(n) overhead per batch for negligible practical benefit.
         #
@@ -465,7 +584,10 @@ def download_bytes_threaded(
         if use_obstore and _is_obstore_supported_url(uris[0]):
             uri_bytes = asyncio.run(
                 _download_uris_with_obstore(
-                    uris, uri_column_name, filesystem=filesystem
+                    uris,
+                    uri_column_name,
+                    filesystem=filesystem,
+                    file_sizes=file_sizes,
                 )
             )
         else:
@@ -487,6 +609,13 @@ def download_bytes_threaded(
             output_bytes_column_name,
             pa.array(uri_bytes),
         )
+
+    # Drop internal file-size columns before yielding output.
+    for uri_column_name in uri_column_names:
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+        if size_col in output_block.column_names:
+            idx = output_block.column_names.index(size_col)
+            output_block = output_block.remove_column(idx)
 
     output_block_size = output_block.nbytes
     ctx = ray.data.context.DatasetContext.get_current()
@@ -533,6 +662,9 @@ class PartitionActor:
 
         if self._batch_size_estimate is None:
             self._batch_size_estimate = self._estimate_nrows_per_partition(block)
+
+        if RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
+            block = self._attach_file_sizes(block)
 
         yield from _arrow_batcher(block, self._batch_size_estimate)
 
@@ -584,6 +716,22 @@ class PartitionActor:
             )
             return 1
         return nrows_per_partition
+
+    def _attach_file_sizes(self, block: pa.Table) -> pa.Table:
+        """Fetch file sizes for all URIs and attach as hidden columns.
+
+        For cloud URIs (S3/GCS/Azure) this uses cheap metadata lookups.
+        For HTTP URIs where sizes are unavailable, stores 0 so the
+        downstream download function falls back to HEAD via obstore.
+        """
+        for uri_column_name in self._uri_column_names:
+            col_name = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+            uris = block.column(uri_column_name).to_pylist()
+            sizes = self._sample_sizes(
+                uris
+            )  # This fetches all file sizes instead of just sampling
+            block = block.append_column(col_name, pa.array(sizes, type=pa.int64()))
+        return block
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes in parallel using ThreadPoolExecutor."""

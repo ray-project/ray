@@ -346,7 +346,7 @@ def _split_uri(uri: str):
     The query string is preserved so that signed URLs (e.g. pre-signed S3 HTTPS
     URLs) continue to work correctly when passed to obstore's get_async.
     """
-    parsed = urlparse(uri)
+    parsed = urlparse(uri, allow_fragments=False)
     store_url = f"{parsed.scheme}://{parsed.netloc}"
     path = parsed.path.lstrip("/")
     if parsed.query:
