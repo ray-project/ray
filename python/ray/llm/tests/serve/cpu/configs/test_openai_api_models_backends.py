@@ -142,3 +142,7 @@ class TestLLMServerLazyImport:
 
     def test_ray_serve_llm_importable(self):
         import ray.serve.llm  # noqa: F401
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

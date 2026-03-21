@@ -4275,7 +4275,7 @@
 
   cluster:
     byod:
-      type: cu128
+      type: gpu-cu130
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
