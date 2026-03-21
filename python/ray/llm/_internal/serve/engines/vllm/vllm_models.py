@@ -3,7 +3,7 @@ import dataclasses
 import os
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
@@ -129,6 +129,8 @@ class VLLMEngineConfig(BaseModelExtended):
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
+
+    _tpu_slice_pg_wrapper: Any = PrivateAttr(default=None)
 
     @property
     def actual_hf_model_id(self) -> str:
@@ -461,4 +463,7 @@ class VLLMEngineConfig(BaseModelExtended):
             strategy=self.placement_strategy,
             name=name,
         )
+
+        self._tpu_slice_pg_wrapper = slice_pg_wrapper
+
         return slice_pg_wrapper.placement_group

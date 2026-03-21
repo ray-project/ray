@@ -59,7 +59,10 @@ async def test_vllm_engine_start_with_tpu_topology(
     await actor.check_health.remote()
     await actor.shutdown.remote()
 
-    ray.util.remove_placement_group(pg)
+    if engine_config._tpu_slice_pg_wrapper:
+        engine_config._tpu_slice_pg_wrapper.shutdown()
+    else:
+        ray.util.remove_placement_group(pg)
 
 
 def test_tpu_slice_placement_group_creation_default_resources():
@@ -87,7 +90,10 @@ def test_tpu_slice_placement_group_creation_default_resources():
         assert "TPU" in bundle
         assert bundle["TPU"] == 1
 
-    ray.util.remove_placement_group(pg)
+    if engine_config._tpu_slice_pg_wrapper:
+        engine_config._tpu_slice_pg_wrapper.shutdown()
+    else:
+        ray.util.remove_placement_group(pg)
 
 
 def test_tpu_slice_placement_group_creation_host_resources():
@@ -118,7 +124,10 @@ def test_tpu_slice_placement_group_creation_host_resources():
         assert "TPU" in bundle
         assert bundle["TPU"] == 4
 
-    ray.util.remove_placement_group(pg)
+    if engine_config._tpu_slice_pg_wrapper:
+        engine_config._tpu_slice_pg_wrapper.shutdown()
+    else:
+        ray.util.remove_placement_group(pg)
 
 
 def test_single_tpu_fallback():
@@ -139,7 +148,10 @@ def test_single_tpu_fallback():
     assert pg.bundle_count == 1
     assert pg.strategy == "PACK"
 
-    ray.util.remove_placement_group(pg)
+    if engine_config._tpu_slice_pg_wrapper:
+        engine_config._tpu_slice_pg_wrapper.shutdown()
+    else:
+        ray.util.remove_placement_group(pg)
 
 
 if __name__ == "__main__":
