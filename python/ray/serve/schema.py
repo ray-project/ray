@@ -666,6 +666,8 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
+        rolling_update_percentage=info.deployment_config.rolling_update_percentage,
+        blocking_reconfigure=info.deployment_config.blocking_reconfigure,
     )
 
     if info.deployment_config.autoscaling_config is not None:
