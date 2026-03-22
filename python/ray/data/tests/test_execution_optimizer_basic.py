@@ -290,7 +290,7 @@ def test_project_operator_select(ray_start_regular_shared_2_cpus):
     assert isinstance(op, Project), op.name
     assert op.exprs == [col("sepal.length"), col("petal.width")]
 
-    physical_plan = create_planner().plan(logical_plan)
+    physical_plan, _ = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -318,7 +318,7 @@ def test_project_operator_rename(ray_start_regular_shared_2_cpus):
         col("sepal.length").alias("sepal_length"),
         col("petal.width").alias("pedal_width"),
     ]
-    physical_plan = create_planner().plan(logical_plan)
+    physical_plan, _ = create_planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert isinstance(physical_op, TaskPoolMapOperator)
