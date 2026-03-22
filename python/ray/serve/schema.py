@@ -467,7 +467,7 @@ class DeploymentSchema(BaseModel):
         default=DEFAULT.VALUE,
         description=(
             "The percentage of replicas to update at a time during a "
-            "rolling update. Must be between 0.0 and 1.0 (exclusive of 0). "
+            "rolling update. Must be in the range (0.0, 1.0]. "
             "Defaults to 0.2 (20%)."
         ),
         gt=0.0,
