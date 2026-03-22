@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import socket
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -253,6 +254,19 @@ def get_grpc_ports(route_prefix=None, first_only=True):
             ):
                 grpc_ports.extend([target.port for target in target_group.targets])
         return grpc_ports
+
+
+def _can_bind_to_port(port):
+    """Check if we can bind to the port (not just if nothing is listening)."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("0.0.0.0", port))
+        sock.close()
+        return True
+    except OSError:
+        sock.close()
+        return False
 
 
 def test_basic(_skip_if_ff_not_enabled, serve_instance):
@@ -714,6 +728,19 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
         assert not _is_port_in_use(http_port)
     for grpc_port in grpc_ports:
         assert not _is_port_in_use(grpc_port)
+
+    # Wait until all ports can be bound (not just until nothing is listening).
+    # After graceful shutdown, server sockets may be in TIME_WAIT state, which
+    # prevents immediate port reuse. Redeploying too soon causes bind failures
+    # and port allocation to skip to the next available port.
+    def all_ports_can_be_bound():
+        for port in http_ports + grpc_ports:
+            if not _can_bind_to_port(port):
+                return False
+        return True
+
+    # TIME_WAIT can last up to 60s on Linux
+    wait_for_condition(all_ports_can_be_bound, timeout=120)
 
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
@@ -2347,6 +2374,9 @@ def test_get_serve_instance_details_json_serializable(
                                     "request_router_kwargs": {},
                                     "request_routing_stats_period_s": 10.0,
                                     "request_routing_stats_timeout_s": 30.0,
+                                    "initial_backoff_s": 0.025,
+                                    "backoff_multiplier": 2.0,
+                                    "max_backoff_s": 0.5,
                                 },
                             },
                             "target_num_replicas": 1,
@@ -2456,20 +2486,6 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
     """This test is really slow, because it waits for the ports to be released from TIME_WAIT state.
     The ports are in TIME_WAIT state because the replicas are force-killed and the ports are not
     released immediately."""
-    import socket
-
-    def _can_bind_to_port(port):
-        """Check if we can bind to the port (not just if nothing is listening)."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("0.0.0.0", port))
-            sock.close()
-            return True
-        except OSError:
-            sock.close()
-            return False
-
     signal = SignalActor.remote()
 
     @serve.deployment(
@@ -2507,7 +2523,8 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
         serve.delete("stuck-requests-deployment", _blocking=False)
 
         # Verify the application is eventually deleted (replica was force-killed).
-        # This should complete within graceful_shutdown_timeout_s (35s) + buffer.
+        # In direct ingress mode, graceful_shutdown_timeout_s is bumped to at least
+        # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S (default 30s).
         wait_for_condition(
             lambda: "stuck-requests-deployment" not in serve.status().applications,
             timeout=10,

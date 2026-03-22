@@ -2,16 +2,28 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Dict, Union
-
-from ray.data.dataset import Dataset
-from typing import Any
-
-
 from enum import Enum
+from typing import Any, Callable, Dict, Union
+
+import ray
+from ray.data.dataset import Dataset
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+
 
 import pyarrow as pa
 import pandas as pd
+
+
+def _get_spilled_bytes_total() -> float:
+    """Get the total number of spilled bytes across the cluster."""
+    memory_info = get_memory_info_reply(
+        get_state_from_address(ray.get_runtime_context().gcs_address)
+    )
+    return memory_info.store_stats.spilled_bytes_total
+
+
+def _bytes_to_gb(b: float) -> float:
+    return round(b / (1024**3), 4)
 
 
 class BenchmarkMetric(Enum):
@@ -19,6 +31,7 @@ class BenchmarkMetric(Enum):
     NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
+    OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
 
 
 class Benchmark:
@@ -67,9 +80,11 @@ class Benchmark:
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
+        start_spilled_bytes = _get_spilled_bytes_total()
         output_ds = fn(*fn_args, **fn_kwargs)
         output_ds.materialize()
         duration = time.perf_counter() - start_time
+        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
 
         # TODO(chengsu): Record more metrics based on dataset stats.
         num_rows = output_ds.count()
@@ -77,6 +92,9 @@ class Benchmark:
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.NUM_ROWS.value: num_rows,
             BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -102,6 +120,7 @@ class Benchmark:
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
+        start_spilled_bytes = _get_spilled_bytes_total()
         record_count = 0
         ds_iterator = iter(dataset)
         for batch in ds_iterator:
@@ -124,10 +143,14 @@ class Benchmark:
             record_count += batch_size
 
         duration = time.perf_counter() - start_time
+        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
         self.result[name] = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.NUM_ROWS.value: record_count,
             BenchmarkMetric.THROUGHPUT.value: record_count / duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         print(f"Result of case {name}: {self.result[name]}")
 
@@ -151,12 +174,17 @@ class Benchmark:
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
+        start_spilled_bytes = _get_spilled_bytes_total()
         fn_output = fn(*fn_args, **fn_kwargs)
         assert fn_output is None or isinstance(fn_output, dict), fn_output
         duration = time.perf_counter() - start_time
+        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
