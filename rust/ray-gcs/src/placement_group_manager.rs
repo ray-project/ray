@@ -360,6 +360,21 @@ impl GcsPlacementGroupManager {
         self.placement_groups.len()
     }
 
+    /// Get placement group load: all PGs in PENDING or RESCHEDULING state.
+    /// This matches the C++ `GetPlacementGroupLoad()` used by autoscaler.
+    pub fn get_placement_group_load(&self) -> Vec<ray_proto::ray::rpc::PlacementGroupTableData> {
+        self.placement_groups
+            .iter()
+            .filter(|r| {
+                let state = r.value().state;
+                // C++ checks PENDING and RESCHEDULING
+                state == PlacementGroupState::Pending as i32
+                    || state == PlacementGroupState::Rescheduling as i32
+            })
+            .map(|r| r.value().clone())
+            .collect()
+    }
+
     pub fn state_counts(&self) -> HashMap<PlacementGroupState, usize> {
         let mut map = HashMap::new();
         for (i, state) in [

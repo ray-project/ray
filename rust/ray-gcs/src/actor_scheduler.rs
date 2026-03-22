@@ -35,6 +35,13 @@ pub trait RayletClient: Send + Sync {
         addr: &str,
         request: rpc::KillLocalActorRequest,
     ) -> Result<rpc::KillLocalActorReply, Status>;
+
+    /// Forward a drain request to a raylet. C++ parity: `RayletClientPool::DrainRaylet`.
+    async fn drain_raylet(
+        &self,
+        addr: &str,
+        request: rpc::DrainRayletRequest,
+    ) -> Result<rpc::DrainRayletReply, Status>;
 }
 
 /// Trait for sending RPCs to core workers (mockable for tests).
@@ -45,6 +52,15 @@ pub trait CoreWorkerClient: Send + Sync {
         addr: &str,
         request: rpc::PushTaskRequest,
     ) -> Result<rpc::PushTaskReply, Status>;
+
+    /// Query the number of pending tasks from a core worker.
+    /// C++ contract: GcsJobManager sends NumPendingTasksRequest to driver workers
+    /// to resolve `is_running_tasks` in GetAllJobInfo.
+    async fn num_pending_tasks(
+        &self,
+        addr: &str,
+        request: rpc::NumPendingTasksRequest,
+    ) -> Result<rpc::NumPendingTasksReply, Status>;
 }
 
 /// Real tonic gRPC implementation of RayletClient.
@@ -81,6 +97,21 @@ impl RayletClient for GrpcRayletClient {
         let resp = client.kill_local_actor(request).await?;
         Ok(resp.into_inner())
     }
+
+    async fn drain_raylet(
+        &self,
+        addr: &str,
+        request: rpc::DrainRayletRequest,
+    ) -> Result<rpc::DrainRayletReply, Status> {
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{}", addr))
+            .map_err(|e| Status::internal(format!("invalid raylet address '{}': {}", addr, e)))?;
+        let channel = endpoint.connect().await.map_err(|e| {
+            Status::unavailable(format!("failed to connect to raylet '{}': {}", addr, e))
+        })?;
+        let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
+        let resp = client.drain_raylet(request).await?;
+        Ok(resp.into_inner())
+    }
 }
 
 /// Real tonic gRPC implementation of CoreWorkerClient.
@@ -100,6 +131,25 @@ impl CoreWorkerClient for GrpcCoreWorkerClient {
         })?;
         let mut client = rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
         let resp = client.push_task(request).await?;
+        Ok(resp.into_inner())
+    }
+
+    async fn num_pending_tasks(
+        &self,
+        addr: &str,
+        request: rpc::NumPendingTasksRequest,
+    ) -> Result<rpc::NumPendingTasksReply, Status> {
+        let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{}", addr))
+            .map_err(|e| Status::internal(format!("invalid worker address '{}': {}", addr, e)))?;
+        let channel = endpoint
+            .connect_timeout(std::time::Duration::from_secs(1))
+            .connect()
+            .await
+            .map_err(|e| {
+                Status::unavailable(format!("failed to connect to worker '{}': {}", addr, e))
+            })?;
+        let mut client = rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
+        let resp = client.num_pending_tasks(request).await?;
         Ok(resp.into_inner())
     }
 }
@@ -326,6 +376,8 @@ pub(crate) mod tests {
     pub struct MockRayletClient {
         pub replies: Mutex<VecDeque<Result<rpc::RequestWorkerLeaseReply, Status>>>,
         pub requests: Mutex<Vec<(String, rpc::RequestWorkerLeaseRequest)>>,
+        pub drain_replies: Mutex<VecDeque<Result<rpc::DrainRayletReply, Status>>>,
+        pub drain_requests: Mutex<Vec<(String, rpc::DrainRayletRequest)>>,
     }
 
     impl MockRayletClient {
@@ -333,11 +385,17 @@ pub(crate) mod tests {
             Self {
                 replies: Mutex::new(VecDeque::new()),
                 requests: Mutex::new(Vec::new()),
+                drain_replies: Mutex::new(VecDeque::new()),
+                drain_requests: Mutex::new(Vec::new()),
             }
         }
 
         pub fn push_reply(&self, reply: Result<rpc::RequestWorkerLeaseReply, Status>) {
             self.replies.lock().push_back(reply);
+        }
+
+        pub fn push_drain_reply(&self, reply: Result<rpc::DrainRayletReply, Status>) {
+            self.drain_replies.lock().push_back(reply);
         }
     }
 
@@ -362,12 +420,28 @@ pub(crate) mod tests {
         ) -> Result<rpc::KillLocalActorReply, Status> {
             Ok(rpc::KillLocalActorReply::default())
         }
+
+        async fn drain_raylet(
+            &self,
+            addr: &str,
+            request: rpc::DrainRayletRequest,
+        ) -> Result<rpc::DrainRayletReply, Status> {
+            self.drain_requests.lock().push((addr.to_string(), request));
+            self.drain_replies
+                .lock()
+                .pop_front()
+                .unwrap_or(Ok(rpc::DrainRayletReply {
+                    is_accepted: true,
+                    ..Default::default()
+                }))
+        }
     }
 
     /// Mock CoreWorkerClient that stores requests and returns configured replies.
     pub struct MockCoreWorkerClient {
         pub replies: Mutex<VecDeque<Result<rpc::PushTaskReply, Status>>>,
         pub requests: Mutex<Vec<(String, rpc::PushTaskRequest)>>,
+        pub pending_tasks_replies: Mutex<VecDeque<Result<rpc::NumPendingTasksReply, Status>>>,
     }
 
     impl MockCoreWorkerClient {
@@ -375,11 +449,16 @@ pub(crate) mod tests {
             Self {
                 replies: Mutex::new(VecDeque::new()),
                 requests: Mutex::new(Vec::new()),
+                pending_tasks_replies: Mutex::new(VecDeque::new()),
             }
         }
 
         pub fn push_reply(&self, reply: Result<rpc::PushTaskReply, Status>) {
             self.replies.lock().push_back(reply);
+        }
+
+        pub fn push_pending_tasks_reply(&self, reply: Result<rpc::NumPendingTasksReply, Status>) {
+            self.pending_tasks_replies.lock().push_back(reply);
         }
     }
 
@@ -395,6 +474,17 @@ pub(crate) mod tests {
                 .lock()
                 .pop_front()
                 .unwrap_or(Err(Status::internal("no mock reply configured")))
+        }
+
+        async fn num_pending_tasks(
+            &self,
+            _addr: &str,
+            _request: rpc::NumPendingTasksRequest,
+        ) -> Result<rpc::NumPendingTasksReply, Status> {
+            self.pending_tasks_replies
+                .lock()
+                .pop_front()
+                .unwrap_or(Err(Status::internal("no mock pending-tasks reply configured")))
         }
     }
 

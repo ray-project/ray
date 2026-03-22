@@ -26,3 +26,4 @@ serde_json = { workspace = true }
 tempfile = "3"
 async-trait = { workspace = true }
 tonic = { workspace = true }
+hex = { workspace = true }

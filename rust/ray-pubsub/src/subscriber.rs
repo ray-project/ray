@@ -401,6 +401,58 @@ impl Subscriber {
         self.inner.lock().total_commands_sent
     }
 
+    /// Handle a publisher failure (owner death, connection lost).
+    ///
+    /// Invokes the failure callback for every per-entity subscription registered
+    /// under `publisher_id` across all channels, then removes those subscriptions.
+    /// Returns the key_ids that were notified.
+    ///
+    /// C++ equivalent: `SubscriberInterface` detects publisher failure via long-poll
+    /// timeout or connection error and invokes `failure_callback` per subscription.
+    pub fn handle_publisher_failure(&self, publisher_id: &[u8]) -> Vec<Vec<u8>> {
+        let mut inner = self.inner.lock();
+        let mut callbacks: Vec<(FailureCallback, Vec<u8>)> = Vec::new();
+        let mut notified_keys: Vec<Vec<u8>> = Vec::new();
+
+        // Collect all failure callbacks for this publisher across all channels.
+        for channel in inner.channels.values_mut() {
+            if let Some(subs) = channel.subscriptions.get_mut(publisher_id) {
+                // Per-entity subscriptions.
+                let keys: Vec<Vec<u8>> = subs.per_entity.keys().cloned().collect();
+                for key in keys {
+                    if let Some(info) = subs.per_entity.remove(&key) {
+                        if let Some(failure_cb) = info.failure_cb {
+                            callbacks.push((failure_cb, key.clone()));
+                        }
+                        notified_keys.push(key);
+                    }
+                }
+                // All-entities subscription.
+                if let Some(info) = subs.all_entities.take() {
+                    if let Some(failure_cb) = info.failure_cb {
+                        callbacks.push((failure_cb, Vec::new()));
+                    }
+                    notified_keys.push(Vec::new());
+                }
+            }
+            // Clean up empty publisher entry.
+            if let Some(subs) = channel.subscriptions.get(publisher_id) {
+                if subs.is_empty() {
+                    channel.subscriptions.remove(publisher_id);
+                }
+            }
+        }
+
+        drop(inner);
+
+        // Invoke callbacks outside the lock.
+        for (cb, key_id) in callbacks {
+            cb(&key_id);
+        }
+
+        notified_keys
+    }
+
     /// Number of active subscriptions across all channels and publishers.
     pub fn num_subscriptions(&self) -> usize {
         let inner = self.inner.lock();

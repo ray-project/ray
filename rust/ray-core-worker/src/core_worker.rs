@@ -39,6 +39,10 @@ use ray_pubsub::Publisher;
 
 /// The core worker orchestrating task submission, object management,
 /// actor management, and reference counting.
+/// Factory for creating subscriber transport clients per owner.
+pub type SubscriberClientFactory =
+    dyn Fn(&[u8]) -> Arc<dyn ray_pubsub::SubscriberClient + 'static> + Send + Sync;
+
 pub struct CoreWorker {
     context: WorkerContext,
     memory_store: Arc<CoreWorkerMemoryStore>,
@@ -58,6 +62,15 @@ pub struct CoreWorker {
     spill_manager: Arc<SpillManager>,
     publisher: Arc<Publisher>,
     worker_address: Address,
+    /// Subscriber for object-location updates from owners (subscriber side).
+    /// C++ equivalent: `object_location_subscriber_` in `OwnershipBasedObjectDirectory`.
+    location_subscriber: Arc<ray_pubsub::Subscriber>,
+    /// Active poll loop handles per owner/publisher.
+    location_poll_handles: parking_lot::Mutex<std::collections::HashMap<Vec<u8>, tokio::task::JoinHandle<()>>>,
+    /// Optional factory for creating subscriber transport clients.
+    /// When set, subscribe_object_locations automatically starts the runtime
+    /// poll loop for the owner.
+    location_client_factory: parking_lot::Mutex<Option<Arc<SubscriberClientFactory>>>,
 }
 
 impl CoreWorker {
@@ -112,6 +125,12 @@ impl CoreWorker {
         publisher.register_channel(1, false); // WorkerRefRemovedChannel
         publisher.register_channel(2, true); // WorkerObjectLocationsChannel (droppable)
 
+        // C++ equivalent: object_location_subscriber_ in OwnershipBasedObjectDirectory.
+        let location_subscriber = Arc::new(ray_pubsub::Subscriber::new(
+            options.worker_id.binary(),
+            ray_pubsub::SubscriberConfig::default(),
+        ));
+
         Self {
             context,
             memory_store,
@@ -131,6 +150,9 @@ impl CoreWorker {
             spill_manager,
             publisher,
             worker_address,
+            location_subscriber,
+            location_poll_handles: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            location_client_factory: parking_lot::Mutex::new(None),
         }
     }
 
@@ -340,6 +362,78 @@ impl CoreWorker {
 
     pub fn publisher(&self) -> &Arc<Publisher> {
         &self.publisher
+    }
+
+    /// The subscriber for object-location updates (subscriber side).
+    pub fn location_subscriber(&self) -> &Arc<ray_pubsub::Subscriber> {
+        &self.location_subscriber
+    }
+
+    /// Set the factory for creating subscriber transport clients.
+    pub fn set_location_client_factory(&self, factory: Arc<SubscriberClientFactory>) {
+        *self.location_client_factory.lock() = Some(factory);
+    }
+
+    /// Start the runtime poll loop for object-location subscriptions to an owner.
+    ///
+    /// Spawns a background tokio task that drives the subscriber transport:
+    /// drain commands → send to owner → long-poll → dispatch/failure.
+    ///
+    /// C++ equivalent: MakeLongPollingConnectionIfNotConnected() called from
+    /// Subscribe() in the OwnershipBasedObjectDirectory.
+    pub fn start_location_poll_loop(
+        &self,
+        publisher_id: Vec<u8>,
+        client: Arc<dyn ray_pubsub::SubscriberClient + 'static>,
+    ) {
+        let mut handles = self.location_poll_handles.lock();
+        if handles.contains_key(&publisher_id) {
+            return;
+        }
+        let transport =
+            ray_pubsub::SubscriberTransport::new(Arc::clone(&self.location_subscriber));
+        let pid = publisher_id.clone();
+        let handle = tokio::spawn(async move {
+            loop {
+                match transport.poll_publisher(&pid, client.as_ref()).await {
+                    Ok(_) => {}
+                    Err(ray_pubsub::TransportError::PublisherFailure) => break,
+                    Err(_) => break,
+                }
+                if !transport.subscriber().has_subscriptions_to(&pid) {
+                    break;
+                }
+            }
+        });
+        handles.insert(publisher_id, handle);
+    }
+
+    /// Check if a poll loop is running for a given owner/publisher.
+    pub fn has_location_poll_loop(&self, publisher_id: &[u8]) -> bool {
+        self.location_poll_handles
+            .lock()
+            .get(publisher_id)
+            .is_some_and(|h| !h.is_finished())
+    }
+
+    /// Subscribe to object locations from an owner and start the runtime poll loop.
+    ///
+    /// C++ equivalent: OwnershipBasedObjectDirectory::SubscribeObjectLocations.
+    pub fn subscribe_object_locations(
+        &self,
+        owner_id: &[u8],
+        object_id: &[u8],
+        item_cb: ray_pubsub::MessageCallback,
+        failure_cb: Option<ray_pubsub::FailureCallback>,
+    ) {
+        // Channel type 2 = WORKER_OBJECT_LOCATIONS_CHANNEL
+        self.location_subscriber.subscribe(owner_id, 2, object_id, item_cb, failure_cb);
+
+        // Start the runtime poll loop for this owner (if not already running).
+        if let Some(factory) = self.location_client_factory.lock().as_ref() {
+            let client = factory(owner_id);
+            self.start_location_poll_loop(owner_id.to_vec(), client);
+        }
     }
 
     /// Access the normal task submitter.

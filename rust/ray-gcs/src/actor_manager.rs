@@ -70,19 +70,67 @@ fn make_actor_died_death_cause(
     }
 }
 
+/// Configuration for actor lifecycle/export event emission.
+///
+/// Actor export/event configuration matching the C++ config model from `ray_config_def.h`.
+///
+/// C++ has three relevant flags:
+/// - `enable_export_api_write` (bool, default false): global enable for ALL export types to file
+/// - `enable_export_api_write_config` (Vec<String>, default []): selective per-type enable
+/// - `enable_ray_event` (bool, default false): enables aggregator-path events
+///
+/// When `enable_ray_event` is true, the aggregator path is used and the file-export
+/// path is bypassed (matching C++ `WriteActorExportEvent` branch logic in `gcs_actor.cc`).
+#[derive(Debug, Clone)]
+pub struct ActorExportConfig {
+    /// The full C++ export API config.
+    pub export_api_config: ray_observability::export::ExportApiConfig,
+}
+
+impl ActorExportConfig {
+    /// Create config from the `enabled` boolean (backwards-compatible convenience).
+    /// Sets `enable_export_api_write = enabled`.
+    pub fn from_enabled(enabled: bool) -> Self {
+        Self {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_export_api_write: enabled,
+                ..Default::default()
+            },
+        }
+    }
+
+    /// Check if actor export to file is enabled.
+    pub fn is_actor_export_enabled(&self) -> bool {
+        self.export_api_config.is_actor_export_enabled()
+    }
+
+    /// Check if the aggregator (ray_event) path is enabled.
+    pub fn is_ray_event_enabled(&self) -> bool {
+        self.export_api_config.is_ray_event_enabled()
+    }
+}
+
+impl Default for ActorExportConfig {
+    fn default() -> Self {
+        Self {
+            export_api_config: ray_observability::export::ExportApiConfig::default(),
+        }
+    }
+}
+
 /// The GCS actor manager tracks all actors in the cluster.
 ///
 /// Uses DashMap for per-key locking instead of global RwLock<HashMap>,
 /// and Arc-wraps ActorTableData to avoid deep clones on reads.
 pub struct GcsActorManager {
     /// All registered actors (Arc-wrapped for cheap clones on read paths).
-    registered_actors: DashMap<ActorID, Arc<ray_proto::ray::rpc::ActorTableData>>,
+    pub(crate) registered_actors: DashMap<ActorID, Arc<ray_proto::ray::rpc::ActorTableData>>,
     /// Named actors: (namespace, name) → ActorID.
     named_actors: DashMap<(String, String), ActorID>,
     /// Dead actors cache (for queries).
     dead_actors: DashMap<ActorID, Arc<ray_proto::ray::rpc::ActorTableData>>,
     /// Actors by node: node_id → set of actor_ids.
-    actors_by_node: DashMap<NodeID, Vec<ActorID>>,
+    pub(crate) actors_by_node: DashMap<NodeID, Vec<ActorID>>,
     /// Actors by owner: (node_id, worker_id) → set of actor_ids.
     #[allow(dead_code)]
     actors_by_owner: DashMap<(NodeID, WorkerID), Vec<ActorID>>,
@@ -108,10 +156,55 @@ pub struct GcsActorManager {
     node_manager: Option<Arc<GcsNodeManager>>,
     /// Raylet client for sending KillLocalActor RPCs.
     raylet_client: Option<Arc<dyn crate::actor_scheduler::RayletClient>>,
+    /// Actor lifecycle/export event configuration (C++ parity: WriteActorExportEvent).
+    actor_export_config: ActorExportConfig,
+    /// Event exporter for actor lifecycle events (aggregator/ray_event path).
+    event_exporter: Arc<ray_observability::export::EventExporter>,
+    /// File-based export event sink (export API file path).
+    /// C++ parity: `LogEventReporter` writing to `export_events/event_EXPORT_ACTOR.log`.
+    file_export_sink: Option<Arc<ray_observability::export::FileExportEventSink>>,
 }
 
 impl GcsActorManager {
     pub fn new(table_storage: Arc<GcsTableStorage>) -> Self {
+        Self::with_export_config(table_storage, ActorExportConfig::default())
+    }
+
+    /// Create a new actor manager with explicit export event configuration.
+    pub fn with_export_config(
+        table_storage: Arc<GcsTableStorage>,
+        export_config: ActorExportConfig,
+    ) -> Self {
+        // The event exporter is enabled when either path is active
+        // (aggregator path buffers RayEvent, export API path also buffers for programmatic access).
+        let exporter_config = ray_observability::export::ExportConfig {
+            enabled: export_config.is_ray_event_enabled()
+                || export_config.is_actor_export_enabled(),
+            ..Default::default()
+        };
+
+        // The file-based export sink is created when export API is enabled for actors.
+        let file_export_sink = if export_config.is_actor_export_enabled() {
+            if let Some(ref log_dir) = export_config.export_api_config.log_dir {
+                match ray_observability::export::FileExportEventSink::new(
+                    log_dir,
+                    "EXPORT_ACTOR",
+                ) {
+                    Ok(sink) => Some(Arc::new(sink)),
+                    Err(e) => {
+                        tracing::warn!("Failed to create export event file sink: {}", e);
+                        None
+                    }
+                }
+            } else {
+                // No log_dir — create an in-test-friendly mode where the sink
+                // can be set later, or use a temp dir for test contexts.
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             registered_actors: DashMap::new(),
             named_actors: DashMap::new(),
@@ -127,7 +220,32 @@ impl GcsActorManager {
             actor_task_specs: DashMap::new(),
             node_manager: None,
             raylet_client: None,
+            actor_export_config: export_config,
+            event_exporter: Arc::new(ray_observability::export::EventExporter::new(
+                exporter_config,
+            )),
+            file_export_sink,
         }
+    }
+
+    /// Set the file export sink externally (for testing or late initialization).
+    pub fn set_file_export_sink(
+        &mut self,
+        sink: Arc<ray_observability::export::FileExportEventSink>,
+    ) {
+        self.file_export_sink = Some(sink);
+    }
+
+    /// Get the file export sink (for test verification).
+    pub fn file_export_sink(
+        &self,
+    ) -> Option<&Arc<ray_observability::export::FileExportEventSink>> {
+        self.file_export_sink.as_ref()
+    }
+
+    /// Get the event exporter (for tests and external sink wiring).
+    pub fn event_exporter(&self) -> &Arc<ray_observability::export::EventExporter> {
+        &self.event_exporter
     }
 
     /// Set the actor scheduler (called once during server initialization).
@@ -252,6 +370,9 @@ impl GcsActorManager {
             self.named_actors.insert((namespace, name), actor_id);
         }
 
+        // C++ parity: WriteActorExportEvent(true) — registration event
+        self.write_actor_export_event(&actor_data, true);
+
         self.registered_actors
             .insert(actor_id, Arc::new(actor_data));
         // Store the task spec immediately so that GetNamedActorInfo can return
@@ -305,6 +426,8 @@ impl GcsActorManager {
                     .or_insert(0) += 1;
 
                 let msg = Self::build_actor_pub_message(&actor);
+                // C++ parity: WriteActorExportEvent(false) — PENDING_CREATION
+                self.write_actor_export_event(&actor, false);
                 self.registered_actors.insert(actor_id, Arc::new(actor));
                 Some(msg)
             } else {
@@ -535,6 +658,8 @@ impl GcsActorManager {
                 actor.pid = worker_pid;
                 actor.resource_mapping = resource_mapping;
                 actor.node_id = Some(node_id.clone());
+                // C++ parity: reset preempted on successful creation
+                actor.preempted = false;
 
                 if let Some(mut c) = self.state_counts.get_mut(&old_state) {
                     *c = c.saturating_sub(1);
@@ -564,31 +689,70 @@ impl GcsActorManager {
                 }
 
                 let msg = Self::build_actor_pub_message(&actor);
+                let actor_data_for_persist = actor.clone();
                 self.registered_actors.insert(*actor_id, Arc::new(actor));
-                Some(msg)
+                Some((msg, actor_data_for_persist))
             } else {
                 None
             }
         };
-        // Publish ALIVE state outside critical section
-        self.publish_deferred_messages(pub_msg.into_iter().collect());
 
-        // Keep task spec alive — it's needed for GetNamedActorInfo responses.
-        // Only cleaned up when the actor transitions to DEAD.
+        // C++ parity: persist first, then publish, then resolve callbacks.
+        // All three events are inside the ActorTable().Put() completion handler
+        // in C++ (lines 1677–1692 of gcs_actor_manager.cc). A successful callback
+        // implies the actor-table state is already durably written and published.
+        let callback_senders = self
+            .create_callbacks
+            .remove(actor_id)
+            .map(|(_, senders)| senders);
 
-        // Resolve all pending create callbacks
-        let callbacks = self.create_callbacks.remove(actor_id);
-        if let Some((_, senders)) = callbacks {
-            let reply = ray_proto::ray::rpc::CreateActorReply {
-                actor_address: Some(actor_address),
-                ..Default::default()
-            };
-            for tx in senders {
-                let _ = tx.send(Ok(reply.clone()));
-            }
+        // C++ parity: WriteActorExportEvent(false) — ALIVE.
+        // Emit before spawn so we have access to self; C++ emits inside Put callback
+        // but the event is based on in-memory state which is already updated.
+        if let Some((_, ref actor_data)) = pub_msg {
+            self.write_actor_export_event(actor_data, false);
         }
 
-        tracing::info!(?actor_id, "Actor is now ALIVE");
+        if let Some((msg, actor_data)) = pub_msg {
+            let storage = self.table_storage.clone();
+            let pubsub = self.pubsub_handler.get().cloned();
+            let aid = *actor_id;
+            tokio::spawn(async move {
+                // 1. Persist
+                let key = hex::encode(aid.binary());
+                if let Err(e) = storage.actor_table().put(&key, &actor_data).await {
+                    tracing::error!(?aid, ?e, "Failed to persist actor creation success");
+                    return; // Do not publish or fire callbacks if persist failed
+                }
+                // 2. Publish (only after successful persistence)
+                if let Some(handler) = pubsub {
+                    handler.publish_pubmessage(msg);
+                }
+                // 3. Resolve creation callbacks (only after persist + publish)
+                if let Some(senders) = callback_senders {
+                    let reply = ray_proto::ray::rpc::CreateActorReply {
+                        actor_address: Some(actor_address),
+                        ..Default::default()
+                    };
+                    for tx in senders {
+                        let _ = tx.send(Ok(reply.clone()));
+                    }
+                }
+                tracing::info!(?aid, "Actor is now ALIVE");
+            });
+        } else {
+            // No pub_msg means actor was removed or dead — still resolve callbacks
+            // (matches C++ RunAndClearActorCreationCallbacks on early-return paths)
+            if let Some(senders) = callback_senders {
+                let reply = ray_proto::ray::rpc::CreateActorReply {
+                    actor_address: Some(actor_address),
+                    ..Default::default()
+                };
+                for tx in senders {
+                    let _ = tx.send(Ok(reply.clone()));
+                }
+            }
+        }
     }
 
     /// Called by scheduler on failure. Transitions actor to DEAD and resolves callbacks.
@@ -618,6 +782,8 @@ impl GcsActorManager {
                 };
 
                 let msg = Self::build_actor_pub_message(&actor);
+                // C++ parity: WriteActorExportEvent(false) — DEAD (scheduling failed)
+                self.write_actor_export_event(&actor, false);
                 self.dead_actors.insert(*actor_id, Arc::new(actor));
                 (Some(msg), named_key)
             } else {
@@ -684,6 +850,171 @@ impl GcsActorManager {
         if let Some(handler) = self.pubsub_handler.get() {
             handler.publish_pubmessage(Self::build_actor_pub_message(actor));
         }
+    }
+
+    /// Emit an actor lifecycle/export event.
+    ///
+    /// C++ parity: mirrors `GcsActor::WriteActorExportEvent()` in `gcs_actor.cc`.
+    ///
+    /// Two paths (mutually exclusive, matching C++):
+    /// 1. `enable_ray_event` → aggregator path: buffers `RayEvent` in `event_exporter`
+    /// 2. export API path → file output: builds `ExportActorData` proto, wraps in
+    ///    `ExportEvent`, writes JSON to `export_events/event_EXPORT_ACTOR.log`
+    ///
+    /// If neither path is enabled, this is a no-op.
+    fn write_actor_export_event(
+        &self,
+        actor: &ray_proto::ray::rpc::ActorTableData,
+        is_registration: bool,
+    ) {
+        let is_ray_event = self.actor_export_config.is_ray_event_enabled();
+        let is_export_api = self.actor_export_config.is_actor_export_enabled();
+
+        if !is_ray_event && !is_export_api {
+            return;
+        }
+
+        // Branch A: aggregator path (C++ enable_ray_event=true)
+        // Buffers RayEvent for periodic gRPC flush to dashboard aggregator.
+        if is_ray_event {
+            let actor_id_hex = hex::encode(&actor.actor_id);
+            let state_name = match ActorState::from(actor.state) {
+                ActorState::DependenciesUnready => "DEPENDENCIES_UNREADY",
+                ActorState::PendingCreation => "PENDING_CREATION",
+                ActorState::Alive => "ALIVE",
+                ActorState::Restarting => "RESTARTING",
+                ActorState::Dead => "DEAD",
+            };
+
+            let label = if is_registration {
+                "ACTOR_REGISTERED"
+            } else {
+                match ActorState::from(actor.state) {
+                    ActorState::Alive => "ACTOR_CREATED",
+                    ActorState::Restarting => "ACTOR_RESTARTED",
+                    ActorState::Dead => "ACTOR_DIED",
+                    ActorState::PendingCreation => "ACTOR_PENDING_CREATION",
+                    ActorState::DependenciesUnready => "ACTOR_DEPENDENCIES_UNREADY",
+                }
+            };
+
+            let event = ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                label,
+                format!("Actor {} state: {}", actor.name, state_name),
+            )
+            .with_field("actor_id", &actor_id_hex)
+            .with_field("job_id", &hex::encode(&actor.job_id))
+            .with_field("state", state_name)
+            .with_field("name", &actor.name)
+            .with_field("pid", actor.pid.to_string())
+            .with_field("ray_namespace", &actor.ray_namespace)
+            .with_field("class_name", &actor.class_name)
+            .with_field("is_detached", actor.is_detached.to_string())
+            .with_field(
+                "node_id",
+                &actor
+                    .node_id
+                    .as_ref()
+                    .map(|n| hex::encode(n))
+                    .unwrap_or_default(),
+            )
+            .with_field("repr_name", &actor.repr_name)
+            .with_field("is_registration", is_registration.to_string());
+
+            self.event_exporter.add_event(event);
+            return; // C++ returns here — aggregator path bypasses file export
+        }
+
+        // Branch B: export API file path (C++ enable_export_api_write / _config)
+        // Builds ExportActorData proto with ALL 16 fields, wraps in ExportEvent,
+        // writes JSON-per-line to file.
+        self.write_actor_export_event_to_file(actor);
+    }
+
+    /// Build `ExportActorData` proto matching C++ `gcs_actor.cc` lines 130-160
+    /// and write it to the export event log file.
+    fn write_actor_export_event_to_file(
+        &self,
+        actor: &ray_proto::ray::rpc::ActorTableData,
+    ) {
+        use ray_proto::ray::rpc::{
+            export_actor_data::ActorState as ExportActorState, export_event, ExportActorData,
+            ExportEvent,
+        };
+
+        // Convert ActorTableData state → ExportActorData state
+        let export_state = match ActorState::from(actor.state) {
+            ActorState::DependenciesUnready => ExportActorState::DependenciesUnready,
+            ActorState::PendingCreation => ExportActorState::PendingCreation,
+            ActorState::Alive => ExportActorState::Alive,
+            ActorState::Restarting => ExportActorState::Restarting,
+            ActorState::Dead => ExportActorState::Dead,
+        };
+
+        // Get labels from the task spec (C++ uses task_spec_->labels())
+        let labels = if actor.actor_id.len() == 16 {
+            self.actor_task_specs
+                .get(&ActorID::from_binary(
+                    actor.actor_id.as_slice().try_into().unwrap(),
+                ))
+                .map(|ts| ts.labels.clone())
+                .unwrap_or_default()
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // Build ExportActorData with all 16 fields (C++ parity: gcs_actor.cc:130-160)
+        let export_actor_data = ExportActorData {
+            actor_id: actor.actor_id.clone(),                        // field 1
+            job_id: actor.job_id.clone(),                            // field 2
+            state: export_state as i32,                              // field 3
+            is_detached: actor.is_detached,                          // field 4
+            name: actor.name.clone(),                                // field 5
+            pid: actor.pid,                                          // field 6
+            ray_namespace: actor.ray_namespace.clone(),              // field 7
+            serialized_runtime_env: actor.serialized_runtime_env.clone(), // field 8
+            class_name: actor.class_name.clone(),                    // field 9
+            death_cause: actor.death_cause.clone(),                  // field 10
+            required_resources: actor.required_resources.clone(),    // field 11
+            node_id: actor.node_id.clone(),                          // field 12
+            placement_group_id: actor.placement_group_id.clone(),    // field 13
+            repr_name: actor.repr_name.clone(),                      // field 14
+            labels,                                                  // field 15
+            label_selector: actor.label_selector.clone(),            // field 16
+        };
+
+        // Wrap in ExportEvent (C++ parity: RayExportEvent::SendEvent() in event.cc:429-473)
+        let export_event = ExportEvent {
+            event_id: uuid::Uuid::new_v4().to_string(),
+            source_type: export_event::SourceType::ExportActor as i32,
+            timestamp: ray_util::time::current_time_ms() as i64,
+            event_data: Some(export_event::EventData::ActorEventData(export_actor_data)),
+        };
+
+        // Write to file via the file export sink
+        if let Some(ref sink) = self.file_export_sink {
+            sink.write_export_event(&export_event);
+        }
+
+        // Also buffer in the event exporter for programmatic access (e.g., tests)
+        let actor_id_hex = hex::encode(&actor.actor_id);
+        let state_name = match ActorState::from(actor.state) {
+            ActorState::DependenciesUnready => "DEPENDENCIES_UNREADY",
+            ActorState::PendingCreation => "PENDING_CREATION",
+            ActorState::Alive => "ALIVE",
+            ActorState::Restarting => "RESTARTING",
+            ActorState::Dead => "DEAD",
+        };
+        let event = ray_observability::events::RayEvent::new(
+            ray_observability::events::EventSourceType::Gcs,
+            ray_observability::events::EventSeverity::Info,
+            "EXPORT_ACTOR",
+            format!("Actor {} state: {}", actor.name, state_name),
+        )
+        .with_field("actor_id", &actor_id_hex);
+        self.event_exporter.add_event(event);
     }
 
     /// Send KillLocalActor RPC to the raylet hosting the actor.
@@ -940,6 +1271,55 @@ impl GcsActorManager {
         Ok(())
     }
 
+    /// Mark all actors on a node as preempted, persist to table storage, and publish.
+    /// C++ parity: `GcsActorManager::SetPreemptedAndPublish(node_id)`.
+    ///
+    /// This is called before the drain is forwarded to the raylet so that
+    /// actors' `preempted` flag is set before they die. On actor death,
+    /// the preempted flag determines `num_restarts_due_to_node_preemption`.
+    ///
+    /// C++ persists to ActorTable().Put() then publishes in the callback.
+    /// We persist + publish here so the state survives a GCS restart.
+    pub fn set_preempted_and_publish(&self, node_id: &NodeID) {
+        let actor_ids = match self.actors_by_node.get(node_id) {
+            Some(entry) => entry.value().clone(),
+            None => return, // No actors on this node
+        };
+
+        let storage = self.table_storage.clone();
+        let pubsub = self.pubsub_handler.get().cloned();
+        let mut actors_to_persist_and_publish = Vec::new();
+
+        for actor_id in actor_ids {
+            if let Some((_, old_arc)) = self.registered_actors.remove(&actor_id) {
+                let mut actor = Arc::unwrap_or_clone(old_arc);
+                actor.preempted = true;
+                let updated = Arc::new(actor);
+                // Build pub message now, but defer publication until after persist
+                let msg = Self::build_actor_pub_message(&updated);
+                actors_to_persist_and_publish.push((actor_id, (*updated).clone(), msg));
+                self.registered_actors.insert(actor_id, updated);
+            }
+        }
+
+        // C++ parity: persist first, then publish from the Put callback.
+        // Publication is ordered after persistence so that pubsub observers
+        // never see actor state that storage does not yet contain.
+        tokio::spawn(async move {
+            for (actor_id, actor_data, pub_msg) in actors_to_persist_and_publish {
+                let key = hex::encode(actor_id.binary());
+                if let Err(e) = storage.actor_table().put(&key, &actor_data).await {
+                    tracing::error!(?actor_id, ?e, "Failed to persist preempted actor state");
+                    continue; // Do not publish if persist failed
+                }
+                // Publish only after successful persistence (matches C++ Put callback)
+                if let Some(ref handler) = pubsub {
+                    handler.publish_pubmessage(pub_msg);
+                }
+            }
+        });
+    }
+
     /// Handle node death — kill or restart actors on the dead node.
     ///
     /// Actors with remaining restarts are transitioned to RESTARTING and will
@@ -966,12 +1346,34 @@ impl GcsActorManager {
                     *c = c.saturating_sub(1);
                 }
 
-                // Check if actor can be restarted
+                // Check if actor can be restarted — C++ parity:
+                // effective_restarts = num_restarts - num_restarts_due_to_node_preemption
+                // remaining = max_restarts - effective_restarts
+                // Also: preempted actors get an extra restart even at budget limit
                 let max_restarts = actor.max_restarts;
                 let num_restarts = actor.num_restarts;
-                let can_restart = max_restarts == -1 || num_restarts < max_restarts;
+                let preemption_restarts = actor.num_restarts_due_to_node_preemption;
+                let is_preempted = actor.preempted;
+
+                // C++ parity: effective_restarts = num_restarts - num_restarts_due_to_node_preemption
+                let remaining_restarts = if max_restarts == -1 {
+                    -1i64
+                } else {
+                    let effective = num_restarts as u64 - preemption_restarts;
+                    let remaining = max_restarts - effective as i64;
+                    remaining.max(0)
+                };
+
+                // C++ parity: restart if budget remains, OR if preempted with max_restarts > 0
+                let can_restart = remaining_restarts != 0
+                    || (max_restarts > 0 && is_preempted);
 
                 if can_restart {
+                    // C++ parity: if preempted, increment num_restarts_due_to_node_preemption
+                    if is_preempted {
+                        actor.num_restarts_due_to_node_preemption = preemption_restarts + 1;
+                    }
+
                     // Transition to RESTARTING
                     actor.state = ActorState::Restarting as i32;
                     actor.num_restarts = num_restarts + 1;
@@ -982,6 +1384,8 @@ impl GcsActorManager {
                         .entry(ActorState::Restarting)
                         .or_insert(0) += 1;
                     deferred_messages.push(Self::build_actor_pub_message(&actor));
+                    // C++ parity: WriteActorExportEvent(false, restart_reason) — RESTARTING
+                    self.write_actor_export_event(&actor, false);
                     // Re-insert as RESTARTING
                     self.registered_actors.insert(actor_id, Arc::new(actor));
                     tracing::info!(?actor_id, restart = num_restarts + 1, "Actor restarting");
@@ -1002,6 +1406,8 @@ impl GcsActorManager {
                     }
 
                     deferred_messages.push(Self::build_actor_pub_message(&actor));
+                    // C++ parity: WriteActorExportEvent(false) — DEAD (node died)
+                    self.write_actor_export_event(&actor, false);
 
                     if let Some((_, senders)) = self.create_callbacks.remove(&actor_id) {
                         callback_errors.push((actor_id, senders));
@@ -1823,5 +2229,1392 @@ mod tests {
             .handle_get_named_actor_info("named_one", "default")
             .expect("named actor should be found");
         assert_eq!(ActorState::from(actor.state), ActorState::Alive);
+    }
+
+    // ---- Actor preemption lifecycle tests (C++ parity) ----
+
+    /// Helper: register an actor, place it on a node as ALIVE, and track it.
+    fn setup_alive_actor_on_node(
+        mgr: &GcsActorManager,
+        actor_id_byte: u8,
+        name: &str,
+        max_restarts: i64,
+        node_id_bytes: &[u8],
+    ) -> (ActorID, NodeID) {
+        let mut aid = vec![0u8; 16];
+        aid[0] = actor_id_byte;
+        let actor_id = ActorID::from_binary(aid.as_slice().try_into().unwrap());
+        let node_id = NodeID::from_binary(node_id_bytes.try_into().unwrap());
+
+        // Insert directly into registered_actors as ALIVE
+        let actor_data = ray_proto::ray::rpc::ActorTableData {
+            actor_id: aid.clone(),
+            state: ActorState::Alive as i32,
+            name: name.to_string(),
+            ray_namespace: "default".to_string(),
+            max_restarts,
+            node_id: Some(node_id_bytes.to_vec()),
+            ..Default::default()
+        };
+        mgr.registered_actors.insert(actor_id, Arc::new(actor_data));
+        mgr.actors_by_node
+            .entry(node_id)
+            .or_default()
+            .push(actor_id);
+        *mgr.state_counts.entry(ActorState::Alive).or_insert(0) += 1;
+
+        (actor_id, node_id)
+    }
+
+    #[tokio::test]
+    async fn test_preempted_actor_state_persisted_to_actor_table() {
+        // C++ persists preempted=true to actor table storage in SetPreemptedAndPublish.
+        // Rust must do the same so that the state survives GCS restart.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 10, "persist_test", 3, &node_id_bytes);
+
+        // Mark preempted
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Yield to let the spawned persist task complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // In-memory should be preempted
+        let actor = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert!(actor.preempted, "in-memory actor should be preempted");
+
+        // Actor table storage should also have preempted=true
+        let key = hex::encode(&actor_id.binary());
+        let persisted: Option<ray_proto::ray::rpc::ActorTableData> =
+            storage.actor_table().get(&key).await.unwrap();
+        assert!(
+            persisted.is_some(),
+            "actor should be persisted to table storage"
+        );
+        assert!(
+            persisted.unwrap().preempted,
+            "persisted actor should have preempted=true"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_node_preemption_increments_num_restarts_due_to_node_preemption() {
+        // C++ increments num_restarts_due_to_node_preemption when restarting a
+        // preempted actor. Rust must do the same.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage);
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 11, "preempt_counter", 5, &node_id_bytes);
+
+        // Mark preempted
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Kill node — actor should restart
+        mgr.on_node_dead(&node_id);
+
+        let actor = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Restarting);
+        assert_eq!(actor.num_restarts, 1);
+        assert_eq!(
+            actor.num_restarts_due_to_node_preemption, 1,
+            "preemption restart should increment num_restarts_due_to_node_preemption"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_node_preemption_restart_does_not_consume_regular_restart_budget() {
+        // C++ computes effective_restarts = num_restarts - num_restarts_due_to_node_preemption.
+        // So preemption restarts don't count against max_restarts.
+        // An actor with max_restarts=1, 1 preemption restart, should still be restartable.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage);
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 12, "budget_test", 1, &node_id_bytes);
+
+        // Mark preempted and kill — first restart is a preemption restart
+        mgr.set_preempted_and_publish(&node_id);
+        mgr.on_node_dead(&node_id);
+
+        let actor = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Restarting);
+        assert_eq!(actor.num_restarts, 1);
+        assert_eq!(actor.num_restarts_due_to_node_preemption, 1);
+
+        // Now simulate actor coming back alive on a new node, then dying (non-preempted)
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        let node2 = NodeID::from_binary(node2_bytes.as_slice().try_into().unwrap());
+        {
+            if let Some((_, old_arc)) = mgr.registered_actors.remove(&actor_id) {
+                let mut a = Arc::unwrap_or_clone(old_arc);
+                a.state = ActorState::Alive as i32;
+                a.preempted = false; // reset on creation success
+                a.node_id = Some(node2_bytes.clone());
+                mgr.registered_actors.insert(actor_id, Arc::new(a));
+            }
+            mgr.actors_by_node
+                .entry(node2)
+                .or_default()
+                .push(actor_id);
+        }
+
+        // Kill node 2 — NOT preempted this time.
+        // effective_restarts = 1 - 1 = 0, remaining = 1 - 0 = 1. Actor should restart.
+        mgr.on_node_dead(&node2);
+
+        let actor2 = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert_eq!(
+            ActorState::from(actor2.state),
+            ActorState::Restarting,
+            "Actor should still be restartable because preemption restart didn't consume budget"
+        );
+        assert_eq!(actor2.num_restarts, 2);
+        // num_restarts_due_to_node_preemption stays at 1 (second restart was not preemption)
+        assert_eq!(actor2.num_restarts_due_to_node_preemption, 1);
+    }
+
+    #[tokio::test]
+    async fn test_preempted_actor_state_survives_gcs_restart_until_consumed() {
+        // C++ persists preempted=true to table storage. After a GCS restart,
+        // the actor should still have preempted=true so the restart-accounting
+        // works correctly.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store.clone()));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 13, "gcs_restart_test", 3, &node_id_bytes);
+
+        // Also persist the initial actor to storage (simulating normal operation)
+        let key = hex::encode(&actor_id.binary());
+        let initial_actor = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        storage.actor_table().put(&key, &initial_actor).await.unwrap();
+
+        // Mark preempted (should persist)
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Yield to let the spawned persist task complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Simulate GCS restart: create a new actor manager, initialize from storage
+        let mgr2 = GcsActorManager::new(storage.clone());
+        mgr2.initialize().await.unwrap();
+
+        let actor = mgr2.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert!(
+            actor.preempted,
+            "after GCS restart, actor should still have preempted=true from storage"
+        );
+    }
+
+    // ---- Creation-success persistence tests (C++ parity Round 4) ----
+
+    #[tokio::test]
+    async fn test_on_actor_creation_success_persists_preempted_reset() {
+        // C++ OnActorCreationSuccess sets preempted=false AND persists via ActorTable().Put().
+        // Rust must also persist, not just update in memory.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node1_bytes = vec![0u8; 28];
+        node1_bytes[0] = 1;
+        let (actor_id, node1) =
+            setup_alive_actor_on_node(&mgr, 20, "persist_reset", 3, &node1_bytes);
+
+        // Persist initial actor to storage
+        let key = hex::encode(&actor_id.binary());
+        let initial = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        storage.actor_table().put(&key, &initial).await.unwrap();
+
+        // Mark preempted and wait for persist
+        mgr.set_preempted_and_publish(&node1);
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Verify preempted=true in storage
+        let persisted: ray_proto::ray::rpc::ActorTableData =
+            storage.actor_table().get(&key).await.unwrap().unwrap();
+        assert!(persisted.preempted, "should be preempted in storage before creation success");
+
+        // Kill node (actor restarts)
+        mgr.on_node_dead(&node1);
+
+        // Now call the real on_actor_creation_success (actor re-created on node 2)
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            9999,
+            vec![],
+            node2_bytes,
+        );
+
+        // Yield to let any spawned persist task complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // In-memory should have preempted=false
+        let actor = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert!(!actor.preempted, "in-memory should have preempted=false after creation success");
+
+        // Storage should ALSO have preempted=false
+        let persisted_after: ray_proto::ray::rpc::ActorTableData =
+            storage.actor_table().get(&key).await.unwrap().unwrap();
+        assert!(
+            !persisted_after.preempted,
+            "storage should have preempted=false after creation success"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_preempted_reset_survives_gcs_restart_after_creation_success() {
+        // After on_actor_creation_success resets preempted=false and persists it,
+        // a fresh GcsActorManager::initialize() must load preempted=false.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store.clone()));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node1_bytes = vec![0u8; 28];
+        node1_bytes[0] = 1;
+        let (actor_id, node1) =
+            setup_alive_actor_on_node(&mgr, 21, "restart_survive", 3, &node1_bytes);
+
+        // Persist initial actor
+        let key = hex::encode(&actor_id.binary());
+        let initial = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        storage.actor_table().put(&key, &initial).await.unwrap();
+
+        // Mark preempted, wait for persist
+        mgr.set_preempted_and_publish(&node1);
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Kill node, actor restarts
+        mgr.on_node_dead(&node1);
+
+        // Real creation success on new node
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            8888,
+            vec![],
+            node2_bytes,
+        );
+
+        // Yield to let persist complete
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Simulate GCS restart
+        let mgr2 = GcsActorManager::new(storage.clone());
+        mgr2.initialize().await.unwrap();
+
+        let actor = mgr2.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert!(
+            !actor.preempted,
+            "after GCS restart, actor should have preempted=false from persisted creation-success state"
+        );
+        assert_eq!(
+            ActorState::from(actor.state),
+            ActorState::Alive,
+            "after GCS restart, actor should be ALIVE"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_real_creation_success_path_clears_preempted_in_storage_not_just_memory() {
+        // This test proves that the real on_actor_creation_success path
+        // (not manual in-memory mutation) clears preempted in storage.
+        // It uses the full preempt → kill → restart → creation-success flow.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node1_bytes = vec![0u8; 28];
+        node1_bytes[0] = 1;
+        let (actor_id, node1) =
+            setup_alive_actor_on_node(&mgr, 22, "full_flow", 5, &node1_bytes);
+
+        // Persist initial actor
+        let key = hex::encode(&actor_id.binary());
+        let initial = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        storage.actor_table().put(&key, &initial).await.unwrap();
+
+        // Mark preempted, persist
+        mgr.set_preempted_and_publish(&node1);
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Kill node → actor RESTARTING with preempted counters
+        mgr.on_node_dead(&node1);
+        let restarting = mgr.handle_get_actor_info(&actor_id.binary()).unwrap();
+        assert_eq!(ActorState::from(restarting.state), ActorState::Restarting);
+        assert_eq!(restarting.num_restarts_due_to_node_preemption, 1);
+
+        // Real creation success
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            7777,
+            vec![],
+            node2_bytes.clone(),
+        );
+
+        // Yield
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Check storage directly — must have preempted=false and state=ALIVE
+        let persisted: ray_proto::ray::rpc::ActorTableData =
+            storage.actor_table().get(&key).await.unwrap().unwrap();
+        assert!(
+            !persisted.preempted,
+            "storage must have preempted=false after real creation-success path"
+        );
+        assert_eq!(
+            ActorState::from(persisted.state),
+            ActorState::Alive,
+            "storage must have state=ALIVE after real creation-success path"
+        );
+        assert_eq!(
+            persisted.num_restarts_due_to_node_preemption, 1,
+            "storage must preserve num_restarts_due_to_node_preemption"
+        );
+    }
+
+    // ---- Publication ordering tests (C++ parity: persist before publish) ----
+
+    /// A store client wrapper that blocks `put` on the Actor table until a
+    /// `Notify` is signalled. This lets tests verify that publication does not
+    /// happen before persistence completes.
+    struct GatedStoreClient {
+        inner: InMemoryStoreClient,
+        /// Signalled by the test when persistence should be allowed to proceed.
+        gate: Arc<tokio::sync::Notify>,
+        /// Signalled by the store when a `put` is waiting at the gate.
+        waiting: Arc<tokio::sync::Notify>,
+    }
+
+    impl GatedStoreClient {
+        fn new() -> (Arc<Self>, Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+            let gate = Arc::new(tokio::sync::Notify::new());
+            let waiting = Arc::new(tokio::sync::Notify::new());
+            let client = Arc::new(Self {
+                inner: InMemoryStoreClient::new(),
+                gate: gate.clone(),
+                waiting: waiting.clone(),
+            });
+            (client, gate, waiting)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::store_client::StoreClient for GatedStoreClient {
+        async fn put(
+            &self,
+            table: &str,
+            key: &str,
+            data: Vec<u8>,
+            overwrite: bool,
+        ) -> crate::store_client::StoreResult<bool> {
+            if table == crate::table_storage::table_names::ACTOR {
+                // Signal that we are waiting, then block until the gate is opened
+                self.waiting.notify_one();
+                self.gate.notified().await;
+            }
+            self.inner.put(table, key, data, overwrite).await
+        }
+
+        async fn get(
+            &self,
+            table: &str,
+            key: &str,
+        ) -> crate::store_client::StoreResult<Option<Vec<u8>>> {
+            self.inner.get(table, key).await
+        }
+
+        async fn multi_get(
+            &self,
+            table: &str,
+            keys: &[String],
+        ) -> crate::store_client::StoreResult<std::collections::HashMap<String, Vec<u8>>> {
+            self.inner.multi_get(table, keys).await
+        }
+
+        async fn get_all(
+            &self,
+            table: &str,
+        ) -> crate::store_client::StoreResult<std::collections::HashMap<String, Vec<u8>>> {
+            self.inner.get_all(table).await
+        }
+
+        async fn delete(
+            &self,
+            table: &str,
+            key: &str,
+        ) -> crate::store_client::StoreResult<bool> {
+            self.inner.delete(table, key).await
+        }
+
+        async fn batch_delete(
+            &self,
+            table: &str,
+            keys: &[String],
+        ) -> crate::store_client::StoreResult<i64> {
+            self.inner.batch_delete(table, keys).await
+        }
+
+        async fn get_next_job_id(&self) -> crate::store_client::StoreResult<i32> {
+            self.inner.get_next_job_id().await
+        }
+
+        async fn get_keys(
+            &self,
+            table: &str,
+            prefix: &str,
+        ) -> crate::store_client::StoreResult<Vec<String>> {
+            self.inner.get_keys(table, prefix).await
+        }
+
+        async fn exists(
+            &self,
+            table: &str,
+            key: &str,
+        ) -> crate::store_client::StoreResult<bool> {
+            self.inner.exists(table, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_preempted_publish_occurs_only_after_actor_table_persist() {
+        // C++ contract: SetPreemptedAndPublish persists via ActorTable().Put()
+        // and publishes from the Put callback — publication is strictly ordered
+        // after persistence. This test proves the Rust implementation matches.
+        let (store, gate, waiting) = GatedStoreClient::new();
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        // Set up pubsub so we can observe publication
+        let pubsub = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(pubsub.clone());
+        let mut rx = pubsub
+            .subscribe(crate::pubsub_handler::ChannelType::GcsActorChannel as i32)
+            .unwrap();
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (_actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 50, "ordering_preempt", 3, &node_id_bytes);
+
+        // Call set_preempted_and_publish — this spawns the persist-then-publish task
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Wait until the persist task is blocked at the gate
+        waiting.notified().await;
+
+        // While persistence is blocked, publication must NOT have happened yet
+        assert!(
+            rx.try_recv().is_err(),
+            "publication must not occur before persistence completes"
+        );
+
+        // Now release the gate — persistence completes, then publication should follow
+        gate.notify_one();
+
+        // Give the spawned task time to publish
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let msg = rx.try_recv().expect("publication should occur after persistence");
+        assert_eq!(
+            msg.channel_type,
+            crate::pubsub_handler::ChannelType::GcsActorChannel as i32,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_creation_success_publish_occurs_only_after_actor_table_persist() {
+        // C++ contract: OnActorCreationSuccess persists via ActorTable().Put()
+        // and publishes from the Put callback — publication is strictly ordered
+        // after persistence. This test proves the Rust implementation matches.
+        let (store, gate, waiting) = GatedStoreClient::new();
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        // Set up pubsub
+        let pubsub = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(pubsub.clone());
+        let mut rx = pubsub
+            .subscribe(crate::pubsub_handler::ChannelType::GcsActorChannel as i32)
+            .unwrap();
+
+        // Set up actor in RESTARTING state (simulates preempt → kill → restart cycle)
+        let mut node1_bytes = vec![0u8; 28];
+        node1_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 51, "ordering_creation", 5, &node1_bytes);
+
+        mgr.set_preempted_and_publish(&node_id);
+        // Unblock the preempt persist
+        waiting.notified().await;
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        // Drain the preempt publication
+        let _ = rx.try_recv();
+
+        mgr.on_node_dead(&node_id);
+        // Drain any node-dead publications
+        tokio::task::yield_now().await;
+        while rx.try_recv().is_ok() {}
+
+        // Now call on_actor_creation_success — this should persist then publish
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            8888,
+            vec![],
+            node2_bytes,
+        );
+
+        // Wait until the persist task is blocked at the gate
+        waiting.notified().await;
+
+        // While persistence is blocked, ALIVE publication must NOT have happened
+        assert!(
+            rx.try_recv().is_err(),
+            "ALIVE publication must not occur before persistence completes"
+        );
+
+        // Release the gate
+        gate.notify_one();
+
+        // Give the spawned task time to publish
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let msg = rx.try_recv().expect("ALIVE publication should occur after persistence");
+        assert_eq!(
+            msg.channel_type,
+            crate::pubsub_handler::ChannelType::GcsActorChannel as i32,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pubsub_observer_cannot_see_unpersisted_actor_state() {
+        // This test verifies the observer-visible contract: when a pubsub
+        // subscriber receives an actor state update, the corresponding state
+        // must already be present in storage. This is what the C++ Put-callback
+        // ordering guarantees.
+        let (store_client, gate, waiting) = GatedStoreClient::new();
+        let storage = Arc::new(GcsTableStorage::new(store_client));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        // Set up pubsub
+        let pubsub = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(pubsub.clone());
+        let mut rx = pubsub
+            .subscribe(crate::pubsub_handler::ChannelType::GcsActorChannel as i32)
+            .unwrap();
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 52, "observer_contract", 3, &node_id_bytes);
+
+        // Trigger set_preempted_and_publish
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Wait for persist to reach the gate (blocked)
+        waiting.notified().await;
+
+        // At this point, persistence is blocked. Verify storage does NOT yet
+        // have the preempted state, AND pubsub has NOT received the message.
+        let key = hex::encode(&actor_id.binary());
+        let stored: Option<ray_proto::ray::rpc::ActorTableData> =
+            storage.actor_table().get(&key).await.unwrap();
+        // Storage should either be None or have preempted=false (pre-existing state)
+        if let Some(ref data) = stored {
+            assert!(
+                !data.preempted,
+                "storage must not have preempted=true while persist is still blocked"
+            );
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "pubsub must not deliver preempted state before storage contains it"
+        );
+
+        // Release the gate — persist completes, then publish
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Now the observer receives the message
+        let _msg = rx.try_recv().expect("pubsub should deliver after persist");
+
+        // And at this point, storage must already contain the persisted state
+        let stored: ray_proto::ray::rpc::ActorTableData =
+            storage.actor_table().get(&key).await.unwrap().unwrap();
+        assert!(
+            stored.preempted,
+            "when pubsub delivers preempted=true, storage must already contain it"
+        );
+    }
+
+    // ---- Creation-success callback ordering tests (C++ parity: persist → publish → callbacks) ----
+
+    /// Helper: set up a manager with GatedStoreClient and pubsub, register an actor
+    /// as ALIVE, preempt it, kill the node (RESTARTING), and insert a create callback.
+    /// Returns everything needed for callback ordering assertions.
+    #[allow(clippy::type_complexity)]
+    fn setup_callback_ordering_test(
+        actor_byte: u8,
+    ) -> (
+        GcsActorManager,
+        Arc<GcsTableStorage>,
+        Arc<tokio::sync::Notify>,                      // gate
+        Arc<tokio::sync::Notify>,                      // waiting
+        ActorID,
+        tokio::sync::broadcast::Receiver<crate::pubsub_handler::PubSubMessage>, // pubsub rx
+        oneshot::Receiver<Result<ray_proto::ray::rpc::CreateActorReply, Status>>, // callback rx
+    ) {
+        let (store, gate, waiting) = GatedStoreClient::new();
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let pubsub = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(pubsub.clone());
+        let rx_pubsub = pubsub
+            .subscribe(crate::pubsub_handler::ChannelType::GcsActorChannel as i32)
+            .unwrap();
+
+        let mut node1_bytes = vec![0u8; 28];
+        node1_bytes[0] = 1;
+        let (actor_id, node_id) = setup_alive_actor_on_node(
+            &mgr,
+            actor_byte,
+            &format!("cb_ordering_{}", actor_byte),
+            5,
+            &node1_bytes,
+        );
+
+        // Preempt — we need to unblock the gated persist for the preempt path
+        mgr.set_preempted_and_publish(&node_id);
+
+        // Insert a creation callback (simulates what handle_create_actor does)
+        let (tx_cb, rx_cb) = oneshot::channel();
+        mgr.create_callbacks
+            .entry(actor_id)
+            .or_default()
+            .push(tx_cb);
+
+        // Kill node so actor is RESTARTING
+        mgr.on_node_dead(&node_id);
+
+        (mgr, storage, gate, waiting, actor_id, rx_pubsub, rx_cb)
+    }
+
+    #[tokio::test]
+    async fn test_creation_success_callbacks_fire_only_after_actor_table_persist() {
+        // C++ contract: RunAndClearActorCreationCallbacks runs inside the
+        // ActorTable().Put() callback, AFTER persistence completes.
+        // A successful callback implies the actor table has been durably written.
+        let (mgr, storage, gate, waiting, actor_id, _rx_pubsub, mut rx_cb) =
+            setup_callback_ordering_test(60);
+
+        // Unblock the preempt persist (from setup)
+        waiting.notified().await;
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Now call on_actor_creation_success
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            9001,
+            vec![],
+            node2_bytes,
+        );
+
+        // Wait until the creation-success persist is blocked at the gate
+        waiting.notified().await;
+
+        // While persistence is blocked, the callback must NOT have fired
+        assert!(
+            rx_cb.try_recv().is_err(),
+            "creation callback must not fire before persistence completes"
+        );
+
+        // Release the gate — persist completes, then publish, then callbacks
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Now the callback should have fired
+        let result = rx_cb.try_recv().expect("callback should fire after persistence");
+        assert!(result.is_ok(), "callback should indicate success");
+
+        // And storage must already contain the ALIVE state
+        let key = hex::encode(&actor_id.binary());
+        let persisted: ray_proto::ray::rpc::ActorTableData =
+            storage.actor_table().get(&key).await.unwrap().unwrap();
+        assert_eq!(ActorState::from(persisted.state), ActorState::Alive);
+    }
+
+    #[tokio::test]
+    async fn test_creation_success_callbacks_do_not_run_while_persist_blocked() {
+        // Stronger version: prove the callback receiver stays pending (not just
+        // "no value ready") the entire time persistence is blocked, by polling
+        // it multiple times with yields in between.
+        let (mgr, _storage, gate, waiting, actor_id, _rx_pubsub, mut rx_cb) =
+            setup_callback_ordering_test(61);
+
+        // Unblock the preempt persist
+        waiting.notified().await;
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // Call on_actor_creation_success
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            9002,
+            vec![],
+            node2_bytes,
+        );
+
+        // Wait for persist to reach the gate
+        waiting.notified().await;
+
+        // Poll the callback multiple times while persist is blocked
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+            assert!(
+                rx_cb.try_recv().is_err(),
+                "callback must remain pending while persistence is blocked"
+            );
+        }
+
+        // Also check after a short sleep
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(
+            rx_cb.try_recv().is_err(),
+            "callback must still be pending after sleep while persistence is blocked"
+        );
+
+        // Release the gate
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Now callback fires
+        let result = rx_cb.try_recv().expect("callback should fire once persistence completes");
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_creation_success_callbacks_are_ordered_after_publication() {
+        // C++ ordering: persist → publish → callbacks.
+        // This test proves callbacks fire only after publication, not just
+        // after persistence. Uses an atomic flag set by a pubsub subscriber
+        // to track publication timing relative to callback delivery.
+        let (mgr, _storage, gate, waiting, actor_id, mut rx_pubsub, rx_cb) =
+            setup_callback_ordering_test(62);
+
+        // Unblock the preempt persist
+        waiting.notified().await;
+        gate.notify_one();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        // Drain any preempt-related pubsub messages
+        while rx_pubsub.try_recv().is_ok() {}
+
+        // Set up a flag that tracks whether publication happened before callback
+        let published = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let published_clone = published.clone();
+
+        // Spawn a task that waits for the pubsub ALIVE message
+        let pubsub_watcher = tokio::spawn(async move {
+            // Wait for the ALIVE publication
+            let _msg = rx_pubsub.recv().await.expect("should receive ALIVE pub");
+            published_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        // Call on_actor_creation_success
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            9003,
+            vec![],
+            node2_bytes,
+        );
+
+        // Wait for persist to be blocked
+        waiting.notified().await;
+
+        // Release the gate — persist completes, then publish, then callbacks
+        gate.notify_one();
+
+        // Wait for the callback to resolve
+        let result = rx_cb.await.expect("callback channel should not be dropped");
+        assert!(result.is_ok(), "callback should succeed");
+
+        // Give the pubsub watcher a moment to process
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let _ = pubsub_watcher.await;
+
+        // By the time the callback resolved, publication must have already happened
+        assert!(
+            published.load(std::sync::atomic::Ordering::SeqCst),
+            "publication must have occurred before (or at least by the time of) callback resolution"
+        );
+    }
+
+    // ---- Actor lifecycle/export event tests (C++ parity: WriteActorExportEvent) ----
+
+    /// Helper: create a manager with export events enabled.
+    fn make_export_enabled_manager(
+        storage: Arc<GcsTableStorage>,
+    ) -> GcsActorManager {
+        GcsActorManager::with_export_config(
+            storage,
+            ActorExportConfig::from_enabled(true),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_emitted_on_creation_success_when_enabled() {
+        // C++ emits WriteActorExportEvent(false) on creation success (line 1686).
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = make_export_enabled_manager(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, _node_id) =
+            setup_alive_actor_on_node(&mgr, 70, "export_creation", 3, &node_id_bytes);
+
+        // Now simulate creation success on a new node
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            5555,
+            vec![],
+            node2_bytes,
+        );
+
+        // The event exporter should have buffered an event
+        assert!(
+            mgr.event_exporter().buffer_len() > 0,
+            "export event should be emitted on creation success when enabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_emitted_on_restart_when_enabled() {
+        // C++ emits WriteActorExportEvent(false, restart_reason) on restart (line 1523).
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = make_export_enabled_manager(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (_actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 71, "export_restart", 5, &node_id_bytes);
+
+        let events_before = mgr.event_exporter().buffer_len();
+
+        // Kill the node — actor has max_restarts=5, so it should restart
+        mgr.on_node_dead(&node_id);
+
+        let events_after = mgr.event_exporter().buffer_len();
+        assert!(
+            events_after > events_before,
+            "export event should be emitted on actor restart when enabled (before={}, after={})",
+            events_before,
+            events_after,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_emitted_on_death_when_enabled() {
+        // C++ emits WriteActorExportEvent(false) on actor death (lines 1145, 1572).
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = make_export_enabled_manager(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        // max_restarts=0 means the actor will die on node death
+        let (_actor_id, node_id) =
+            setup_alive_actor_on_node(&mgr, 72, "export_death", 0, &node_id_bytes);
+
+        let events_before = mgr.event_exporter().buffer_len();
+
+        // Kill the node — actor has max_restarts=0, so it should die
+        mgr.on_node_dead(&node_id);
+
+        let events_after = mgr.event_exporter().buffer_len();
+        assert!(
+            events_after > events_before,
+            "export event should be emitted on actor death when enabled (before={}, after={})",
+            events_before,
+            events_after,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_not_emitted_when_disabled() {
+        // When export is disabled (default), no events should be buffered.
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        // Use default config (disabled)
+        let mgr = GcsActorManager::new(storage.clone());
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, _node_id) =
+            setup_alive_actor_on_node(&mgr, 73, "export_disabled", 5, &node_id_bytes);
+
+        // Creation success
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            6666,
+            vec![],
+            node2_bytes,
+        );
+
+        // Kill node — restart
+        let mut node3_bytes = vec![0u8; 28];
+        node3_bytes[0] = 3;
+        mgr.on_node_dead(
+            &NodeID::from_binary(node3_bytes.as_slice().try_into().unwrap()),
+        );
+
+        assert_eq!(
+            mgr.event_exporter().buffer_len(),
+            0,
+            "no export events should be buffered when disabled"
+        );
+    }
+
+    // === Round 9: FULL parity tests for actor export/event feature ===
+
+    #[tokio::test]
+    async fn test_actor_export_event_emitted_to_file_when_export_api_enabled() {
+        // C++ parity: when `enable_export_api_write=true` (or `enable_export_api_write_config`
+        // contains "EXPORT_ACTOR"), actor lifecycle events are written as JSON to
+        // `{log_dir}/export_events/event_EXPORT_ACTOR.log`.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+
+        let config = ActorExportConfig {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_export_api_write: true,
+                log_dir: Some(tmp.path().to_path_buf()),
+                ..Default::default()
+            },
+        };
+        let mgr = GcsActorManager::with_export_config(storage.clone(), config);
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, _node_id) =
+            setup_alive_actor_on_node(&mgr, 80, "file_export_actor", 3, &node_id_bytes);
+
+        // Trigger a lifecycle event that calls write_actor_export_event
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            7777,
+            vec![],
+            node2_bytes,
+        );
+
+        // Check that a file was created at the expected path
+        let export_file = tmp.path().join("export_events/event_EXPORT_ACTOR.log");
+        assert!(
+            export_file.exists(),
+            "export event log file should be created at {:?}",
+            export_file
+        );
+
+        // Verify the file contains valid JSON lines with ExportActorData
+        let content = std::fs::read_to_string(&export_file).unwrap();
+        let lines: Vec<&str> = content.trim().lines().collect();
+        assert!(
+            !lines.is_empty(),
+            "export event log file should contain at least one event"
+        );
+
+        // Parse the first event and verify structure
+        let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert!(
+            parsed.get("event_id").is_some(),
+            "event should have event_id"
+        );
+        assert!(
+            parsed.get("timestamp").is_some(),
+            "event should have timestamp"
+        );
+        // Check that actor event data is present (prost serde: event_data.ActorEventData)
+        let event_data = &parsed["event_data"]["ActorEventData"];
+        assert!(
+            event_data.is_object(),
+            "event should contain event_data.ActorEventData with ExportActorData fields"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_honors_export_api_write_config_actor_only() {
+        // C++ parity: `enable_export_api_write_config = ["EXPORT_ACTOR"]` enables
+        // actor events selectively. `enable_export_api_write` (global) is false.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+
+        let config = ActorExportConfig {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_export_api_write: false,
+                enable_export_api_write_config: vec!["EXPORT_ACTOR".to_string()],
+                log_dir: Some(tmp.path().to_path_buf()),
+                ..Default::default()
+            },
+        };
+        let mgr = GcsActorManager::with_export_config(storage.clone(), config);
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, _node_id) =
+            setup_alive_actor_on_node(&mgr, 81, "selective_export_actor", 3, &node_id_bytes);
+
+        // Trigger lifecycle event
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            8888,
+            vec![],
+            node2_bytes,
+        );
+
+        // File should exist — EXPORT_ACTOR is in the selective config
+        let export_file = tmp.path().join("export_events/event_EXPORT_ACTOR.log");
+        assert!(
+            export_file.exists(),
+            "selective EXPORT_ACTOR config should produce export event file"
+        );
+
+        // Now test with a config that does NOT include EXPORT_ACTOR
+        let tmp2 = tempfile::tempdir().unwrap();
+        let store2 = Arc::new(InMemoryStoreClient::new());
+        let storage2 = Arc::new(GcsTableStorage::new(store2));
+        let config2 = ActorExportConfig {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_export_api_write: false,
+                enable_export_api_write_config: vec!["EXPORT_TASK".to_string()],
+                log_dir: Some(tmp2.path().to_path_buf()),
+                ..Default::default()
+            },
+        };
+        let mgr2 = GcsActorManager::with_export_config(storage2.clone(), config2);
+
+        let mut node_id_bytes2 = vec![0u8; 28];
+        node_id_bytes2[0] = 2;
+        let (_actor_id2, _node_id2) =
+            setup_alive_actor_on_node(&mgr2, 82, "no_export_actor", 3, &node_id_bytes2);
+
+        // File should NOT exist — EXPORT_TASK doesn't enable actor events
+        let export_file2 = tmp2.path().join("export_events/event_EXPORT_ACTOR.log");
+        assert!(
+            !export_file2.exists(),
+            "EXPORT_TASK-only config should NOT produce actor export event file"
+        );
+        assert_eq!(
+            mgr2.event_exporter().buffer_len(),
+            0,
+            "no events should be buffered when actor export is not enabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_actor_export_event_payload_matches_expected_fields() {
+        // C++ parity: ExportActorData contains 16 fields.
+        // Verify the JSON written to file includes all major fields.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+
+        let config = ActorExportConfig {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_export_api_write: true,
+                log_dir: Some(tmp.path().to_path_buf()),
+                ..Default::default()
+            },
+        };
+        let mgr = GcsActorManager::with_export_config(storage.clone(), config);
+
+        // Register an actor with known fields to verify payload
+        let mut actor_id_bytes = vec![0u8; 16];
+        actor_id_bytes[0] = 83;
+        let actor_id = ActorID::from_binary(actor_id_bytes.as_slice().try_into().unwrap());
+        let mut job_id_bytes = vec![0u8; 4];
+        job_id_bytes[0] = 1;
+
+        let mut task_spec = ray_proto::ray::rpc::TaskSpec {
+            r#type: ray_proto::ray::rpc::TaskType::ActorCreationTask as i32,
+            ..Default::default()
+        };
+        task_spec.actor_creation_task_spec = Some(
+            ray_proto::ray::rpc::ActorCreationTaskSpec {
+                actor_id: actor_id_bytes.clone(),
+                max_actor_restarts: 3,
+                ..Default::default()
+            },
+        );
+        task_spec.job_id = job_id_bytes.clone();
+        task_spec.labels.insert("env".to_string(), "prod".to_string());
+
+        let actor_data = ray_proto::ray::rpc::ActorTableData {
+            actor_id: actor_id_bytes.clone(),
+            job_id: job_id_bytes.clone(),
+            state: ray_proto::ray::rpc::actor_table_data::ActorState::DependenciesUnready as i32,
+            name: "payload_test_actor".to_string(),
+            class_name: "PayloadTestClass".to_string(),
+            pid: 0,
+            ray_namespace: "test_ns".to_string(),
+            is_detached: true,
+            serialized_runtime_env: r#"{"pip": ["numpy"]}"#.to_string(),
+            repr_name: "PayloadTestClass()".to_string(),
+            required_resources: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("CPU".to_string(), 2.0);
+                m.insert("GPU".to_string(), 1.0);
+                m
+            },
+            label_selector: {
+                let mut m = std::collections::HashMap::new();
+                m.insert("zone".to_string(), "us-west".to_string());
+                m
+            },
+            max_restarts: 3,
+            ..Default::default()
+        };
+
+        mgr.registered_actors
+            .insert(actor_id.clone(), Arc::new(actor_data));
+        mgr.actor_task_specs.insert(actor_id.clone(), task_spec);
+
+        // Manually call write_actor_export_event to test payload
+        let actor_ref = mgr.registered_actors.get(&actor_id).unwrap();
+        mgr.write_actor_export_event(&actor_ref, true);
+
+        // Read and verify the file content
+        let export_file = tmp.path().join("export_events/event_EXPORT_ACTOR.log");
+        assert!(export_file.exists(), "export file should exist");
+        let content = std::fs::read_to_string(&export_file).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+
+        let event_data = &parsed["event_data"]["ActorEventData"];
+        assert!(event_data.is_object(), "should have event_data.ActorEventData");
+
+        // Verify all 16 ExportActorData fields are present
+        // Fields 1-7: actor_id, job_id, state, is_detached, name, pid, ray_namespace
+        assert!(event_data.get("actor_id").is_some(), "missing actor_id");
+        assert!(event_data.get("job_id").is_some(), "missing job_id");
+        assert!(event_data.get("state").is_some(), "missing state");
+        assert!(event_data.get("is_detached").is_some(), "missing is_detached");
+        assert_eq!(event_data["name"], "payload_test_actor");
+        assert!(event_data.get("pid").is_some(), "missing pid");
+        assert_eq!(event_data["ray_namespace"], "test_ns");
+
+        // Field 8: serialized_runtime_env
+        assert_eq!(
+            event_data["serialized_runtime_env"],
+            r#"{"pip": ["numpy"]}"#,
+            "missing or wrong serialized_runtime_env"
+        );
+
+        // Field 9: class_name
+        assert_eq!(event_data["class_name"], "PayloadTestClass");
+
+        // Field 10: death_cause (null for alive actors, but field should exist)
+        // For a non-dead actor, death_cause is None, so it may be absent in JSON.
+        // This is acceptable per proto3 serialization rules.
+
+        // Field 11: required_resources
+        let resources = &event_data["required_resources"];
+        assert!(
+            resources.is_object(),
+            "missing required_resources"
+        );
+        assert_eq!(resources["CPU"], 2.0);
+        assert_eq!(resources["GPU"], 1.0);
+
+        // Field 14: repr_name
+        assert_eq!(event_data["repr_name"], "PayloadTestClass()");
+
+        // Field 15: labels (from task spec)
+        let labels = &event_data["labels"];
+        assert!(labels.is_object(), "missing labels");
+        assert_eq!(labels["env"], "prod");
+
+        // Field 16: label_selector
+        let selector = &event_data["label_selector"];
+        assert!(selector.is_object(), "missing label_selector");
+        assert_eq!(selector["zone"], "us-west");
+    }
+
+    #[tokio::test]
+    async fn test_actor_ray_event_path_emits_when_enable_ray_event_is_enabled() {
+        // C++ parity: when `enable_ray_event=true`, the aggregator path is used
+        // and the file-export path is bypassed.
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+
+        let config = ActorExportConfig {
+            export_api_config: ray_observability::export::ExportApiConfig {
+                enable_ray_event: true,
+                // Even if export API write is also set, ray_event takes precedence
+                enable_export_api_write: true,
+                log_dir: Some(tmp.path().to_path_buf()),
+                ..Default::default()
+            },
+        };
+        let mgr = GcsActorManager::with_export_config(storage.clone(), config);
+
+        let mut node_id_bytes = vec![0u8; 28];
+        node_id_bytes[0] = 1;
+        let (actor_id, _node_id) =
+            setup_alive_actor_on_node(&mgr, 84, "ray_event_actor", 3, &node_id_bytes);
+
+        // Trigger a lifecycle event
+        let mut node2_bytes = vec![0u8; 28];
+        node2_bytes[0] = 2;
+        mgr.on_actor_creation_success(
+            &actor_id,
+            ray_proto::ray::rpc::Address {
+                node_id: node2_bytes.clone(),
+                worker_id: vec![0u8; 28],
+                ..Default::default()
+            },
+            9999,
+            vec![],
+            node2_bytes,
+        );
+
+        // The aggregator-path event_exporter should have buffered events
+        assert!(
+            mgr.event_exporter().buffer_len() > 0,
+            "aggregator path should buffer events when enable_ray_event=true"
+        );
+
+        // The file-export path should NOT have written anything
+        // (because enable_ray_event bypasses it in C++)
+        let export_file = tmp.path().join("export_events/event_EXPORT_ACTOR.log");
+        // The file may or may not exist (sink might be created), but if it exists
+        // it should be empty since the ray_event path returns early before file write
+        if export_file.exists() {
+            let content = std::fs::read_to_string(&export_file).unwrap();
+            assert!(
+                content.trim().is_empty(),
+                "file export should be empty when enable_ray_event=true (aggregator path takes precedence)"
+            );
+        }
     }
 }

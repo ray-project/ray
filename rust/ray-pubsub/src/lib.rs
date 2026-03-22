@@ -21,6 +21,13 @@
 
 pub mod publisher;
 pub mod subscriber;
+pub mod transport;
 
 pub use publisher::{PubMessage, Publisher, PublisherConfig};
-pub use subscriber::{Subscriber, SubscriberCommand, SubscriberConfig};
+pub use subscriber::{
+    FailureCallback, MessageCallback, Subscriber, SubscriberCommand, SubscriberConfig,
+};
+pub use transport::{
+    FailingSubscriberClient, InProcessSubscriberClient, SubscriberClient, SubscriberTransport,
+    TransportError,
+};

@@ -259,17 +259,19 @@ Key crate test counts:
 
 ## Issues Closed This Round
 
-| Finding | Status |
-|---------|--------|
-| GCS-1   | Fixed  |
-| GCS-4   | Fixed  |
-| GCS-6   | Fixed  |
-| GCS-8   | Fixed  |
-| GCS-12  | Fixed  |
-| GCS-16  | Fixed  |
-| GCS-17  | Fixed  |
-| RAYLET-3| Fixed  |
-| RAYLET-4| Fixed  |
-| RAYLET-5| Fixed  |
-| RAYLET-6| Fixed  |
-| CORE-10 | Fixed  |
+| Finding | Round 2 Status | Actual (per Round 3 re-audit) |
+|---------|---------------|-------------------------------|
+| GCS-1   | Fixed         | Verified Fixed                |
+| GCS-4   | Fixed         | **Partial** — filter used wrong fields; fixed in Round 3 |
+| GCS-6   | Fixed         | **Partial** — autoscaler drain path incomplete; fixed in Round 3 |
+| GCS-8   | Fixed         | Verified Fixed                |
+| GCS-12  | Fixed         | **Partial** — gRPC handler auto-transitioned; fixed in Round 3 |
+| GCS-16  | Fixed         | Verified Fixed                |
+| GCS-17  | Fixed         | **Partial** — missing demand/constraint sections; fixed in Round 3 |
+| RAYLET-3| Fixed         | **Partial** — no per-worker dimension; fixed in Round 3 |
+| RAYLET-4| Fixed         | **Partial** — no pending-deletion check; fixed in Round 3 |
+| RAYLET-5| Fixed         | **Partial** — no GPU rejection; fixed in Round 3 |
+| RAYLET-6| Fixed         | **Still open** — thin stats; fixed in Round 3 |
+| CORE-10 | Fixed         | **Partial** — thin response; fixed in Round 3 |
+
+**See `rust/reports/2026-03-19_PARITY_FIX_REPORT_ROUND3.md` for the definitive closure.**

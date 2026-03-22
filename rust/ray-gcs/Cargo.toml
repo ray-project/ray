@@ -39,6 +39,7 @@ async-trait = { workspace = true }
 hex = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

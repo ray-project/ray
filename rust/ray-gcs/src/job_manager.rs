@@ -197,15 +197,18 @@ impl GcsJobManager {
         let iter = self.job_data.iter().filter_map(|r| {
             let job = r.value();
 
-            // Apply job_or_submission_id filter
+            // Apply job_or_submission_id filter — matches C++ filter_ok():
+            // 1. Match by hex job_id
+            // 2. Match by config.metadata["job_submission_id"]
             if let Some(filter) = job_or_submission_id {
                 let job_id_hex = hex::encode(&job.job_id);
-                let submission_matches = job
-                    .job_info
+                let submission_id_matches = job
+                    .config
                     .as_ref()
-                    .map(|info| info.entrypoint == filter || info.status == filter)
+                    .and_then(|cfg| cfg.metadata.get("job_submission_id"))
+                    .map(|sid| sid == filter)
                     .unwrap_or(false);
-                if job_id_hex != filter && !submission_matches {
+                if job_id_hex != filter && !submission_id_matches {
                     return None;
                 }
             }
@@ -763,5 +766,110 @@ mod tests {
         // No filter returns all
         let jobs = mgr.handle_get_all_job_info(None, None, false, false);
         assert_eq!(jobs.len(), 2);
+    }
+
+    // ─── GCS-4: GetAllJobInfo submission_id filter parity ────────────
+
+    #[tokio::test]
+    async fn test_get_all_job_info_filters_by_submission_id_metadata() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        // Job 1 with job_submission_id "sub-abc" in config.metadata
+        let job1 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            config: Some(ray_proto::ray::rpc::JobConfig {
+                metadata: std::collections::HashMap::from([
+                    ("job_submission_id".to_string(), "sub-abc".to_string()),
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        // Job 2 with job_submission_id "sub-def"
+        let job2 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![2, 0, 0, 0],
+            config: Some(ray_proto::ray::rpc::JobConfig {
+                metadata: std::collections::HashMap::from([
+                    ("job_submission_id".to_string(), "sub-def".to_string()),
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        // Job 3 without any submission_id
+        let job3 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![3, 0, 0, 0],
+            config: Some(ray_proto::ray::rpc::JobConfig::default()),
+            ..Default::default()
+        };
+
+        mgr.handle_add_job(job1).await.unwrap();
+        mgr.handle_add_job(job2).await.unwrap();
+        mgr.handle_add_job(job3).await.unwrap();
+
+        // Filter by submission_id "sub-abc" — should find only job 1
+        let jobs = mgr.handle_get_all_job_info(None, Some("sub-abc"), false, false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].job_id, vec![1, 0, 0, 0]);
+
+        // Filter by submission_id "sub-def" — should find only job 2
+        let jobs = mgr.handle_get_all_job_info(None, Some("sub-def"), false, false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].job_id, vec![2, 0, 0, 0]);
+
+        // Filter by hex job_id still works
+        let job2_hex = hex::encode(&[2, 0, 0, 0]);
+        let jobs = mgr.handle_get_all_job_info(None, Some(&job2_hex), false, false);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].job_id, vec![2, 0, 0, 0]);
+
+        // Non-matching submission_id returns empty
+        let jobs = mgr.handle_get_all_job_info(None, Some("sub-xyz"), false, false);
+        assert!(jobs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_all_job_info_skip_flags_match_cpp() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let job = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            config: Some(ray_proto::ray::rpc::JobConfig {
+                metadata: std::collections::HashMap::from([
+                    ("job_submission_id".to_string(), "sub-1".to_string()),
+                ]),
+                ..Default::default()
+            }),
+            job_info: Some(ray_proto::ray::rpc::JobsApiInfo {
+                entrypoint: "python main.py".to_string(),
+                status: "RUNNING".to_string(),
+                ..Default::default()
+            }),
+            is_running_tasks: Some(true),
+            ..Default::default()
+        };
+        mgr.handle_add_job(job).await.unwrap();
+
+        // skip_submission_job_info_field=true strips job_info
+        let jobs = mgr.handle_get_all_job_info(None, None, true, false);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].job_info.is_none(), "job_info should be stripped");
+        assert!(jobs[0].is_running_tasks.is_some(), "is_running_tasks should be present");
+
+        // skip_is_running_tasks_field=true strips is_running_tasks
+        let jobs = mgr.handle_get_all_job_info(None, None, false, true);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].job_info.is_some(), "job_info should be present");
+        assert!(jobs[0].is_running_tasks.is_none(), "is_running_tasks should be stripped");
+
+        // Both flags
+        let jobs = mgr.handle_get_all_job_info(None, None, true, true);
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].job_info.is_none());
+        assert!(jobs[0].is_running_tasks.is_none());
     }
 }

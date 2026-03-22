@@ -36,6 +36,9 @@ struct OwnedObjectInfo {
     is_spilled: bool,
     /// Spill URL if the object has been spilled.
     spill_url: Option<String>,
+    /// Node where the object was spilled from (preserved across pin/unpin).
+    /// C++ stores this separately from pinned_at_node_id.
+    spilled_node_id: Option<Vec<u8>>,
     /// Node where the object is pinned (in plasma).
     pinned_at_node_id: Option<Vec<u8>>,
 }
@@ -67,6 +70,9 @@ struct OwnershipDirectoryInner {
     owned_objects: HashMap<ObjectID, OwnedObjectInfo>,
     /// Objects borrowed from other workers.
     borrowed_objects: HashMap<ObjectID, BorrowedObjectInfo>,
+    /// Set of node IDs that have been marked dead.
+    /// C++ uses this to filter object location additions from dead nodes.
+    dead_nodes: HashSet<Vec<u8>>,
 }
 
 impl OwnershipDirectory {
@@ -76,6 +82,7 @@ impl OwnershipDirectory {
             inner: Mutex::new(OwnershipDirectoryInner {
                 owned_objects: HashMap::new(),
                 borrowed_objects: HashMap::new(),
+                dead_nodes: HashSet::new(),
             }),
         }
     }
@@ -93,6 +100,7 @@ impl OwnershipDirectory {
                 is_pending_creation: true,
                 is_spilled: false,
                 spill_url: None,
+                spilled_node_id: None,
                 pinned_at_node_id: None,
             },
         );
@@ -164,10 +172,18 @@ impl OwnershipDirectory {
     }
 
     /// Record that an owned object has been spilled to external storage.
-    pub fn set_spilled(&self, object_id: &ObjectID, spill_url: String) {
+    /// `spilled_node_id` is the node that performed the spill (preserved separately
+    /// from pinned_at_node_id, which gets cleared on spill). This matches C++ behavior
+    /// where spilled_node_id is stored independently.
+    pub fn set_spilled(&self, object_id: &ObjectID, spill_url: String, spilled_node_id: Vec<u8>) {
         if let Some(entry) = self.inner.lock().owned_objects.get_mut(object_id) {
             entry.is_spilled = true;
             entry.spill_url = Some(spill_url);
+            entry.spilled_node_id = if spilled_node_id.iter().all(|&b| b == 0) {
+                None
+            } else {
+                Some(spilled_node_id)
+            };
             entry.pinned_at_node_id = None;
         }
     }
@@ -179,6 +195,15 @@ impl OwnershipDirectory {
             .owned_objects
             .get(object_id)
             .and_then(|e| e.spill_url.clone())
+    }
+
+    /// Get the node that spilled the object (stored separately from pinned node).
+    pub fn get_spilled_node_id(&self, object_id: &ObjectID) -> Option<Vec<u8>> {
+        self.inner
+            .lock()
+            .owned_objects
+            .get(object_id)
+            .and_then(|e| e.spilled_node_id.clone())
     }
 
     /// Get the node where an owned object is pinned.
@@ -288,6 +313,19 @@ impl OwnershipDirectory {
             .is_some_and(|e| e.is_owner_dead)
     }
 
+    // ─── Dead Node Tracking ───────────────────────────────────────────
+
+    /// Mark a node as dead. Subsequent calls to `is_node_dead` will return true.
+    /// C++ filters object location additions from dead nodes.
+    pub fn mark_node_dead(&self, node_id: &[u8]) {
+        self.inner.lock().dead_nodes.insert(node_id.to_vec());
+    }
+
+    /// Check if a node has been marked dead.
+    pub fn is_node_dead(&self, node_id: &[u8]) -> bool {
+        self.inner.lock().dead_nodes.contains(node_id)
+    }
+
     // ─── Bulk Operations ──────────────────────────────────────────────
 
     /// Number of objects we own.
@@ -351,6 +389,9 @@ impl OwnershipDirectory {
         dead_node_id: &[u8],
     ) -> (Vec<ObjectID>, Vec<ObjectID>) {
         let mut inner = self.inner.lock();
+
+        // Track dead node for filtering future location additions.
+        inner.dead_nodes.insert(dead_node_id.to_vec());
 
         // Clear pinned location for owned objects pinned at the dead node.
         let mut affected_owned = Vec::new();
@@ -529,7 +570,7 @@ mod tests {
         assert!(dir.get_spill_url(&oid).is_none());
 
         // Spill clears the pinned location.
-        dir.set_spilled(&oid, "file:///spill/obj123".to_string());
+        dir.set_spilled(&oid, "file:///spill/obj123".to_string(), vec![1u8; 28]);
         assert!(dir.get_pinned_node(&oid).is_none());
         assert_eq!(
             dir.get_spill_url(&oid),
@@ -847,7 +888,7 @@ mod tests {
         let dir = OwnershipDirectory::new();
         let oid = ObjectID::from_random();
         dir.add_owned_object(oid, make_address("10.0.0.1", 1000));
-        dir.set_spilled(&oid, "s3://bucket/obj".to_string());
+        dir.set_spilled(&oid, "s3://bucket/obj".to_string(), vec![5u8; 28]);
 
         let locs = dir.get_all_owned_with_locations();
         assert_eq!(locs.len(), 1);
@@ -867,7 +908,7 @@ mod tests {
 
         let oid2 = ObjectID::from_random();
         dir.add_owned_object(oid2, make_address("10.0.0.1", 1000));
-        dir.set_spilled(&oid2, "file:///spill/obj2".to_string());
+        dir.set_spilled(&oid2, "file:///spill/obj2".to_string(), vec![2u8; 28]);
 
         let oid3 = ObjectID::from_random();
         dir.add_owned_object(oid3, make_address("10.0.0.1", 1000));

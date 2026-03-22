@@ -53,6 +53,14 @@ pub struct PinnedObject {
     pub is_pending_spill: bool,
     /// The spill URL if the object has been spilled.
     pub spill_url: Option<String>,
+    /// Owner address (set by PinObjectsAndWaitForFree). Pin is retained until owner frees.
+    pub owner_address: Option<ray_proto::ray::rpc::Address>,
+    /// Generator ID (for streaming generators, set by PinObjectsAndWaitForFree).
+    pub generator_id: Option<Vec<u8>>,
+    /// Whether this object has been freed by the owner.
+    /// C++ contract: `is_freed_` in `LocalObjectInfo`. Object stays in the map
+    /// (for spill tracking) but the pin is logically released.
+    pub is_freed: bool,
 }
 
 impl PinnedObject {
@@ -77,8 +85,16 @@ pub struct LocalObjectManagerStats {
     pub total_bytes_spilled: u64,
     /// Total objects spilled (cumulative).
     pub total_objects_spilled: u64,
+    /// Total bytes restored (cumulative).
+    pub total_bytes_restored: u64,
+    /// Total objects restored (cumulative).
+    pub total_objects_restored: u64,
     /// Number of objects waiting for deletion.
     pub num_pending_deletion: usize,
+    /// Total wall-clock time spent spilling (seconds).
+    pub spill_time_total_s: f64,
+    /// Total wall-clock time spent restoring (seconds).
+    pub restore_time_total_s: f64,
 }
 
 /// Manages pinned objects on this node and coordinates spilling.
@@ -97,6 +113,12 @@ pub struct LocalObjectManager {
     /// Cumulative stats.
     total_bytes_spilled: AtomicU64,
     total_objects_spilled: AtomicU64,
+    total_bytes_restored: AtomicU64,
+    total_objects_restored: AtomicU64,
+    /// Total wall-clock time spent spilling (seconds, monotonic).
+    spill_time_total_s: f64,
+    /// Total wall-clock time spent restoring (seconds, monotonic).
+    restore_time_total_s: f64,
 }
 
 impl LocalObjectManager {
@@ -110,6 +132,10 @@ impl LocalObjectManager {
             pending_deletion: Vec::new(),
             total_bytes_spilled: AtomicU64::new(0),
             total_objects_spilled: AtomicU64::new(0),
+            total_bytes_restored: AtomicU64::new(0),
+            total_objects_restored: AtomicU64::new(0),
+            spill_time_total_s: 0.0,
+            restore_time_total_s: 0.0,
         }
     }
 
@@ -123,11 +149,91 @@ impl LocalObjectManager {
             metadata_size,
             is_pending_spill: false,
             spill_url: None,
+            owner_address: None,
+            generator_id: None,
+            is_freed: false,
         };
         if self.pinned_objects.insert(object_id, obj).is_none() {
             // Only add to total if this is a new pin.
             self.pinned_bytes += total;
         }
+    }
+
+    /// Pin objects and retain the pin until the owner frees them.
+    /// C++ contract: `PinObjectsAndWaitForFree` (local_object_manager.cc:31-108)
+    /// 1. Annotates pinned objects with owner_address and generator_id
+    /// 2. Subscription registration is done externally via the real `ray-pubsub::Subscriber`
+    ///    (the caller — typically the gRPC service handler — registers with the subscriber)
+    /// 3. Pin is released ONLY through subscription callbacks (no direct-release fallback)
+    pub fn pin_objects_and_wait_for_free(
+        &mut self,
+        object_ids: &[ObjectID],
+        owner_address: Option<ray_proto::ray::rpc::Address>,
+        generator_id: Option<Vec<u8>>,
+    ) {
+        for oid in object_ids {
+            if let Some(obj) = self.pinned_objects.get_mut(oid) {
+                obj.owner_address = owner_address.clone();
+                obj.generator_id = generator_id.clone();
+            }
+        }
+    }
+
+    /// Check if a pinned object has an active owner-retained pin.
+    /// Returns false if freed by the owner or not pinned with an owner.
+    pub fn has_pin_owner(&self, object_id: &ObjectID) -> bool {
+        self.pinned_objects
+            .get(object_id)
+            .is_some_and(|obj| obj.owner_address.is_some() && !obj.is_freed)
+    }
+
+    /// Release a pinned object because the owner freed it.
+    /// C++ contract: `ReleaseFreedObject` marks `is_freed_ = true` and unpins the object
+    /// from plasma (unless it's mid-spill, in which case the free is deferred).
+    /// Returns true if the object was found and freed.
+    ///
+    /// This is called from subscriber callbacks (eviction or owner death), matching
+    /// the C++ path where subscription_callback and owner_dead_callback both call
+    /// `ReleaseFreedObject(obj_id)`.
+    pub fn release_freed_object(&mut self, object_id: &ObjectID) -> bool {
+        if let Some(obj) = self.pinned_objects.get_mut(object_id) {
+            if obj.is_freed {
+                return false; // already freed
+            }
+            obj.is_freed = true;
+            // If not mid-spill, actually unpin immediately.
+            if !obj.is_pending_spill {
+                let size = obj.total_size();
+                self.pinned_bytes -= size;
+                self.pinned_objects.remove(object_id);
+            }
+            // If mid-spill, we leave it in the map; spill_completed will clean up.
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Release all pinned objects owned by the given worker (owner death).
+    /// C++ contract: when the owner dies, all pins held for that owner are released.
+    pub fn release_objects_for_owner(&mut self, owner_worker_id: &[u8]) -> Vec<ObjectID> {
+        let to_release: Vec<ObjectID> = self
+            .pinned_objects
+            .values()
+            .filter(|obj| {
+                !obj.is_freed
+                    && obj
+                        .owner_address
+                        .as_ref()
+                        .is_some_and(|addr| addr.worker_id == owner_worker_id)
+            })
+            .map(|obj| obj.object_id)
+            .collect();
+
+        for oid in &to_release {
+            self.release_freed_object(oid);
+        }
+        to_release
     }
 
     /// Release (unpin) an object. Called when a task completes and
@@ -234,6 +340,23 @@ impl LocalObjectManager {
         }
     }
 
+    /// Record a completed restore operation.
+    pub fn restore_completed(&mut self, bytes_restored: u64) {
+        self.total_bytes_restored
+            .fetch_add(bytes_restored, Ordering::Relaxed);
+        self.total_objects_restored.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record spill wall-clock time (additive).
+    pub fn record_spill_time(&mut self, seconds: f64) {
+        self.spill_time_total_s += seconds;
+    }
+
+    /// Record restore wall-clock time (additive).
+    pub fn record_restore_time(&mut self, seconds: f64) {
+        self.restore_time_total_s += seconds;
+    }
+
     /// Whether the object store is above the spilling threshold.
     pub fn should_spill(&self, used_fraction: f64) -> bool {
         used_fraction >= self.config.object_spilling_threshold
@@ -264,6 +387,11 @@ impl LocalObjectManager {
         self.pinned_objects.contains_key(object_id)
     }
 
+    /// Check if an object is pending deletion (matches C++ ObjectPendingDeletion).
+    pub fn is_pending_deletion(&self, object_id: &ObjectID) -> bool {
+        self.pending_deletion.contains(object_id)
+    }
+
     /// Get current stats.
     pub fn stats(&self) -> LocalObjectManagerStats {
         LocalObjectManagerStats {
@@ -273,7 +401,11 @@ impl LocalObjectManager {
             num_pending_spill: self.pending_spill.len(),
             total_bytes_spilled: self.total_bytes_spilled.load(Ordering::Relaxed),
             total_objects_spilled: self.total_objects_spilled.load(Ordering::Relaxed),
+            total_bytes_restored: self.total_bytes_restored.load(Ordering::Relaxed),
+            total_objects_restored: self.total_objects_restored.load(Ordering::Relaxed),
             num_pending_deletion: self.pending_deletion.len(),
+            spill_time_total_s: self.spill_time_total_s,
+            restore_time_total_s: self.restore_time_total_s,
         }
     }
 
@@ -718,6 +850,94 @@ mod tests {
         let batch = mgr.flush_freed_objects();
         assert_eq!(batch.len(), 10);
         assert_eq!(mgr.num_pending_deletion(), 0);
+    }
+
+    // ─── RAYLET-4 Round 5: owner-driven pin lifetime ──────────────
+
+    /// C++ contract: pin_objects_and_wait_for_free retains pin until owner free event.
+    /// Pin is released via release_freed_object (called by subscriber callbacks).
+    #[test]
+    fn test_pin_object_ids_keeps_pin_until_owner_free_event() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid = make_oid(10);
+        mgr.pin_object(oid, 100, 0);
+
+        let owner_addr = ray_proto::ray::rpc::Address {
+            worker_id: vec![42u8; 28],
+            ip_address: "127.0.0.1".into(),
+            port: 50000,
+            ..Default::default()
+        };
+        mgr.pin_objects_and_wait_for_free(&[oid], Some(owner_addr), None);
+        assert!(mgr.has_pin_owner(&oid), "pin should be active with owner");
+        assert!(mgr.is_pinned(&oid), "object should remain pinned");
+
+        // Free event from owner releases the pin (called by subscriber callback).
+        assert!(mgr.release_freed_object(&oid), "should succeed");
+        assert!(!mgr.has_pin_owner(&oid), "pin should be released after free event");
+        assert!(!mgr.is_pinned(&oid), "object should be unpinned after free");
+    }
+
+    /// C++ contract: owner free event releases retained pin.
+    #[test]
+    fn test_pin_object_ids_owner_free_event_releases_retained_pin() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid1 = make_oid(20);
+        let oid2 = make_oid(21);
+        mgr.pin_object(oid1, 100, 0);
+        mgr.pin_object(oid2, 200, 0);
+
+        let owner_addr = ray_proto::ray::rpc::Address {
+            worker_id: vec![99u8; 28],
+            ..Default::default()
+        };
+        mgr.pin_objects_and_wait_for_free(&[oid1, oid2], Some(owner_addr), None);
+
+        // Both should be pinned
+        assert_eq!(mgr.pinned_bytes(), 300);
+
+        // Free oid1 only
+        mgr.release_freed_object(&oid1);
+        assert!(!mgr.is_pinned(&oid1));
+        assert!(mgr.is_pinned(&oid2));
+        assert_eq!(mgr.pinned_bytes(), 200);
+
+        // Free oid2
+        mgr.release_freed_object(&oid2);
+        assert!(!mgr.is_pinned(&oid2));
+        assert_eq!(mgr.pinned_bytes(), 0);
+    }
+
+    /// C++ contract: owner death releases all pins for that owner.
+    #[test]
+    fn test_pin_objects_owner_death_releases_all_pins() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid1 = make_oid(30);
+        let oid2 = make_oid(31);
+        let oid3 = make_oid(32);
+        mgr.pin_object(oid1, 100, 0);
+        mgr.pin_object(oid2, 200, 0);
+        mgr.pin_object(oid3, 300, 0);
+
+        let owner1 = ray_proto::ray::rpc::Address {
+            worker_id: vec![1u8; 28],
+            ..Default::default()
+        };
+        let owner2 = ray_proto::ray::rpc::Address {
+            worker_id: vec![2u8; 28],
+            ..Default::default()
+        };
+
+        mgr.pin_objects_and_wait_for_free(&[oid1, oid2], Some(owner1), None);
+        mgr.pin_objects_and_wait_for_free(&[oid3], Some(owner2), None);
+
+        // Owner 1 dies — should release oid1 and oid2 but not oid3
+        let released = mgr.release_objects_for_owner(&vec![1u8; 28]);
+        assert_eq!(released.len(), 2);
+        assert!(!mgr.is_pinned(&oid1));
+        assert!(!mgr.is_pinned(&oid2));
+        assert!(mgr.is_pinned(&oid3));
+        assert_eq!(mgr.pinned_bytes(), 300);
     }
 
     #[test]

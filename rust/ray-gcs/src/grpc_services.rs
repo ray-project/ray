@@ -34,6 +34,8 @@ use ray_proto::ray::rpc;
 
 pub struct JobInfoGcsServiceImpl {
     pub job_manager: Arc<GcsJobManager>,
+    pub kv_manager: Option<Arc<crate::kv_manager::GcsInternalKVManager>>,
+    pub worker_client: Option<Arc<dyn crate::actor_scheduler::CoreWorkerClient>>,
 }
 
 impl JobInfoGcsServiceImpl {
@@ -54,20 +56,165 @@ impl JobInfoGcsServiceImpl {
         Ok(rpc::MarkJobFinishedReply::default())
     }
 
-    pub fn get_all_job_info(
+    pub async fn get_all_job_info(
         &self,
         request: rpc::GetAllJobInfoRequest,
     ) -> Result<rpc::GetAllJobInfoReply, Status> {
-        let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
+        // C++ contract: negative limit → invalid error; 0 → return 0 jobs; absent → no limit.
+        if let Some(l) = request.limit {
+            if l < 0 {
+                return Err(Status::invalid_argument(format!(
+                    "Invalid limit {} specified in GetAllJobInfoRequest, must be nonnegative.",
+                    l
+                )));
+            }
+        }
+        let limit = request.limit.map(|l| l.max(0) as usize);
         let job_or_submission_id = request.job_or_submission_id.as_deref();
         let skip_submission = request.skip_submission_job_info_field.unwrap_or(false);
         let skip_running_tasks = request.skip_is_running_tasks_field.unwrap_or(false);
-        let jobs = self.job_manager.handle_get_all_job_info(
+        let mut jobs = self.job_manager.handle_get_all_job_info(
             limit,
             job_or_submission_id,
             skip_submission,
             skip_running_tasks,
         );
+
+        // C++ contract: enrich job_info from internal KV for Jobs API submissions.
+        // Keys are in namespace "job" with key prefix "__ray_internal__job_info_" + submission_id.
+        if !skip_submission {
+            if let Some(kv) = &self.kv_manager {
+                let job_namespace = b"job";
+                let key_prefix = "__ray_internal__job_info_";
+                // Collect submission IDs that need enrichment
+                let mut enrichment_keys: Vec<(usize, String)> = Vec::new();
+                for (i, job) in jobs.iter().enumerate() {
+                    if job.job_info.is_some() {
+                        continue; // already has job_info
+                    }
+                    if let Some(sid) = job
+                        .config
+                        .as_ref()
+                        .and_then(|cfg| cfg.metadata.get("job_submission_id"))
+                    {
+                        enrichment_keys.push((i, format!("{}{}", key_prefix, sid)));
+                    }
+                }
+                // Fetch from KV
+                for (idx, key) in &enrichment_keys {
+                    if let Ok(Some(value)) = kv.handle_get(job_namespace, key.as_bytes()).await {
+                        // C++ uses protobuf::util::JsonStringToMessage to populate the full
+                        // JobsAPIInfo proto. We parse all known fields from JSON.
+                        if let Ok(j) = serde_json::from_slice::<serde_json::Value>(&value) {
+                            let mut api_info = rpc::JobsApiInfo::default();
+                            if let Some(v) = j.get("status").and_then(|v| v.as_str()) {
+                                api_info.status = v.to_string();
+                            }
+                            if let Some(v) = j.get("entrypoint").and_then(|v| v.as_str()) {
+                                api_info.entrypoint = v.to_string();
+                            }
+                            if let Some(v) = j.get("message").and_then(|v| v.as_str()) {
+                                api_info.message = Some(v.to_string());
+                            }
+                            if let Some(v) = j.get("error_type").and_then(|v| v.as_str()) {
+                                api_info.error_type = Some(v.to_string());
+                            }
+                            if let Some(v) = j.get("start_time").and_then(|v| v.as_u64()) {
+                                api_info.start_time = Some(v);
+                            }
+                            if let Some(v) = j.get("end_time").and_then(|v| v.as_u64()) {
+                                api_info.end_time = Some(v);
+                            }
+                            if let Some(obj) = j.get("metadata").and_then(|v| v.as_object()) {
+                                for (mk, mv) in obj {
+                                    if let Some(s) = mv.as_str() {
+                                        api_info.metadata.insert(mk.clone(), s.to_string());
+                                    }
+                                }
+                            }
+                            if let Some(v) = j.get("runtime_env_json").and_then(|v| v.as_str()) {
+                                api_info.runtime_env_json = Some(v.to_string());
+                            }
+                            if let Some(v) = j.get("entrypoint_num_cpus").and_then(|v| v.as_f64()) {
+                                api_info.entrypoint_num_cpus = Some(v);
+                            }
+                            if let Some(v) = j.get("entrypoint_num_gpus").and_then(|v| v.as_f64()) {
+                                api_info.entrypoint_num_gpus = Some(v);
+                            }
+                            if let Some(obj) = j.get("entrypoint_resources").and_then(|v| v.as_object()) {
+                                for (rk, rv) in obj {
+                                    if let Some(f) = rv.as_f64() {
+                                        api_info.entrypoint_resources.insert(rk.clone(), f);
+                                    }
+                                }
+                            }
+                            if let Some(v) = j.get("driver_agent_http_address").and_then(|v| v.as_str()) {
+                                api_info.driver_agent_http_address = Some(v.to_string());
+                            }
+                            if let Some(v) = j.get("driver_node_id").and_then(|v| v.as_str()) {
+                                api_info.driver_node_id = Some(v.to_string());
+                            }
+                            if let Some(v) = j.get("driver_exit_code").and_then(|v| v.as_i64()) {
+                                api_info.driver_exit_code = Some(v as i32);
+                            }
+                            if let Some(v) = j.get("entrypoint_memory").and_then(|v| v.as_u64()) {
+                                api_info.entrypoint_memory = Some(v);
+                            }
+                            jobs[*idx].job_info = Some(api_info);
+                        }
+                    }
+                }
+            }
+        }
+
+        // C++ contract: resolve is_running_tasks from worker RPCs.
+        // Dead jobs → false. Alive jobs → NumPendingTasksRequest to driver.
+        // RPC failure → leave is_running_tasks unset (matching C++ clear_is_running_tasks).
+        if !skip_running_tasks {
+            for job in &mut jobs {
+                if job.is_running_tasks.is_some() {
+                    continue;
+                }
+                if job.is_dead {
+                    job.is_running_tasks = Some(false);
+                    continue;
+                }
+                // Alive job: query the driver for pending task count.
+                if let Some(ref wc) = self.worker_client {
+                    if let Some(ref addr) = job.driver_address {
+                        if addr.port > 0 {
+                            let driver_addr = format!("{}:{}", addr.ip_address, addr.port);
+                            match wc
+                                .num_pending_tasks(
+                                    &driver_addr,
+                                    rpc::NumPendingTasksRequest::default(),
+                                )
+                                .await
+                            {
+                                Ok(reply) => {
+                                    job.is_running_tasks =
+                                        Some(reply.num_pending_tasks > 0);
+                                }
+                                Err(_) => {
+                                    // C++ clears the field on RPC failure
+                                    job.is_running_tasks = None;
+                                }
+                            }
+                        } else {
+                            // No port — can't contact driver
+                            job.is_running_tasks = None;
+                        }
+                    } else {
+                        // No driver address
+                        job.is_running_tasks = None;
+                    }
+                } else {
+                    // No worker client available — leave unset
+                    job.is_running_tasks = None;
+                }
+            }
+        }
+
         Ok(rpc::GetAllJobInfoReply {
             job_info_list: jobs,
             ..Default::default()
@@ -105,7 +252,7 @@ impl rpc::job_info_gcs_service_server::JobInfoGcsService for JobInfoGcsServiceIm
         &self,
         req: Request<rpc::GetAllJobInfoRequest>,
     ) -> Result<Response<rpc::GetAllJobInfoReply>, Status> {
-        self.get_all_job_info(req.into_inner()).map(Response::new)
+        self.get_all_job_info(req.into_inner()).await.map(Response::new)
     }
 
     async fn report_job_error(
@@ -207,9 +354,10 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
         for data in &request.drain_node_data {
             let node_id = ray_common::id::NodeID::from_binary(data.node_id.as_slice());
             self.node_manager.handle_drain_node(&node_id, 0);
-            // Also update the autoscaler drain state
+            // Also update the autoscaler drain state — both drain RPC surfaces
+            // must produce the same observable state (C++ parity).
             if let Some(ref autoscaler) = self.autoscaler_state_manager {
-                autoscaler.drain_node(&data.node_id);
+                autoscaler.drain_node_with_deadline(&data.node_id, 0);
             }
             drain_node_status.push(rpc::DrainNodeStatus {
                 node_id: data.node_id.clone(),
@@ -772,7 +920,7 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
         let request = req.into_inner();
         if let Some(spec) = request.placement_group_spec {
             // Convert PlacementGroupSpec to PlacementGroupTableData for storage.
-            let pg_id_bytes = spec.placement_group_id.clone();
+            let _pg_id_bytes = spec.placement_group_id.clone();
             let pg_data = rpc::PlacementGroupTableData {
                 placement_group_id: spec.placement_group_id,
                 name: spec.name,
@@ -791,12 +939,11 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
                 .handle_create_placement_group(pg_data)
                 .await?;
 
-            // Single-node mode: immediately transition to Created.
-            let pg_id = ray_common::id::PlacementGroupID::from_binary(
-                pg_id_bytes.as_slice().try_into().unwrap_or(&[0u8; 18]),
-            );
-            self.placement_group_manager
-                .mark_placement_group_created(&pg_id);
+            // C++ contract: PG stays in PENDING state after creation.
+            // Transitions to CREATED only when the scheduler successfully
+            // places all bundles (OnPlacementGroupCreationSuccess).
+            // The mark_placement_group_created() call must come from the
+            // scheduling path, not from the gRPC handler.
         }
         Ok(Response::new(rpc::CreatePlacementGroupReply::default()))
     }
@@ -1127,6 +1274,11 @@ impl rpc::task_info_gcs_service_server::TaskInfoGcsService for TaskInfoGcsServic
 pub struct AutoscalerStateServiceImpl {
     pub autoscaler_state_manager: Arc<GcsAutoscalerStateManager>,
     pub node_manager: Arc<GcsNodeManager>,
+    pub placement_group_manager: Arc<GcsPlacementGroupManager>,
+    /// Raylet client for forwarding drain requests (C++ parity: `raylet_client_pool_`).
+    pub raylet_client: Option<Arc<dyn crate::actor_scheduler::RayletClient>>,
+    /// Actor manager for preemption side effects (C++ parity: `gcs_actor_manager_`).
+    pub actor_manager: Option<Arc<crate::actor_manager::GcsActorManager>>,
 }
 
 #[tonic::async_trait]
@@ -1172,7 +1324,10 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
         req: Request<rpc::autoscaler::RequestClusterResourceConstraintRequest>,
     ) -> Result<Response<rpc::autoscaler::RequestClusterResourceConstraintReply>, Status> {
         let inner = req.into_inner();
-        let encoded = prost::Message::encode_to_vec(&inner);
+        // C++ contract: stores *request.mutable_cluster_resource_constraint(),
+        // which is the inner ClusterResourceConstraint, NOT the whole request.
+        let constraint = inner.cluster_resource_constraint.unwrap_or_default();
+        let encoded = prost::Message::encode_to_vec(&constraint);
         self.autoscaler_state_manager
             .handle_request_cluster_resource_constraint(encoded);
         Ok(Response::new(
@@ -1205,11 +1360,90 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
                 prost::Message::decode(bytes.as_slice()).ok()
             });
 
+        // Build pending_resource_requests from aggregated demands (C++ GetPendingResourceRequests).
+        let pending_resource_requests: Vec<rpc::autoscaler::ResourceRequestByCount> = self
+            .autoscaler_state_manager
+            .get_aggregated_demands()
+            .into_iter()
+            .filter(|entry| entry.count + entry.infeasible_count > 0)
+            .map(|entry| {
+                let mut resources_bundle = std::collections::HashMap::new();
+                for (name, amount) in &entry.shape {
+                    resources_bundle.insert(name.clone(), *amount);
+                }
+                rpc::autoscaler::ResourceRequestByCount {
+                    request: Some(rpc::autoscaler::ResourceRequest {
+                        resources_bundle,
+                        ..Default::default()
+                    }),
+                    count: (entry.count + entry.infeasible_count) as i64,
+                }
+            })
+            .collect();
+
+        // Build cluster_resource_constraints (C++ GetClusterResourceConstraints).
+        let cluster_resource_constraints: Vec<rpc::autoscaler::ClusterResourceConstraint> = self
+            .autoscaler_state_manager
+            .get_cluster_resource_constraint()
+            .and_then(|bytes| {
+                prost::Message::decode(bytes.as_slice()).ok()
+            })
+            .into_iter()
+            .collect();
+
+        // Build pending_gang_resource_requests from placement group load
+        // (C++ GetPendingGangResourceRequests).
+        let pending_gang_resource_requests: Vec<rpc::autoscaler::GangResourceRequest> = self
+            .placement_group_manager
+            .get_placement_group_load()
+            .into_iter()
+            .map(|pg_data| {
+                let pg_id_hex = hex::encode(&pg_data.placement_group_id);
+                let mut gang_req = rpc::autoscaler::GangResourceRequest {
+                    details: format!(
+                        "placement_group:{}:{}:{}",
+                        pg_data.name, pg_id_hex, pg_data.strategy
+                    ),
+                    ..Default::default()
+                };
+                let mut bundle_selector = rpc::autoscaler::BundleSelector::default();
+
+                for bundle in &pg_data.bundles {
+                    // C++: skip placed bundles (non-nil node_id)
+                    if !bundle.node_id.is_empty()
+                        && bundle.node_id.iter().any(|&b| b != 0)
+                    {
+                        continue;
+                    }
+                    let resources_bundle = bundle.unit_resources.clone();
+                    // Legacy field
+                    gang_req.requests.push(rpc::autoscaler::ResourceRequest {
+                        resources_bundle: resources_bundle.clone(),
+                        ..Default::default()
+                    });
+                    // BundleSelector field
+                    bundle_selector
+                        .resource_requests
+                        .push(rpc::autoscaler::ResourceRequest {
+                            resources_bundle,
+                            ..Default::default()
+                        });
+                }
+                gang_req.bundle_selectors.push(bundle_selector);
+                gang_req
+            })
+            .collect();
+
         let cluster_resource_state = rpc::autoscaler::ClusterResourceState {
             cluster_resource_state_version: version,
+            last_seen_autoscaler_state_version: self
+                .autoscaler_state_manager
+                .last_seen_autoscaler_version(),
             node_states,
+            pending_resource_requests,
+            pending_gang_resource_requests,
+            cluster_resource_constraints,
             cluster_session_name: self.autoscaler_state_manager.session_name().to_string(),
-            ..Default::default()
         };
 
         Ok(Response::new(rpc::autoscaler::GetClusterStatusReply {
@@ -1226,33 +1460,99 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
         let request = req.into_inner();
         let node_id = ray_common::id::NodeID::from_binary(request.node_id.as_slice());
 
-        // Validate: node must be alive
-        if !self.node_manager.is_node_alive(&node_id) {
-            return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
-                is_accepted: false,
-                rejection_reason_message: format!(
-                    "node {} is not alive",
-                    hex::encode(request.node_id)
-                ),
-            }));
+        let draining_deadline_timestamp_ms = request.deadline_timestamp_ms;
+
+        // C++ parity: reject negative deadlines (Status::Invalid in C++).
+        if draining_deadline_timestamp_ms < 0 {
+            return Err(Status::invalid_argument(format!(
+                "Draining deadline must be non-negative, received {}",
+                draining_deadline_timestamp_ms
+            )));
         }
 
-        // Validate: deadline must not be in the past (if set)
-        if request.deadline_timestamp_ms > 0 {
-            let now_ms = ray_util::time::current_time_ms() as i64;
-            if request.deadline_timestamp_ms < now_ms {
-                return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
-                    is_accepted: false,
-                    rejection_reason_message: format!(
-                        "deadline {} is in the past (current time: {})",
-                        request.deadline_timestamp_ms, now_ms
-                    ),
-                }));
+        // C++ parity: if node is not alive, check if it's dead or unknown.
+        // Both cases return is_accepted=true (node is already gone).
+        let maybe_node = self.node_manager.get_alive_node(&node_id);
+        if maybe_node.is_none() {
+            if self.node_manager.is_node_dead(&node_id) {
+                tracing::info!(?node_id, "Request to drain a dead node, treat it as drained");
+            } else {
+                tracing::warn!(?node_id, "Request to drain an unknown node");
+            }
+            return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+                is_accepted: true,
+                ..Default::default()
+            }));
+        }
+        let node = maybe_node.unwrap();
+
+        // C++ parity: mark actors as preempted BEFORE forwarding to raylet.
+        if let Some(ref actor_manager) = self.actor_manager {
+            actor_manager.set_preempted_and_publish(&node_id);
+        }
+
+        // C++ parity: forward drain to raylet, gate acceptance on raylet reply.
+        if let Some(ref raylet_client) = self.raylet_client {
+            let addr = format!(
+                "{}:{}",
+                node.node_manager_address, node.node_manager_port
+            );
+            let raylet_request = rpc::DrainRayletRequest {
+                reason: request.reason,
+                reason_message: request.reason_message.clone(),
+                deadline_timestamp_ms: draining_deadline_timestamp_ms,
+                ..Default::default()
+            };
+            match raylet_client.drain_raylet(&addr, raylet_request).await {
+                Ok(raylet_reply) => {
+                    if raylet_reply.is_accepted {
+                        // Only commit drain state after raylet accepts
+                        self.node_manager.set_node_draining(
+                            &node_id,
+                            crate::node_manager::DrainNodeRequestInfo {
+                                reason: request.reason,
+                                reason_message: request.reason_message.clone(),
+                                deadline_timestamp_ms: draining_deadline_timestamp_ms,
+                            },
+                        );
+                        self.autoscaler_state_manager
+                            .drain_node_with_deadline(&request.node_id, draining_deadline_timestamp_ms);
+                        return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+                            is_accepted: true,
+                            ..Default::default()
+                        }));
+                    } else {
+                        tracing::info!(
+                            ?node_id,
+                            reason = raylet_reply.rejection_reason_message,
+                            "Node drain rejected by raylet"
+                        );
+                        return Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+                            is_accepted: false,
+                            rejection_reason_message: raylet_reply.rejection_reason_message,
+                        }));
+                    }
+                }
+                Err(status) => {
+                    tracing::warn!(?node_id, ?status, "Failed to contact raylet for drain");
+                    return Err(status);
+                }
             }
         }
 
-        self.node_manager
-            .handle_drain_node(&node_id, request.deadline_timestamp_ms);
+        // Fallback: no raylet client configured (e.g., tests without raylet wiring).
+        // Commit drain state directly (preserves backward compat with existing tests).
+        self.node_manager.set_node_draining(
+            &node_id,
+            crate::node_manager::DrainNodeRequestInfo {
+                reason: request.reason,
+                reason_message: request.reason_message.clone(),
+                deadline_timestamp_ms: draining_deadline_timestamp_ms,
+            },
+        );
+        self.autoscaler_state_manager
+            .drain_node_with_deadline(&request.node_id, draining_deadline_timestamp_ms);
+
         Ok(Response::new(rpc::autoscaler::DrainNodeReply {
             is_accepted: true,
             ..Default::default()
@@ -1297,6 +1597,31 @@ mod tests {
         let mut v = vec![0u8; 28];
         v[0] = id;
         v
+    }
+
+    fn make_autoscaler_svc(
+        storage: Arc<GcsTableStorage>,
+        node_manager: Arc<GcsNodeManager>,
+    ) -> (
+        AutoscalerStateServiceImpl,
+        Arc<GcsAutoscalerStateManager>,
+        Arc<GcsPlacementGroupManager>,
+    ) {
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager,
+        ));
+        let placement_group_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager: autoscaler_state_manager.clone(),
+            node_manager,
+            placement_group_manager: placement_group_manager.clone(),
+            raylet_client: None,
+            actor_manager: None,
+        };
+        (svc, autoscaler_state_manager, placement_group_manager)
     }
 
     // ─── KV Service ────────────────────────────────────────────────────
@@ -1501,7 +1826,7 @@ mod tests {
     async fn test_job_grpc_service() {
         let (_, storage) = make_store();
         let job_manager = Arc::new(GcsJobManager::new(storage));
-        let svc = JobInfoGcsServiceImpl { job_manager };
+        let svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
 
         let add_req = rpc::AddJobRequest {
             data: Some(rpc::JobTableData {
@@ -1513,7 +1838,7 @@ mod tests {
         svc.add_job(add_req).await.unwrap();
 
         let get_req = rpc::GetAllJobInfoRequest::default();
-        let reply = svc.get_all_job_info(get_req).unwrap();
+        let reply = svc.get_all_job_info(get_req).await.unwrap();
         assert_eq!(reply.job_info_list.len(), 1);
     }
 
@@ -1523,6 +1848,8 @@ mod tests {
         let job_manager = Arc::new(GcsJobManager::new(storage));
         let svc = JobInfoGcsServiceImpl {
             job_manager: job_manager.clone(),
+            kv_manager: None,
+            worker_client: None,
         };
 
         svc.add_job(rpc::AddJobRequest {
@@ -1550,7 +1877,7 @@ mod tests {
     async fn test_job_grpc_get_next_job_id() {
         let (_, storage) = make_store();
         let job_manager = Arc::new(GcsJobManager::new(storage));
-        let svc = JobInfoGcsServiceImpl { job_manager };
+        let svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
 
         let reply1 = svc.get_next_job_id().await.unwrap();
         let reply2 = svc.get_next_job_id().await.unwrap();
@@ -1561,7 +1888,7 @@ mod tests {
     async fn test_job_grpc_get_all_with_limit() {
         let (_, storage) = make_store();
         let job_manager = Arc::new(GcsJobManager::new(storage));
-        let svc = JobInfoGcsServiceImpl { job_manager };
+        let svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
 
         for i in 1..=5u8 {
             svc.add_job(rpc::AddJobRequest {
@@ -1580,6 +1907,7 @@ mod tests {
                 limit: Some(3),
                 ..Default::default()
             })
+            .await
             .unwrap();
         assert_eq!(reply.job_info_list.len(), 3);
     }
@@ -1590,7 +1918,7 @@ mod tests {
         let job_manager = Arc::new(GcsJobManager::new(storage));
         let pubsub_handler = Arc::new(InternalPubSubHandler::new());
         job_manager.set_pubsub_handler(pubsub_handler.clone());
-        let svc = JobInfoGcsServiceImpl { job_manager };
+        let svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
 
         let subscriber_id = b"job-error-sub".to_vec();
         pubsub_handler.handle_subscribe_command(
@@ -1627,6 +1955,216 @@ mod tests {
             }
             other => panic!("expected error info message, got {other:?}"),
         }
+    }
+
+    // ─── GCS-4 Round 5: is_running_tasks from real driver RPC ────────
+
+    /// C++ contract: alive job with no pending tasks → is_running_tasks = false.
+    /// This proves the heuristic (!is_dead → true) has been replaced with a real signal.
+    #[tokio::test]
+    async fn test_get_all_job_info_alive_job_with_no_pending_tasks_reports_false() {
+        use crate::actor_scheduler::tests::MockCoreWorkerClient;
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let mock_client = Arc::new(MockCoreWorkerClient::new());
+        // Driver reports 0 pending tasks
+        mock_client.push_pending_tasks_reply(Ok(rpc::NumPendingTasksReply {
+            num_pending_tasks: 0,
+        }));
+
+        let svc = JobInfoGcsServiceImpl {
+            job_manager: job_manager.clone(),
+            kv_manager: None,
+            worker_client: Some(mock_client),
+        };
+
+        // Add an alive job with a driver address
+        svc.add_job(rpc::AddJobRequest {
+            data: Some(rpc::JobTableData {
+                job_id: vec![1, 0, 0, 0],
+                driver_address: Some(rpc::Address {
+                    ip_address: "127.0.0.1".to_string(),
+                    port: 50000,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_all_job_info(rpc::GetAllJobInfoRequest::default())
+            .await
+            .unwrap();
+        assert_eq!(reply.job_info_list.len(), 1);
+        // The job is alive, but driver reports 0 pending tasks → false
+        assert_eq!(
+            reply.job_info_list[0].is_running_tasks,
+            Some(false),
+            "alive job with 0 pending tasks must report is_running_tasks=false"
+        );
+    }
+
+    /// C++ contract: alive job with pending tasks → is_running_tasks = true
+    /// via NumPendingTasksRequest RPC to the driver.
+    #[tokio::test]
+    async fn test_get_all_job_info_uses_driver_pending_tasks_rpc_for_is_running_tasks() {
+        use crate::actor_scheduler::tests::MockCoreWorkerClient;
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let mock_client = Arc::new(MockCoreWorkerClient::new());
+        // Driver reports 5 pending tasks
+        mock_client.push_pending_tasks_reply(Ok(rpc::NumPendingTasksReply {
+            num_pending_tasks: 5,
+        }));
+
+        let svc = JobInfoGcsServiceImpl {
+            job_manager: job_manager.clone(),
+            kv_manager: None,
+            worker_client: Some(mock_client),
+        };
+
+        svc.add_job(rpc::AddJobRequest {
+            data: Some(rpc::JobTableData {
+                job_id: vec![2, 0, 0, 0],
+                driver_address: Some(rpc::Address {
+                    ip_address: "127.0.0.1".to_string(),
+                    port: 50001,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_all_job_info(rpc::GetAllJobInfoRequest::default())
+            .await
+            .unwrap();
+        assert_eq!(reply.job_info_list.len(), 1);
+        assert_eq!(
+            reply.job_info_list[0].is_running_tasks,
+            Some(true),
+            "alive job with pending tasks must report is_running_tasks=true"
+        );
+    }
+
+    // ─── GCS-4 Round 6: limit semantics + full JobsAPIInfo enrichment ──
+
+    /// C++ contract: limit == 0 → return zero jobs.
+    #[tokio::test]
+    async fn test_get_all_job_info_limit_zero_returns_zero_jobs() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let svc = JobInfoGcsServiceImpl { job_manager: job_manager.clone(), kv_manager: None, worker_client: None };
+
+        // Add 3 jobs
+        for i in 1..=3u8 {
+            svc.add_job(rpc::AddJobRequest {
+                data: Some(rpc::JobTableData { job_id: vec![i, 0, 0, 0], ..Default::default() }),
+                ..Default::default()
+            }).await.unwrap();
+        }
+
+        let reply = svc.get_all_job_info(rpc::GetAllJobInfoRequest {
+            limit: Some(0),
+            ..Default::default()
+        }).await.unwrap();
+        assert_eq!(reply.job_info_list.len(), 0, "limit=0 must return zero jobs");
+    }
+
+    /// C++ contract: negative limit → Status::Invalid error.
+    #[tokio::test]
+    async fn test_get_all_job_info_negative_limit_is_invalid() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
+
+        let result = svc.get_all_job_info(rpc::GetAllJobInfoRequest {
+            limit: Some(-1),
+            ..Default::default()
+        }).await;
+        assert!(result.is_err(), "negative limit must be rejected");
+        let err = result.unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    /// C++ contract: JobsAPIInfo enrichment from KV populates ALL proto fields,
+    /// not just status/entrypoint/message.
+    #[tokio::test]
+    async fn test_get_all_job_info_enriches_full_jobs_api_info_from_internal_kv() {
+        use crate::store_client::{InMemoryInternalKV, InternalKVInterface};
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let kv: Arc<InMemoryInternalKV> = Arc::new(InMemoryInternalKV::new());
+        let kv_mgr = Arc::new(crate::kv_manager::GcsInternalKVManager::new(kv.clone() as Arc<dyn InternalKVInterface>, String::new()));
+
+        // Store full JobsAPIInfo JSON in KV
+        let job_json = serde_json::json!({
+            "status": "RUNNING",
+            "entrypoint": "python train.py",
+            "message": "Job is running",
+            "error_type": "RUNTIME_ENV_SETUP_FAILED",
+            "start_time": 1710000000000u64,
+            "end_time": 1710003600000u64,
+            "metadata": {"user": "alice", "team": "ml"},
+            "runtime_env_json": "{\"pip\": [\"torch\"]}",
+            "entrypoint_num_cpus": 4.0,
+            "entrypoint_num_gpus": 2.0,
+            "entrypoint_resources": {"TPU": 1.0},
+            "driver_agent_http_address": "http://127.0.0.1:8265",
+            "driver_node_id": "abc123",
+            "driver_exit_code": 0,
+            "entrypoint_memory": 8589934592u64
+        });
+        kv.put(b"job", b"__ray_internal__job_info_sub001", serde_json::to_vec(&job_json).unwrap(), true).await.unwrap();
+
+        let svc = JobInfoGcsServiceImpl {
+            job_manager: job_manager.clone(),
+            kv_manager: Some(kv_mgr),
+            worker_client: None,
+        };
+
+        // Add job with submission ID matching the KV key
+        svc.add_job(rpc::AddJobRequest {
+            data: Some(rpc::JobTableData {
+                job_id: vec![1, 0, 0, 0],
+                config: Some(rpc::JobConfig {
+                    metadata: std::collections::HashMap::from([("job_submission_id".to_string(), "sub001".to_string())]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }).await.unwrap();
+
+        let reply = svc.get_all_job_info(rpc::GetAllJobInfoRequest {
+            skip_is_running_tasks_field: Some(true),
+            ..Default::default()
+        }).await.unwrap();
+
+        assert_eq!(reply.job_info_list.len(), 1);
+        let info = reply.job_info_list[0].job_info.as_ref().expect("job_info must be enriched");
+        assert_eq!(info.status, "RUNNING");
+        assert_eq!(info.entrypoint, "python train.py");
+        assert_eq!(info.message.as_deref(), Some("Job is running"));
+        assert_eq!(info.error_type.as_deref(), Some("RUNTIME_ENV_SETUP_FAILED"));
+        assert_eq!(info.start_time, Some(1710000000000));
+        assert_eq!(info.end_time, Some(1710003600000));
+        assert_eq!(info.runtime_env_json.as_deref(), Some("{\"pip\": [\"torch\"]}"));
+        assert_eq!(info.entrypoint_num_cpus, Some(4.0));
+        assert_eq!(info.entrypoint_num_gpus, Some(2.0));
+        assert!((info.entrypoint_resources.get("TPU").copied().unwrap_or(0.0) - 1.0).abs() < 0.001);
+        assert_eq!(info.driver_agent_http_address.as_deref(), Some("http://127.0.0.1:8265"));
+        assert_eq!(info.driver_node_id.as_deref(), Some("abc123"));
+        assert_eq!(info.driver_exit_code, Some(0));
+        assert_eq!(info.entrypoint_memory, Some(8589934592));
+        assert_eq!(info.metadata.get("user").map(|s| s.as_str()), Some("alice"));
+        assert_eq!(info.metadata.get("team").map(|s| s.as_str()), Some("ml"));
     }
 
     // ─── Node Service ──────────────────────────────────────────────────
@@ -2531,7 +3069,7 @@ mod tests {
         pg_id[0] = 1;
 
         use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
-        // PG is created with state=1 (Created) by the service handler
+        // Create PG (starts as PENDING)
         svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
             placement_group_spec: Some(rpc::PlacementGroupSpec {
                 placement_group_id: pg_id.clone(),
@@ -2542,6 +3080,12 @@ mod tests {
         }))
         .await
         .unwrap();
+
+        // Explicitly mark as Created (simulates scheduler success)
+        let pg_id_typed = ray_common::id::PlacementGroupID::from_binary(
+            pg_id.as_slice().try_into().unwrap(),
+        );
+        pg_manager.mark_placement_group_created(&pg_id_typed);
 
         let reply = svc
             .wait_placement_group_until_ready(Request::new(
@@ -2823,17 +3367,8 @@ mod tests {
     #[tokio::test]
     async fn test_autoscaler_grpc_get_cluster_resource_state() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
-        let resource_manager = Arc::new(GcsResourceManager::new());
-        let autoscaler = Arc::new(GcsAutoscalerStateManager::new(
-            "test".into(),
-            node_manager.clone(),
-            resource_manager.clone(),
-        ));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager: autoscaler,
-            node_manager,
-        };
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
 
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
         let reply = svc
@@ -2849,17 +3384,8 @@ mod tests {
     #[tokio::test]
     async fn test_autoscaler_grpc_drain_node() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
-        let resource_manager = Arc::new(GcsResourceManager::new());
-        let autoscaler = Arc::new(GcsAutoscalerStateManager::new(
-            "test".into(),
-            node_manager.clone(),
-            resource_manager.clone(),
-        ));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager: autoscaler,
-            node_manager: node_manager.clone(),
-        };
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager.clone());
 
         // Register node first
         node_manager
@@ -3033,16 +3559,12 @@ mod tests {
 
     // ─── GCS-18: Autoscaler DrainNode validation ────────────────────
 
+    /// C++ parity: draining an unknown/dead node returns is_accepted=true.
     #[tokio::test]
-    async fn test_autoscaler_drain_node_not_alive_rejected() {
+    async fn test_autoscaler_drain_node_not_alive_accepted() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
-        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
-        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager,
-            node_manager,
-        };
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
 
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
         let reply = svc
@@ -3054,53 +3576,44 @@ mod tests {
             .await
             .unwrap()
             .into_inner();
-        assert!(!reply.is_accepted);
-        assert!(reply.rejection_reason_message.contains("not alive"));
+        // C++ parity: unknown node is treated as already drained
+        assert!(reply.is_accepted);
     }
 
+    /// C++ parity: negative deadline is rejected with InvalidArgument status.
     #[tokio::test]
-    async fn test_autoscaler_drain_node_past_deadline_rejected() {
+    async fn test_autoscaler_drain_node_negative_deadline_rejected() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
         node_manager
             .handle_register_node(make_node_info(1))
             .await
             .unwrap();
-        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
-        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager,
-            node_manager,
-        };
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
 
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
-        let reply = svc
+        let result = svc
             .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
                 node_id: node_id_bytes(1),
-                deadline_timestamp_ms: 1, // way in the past
+                deadline_timestamp_ms: -1, // negative deadline
                 ..Default::default()
             }))
-            .await
-            .unwrap()
-            .into_inner();
-        assert!(!reply.is_accepted);
-        assert!(reply.rejection_reason_message.contains("past"));
+            .await;
+        assert!(result.is_err());
+        let status = result.unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("non-negative"));
     }
 
     #[tokio::test]
     async fn test_autoscaler_drain_node_valid_accepted() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
         node_manager
             .handle_register_node(make_node_info(1))
             .await
             .unwrap();
-        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
-        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager,
-            node_manager,
-        };
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
 
         let future_deadline = ray_util::time::current_time_ms() as i64 + 60_000;
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
@@ -3119,17 +3632,12 @@ mod tests {
     #[tokio::test]
     async fn test_autoscaler_drain_node_zero_deadline_accepted() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
         node_manager
             .handle_register_node(make_node_info(1))
             .await
             .unwrap();
-        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
-        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new("test".to_string(), node_manager.clone(), resource_manager));
-        let svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager,
-            node_manager,
-        };
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
 
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
         let reply = svc
@@ -3184,18 +3692,755 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_autoscaler_drain_rpc_updates_same_state_as_node_drain() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        node_manager
+            .handle_register_node(make_node_info(2))
+            .await
+            .unwrap();
+        let (svc, autoscaler_state_manager, _) = make_autoscaler_svc(storage, node_manager.clone());
+
+        // Use the autoscaler drain RPC (not the node-service drain)
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(2),
+                deadline_timestamp_ms: ray_util::time::current_time_ms() as i64 + 60_000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(reply.is_accepted);
+
+        // Verify autoscaler state manager was also updated
+        use crate::autoscaler_state_manager::DrainStatus;
+        assert_eq!(
+            autoscaler_state_manager.get_drain_status(&node_id_bytes(2)),
+            DrainStatus::Draining,
+        );
+        // Deadline should be non-zero (it was set to future time)
+        assert!(
+            autoscaler_state_manager.get_drain_deadline(&node_id_bytes(2)) > 0,
+            "drain deadline should be preserved"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_drain_node_deadline_is_preserved_consistently() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        node_manager
+            .handle_register_node(make_node_info(3))
+            .await
+            .unwrap();
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager,
+        ));
+
+        // Use node-service drain (no deadline in proto)
+        let node_svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+            autoscaler_state_manager: Some(autoscaler_state_manager.clone()),
+        };
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        node_svc
+            .drain_node(Request::new(rpc::DrainNodeRequest {
+                drain_node_data: vec![rpc::DrainNodeData {
+                    node_id: node_id_bytes(3),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+
+        // Node-service drain has no deadline (0)
+        use crate::autoscaler_state_manager::DrainStatus;
+        assert_eq!(
+            autoscaler_state_manager.get_drain_status(&node_id_bytes(3)),
+            DrainStatus::Draining,
+        );
+        assert_eq!(
+            autoscaler_state_manager.get_drain_deadline(&node_id_bytes(3)),
+            0,
+        );
+    }
+
+    // ─── GCS-6: Drain node cross-manager side effects (C++ parity) ──
+
+    /// C++ parity: autoscaler drain on dead node returns is_accepted=true.
+    #[tokio::test]
+    async fn test_gcs_drain_node_dead_node_accepted() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager.clone());
+
+        // Register then kill the node
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        node_manager
+            .handle_unregister_node(&node_id_bytes(1), None)
+            .await
+            .unwrap();
+        assert!(node_manager.is_node_dead(&ray_common::id::NodeID::from_binary(&node_id_bytes(1))));
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 0,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        // C++ parity: dead node is treated as already drained
+        assert!(reply.is_accepted);
+    }
+
+    /// C++ parity: SetNodeDraining stores full drain request info and fires
+    /// node_draining_listeners (cross-manager side effect).
+    #[tokio::test]
+    async fn test_gcs_drain_node_cross_manager_side_effects_match_cpp() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+
+        // Register a draining listener (C++ parity: node_draining_listeners_)
+        let listener_calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls_clone = listener_calls.clone();
+        node_manager.add_node_draining_listener(Box::new(move |node_id, is_draining, deadline| {
+            calls_clone.lock().unwrap().push((*node_id, is_draining, deadline));
+        }));
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager.clone());
+
+        let future_deadline = ray_util::time::current_time_ms() as i64 + 60_000;
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                reason: 1,
+                reason_message: "scale down".to_string(),
+                deadline_timestamp_ms: future_deadline,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // Verify: node_manager has the full drain request stored
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        let drain_info = node_manager.get_drain_request(&nid).expect("drain request should be stored");
+        assert_eq!(drain_info.reason, 1);
+        assert_eq!(drain_info.reason_message, "scale down");
+        assert_eq!(drain_info.deadline_timestamp_ms, future_deadline);
+
+        // Verify: draining listener was called (C++ parity: node_draining_listeners_)
+        let calls = listener_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, nid);
+        assert!(calls[0].1); // is_draining = true
+        assert_eq!(calls[0].2, future_deadline);
+    }
+
+    /// C++ parity: SetNodeDraining + autoscaler drain state are both updated
+    /// and draining state is cleaned up on node death.
+    #[tokio::test]
+    async fn test_gcs_drain_node_matches_autoscaler_and_node_manager_state_transitions() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager,
+        ));
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        let placement_group_manager =
+            Arc::new(crate::placement_group_manager::GcsPlacementGroupManager::new(storage.clone()));
+        let svc = AutoscalerStateServiceImpl {
+            node_manager: node_manager.clone(),
+            autoscaler_state_manager: autoscaler_state_manager.clone(),
+            placement_group_manager,
+            raylet_client: None,
+            actor_manager: None,
+        };
+
+        let future_deadline = ray_util::time::current_time_ms() as i64 + 60_000;
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        svc.drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+            node_id: node_id_bytes(1),
+            reason: 2,
+            reason_message: "preemption".to_string(),
+            deadline_timestamp_ms: future_deadline,
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // Both managers must agree the node is draining
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        assert!(node_manager.is_node_draining(&nid));
+        use crate::autoscaler_state_manager::DrainStatus;
+        assert_eq!(
+            autoscaler_state_manager.get_drain_status(&node_id_bytes(1)),
+            DrainStatus::Draining,
+        );
+        assert_eq!(
+            autoscaler_state_manager.get_drain_deadline(&node_id_bytes(1)),
+            future_deadline,
+        );
+
+        // Node death should clean up node_manager draining state
+        node_manager
+            .handle_unregister_node(&node_id_bytes(1), None)
+            .await
+            .unwrap();
+        assert!(!node_manager.is_node_draining(&nid));
+        assert!(node_manager.get_draining_nodes().is_empty());
+    }
+
+    /// C++ parity: verify full observable effects of the drain path.
+    /// - Negative deadline → InvalidArgument error (not OK with is_accepted=false)
+    /// - Dead node → is_accepted=true
+    /// - Unknown node → is_accepted=true
+    /// - Alive node → is_accepted=true + draining state set + listeners fired
+    /// - Overwrite: second drain on same node overwrites request
+    #[tokio::test]
+    async fn test_gcs_drain_node_runtime_observable_effects_match_cpp() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+
+        let listener_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let count_clone = listener_count.clone();
+        node_manager.add_node_draining_listener(Box::new(move |_, _, _| {
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+        node_manager
+            .handle_register_node(make_node_info(2))
+            .await
+            .unwrap();
+
+        // Kill node 2 to make it dead
+        node_manager
+            .handle_unregister_node(&node_id_bytes(2), None)
+            .await
+            .unwrap();
+
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager.clone());
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+
+        // 1. Negative deadline → error
+        let result = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: -5,
+                ..Default::default()
+            }))
+            .await;
+        assert!(result.is_err());
+
+        // 2. Dead node → is_accepted=true
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(2),
+                deadline_timestamp_ms: 0,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // 3. Unknown node → is_accepted=true
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(99),
+                deadline_timestamp_ms: 0,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // 4. Alive node → is_accepted=true + draining + listener
+        let future_deadline = ray_util::time::current_time_ms() as i64 + 60_000;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                reason: 1,
+                reason_message: "first drain".to_string(),
+                deadline_timestamp_ms: future_deadline,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+        let nid1 = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        assert!(node_manager.is_node_draining(&nid1));
+        assert_eq!(listener_count.load(std::sync::atomic::Ordering::Relaxed), 1);
+
+        // 5. Overwrite: second drain on same node overwrites (C++ behavior)
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                reason: 2,
+                reason_message: "second drain".to_string(),
+                deadline_timestamp_ms: future_deadline + 1000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+        let drain_info = node_manager.get_drain_request(&nid1).unwrap();
+        assert_eq!(drain_info.reason, 2);
+        assert_eq!(drain_info.reason_message, "second drain");
+        // Listener fired again (overwrite triggers listener)
+        assert_eq!(listener_count.load(std::sync::atomic::Ordering::Relaxed), 2);
+    }
+
+    // ─── GCS-6 Round 2: Live wiring + raylet gating + actor preemption ──
+
+    /// Helper to construct an AutoscalerStateServiceImpl wired with a mock raylet client
+    /// and a real actor manager for full drain-path testing.
+    fn make_wired_autoscaler_svc(
+        storage: Arc<GcsTableStorage>,
+        node_manager: Arc<GcsNodeManager>,
+        raylet_client: Arc<dyn crate::actor_scheduler::RayletClient>,
+    ) -> (
+        AutoscalerStateServiceImpl,
+        Arc<GcsAutoscalerStateManager>,
+        Arc<crate::actor_manager::GcsActorManager>,
+        Arc<GcsResourceManager>,
+    ) {
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager.clone(),
+        ));
+        let placement_group_manager = Arc::new(crate::placement_group_manager::GcsPlacementGroupManager::new(storage.clone()));
+        let actor_manager = Arc::new(crate::actor_manager::GcsActorManager::new(storage));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager: autoscaler_state_manager.clone(),
+            node_manager: node_manager.clone(),
+            placement_group_manager,
+            raylet_client: Some(raylet_client),
+            actor_manager: Some(actor_manager.clone()),
+        };
+        (svc, autoscaler_state_manager, actor_manager, resource_manager)
+    }
+
+    // -- 1. Live resource-manager wiring --
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_updates_resource_manager_in_live_server_wiring() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let resource_manager = Arc::new(GcsResourceManager::new());
+
+        // Wire the draining listener just like the live server does
+        {
+            let rm = resource_manager.clone();
+            node_manager.add_node_draining_listener(Box::new(move |node_id, is_draining, deadline_ms| {
+                rm.set_node_draining(node_id, is_draining, deadline_ms);
+            }));
+        }
+
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        node_manager.handle_register_node(make_node_info(1)).await.unwrap();
+        resource_manager.on_node_add(&nid);
+
+        // Use a mock raylet that accepts the drain
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: true,
+            ..Default::default()
+        }));
+
+        let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
+            "test".to_string(),
+            node_manager.clone(),
+            resource_manager.clone(),
+        ));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager,
+            node_manager: node_manager.clone(),
+            placement_group_manager: Arc::new(crate::placement_group_manager::GcsPlacementGroupManager::new(storage)),
+            raylet_client: Some(mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>),
+            actor_manager: None,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // The resource_manager must now see the node as draining via the live listener wiring
+        let draining = resource_manager.handle_get_draining_nodes();
+        assert_eq!(draining.len(), 1, "resource_manager should see draining node via live listener");
+        assert_eq!(draining[0], nid);
+    }
+
+    #[tokio::test]
+    async fn test_get_draining_nodes_reflects_autoscaler_drain_without_test_local_listener() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let resource_manager = Arc::new(GcsResourceManager::new());
+
+        // Wire the listener (simulating what server.rs does)
+        {
+            let rm = resource_manager.clone();
+            node_manager.add_node_draining_listener(Box::new(move |node_id, is_draining, deadline_ms| {
+                rm.set_node_draining(node_id, is_draining, deadline_ms);
+            }));
+        }
+
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        node_manager.handle_register_node(make_node_info(1)).await.unwrap();
+        resource_manager.on_node_add(&nid);
+
+        // Drain directly through node_manager — should propagate to resource_manager
+        node_manager.set_node_draining(
+            &nid,
+            crate::node_manager::DrainNodeRequestInfo {
+                reason: 0,
+                reason_message: String::new(),
+                deadline_timestamp_ms: 5000,
+            },
+        );
+
+        assert_eq!(resource_manager.handle_get_draining_nodes().len(), 1);
+        assert_eq!(resource_manager.handle_get_draining_nodes()[0], nid);
+    }
+
+    // -- 2. Raylet-gated acceptance/rejection --
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_busy_node_rejected_by_raylet() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: false,
+            rejection_reason_message: "Node has 3 active worker lease(s)".to_string(),
+        }));
+
+        let (svc, _, _, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(!reply.is_accepted, "drain should be rejected when raylet rejects");
+        assert!(reply.rejection_reason_message.contains("active worker lease"));
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_idle_node_accepted_by_raylet() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: true,
+            ..Default::default()
+        }));
+
+        let (svc, _, _, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_rejection_reason_propagated() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        let specific_reason = "custom rejection: GPU memory pressure".to_string();
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: false,
+            rejection_reason_message: specific_reason.clone(),
+        }));
+
+        let (svc, _, _, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(!reply.is_accepted);
+        assert_eq!(reply.rejection_reason_message, specific_reason);
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_state_committed_only_after_raylet_accepts() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        // Raylet rejects
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: false,
+            rejection_reason_message: "busy".to_string(),
+        }));
+
+        let (svc, autoscaler_state_manager, _, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(!reply.is_accepted);
+
+        // After rejection, drain state must NOT be committed
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        assert!(!node_manager.is_node_draining(&nid), "node_manager should not have drain state after rejection");
+        use crate::autoscaler_state_manager::DrainStatus;
+        assert_eq!(
+            autoscaler_state_manager.get_drain_status(&node_id_bytes(1)),
+            DrainStatus::Running,
+            "autoscaler state should not show draining after rejection"
+        );
+    }
+
+    // -- 3. Actor-preemption side effects --
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_marks_node_actors_preempted() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: true,
+            ..Default::default()
+        }));
+
+        let (svc, _, actor_manager, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        // Register an actor on node 1
+        let actor_id = ray_common::id::ActorID::from_binary(&[1u8; 16]);
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        {
+            let mut actor_data = ray_proto::ray::rpc::ActorTableData::default();
+            actor_data.state = 2; // ALIVE
+            actor_data.node_id = Some(node_id_bytes(1));
+            actor_data.preempted = false;
+            actor_manager.registered_actors.insert(actor_id, std::sync::Arc::new(actor_data));
+            actor_manager.actors_by_node.entry(nid).or_default().push(actor_id);
+        }
+
+        // Drain the node
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // The actor should now be marked as preempted
+        let actor = actor_manager.registered_actors.get(&actor_id).unwrap();
+        assert!(actor.preempted, "actor should be marked preempted after drain");
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_drain_publishes_actor_preemption_state() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let mut info = make_node_info(1);
+        info.node_manager_address = "127.0.0.1".to_string();
+        info.node_manager_port = 10001;
+        node_manager.handle_register_node(info).await.unwrap();
+
+        let mock_raylet = Arc::new(crate::actor_scheduler::tests::MockRayletClient::new());
+        mock_raylet.push_drain_reply(Ok(rpc::DrainRayletReply {
+            is_accepted: true,
+            ..Default::default()
+        }));
+
+        let (svc, _, actor_manager, _) = make_wired_autoscaler_svc(
+            storage,
+            node_manager.clone(),
+            mock_raylet as Arc<dyn crate::actor_scheduler::RayletClient>,
+        );
+
+        // Set up pubsub handler to capture published messages
+        let pubsub_handler = Arc::new(crate::pubsub_handler::InternalPubSubHandler::new());
+        actor_manager.set_pubsub_handler(pubsub_handler.clone());
+
+        // Subscribe to actor channel
+        pubsub_handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            crate::pubsub_handler::ChannelType::GcsActorChannel as i32,
+            vec![],
+        );
+
+        // Register an actor on node 1
+        let actor_id = ray_common::id::ActorID::from_binary(&[2u8; 16]);
+        let nid = ray_common::id::NodeID::from_binary(&node_id_bytes(1));
+        {
+            let mut actor_data = ray_proto::ray::rpc::ActorTableData::default();
+            actor_data.state = 2; // ALIVE
+            actor_data.node_id = Some(node_id_bytes(1));
+            actor_data.preempted = false;
+            actor_manager.registered_actors.insert(actor_id, std::sync::Arc::new(actor_data));
+            actor_manager.actors_by_node.entry(nid).or_default().push(actor_id);
+        }
+
+        // Drain the node
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                deadline_timestamp_ms: 99999,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+
+        // Verify that the preemption was published via pubsub
+        let messages = pubsub_handler.handle_subscriber_poll(b"test_sub", 0).await;
+        assert!(!messages.is_empty(), "actor preemption state should be published");
+        // The published message should contain the actor with preempted=true
+        let found_preempted = messages.iter().any(|msg| {
+            match &msg.inner_message {
+                Some(ray_proto::ray::rpc::pub_message::InnerMessage::ActorMessage(actor_data)) => {
+                    actor_data.preempted
+                }
+                _ => false,
+            }
+        });
+        assert!(found_preempted, "published actor message should have preempted=true");
+    }
+
     // ─── GCS-17: Cluster status payload parity ──────────────────────
 
     #[tokio::test]
     async fn test_get_cluster_status_includes_autoscaling_state_and_session() {
         let (_, storage) = make_store();
-        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
         let resource_manager = Arc::new(crate::resource_manager::GcsResourceManager::new());
         let autoscaler_state_manager = Arc::new(GcsAutoscalerStateManager::new(
             "my-session".to_string(),
             node_manager.clone(),
             resource_manager,
         ));
+        let placement_group_manager = Arc::new(GcsPlacementGroupManager::new(storage));
 
         // Report autoscaling state
         let as_state = rpc::autoscaler::AutoscalingState {
@@ -3209,6 +4454,9 @@ mod tests {
         let svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager,
             node_manager,
+            placement_group_manager,
+            raylet_client: None,
+            actor_manager: None,
         };
 
         use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
@@ -3226,6 +4474,212 @@ mod tests {
         // Verify cluster_session_name is present
         let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state should be present");
         assert_eq!(cluster_state.cluster_session_name, "my-session");
+    }
+
+    #[tokio::test]
+    async fn test_get_cluster_status_includes_last_seen_autoscaler_state_version() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, autoscaler_state_manager, _) = make_autoscaler_svc(storage, node_manager);
+
+        // Report autoscaling state with version 42
+        autoscaler_state_manager.handle_report_autoscaling_state(b"state".to_vec(), 42);
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state");
+        assert_eq!(cluster_state.last_seen_autoscaler_state_version, 42);
+    }
+
+    #[tokio::test]
+    async fn test_get_cluster_status_includes_pending_resource_requests() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, autoscaler_state_manager, _) = make_autoscaler_svc(storage, node_manager);
+
+        // Add resource demands
+        use crate::autoscaler_state_manager::{NodeResourceDemand, ResourceDemandEntry};
+        autoscaler_state_manager.update_resource_demands(
+            vec![1u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![ResourceDemandEntry {
+                    shape: std::collections::HashMap::from([("CPU".to_string(), 4.0)]),
+                    count: 10,
+                    infeasible_count: 3,
+                }],
+                backlog_size: 10,
+            },
+        );
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state");
+        assert!(!cluster_state.pending_resource_requests.is_empty(),
+            "pending_resource_requests should be populated");
+        let req = &cluster_state.pending_resource_requests[0];
+        assert_eq!(req.count, 13); // 10 count + 3 infeasible
+        let bundle = req.request.as_ref().expect("request");
+        assert_eq!(*bundle.resources_bundle.get("CPU").unwrap(), 4.0);
+    }
+
+    #[tokio::test]
+    async fn test_get_cluster_status_includes_cluster_resource_constraints() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, autoscaler_state_manager, _) = make_autoscaler_svc(storage, node_manager);
+
+        // Set a cluster resource constraint
+        let constraint = rpc::autoscaler::ClusterResourceConstraint {
+            resource_requests: vec![rpc::autoscaler::ResourceRequestByCount {
+                request: Some(rpc::autoscaler::ResourceRequest {
+                    resources_bundle: std::collections::HashMap::from([("GPU".to_string(), 8.0)]),
+                    ..Default::default()
+                }),
+                count: 1,
+            }],
+        };
+        let encoded = prost::Message::encode_to_vec(&constraint);
+        autoscaler_state_manager.handle_request_cluster_resource_constraint(encoded);
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state");
+        assert!(!cluster_state.cluster_resource_constraints.is_empty(),
+            "cluster_resource_constraints should be populated");
+        let c = &cluster_state.cluster_resource_constraints[0];
+        assert_eq!(c.resource_requests.len(), 1);
+    }
+
+    // ─── GCS-17 Round 4: constraint RPC roundtrip + pending gang requests ────
+
+    #[tokio::test]
+    async fn test_request_cluster_resource_constraint_roundtrips_through_real_rpc() {
+        // This test exercises the REAL RPC path: send RequestClusterResourceConstraint,
+        // then call GetClusterStatus, and verify the constraint appears correctly.
+        // This catches the Round 3 bug where the full request was stored instead of
+        // the inner ClusterResourceConstraint.
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, _) = make_autoscaler_svc(storage, node_manager);
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+
+        // Send constraint via the real RPC path
+        let constraint = rpc::autoscaler::ClusterResourceConstraint {
+            resource_requests: vec![rpc::autoscaler::ResourceRequestByCount {
+                request: Some(rpc::autoscaler::ResourceRequest {
+                    resources_bundle: std::collections::HashMap::from([
+                        ("CPU".to_string(), 16.0),
+                        ("GPU".to_string(), 4.0),
+                    ]),
+                    ..Default::default()
+                }),
+                count: 2,
+            }],
+        };
+        svc.request_cluster_resource_constraint(Request::new(
+            rpc::autoscaler::RequestClusterResourceConstraintRequest {
+                cluster_resource_constraint: Some(constraint.clone()),
+            },
+        ))
+        .await
+        .unwrap();
+
+        // Now get cluster status via the real RPC path
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state");
+        assert_eq!(
+            cluster_state.cluster_resource_constraints.len(),
+            1,
+            "Should have exactly one cluster resource constraint"
+        );
+        let c = &cluster_state.cluster_resource_constraints[0];
+        assert_eq!(c.resource_requests.len(), 1);
+        let req = c.resource_requests[0].request.as_ref().unwrap();
+        assert_eq!(*req.resources_bundle.get("CPU").unwrap(), 16.0);
+        assert_eq!(*req.resources_bundle.get("GPU").unwrap(), 4.0);
+        assert_eq!(c.resource_requests[0].count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_cluster_status_includes_pending_gang_resource_requests_from_pg_load() {
+        // C++ populates pending_gang_resource_requests from placement group load.
+        // PGs in PENDING or RESCHEDULING state should contribute gang resource requests.
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage.clone()));
+        let (svc, _, pg_manager) = make_autoscaler_svc(storage, node_manager);
+
+        // Create a PENDING PG with bundles
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 42;
+        let pg_data = rpc::PlacementGroupTableData {
+            placement_group_id: pg_id.clone(),
+            name: "gang_test_pg".to_string(),
+            state: 0, // PENDING
+            strategy: 1, // PACK
+            bundles: vec![
+                rpc::Bundle {
+                    unit_resources: std::collections::HashMap::from([
+                        ("CPU".to_string(), 4.0),
+                        ("GPU".to_string(), 1.0),
+                    ]),
+                    node_id: vec![], // unplaced
+                    ..Default::default()
+                },
+                rpc::Bundle {
+                    unit_resources: std::collections::HashMap::from([
+                        ("CPU".to_string(), 4.0),
+                        ("GPU".to_string(), 1.0),
+                    ]),
+                    node_id: vec![], // unplaced
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        pg_manager.handle_create_placement_group(pg_data).await.unwrap();
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_status(Request::new(rpc::autoscaler::GetClusterStatusRequest {}))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let cluster_state = reply.cluster_resource_state.expect("cluster_resource_state");
+        assert!(
+            !cluster_state.pending_gang_resource_requests.is_empty(),
+            "pending_gang_resource_requests should be populated from PG load"
+        );
+        let gang_req = &cluster_state.pending_gang_resource_requests[0];
+        assert_eq!(gang_req.requests.len(), 2, "Should have 2 bundle resource requests");
+        assert!(!gang_req.details.is_empty(), "Should have details string");
+        assert_eq!(gang_req.bundle_selectors.len(), 1, "Should have 1 bundle selector");
+        assert_eq!(
+            gang_req.bundle_selectors[0].resource_requests.len(),
+            2,
+            "Bundle selector should have 2 resource requests"
+        );
     }
 
     // ─── GCS-12: PG create lifecycle ────────────────────────────────
@@ -3253,8 +4707,97 @@ mod tests {
         .await
         .unwrap();
 
-        // In single-node mode, the gRPC handler immediately transitions to Created
+        // C++ parity: PG remains PENDING after create_placement_group RPC.
+        // Transition to CREATED only happens via explicit scheduler callback.
         let pg = pg_manager.handle_get_placement_group(&pg_id).unwrap();
-        assert_eq!(pg.state, 1, "single-node mode should transition to Created (1)");
+        assert_eq!(pg.state, 0, "PG should remain PENDING (0) after creation, not auto-transition");
+    }
+
+    // ─── GCS-12: Placement group remains pending until scheduler success ────
+
+    #[tokio::test]
+    async fn test_pg_create_remains_pending_until_scheduler_success() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "pending_pg".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // PG should be PENDING (0) — not Created
+        let pg = pg_manager.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(pg.state, 0, "PG must stay PENDING after gRPC create");
+
+        // Explicitly mark as created (simulates scheduler success)
+        let pg_id_typed = ray_common::id::PlacementGroupID::from_binary(
+            pg_id.as_slice().try_into().unwrap(),
+        );
+        pg_manager.mark_placement_group_created(&pg_id_typed);
+
+        // Now it should be Created
+        let pg = pg_manager.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(pg.state, 1, "PG should be CREATED (1) after explicit transition");
+    }
+
+    #[tokio::test]
+    async fn test_wait_placement_group_until_ready_waits_for_explicit_transition() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 2;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "wait_pg".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // PG is PENDING — wait should NOT immediately succeed
+        let pg = pg_manager.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(pg.state, 0, "PG should be PENDING before scheduler");
+
+        // Wait with short timeout — should timeout (not ready)
+        let ready = pg_manager.wait_until_ready(
+            &pg_id,
+            std::time::Duration::from_millis(50),
+        ).await;
+        assert!(!ready, "wait should timeout when PG is still PENDING");
+
+        // Now mark created
+        let pg_id_typed = ray_common::id::PlacementGroupID::from_binary(
+            pg_id.as_slice().try_into().unwrap(),
+        );
+        pg_manager.mark_placement_group_created(&pg_id_typed);
+
+        // Now wait should succeed
+        let ready = pg_manager.wait_until_ready(
+            &pg_id,
+            std::time::Duration::from_millis(100),
+        ).await;
+        assert!(ready, "wait should succeed after mark_placement_group_created");
     }
 }

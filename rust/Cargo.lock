@@ -1664,6 +1664,7 @@ dependencies = [
  "tonic-health",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1723,6 +1724,7 @@ name = "ray-observability"
 version = "3.0.0-dev"
 dependencies = [
  "async-trait",
+ "hex",
  "nix",
  "parking_lot",
  "ray-common",
@@ -1757,6 +1759,7 @@ dependencies = [
 name = "ray-pubsub"
 version = "3.0.0-dev"
 dependencies = [
+ "async-trait",
  "dashmap",
  "parking_lot",
  "prost",
@@ -1876,6 +1879,7 @@ dependencies = [
 name = "ray-test-utils"
 version = "3.0.0-dev"
 dependencies = [
+ "parking_lot",
  "rand 0.8.5",
  "ray-common",
  "ray-core-worker",

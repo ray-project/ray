@@ -105,6 +105,8 @@ pub struct GcsServer {
     health_check_manager: Option<Arc<GcsHealthCheckManager>>,
     autoscaler_state_manager: Option<Arc<GcsAutoscalerStateManager>>,
     pubsub_handler: Option<Arc<InternalPubSubHandler>>,
+    worker_client: Option<Arc<dyn crate::actor_scheduler::CoreWorkerClient>>,
+    raylet_client: Option<Arc<dyn crate::actor_scheduler::RayletClient>>,
 }
 
 impl GcsServer {
@@ -130,6 +132,8 @@ impl GcsServer {
             health_check_manager: None,
             autoscaler_state_manager: None,
             pubsub_handler: None,
+            worker_client: None,
+            raylet_client: None,
         }
     }
 
@@ -197,12 +201,14 @@ impl GcsServer {
         let pubsub_handler = Arc::new(InternalPubSubHandler::new());
 
         // 4b. Create actor scheduler and wire into actor manager
-        let worker_client = Arc::new(GrpcCoreWorkerClient);
+        let worker_client: Arc<dyn crate::actor_scheduler::CoreWorkerClient> =
+            Arc::new(GrpcCoreWorkerClient);
         let actor_scheduler = Arc::new(GcsActorScheduler::new(
             Arc::clone(&node_manager),
-            raylet_client,
-            worker_client,
+            Arc::clone(&raylet_client),
+            Arc::clone(&worker_client),
         ));
+        self.worker_client = Some(Arc::clone(&worker_client));
         actor_manager.set_actor_scheduler(actor_scheduler);
         actor_manager.set_pubsub_handler(Arc::clone(&pubsub_handler));
 
@@ -299,6 +305,15 @@ impl GcsServer {
         actor_manager.initialize().await?;
         placement_group_manager.initialize().await?;
 
+        // 4f. Wire node-draining listener → resource_manager (C++ parity: SetNodeDraining
+        // listener updates scheduler-visible draining state).
+        {
+            let resource_mgr = Arc::clone(&resource_manager);
+            node_manager.add_node_draining_listener(Box::new(move |node_id, is_draining, deadline_ms| {
+                resource_mgr.set_node_draining(node_id, is_draining, deadline_ms);
+            }));
+        }
+
         // Store references
         self.table_storage = Some(table_storage);
         self.job_manager = Some(job_manager);
@@ -306,6 +321,7 @@ impl GcsServer {
         self.actor_manager = Some(actor_manager);
         self.worker_manager = Some(worker_manager);
         self.resource_manager = Some(resource_manager);
+        self.raylet_client = Some(raylet_client);
         self.placement_group_manager = Some(placement_group_manager);
         self.task_manager = Some(task_manager);
         self.kv_manager = Some(kv_manager);
@@ -347,6 +363,8 @@ impl GcsServer {
         // Construct tonic service wrappers from initialized managers
         let job_svc = JobInfoGcsServiceImpl {
             job_manager: Arc::clone(self.job_manager.as_ref().unwrap()),
+            kv_manager: self.kv_manager.as_ref().map(Arc::clone),
+            worker_client: self.worker_client.as_ref().map(Arc::clone),
         };
         let node_svc = NodeInfoGcsServiceImpl {
             node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
@@ -380,6 +398,9 @@ impl GcsServer {
         let autoscaler_svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager: Arc::clone(self.autoscaler_state_manager.as_ref().unwrap()),
             node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
+            placement_group_manager: Arc::clone(self.placement_group_manager.as_ref().unwrap()),
+            raylet_client: self.raylet_client.as_ref().map(Arc::clone),
+            actor_manager: self.actor_manager.as_ref().map(Arc::clone),
         };
 
         // Health service

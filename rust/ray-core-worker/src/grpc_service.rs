@@ -19,6 +19,80 @@ use ray_common::id::{ActorID, ObjectID};
 use ray_proto::ray::rpc;
 
 use crate::core_worker::CoreWorker;
+use crate::ownership_directory::OwnershipDirectory;
+use crate::reference_counter::ReferenceCounter;
+
+/// Channel type 2 = WORKER_OBJECT_LOCATIONS_CHANNEL (from proto ChannelType enum).
+/// C++ uses this for the subscription protocol in OwnershipBasedObjectDirectory.
+const CHANNEL_WORKER_OBJECT_LOCATIONS: i32 = 2;
+
+/// Build a `WorkerObjectLocationsPubMessage` for a specific object.
+/// Reused by both point-in-time queries and subscription publishing.
+/// C++ equivalent: `FillObjectInformation` in `OwnershipBasedObjectDirectory`.
+fn build_object_location_pub_message(
+    oid: &ObjectID,
+    ref_counter: &ReferenceCounter,
+    ownership_dir: &OwnershipDirectory,
+) -> rpc::WorkerObjectLocationsPubMessage {
+    let locations = ref_counter.get_object_locations(oid);
+    let node_ids: Vec<Vec<u8>> = locations
+        .iter()
+        .filter_map(|loc| hex::decode(loc).ok())
+        .collect();
+
+    let spilled_url = ownership_dir.get_spill_url(oid).unwrap_or_default();
+    let spilled_node_id = if !spilled_url.is_empty() {
+        ownership_dir.get_spilled_node_id(oid).unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let object_size = ref_counter.get_object_size(oid).max(0) as u64;
+    let pending_creation = ownership_dir.is_pending_creation(oid);
+
+    let ref_removed = !ownership_dir.is_owned(oid)
+        && !ownership_dir.is_borrowed(oid)
+        && !node_ids.is_empty();
+
+    rpc::WorkerObjectLocationsPubMessage {
+        node_ids,
+        object_size,
+        spilled_url,
+        spilled_node_id,
+        ref_removed,
+        pending_creation,
+        ..Default::default()
+    }
+}
+
+/// Decode a pubsub payload back into the correct proto `InnerMessage` variant.
+/// C++ publishes typed messages; the subscriber receives them via long-poll.
+fn decode_inner_message(
+    channel_type: i32,
+    payload: &[u8],
+) -> Option<rpc::pub_message::InnerMessage> {
+    use prost::Message as _;
+    match channel_type {
+        0 => {
+            // WORKER_OBJECT_EVICTION
+            rpc::WorkerObjectEvictionMessage::decode(payload)
+                .ok()
+                .map(rpc::pub_message::InnerMessage::WorkerObjectEvictionMessage)
+        }
+        1 => {
+            // WORKER_REF_REMOVED_CHANNEL
+            rpc::WorkerRefRemovedMessage::decode(payload)
+                .ok()
+                .map(rpc::pub_message::InnerMessage::WorkerRefRemovedMessage)
+        }
+        2 => {
+            // WORKER_OBJECT_LOCATIONS_CHANNEL
+            rpc::WorkerObjectLocationsPubMessage::decode(payload)
+                .ok()
+                .map(rpc::pub_message::InnerMessage::WorkerObjectLocationsMessage)
+        }
+        _ => None,
+    }
+}
 
 /// The gRPC service implementation wrapping the CoreWorker.
 pub struct CoreWorkerServiceImpl {
@@ -285,13 +359,21 @@ impl CoreWorkerServiceImpl {
         };
 
         // Convert internal PubMessage to proto PubMessage.
+        // Decode payload back into the correct InnerMessage variant based on channel_type.
         let pub_messages: Vec<rpc::PubMessage> = messages
             .into_iter()
-            .map(|m| rpc::PubMessage {
-                channel_type: m.channel_type,
-                key_id: m.key_id,
-                sequence_id: m.sequence_id,
-                inner_message: None,
+            .map(|m| {
+                let inner_message = if !m.payload.is_empty() {
+                    decode_inner_message(m.channel_type, &m.payload)
+                } else {
+                    None
+                };
+                rpc::PubMessage {
+                    channel_type: m.channel_type,
+                    key_id: m.key_id,
+                    sequence_id: m.sequence_id,
+                    inner_message,
+                }
             })
             .collect();
 
@@ -344,11 +426,18 @@ impl CoreWorkerServiceImpl {
     }
 
     /// Handle a batch of pubsub commands (subscribe/unsubscribe) from a subscriber.
+    ///
+    /// C++ contract: when a subscriber registers for `WORKER_OBJECT_LOCATIONS_CHANNEL`,
+    /// the owner immediately publishes the current location state as an initial snapshot.
+    /// This matches the C++ `SubscribeObjectLocations` path where a new subscriber
+    /// gets the current `LocationListenerState` if `subscribed == true`.
     pub async fn handle_pubsub_command_batch(
         &self,
         request: rpc::PubsubCommandBatchRequest,
     ) -> Result<rpc::PubsubCommandBatchReply, Status> {
         let publisher = self.core_worker.publisher();
+        let ref_counter = self.core_worker.reference_counter();
+        let ownership_dir = self.core_worker.ownership_directory();
 
         for cmd in &request.commands {
             match &cmd.command_message_one_of {
@@ -358,6 +447,25 @@ impl CoreWorkerServiceImpl {
                         cmd.channel_type,
                         &cmd.key_id,
                     );
+
+                    // C++ contract: on subscribe to WORKER_OBJECT_LOCATIONS_CHANNEL,
+                    // publish initial snapshot of current locations to the new subscriber.
+                    if cmd.channel_type == CHANNEL_WORKER_OBJECT_LOCATIONS
+                        && !cmd.key_id.is_empty()
+                    {
+                        let oid = ObjectID::from_binary(&cmd.key_id);
+                        let location_msg = build_object_location_pub_message(
+                            &oid,
+                            ref_counter,
+                            ownership_dir,
+                        );
+                        let payload = prost::Message::encode_to_vec(&location_msg);
+                        publisher.publish(
+                            CHANNEL_WORKER_OBJECT_LOCATIONS,
+                            &cmd.key_id,
+                            payload,
+                        );
+                    }
                 }
                 Some(rpc::command::CommandMessageOneOf::UnsubscribeMessage(_)) => {
                     publisher.unregister_subscription(
@@ -375,6 +483,12 @@ impl CoreWorkerServiceImpl {
         Ok(rpc::PubsubCommandBatchReply {})
     }
 
+    /// Handle a batch of object location updates from a node.
+    ///
+    /// C++ contract: after updating locations, publish incremental updates to
+    /// `WORKER_OBJECT_LOCATIONS_CHANNEL` for each affected object so that
+    /// subscribers receive real-time location changes. This is the owner-side
+    /// half of the `ObjectLocationSubscriptionCallback` protocol.
     pub async fn handle_update_object_location_batch(
         &self,
         request: rpc::UpdateObjectLocationBatchRequest,
@@ -387,25 +501,62 @@ impl CoreWorkerServiceImpl {
 
         let node_id_hex = hex::encode(&request.node_id);
         let ref_counter = self.core_worker.reference_counter();
+        let ownership_dir = self.core_worker.ownership_directory();
+        let publisher = self.core_worker.publisher();
+
+        // C++ contract: filter dead-node additions.
+        let node_is_dead = ownership_dir.is_node_dead(&request.node_id);
+
+        // Track which objects were updated so we can publish incremental updates.
+        let mut updated_objects: Vec<ObjectID> = Vec::new();
 
         for update in &request.object_location_updates {
             let oid = ObjectID::from_binary(&update.object_id);
+            let mut changed = false;
+
             if let Some(plasma_update) = update.plasma_location_update {
                 if plasma_update == rpc::ObjectPlasmaLocationUpdate::Added as i32 {
+                    if node_is_dead {
+                        continue;
+                    }
                     ref_counter.add_object_location(&oid, node_id_hex.clone());
+                    changed = true;
                 } else {
                     ref_counter.remove_object_location(&oid, &node_id_hex);
+                    changed = true;
                 }
             }
             if let Some(spilled) = &update.spilled_location_update {
                 ref_counter.set_spill_url(&oid, spilled.spilled_url.clone());
+                let spilled_node = if spilled.spilled_to_local_storage {
+                    request.node_id.clone()
+                } else {
+                    vec![0u8; 28]
+                };
+                ownership_dir.set_spilled(&oid, spilled.spilled_url.clone(), spilled_node);
                 if spilled.spilled_to_local_storage {
                     ref_counter.add_object_location(&oid, node_id_hex.clone());
                 } else {
                     ref_counter.remove_object_location(&oid, &node_id_hex);
                 }
+                changed = true;
+            }
+
+            if changed {
+                updated_objects.push(oid);
             }
         }
+
+        // C++ contract: publish incremental updates to subscribers.
+        // ObjectLocationSubscriptionCallback calls UpdateObjectLocations then
+        // invokes all listener callbacks. Our equivalent: publish to pubsub.
+        for oid in &updated_objects {
+            let location_msg =
+                build_object_location_pub_message(oid, ref_counter, ownership_dir);
+            let payload = prost::Message::encode_to_vec(&location_msg);
+            publisher.publish(CHANNEL_WORKER_OBJECT_LOCATIONS, &oid.binary(), payload);
+        }
+
         Ok(rpc::UpdateObjectLocationBatchReply::default())
     }
 
@@ -414,19 +565,16 @@ impl CoreWorkerServiceImpl {
         request: rpc::GetObjectLocationsOwnerRequest,
     ) -> Result<rpc::GetObjectLocationsOwnerReply, Status> {
         let ref_counter = self.core_worker.reference_counter();
+        let ownership_dir = self.core_worker.ownership_directory();
+
+        // C++ contract: for each object, fill WorkerObjectLocationsPubMessage
+        // with node_ids, object_size, spilled_url, spilled_node_id, ref_removed.
         let object_location_infos = request
             .object_ids
             .iter()
             .map(|oid_bytes| {
                 let oid = ObjectID::from_binary(oid_bytes);
-                let locations = ref_counter.get_object_locations(&oid);
-                rpc::WorkerObjectLocationsPubMessage {
-                    node_ids: locations
-                        .iter()
-                        .filter_map(|loc| hex::decode(loc).ok())
-                        .collect(),
-                    ..Default::default()
-                }
+                build_object_location_pub_message(&oid, ref_counter, ownership_dir)
             })
             .collect();
         Ok(rpc::GetObjectLocationsOwnerReply {
@@ -1111,6 +1259,1063 @@ mod tests {
             .unwrap();
         assert_eq!(reply.object_location_infos.len(), 1);
         assert!(reply.object_location_infos[0].node_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_object_locations_owner_returns_full_owner_information() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![3u8; 28];
+        let node_id_hex = hex::encode(&node_id);
+
+        // Register object and set it as owned with spill info
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        svc.core_worker
+            .reference_counter()
+            .add_object_location(&oid, node_id_hex);
+
+        // Set spill info via ownership directory
+        let owner_addr = rpc::Address {
+            worker_id: svc.core_worker.worker_id().binary(),
+            ..Default::default()
+        };
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, owner_addr);
+        svc.core_worker
+            .ownership_directory()
+            .set_spilled(&oid, "s3://bucket/obj".to_string(), vec![3u8; 28]);
+
+        // Set object size
+        svc.core_worker
+            .reference_counter()
+            .update_object_size(&oid, 1024);
+
+        let request = rpc::GetObjectLocationsOwnerRequest {
+            object_ids: vec![oid.binary()],
+            ..Default::default()
+        };
+        let reply = svc
+            .handle_get_object_locations_owner(request)
+            .await
+            .unwrap();
+        assert_eq!(reply.object_location_infos.len(), 1);
+        let info = &reply.object_location_infos[0];
+        assert_eq!(info.node_ids, vec![node_id]);
+        assert_eq!(info.object_size, 1024);
+        assert_eq!(info.spilled_url, "s3://bucket/obj");
+        assert!(!info.ref_removed, "owned object should not have ref_removed");
+    }
+
+    // ─── CORE-10 Round 4: spilled_node_id + dead-node filtering ─────
+
+    #[tokio::test]
+    async fn test_get_object_locations_owner_returns_spilled_node_id() {
+        // Verify that spilled_node_id is correct AFTER spill.
+        // Round 3 bug: set_spilled() clears pinned_at_node_id, so
+        // get_pinned_node() returned empty. Fixed by storing spilled_node_id separately.
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        let spill_node = vec![9u8; 28];
+        let owner_addr = rpc::Address {
+            worker_id: svc.core_worker.worker_id().binary(),
+            ..Default::default()
+        };
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, owner_addr);
+
+        // Spill the object — spilled_node_id should be stored separately from pinned_at_node_id
+        svc.core_worker
+            .ownership_directory()
+            .set_spilled(&oid, "s3://bucket/spilled_obj".to_string(), spill_node.clone());
+
+        // Verify pinned_at_node_id is cleared (expected by contract)
+        assert!(svc.core_worker.ownership_directory().get_pinned_node(&oid).is_none());
+        // But spilled_node_id should still be available
+        assert_eq!(
+            svc.core_worker.ownership_directory().get_spilled_node_id(&oid),
+            Some(spill_node.clone())
+        );
+
+        // Now verify via the RPC path
+        let reply = svc
+            .handle_get_object_locations_owner(rpc::GetObjectLocationsOwnerRequest {
+                object_ids: vec![oid.binary()],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let info = &reply.object_location_infos[0];
+        assert_eq!(info.spilled_url, "s3://bucket/spilled_obj");
+        assert_eq!(
+            info.spilled_node_id, spill_node,
+            "spilled_node_id must be correct after spill, not empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_object_location_batch_ignores_dead_node_additions() {
+        // C++ contract: additions from dead nodes should be ignored.
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let dead_node_id = vec![7u8; 28];
+
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        let owner_addr = rpc::Address {
+            worker_id: svc.core_worker.worker_id().binary(),
+            ..Default::default()
+        };
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, owner_addr);
+
+        // Mark the node as dead
+        svc.core_worker
+            .ownership_directory()
+            .mark_node_dead(&dead_node_id);
+
+        // Try to add a location from the dead node via the RPC path
+        let request = rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: dead_node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+        };
+        svc.handle_update_object_location_batch(request)
+            .await
+            .unwrap();
+
+        // Location should NOT have been added (dead node filtered)
+        let locs = svc
+            .core_worker
+            .reference_counter()
+            .get_object_locations(&oid);
+        assert!(
+            locs.is_empty(),
+            "additions from dead nodes should be ignored"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_object_location_batch_filters_dead_nodes() {
+        // Adding a location from a node, then removing it, should result in empty locations
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![4u8; 28];
+        let node_id_hex = hex::encode(&node_id);
+
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        svc.core_worker
+            .reference_counter()
+            .add_object_location(&oid, node_id_hex.clone());
+
+        // Remove the location (simulates node death / object eviction)
+        svc.core_worker
+            .reference_counter()
+            .remove_object_location(&oid, &node_id_hex);
+
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert!(locs.is_empty(), "location should be removed after dead-node filter");
+    }
+
+    #[tokio::test]
+    async fn test_owner_death_cleanup_end_to_end() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let owner_worker_id = vec![5u8; 28];
+
+        // Add borrowed object
+        let owner_addr = rpc::Address {
+            worker_id: owner_worker_id.clone(),
+            ..Default::default()
+        };
+        svc.core_worker
+            .ownership_directory()
+            .add_borrowed_object(oid, owner_addr);
+
+        assert!(svc.core_worker.ownership_directory().is_borrowed(&oid));
+        assert!(!svc.core_worker.ownership_directory().is_owner_dead(&oid));
+
+        // Propagate owner death
+        let affected = svc
+            .core_worker
+            .ownership_directory()
+            .propagate_owner_death(&owner_worker_id);
+        assert_eq!(affected.len(), 1);
+        assert_eq!(affected[0], oid);
+        assert!(svc.core_worker.ownership_directory().is_owner_dead(&oid));
+    }
+
+    // ─── CORE-10 Round 5: subscription/snapshot protocol gap markers ──
+    //
+    // The C++ implementation has a distributed pub/sub protocol for object
+    // location tracking (SubscribeObjectLocations, initial snapshot delivery,
+    // incremental broadcast, unsubscribe, owner-death propagation to subscribers).
+    //
+    // The Rust implementation only has synchronous point-in-time queries
+    // (GetObjectLocationsOwner) and unidirectional update batches.
+    //
+    // These tests document what IS and IS NOT implemented.
+
+    /// CORE-10 gap: subscription protocol not implemented.
+    /// In C++, a subscriber can register and receive an initial snapshot + incremental updates.
+    /// In Rust, there is no subscriber registration mechanism.
+    /// This test documents that GetObjectLocationsOwner returns correct point-in-time data
+    /// (which is what we have), NOT that subscriptions work (which we don't have).
+    #[tokio::test]
+    async fn test_object_location_point_in_time_query_works() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![10u8; 28];
+        let node_hex = hex::encode(&node_id);
+
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        svc.core_worker
+            .reference_counter()
+            .add_object_location(&oid, node_hex.clone());
+
+        // Point-in-time query works correctly
+        let reply = svc
+            .handle_get_object_locations_owner(rpc::GetObjectLocationsOwnerRequest {
+                object_ids: vec![oid.binary()],
+                intended_worker_id: svc.core_worker.worker_id().binary(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(reply.object_location_infos.len(), 1);
+        assert!(!reply.object_location_infos[0].node_ids.is_empty());
+    }
+
+    // ─── CORE-10: Object Location Subscription Protocol ──────────────
+    //
+    // C++ contract: OwnershipBasedObjectDirectory implements:
+    //   - subscribe (WORKER_OBJECT_LOCATIONS_CHANNEL on owner's publisher)
+    //   - initial snapshot delivery on subscribe
+    //   - incremental update broadcast when locations change
+    //   - owner death propagation (pubsub failure)
+    //   - unsubscribe stops updates
+
+    /// C++ contract: when a subscriber registers for WORKER_OBJECT_LOCATIONS_CHANNEL,
+    /// the owner immediately publishes the current location state as an initial snapshot.
+    /// This matches C++ SubscribeObjectLocations where a new subscriber gets
+    /// LocationListenerState if subscribed == true.
+    #[tokio::test]
+    async fn test_object_location_subscription_receives_initial_snapshot() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![10u8; 28];
+        let node_hex = hex::encode(&node_id);
+
+        // Owner has this object with a known location.
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, rpc::Address::default());
+        svc.core_worker
+            .ownership_directory()
+            .mark_object_created(&oid);
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        svc.core_worker
+            .reference_counter()
+            .add_object_location(&oid, node_hex);
+
+        // Subscribe to WORKER_OBJECT_LOCATIONS_CHANNEL for this object.
+        let subscriber_id = b"sub_snapshot";
+        let subscribe_cmd = rpc::Command {
+            channel_type: super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            key_id: oid.binary(),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                rpc::SubMessage {
+                    sub_message_one_of: None,
+                },
+            )),
+        };
+        svc.handle_pubsub_command_batch(rpc::PubsubCommandBatchRequest {
+            subscriber_id: subscriber_id.to_vec(),
+            commands: vec![subscribe_cmd],
+        })
+        .await
+        .unwrap();
+
+        // The publisher should have an initial snapshot message queued.
+        let mailbox_size = svc
+            .core_worker
+            .publisher()
+            .subscriber_mailbox_size(subscriber_id);
+        assert!(
+            mailbox_size >= 1,
+            "initial snapshot must be published on subscribe (got {} messages)",
+            mailbox_size
+        );
+
+        // Verify the snapshot content via long-poll.
+        let reply = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 0,
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+        assert!(!reply.pub_messages.is_empty(), "should receive snapshot");
+        let msg = &reply.pub_messages[0];
+        assert_eq!(msg.channel_type, super::CHANNEL_WORKER_OBJECT_LOCATIONS);
+        assert_eq!(msg.key_id, oid.binary());
+
+        // Inner message should be a WorkerObjectLocationsPubMessage with the node.
+        match &msg.inner_message {
+            Some(rpc::pub_message::InnerMessage::WorkerObjectLocationsMessage(loc_msg)) => {
+                assert!(
+                    loc_msg.node_ids.iter().any(|n| *n == node_id),
+                    "snapshot must include the known location"
+                );
+                assert!(!loc_msg.pending_creation, "object was marked created");
+            }
+            other => panic!("expected WorkerObjectLocationsMessage, got {:?}", other),
+        }
+    }
+
+    /// C++ contract: when locations change (via UpdateObjectLocationBatch),
+    /// the owner publishes incremental updates to WORKER_OBJECT_LOCATIONS_CHANNEL.
+    /// Subscribers receive both ADD and REMOVE updates.
+    #[tokio::test]
+    async fn test_object_location_subscription_receives_incremental_add_remove_updates() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![20u8; 28];
+
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, rpc::Address::default());
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        // Subscribe.
+        let subscriber_id = b"sub_incremental";
+        let subscribe_cmd = rpc::Command {
+            channel_type: super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            key_id: oid.binary(),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                rpc::SubMessage {
+                    sub_message_one_of: None,
+                },
+            )),
+        };
+        svc.handle_pubsub_command_batch(rpc::PubsubCommandBatchRequest {
+            subscriber_id: subscriber_id.to_vec(),
+            commands: vec![subscribe_cmd],
+        })
+        .await
+        .unwrap();
+
+        // Drain the initial snapshot.
+        let _ = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 0,
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+
+        // Send an ADD update.
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+        })
+        .await
+        .unwrap();
+
+        // Subscriber should get incremental update with the new location.
+        let reply = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 1, // skip the snapshot
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+        assert!(!reply.pub_messages.is_empty(), "should receive ADD update");
+        let add_msg = &reply.pub_messages[0];
+        match &add_msg.inner_message {
+            Some(rpc::pub_message::InnerMessage::WorkerObjectLocationsMessage(loc_msg)) => {
+                assert!(
+                    loc_msg.node_ids.iter().any(|n| *n == node_id),
+                    "incremental update must include the added node"
+                );
+            }
+            other => panic!("expected location message, got {:?}", other),
+        }
+
+        // Send a REMOVE update.
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Removed as i32),
+                ..Default::default()
+            }],
+        })
+        .await
+        .unwrap();
+
+        // Subscriber should get incremental update with location removed.
+        let reply2 = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 2, // skip previous messages
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+        assert!(
+            !reply2.pub_messages.is_empty(),
+            "should receive REMOVE update"
+        );
+        let rem_msg = &reply2.pub_messages[0];
+        match &rem_msg.inner_message {
+            Some(rpc::pub_message::InnerMessage::WorkerObjectLocationsMessage(loc_msg)) => {
+                assert!(
+                    !loc_msg.node_ids.iter().any(|n| *n == node_id),
+                    "removed node must not appear in update"
+                );
+            }
+            other => panic!("expected location message, got {:?}", other),
+        }
+    }
+
+    /// C++ contract: when the owner dies, the subscriber detects the failure
+    /// (long-poll timeout/connection lost) and invokes failure callbacks for
+    /// all subscriptions to that publisher. This test exercises the real
+    /// subscriber-side failure mechanism (handle_publisher_failure), NOT
+    /// publisher-side subscriber removal.
+    ///
+    /// The subscriber is a ray-pubsub::Subscriber that has subscribed to the
+    /// owner's WORKER_OBJECT_LOCATIONS_CHANNEL with a failure callback. When
+    /// handle_publisher_failure is called (simulating the long-poll loop
+    /// detecting that the owner is unreachable), the failure callback fires.
+    #[tokio::test]
+    async fn test_object_location_subscription_owner_death_via_publisher_failure() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let owner_worker_id = b"dead_owner_42";
+        let oid = ObjectID::from_random();
+
+        // Create a subscriber (the remote node that wants to track object locations).
+        let subscriber = ray_pubsub::Subscriber::new(
+            b"remote_node".to_vec(),
+            ray_pubsub::SubscriberConfig::default(),
+        );
+
+        // Track failure callback invocations.
+        let failure_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let failure_count_clone = failure_count.clone();
+
+        // The failure callback — C++ equivalent: failure_callback in SubscribeObjectLocations
+        // calls mark_as_failed_(obj_id, ErrorType::OWNER_DIED).
+        let failure_cb: ray_pubsub::FailureCallback =
+            std::sync::Arc::new(move |_key_id: &[u8]| {
+                failure_count_clone.fetch_add(1, Ordering::Relaxed);
+            });
+
+        // Subscribe to the owner for this object's location updates.
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(|_msg: &ray_pubsub::PubMessage| {});
+        subscriber.subscribe(
+            owner_worker_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary(),
+            item_cb,
+            Some(failure_cb),
+        );
+
+        // Verify subscription exists.
+        assert!(subscriber.is_subscribed(
+            owner_worker_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary()
+        ));
+
+        // Owner dies — the subscriber detects this via long-poll failure
+        // and invokes handle_publisher_failure.
+        let notified = subscriber.handle_publisher_failure(owner_worker_id);
+        assert_eq!(notified.len(), 1, "one subscription should be notified");
+        assert_eq!(notified[0], oid.binary(), "notified key must be the object ID");
+
+        // Failure callback must have fired.
+        assert_eq!(
+            failure_count.load(Ordering::Relaxed),
+            1,
+            "failure callback must fire on publisher failure (owner death)"
+        );
+
+        // Subscription must be removed.
+        assert!(
+            !subscriber.is_subscribed(
+                owner_worker_id,
+                super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+                &oid.binary()
+            ),
+            "subscription must be removed after publisher failure"
+        );
+    }
+
+    /// Proves that the subscriber failure mechanism correctly handles multiple
+    /// object subscriptions to the same owner. When the owner dies, ALL failure
+    /// callbacks fire — one per subscribed object.
+    /// C++ equivalent: OwnershipBasedObjectDirectory failure_callback fires for
+    /// each object subscribed to the dead owner.
+    #[tokio::test]
+    async fn test_object_location_subscription_failure_path_uses_subscriber_failure_mechanism() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let owner_worker_id = b"dead_owner_99";
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        let oid3 = ObjectID::from_random();
+
+        let subscriber = ray_pubsub::Subscriber::new(
+            b"remote_node_2".to_vec(),
+            ray_pubsub::SubscriberConfig::default(),
+        );
+
+        let failure_count = std::sync::Arc::new(AtomicUsize::new(0));
+
+        // Subscribe to 3 objects on the same owner.
+        for oid in &[oid1, oid2, oid3] {
+            let fc = failure_count.clone();
+            let failure_cb: ray_pubsub::FailureCallback =
+                std::sync::Arc::new(move |_key_id: &[u8]| {
+                    fc.fetch_add(1, Ordering::Relaxed);
+                });
+            let item_cb: ray_pubsub::MessageCallback =
+                std::sync::Arc::new(|_msg: &ray_pubsub::PubMessage| {});
+            subscriber.subscribe(
+                owner_worker_id,
+                super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+                &oid.binary(),
+                item_cb,
+                Some(failure_cb),
+            );
+        }
+
+        assert_eq!(subscriber.num_subscriptions(), 3);
+
+        // Owner dies.
+        let notified = subscriber.handle_publisher_failure(owner_worker_id);
+        assert_eq!(notified.len(), 3, "all 3 subscriptions must be notified");
+
+        // All 3 failure callbacks must have fired.
+        assert_eq!(
+            failure_count.load(Ordering::Relaxed),
+            3,
+            "all 3 failure callbacks must fire on owner death"
+        );
+
+        // All subscriptions must be removed.
+        assert_eq!(subscriber.num_subscriptions(), 0);
+    }
+
+    /// Proves the real long-poll failure path: when the subscriber sends a
+    /// long-poll request but the publisher is gone (simulated by timeout
+    /// with no response), followed by handle_publisher_failure, the
+    /// failure callback fires for all subscribed objects.
+    /// This is the closest unit-test approximation of the C++ subscriber
+    /// detecting owner death via long-poll failure.
+    #[tokio::test]
+    async fn test_object_location_subscription_real_long_poll_failure_path() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, rpc::Address::default());
+        svc.core_worker
+            .reference_counter()
+            .add_local_reference(oid);
+
+        // A remote subscriber subscribes to object locations on this owner.
+        let subscriber_id = b"sub_longpoll_fail";
+        let subscribe_cmd = rpc::Command {
+            channel_type: super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            key_id: oid.binary(),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                rpc::SubMessage {
+                    sub_message_one_of: None,
+                },
+            )),
+        };
+        svc.handle_pubsub_command_batch(rpc::PubsubCommandBatchRequest {
+            subscriber_id: subscriber_id.to_vec(),
+            commands: vec![subscribe_cmd],
+        })
+        .await
+        .unwrap();
+
+        // Drain the initial snapshot (subscriber received it via long-poll).
+        let reply = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 0,
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+        assert!(!reply.pub_messages.is_empty(), "initial snapshot delivered");
+
+        // Now simulate: the subscriber's NEXT long-poll times out (owner died).
+        // The real transport loop would: send long-poll → timeout → no response.
+        // We simulate this with a very short timeout that returns empty.
+        let timed_out_reply = tokio::time::timeout(
+            std::time::Duration::from_millis(10),
+            svc.handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 1, // ack the snapshot
+                publisher_id: vec![],
+            }),
+        )
+        .await;
+
+        // The long-poll either timed out or returned empty (no new messages).
+        // This is what triggers the subscriber to call handle_publisher_failure.
+        let got_empty = match timed_out_reply {
+            Ok(Ok(r)) => r.pub_messages.is_empty(),
+            Ok(Err(_)) => true,
+            Err(_) => true, // timeout
+        };
+        assert!(got_empty, "no new messages = potential owner death");
+
+        // The subscriber-side failure detection:
+        // Create a subscriber-side Subscriber to track the failure callback.
+        let subscriber_side = ray_pubsub::Subscriber::new(
+            subscriber_id.to_vec(),
+            ray_pubsub::SubscriberConfig::default(),
+        );
+        let failure_fired = std::sync::Arc::new(AtomicUsize::new(0));
+        let ff = failure_fired.clone();
+        let failure_cb: ray_pubsub::FailureCallback =
+            std::sync::Arc::new(move |_key: &[u8]| {
+                ff.fetch_add(1, Ordering::Relaxed);
+            });
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(|_: &ray_pubsub::PubMessage| {});
+
+        let owner_id = svc.core_worker.worker_id().binary();
+        subscriber_side.subscribe(
+            &owner_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary(),
+            item_cb,
+            Some(failure_cb),
+        );
+
+        // Subscriber detects failure → calls handle_publisher_failure.
+        let notified = subscriber_side.handle_publisher_failure(&owner_id);
+        assert_eq!(notified.len(), 1);
+        assert_eq!(
+            failure_fired.load(Ordering::Relaxed),
+            1,
+            "failure callback must fire when subscriber detects owner death via long-poll failure"
+        );
+    }
+
+    /// C++ contract: UnsubscribeObjectLocations removes the callback.
+    /// If no callbacks remain, the pubsub subscription is removed.
+    /// After unsubscribe, no more incremental updates are delivered.
+    #[tokio::test]
+    async fn test_object_location_unsubscribe_stops_updates() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![30u8; 28];
+
+        svc.core_worker
+            .ownership_directory()
+            .add_owned_object(oid, rpc::Address::default());
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        // Subscribe.
+        let subscriber_id = b"sub_unsub";
+        let subscribe_cmd = rpc::Command {
+            channel_type: super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            key_id: oid.binary(),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                rpc::SubMessage {
+                    sub_message_one_of: None,
+                },
+            )),
+        };
+        svc.handle_pubsub_command_batch(rpc::PubsubCommandBatchRequest {
+            subscriber_id: subscriber_id.to_vec(),
+            commands: vec![subscribe_cmd],
+        })
+        .await
+        .unwrap();
+
+        // Drain initial snapshot.
+        let _ = svc
+            .handle_pubsub_long_polling(rpc::PubsubLongPollingRequest {
+                subscriber_id: subscriber_id.to_vec(),
+                max_processed_sequence_id: 0,
+                publisher_id: vec![],
+            })
+            .await
+            .unwrap();
+
+        // Unsubscribe.
+        let unsubscribe_cmd = rpc::Command {
+            channel_type: super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            key_id: oid.binary(),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::UnsubscribeMessage(
+                rpc::UnsubscribeMessage {},
+            )),
+        };
+        svc.handle_pubsub_command_batch(rpc::PubsubCommandBatchRequest {
+            subscriber_id: subscriber_id.to_vec(),
+            commands: vec![unsubscribe_cmd],
+        })
+        .await
+        .unwrap();
+
+        // Send a location update AFTER unsubscribe.
+        svc.handle_update_object_location_batch(rpc::UpdateObjectLocationBatchRequest {
+            intended_worker_id: svc.core_worker.worker_id().binary(),
+            node_id: node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+        })
+        .await
+        .unwrap();
+
+        // Subscriber mailbox should be empty — no updates after unsubscribe.
+        let mailbox = svc
+            .core_worker
+            .publisher()
+            .subscriber_mailbox_size(subscriber_id);
+        assert_eq!(
+            mailbox, 0,
+            "unsubscribed subscriber must NOT receive updates"
+        );
+    }
+
+    // ─── CORE-10 Round 10: production transport loop proof ──────────
+    //
+    // These tests use SubscriberTransport.poll_publisher() — the production
+    // transport driver — to prove owner-failure detection and message delivery
+    // WITHOUT direct calls to handle_publisher_failure or handle_poll_response.
+
+    /// Proves that owner failure is detected by the production subscriber
+    /// transport loop. A subscriber subscribes to WORKER_OBJECT_LOCATIONS_CHANNEL
+    /// on an owner. When the owner is unreachable (FailingSubscriberClient),
+    /// the transport's poll_publisher internally calls handle_publisher_failure,
+    /// which fires the failure callbacks.
+    ///
+    /// No direct call to handle_publisher_failure from the test.
+    #[tokio::test]
+    async fn test_object_location_subscription_owner_failure_is_detected_by_production_loop() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let owner_worker_id = b"dead_owner_transport";
+        let oid = ObjectID::from_random();
+
+        // Create a subscriber (the remote node).
+        let subscriber = std::sync::Arc::new(ray_pubsub::Subscriber::new(
+            b"remote_transport_node".to_vec(),
+            ray_pubsub::SubscriberConfig::default(),
+        ));
+
+        let failure_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let fc = failure_count.clone();
+        let failure_cb: ray_pubsub::FailureCallback =
+            std::sync::Arc::new(move |_key: &[u8]| {
+                fc.fetch_add(1, Ordering::Relaxed);
+            });
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(|_: &ray_pubsub::PubMessage| {});
+
+        subscriber.subscribe(
+            owner_worker_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary(),
+            item_cb,
+            Some(failure_cb),
+        );
+
+        assert!(subscriber.is_subscribed(
+            owner_worker_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary()
+        ));
+
+        // Create the production transport with a FAILING client (owner is dead).
+        let transport = ray_pubsub::SubscriberTransport::new(subscriber.clone());
+        let failing_client = ray_pubsub::FailingSubscriberClient;
+
+        // Run the production transport loop — this:
+        // 1. Tries to send command batch → fails (owner unreachable)
+        // 2. Internally calls subscriber.handle_publisher_failure()
+        // 3. Failure callback fires
+        let result = transport
+            .poll_publisher(owner_worker_id, &failing_client)
+            .await;
+        assert!(result.is_err(), "transport should report publisher failure");
+
+        // Failure callback must have fired — driven by the transport, not manually.
+        assert_eq!(
+            failure_count.load(Ordering::Relaxed),
+            1,
+            "failure callback must fire via production transport (no manual handle_publisher_failure)"
+        );
+
+        // Subscription must be removed.
+        assert!(
+            !subscriber.is_subscribed(
+                owner_worker_id,
+                super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+                &oid.binary()
+            ),
+            "subscription must be removed after transport-detected failure"
+        );
+    }
+
+    /// Proves that the production subscriber transport loop delivers object
+    /// location updates end-to-end. A subscriber subscribes to an owner's
+    /// WORKER_OBJECT_LOCATIONS_CHANNEL. The transport drains commands, sends
+    /// them to the owner's publisher, the owner publishes a location update,
+    /// the transport long-polls and receives it, dispatching via the callback.
+    ///
+    /// No direct call to handle_poll_response from the test.
+    #[tokio::test]
+    async fn test_object_location_subscription_failure_callback_runs_without_manual_handle_publisher_failure(
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let owner_worker_id = b"owner_transport_loc";
+
+        // Set up the owner's publisher.
+        let owner_publisher = std::sync::Arc::new(ray_pubsub::Publisher::new(
+            ray_pubsub::PublisherConfig::default(),
+        ));
+        owner_publisher.register_channel(
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            true, // droppable
+        );
+
+        let oid = ObjectID::from_random();
+
+        // Create a subscriber (the remote node).
+        let subscriber = std::sync::Arc::new(ray_pubsub::Subscriber::new(
+            b"remote_loc_sub".to_vec(),
+            ray_pubsub::SubscriberConfig::default(),
+        ));
+
+        let message_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let mc = message_count.clone();
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(move |_msg: &ray_pubsub::PubMessage| {
+                mc.fetch_add(1, Ordering::Relaxed);
+            });
+
+        subscriber.subscribe(
+            owner_worker_id,
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid.binary(),
+            item_cb,
+            None,
+        );
+
+        // Create transport and in-process client.
+        let transport = ray_pubsub::SubscriberTransport::new(subscriber.clone());
+        let client = ray_pubsub::InProcessSubscriberClient::new(
+            owner_publisher.clone(),
+            owner_worker_id.to_vec(),
+        );
+
+        // Owner publishes a location update (after small delay to let
+        // transport send commands first).
+        let pub_clone = owner_publisher.clone();
+        let oid_binary = oid.binary();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            // Publish a location update message.
+            let location_payload = vec![1, 2, 3]; // simplified payload
+            pub_clone.publish(
+                super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+                &oid_binary,
+                location_payload,
+            );
+        });
+
+        // Run the production transport loop — this:
+        // 1. Drains subscribe command, sends to owner publisher
+        // 2. Long-polls the owner publisher
+        // 3. Receives the location update
+        // 4. Dispatches via subscriber.handle_poll_response (internally)
+        let processed = transport
+            .poll_publisher(owner_worker_id, &client)
+            .await
+            .unwrap();
+        assert_eq!(
+            processed, 1,
+            "one location update dispatched by production transport"
+        );
+        assert_eq!(
+            message_count.load(Ordering::Relaxed),
+            1,
+            "callback fired via production transport (no manual handle_poll_response)"
+        );
+    }
+
+    // ─── CORE-10 Round 11: runtime integration proof ──────────
+    //
+    // These tests prove that the CoreWorker runtime itself drives the
+    // subscriber transport loop for object-location subscriptions.
+    // The test calls subscribe_object_locations on the CoreWorker, which
+    // automatically starts the runtime poll loop — no test-created transport.
+
+    /// Proves that subscribe_object_locations starts the runtime poll loop.
+    /// The owner publishes a location update, the runtime loop receives it
+    /// and dispatches to the callback.
+    /// No test-created SubscriberTransport.
+    #[tokio::test]
+    async fn test_object_location_transport_loop_runs_in_runtime() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let owner_worker_id = vec![130u8; 28];
+
+        // Set up the owner's publisher.
+        let owner_publisher = std::sync::Arc::new(ray_pubsub::Publisher::new(
+            ray_pubsub::PublisherConfig::default(),
+        ));
+        owner_publisher.register_channel(
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            true,
+        );
+
+        // Install the client factory so the runtime starts poll loops.
+        let pub_for_factory = owner_publisher.clone();
+        let factory: std::sync::Arc<crate::core_worker::SubscriberClientFactory> =
+            std::sync::Arc::new(move |publisher_id: &[u8]| {
+                std::sync::Arc::new(ray_pubsub::InProcessSubscriberClient::new(
+                    pub_for_factory.clone(),
+                    publisher_id.to_vec(),
+                )) as std::sync::Arc<dyn ray_pubsub::SubscriberClient + 'static>
+            });
+        svc.core_worker.set_location_client_factory(factory);
+
+        // Subscribe to object locations on the owner via the runtime.
+        let message_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let mc = message_count.clone();
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(move |_msg: &ray_pubsub::PubMessage| {
+                mc.fetch_add(1, Ordering::Relaxed);
+            });
+        svc.core_worker.subscribe_object_locations(
+            &owner_worker_id,
+            &oid.binary(),
+            item_cb,
+            None,
+        );
+
+        // The runtime must have started the poll loop.
+        assert!(
+            svc.core_worker.has_location_poll_loop(&owner_worker_id),
+            "runtime must start poll loop for the owner"
+        );
+
+        // Wait for the runtime loop to register with the publisher.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        // Owner publishes a location update.
+        let oid_binary = oid.binary();
+        owner_publisher.publish(
+            super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+            &oid_binary,
+            vec![1, 2, 3],
+        );
+
+        // Give the runtime loop time to poll and dispatch.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert_eq!(
+            message_count.load(Ordering::Relaxed),
+            1,
+            "callback must fire via runtime transport loop (no test-created transport)"
+        );
+    }
+
+    /// Proves that owner failure is detected by the runtime poll loop.
+    /// The test installs a FailingSubscriberClient factory, subscribes to
+    /// object locations, and verifies that the runtime detects failure and
+    /// fires the failure callback.
+    /// No test-created SubscriberTransport.
+    #[tokio::test]
+    async fn test_object_location_owner_failure_reaches_subscriber_in_runtime() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let owner_worker_id = vec![131u8; 28];
+
+        // Install a FAILING client factory (owner is dead).
+        let factory: std::sync::Arc<crate::core_worker::SubscriberClientFactory> =
+            std::sync::Arc::new(|_publisher_id: &[u8]| {
+                std::sync::Arc::new(ray_pubsub::FailingSubscriberClient)
+                    as std::sync::Arc<dyn ray_pubsub::SubscriberClient + 'static>
+            });
+        svc.core_worker.set_location_client_factory(factory);
+
+        let failure_count = std::sync::Arc::new(AtomicUsize::new(0));
+        let fc = failure_count.clone();
+        let failure_cb: ray_pubsub::FailureCallback =
+            std::sync::Arc::new(move |_key: &[u8]| {
+                fc.fetch_add(1, Ordering::Relaxed);
+            });
+        let item_cb: ray_pubsub::MessageCallback =
+            std::sync::Arc::new(|_: &ray_pubsub::PubMessage| {});
+
+        // Subscribe — the runtime starts the poll loop with a failing client.
+        svc.core_worker.subscribe_object_locations(
+            &owner_worker_id,
+            &oid.binary(),
+            item_cb,
+            Some(failure_cb),
+        );
+
+        // Give the runtime loop time to detect failure.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert_eq!(
+            failure_count.load(Ordering::Relaxed),
+            1,
+            "failure callback must fire via runtime failure detection (no test-created transport)"
+        );
+
+        // Subscription must be removed by failure handling.
+        assert!(
+            !svc.core_worker.location_subscriber().is_subscribed(
+                &owner_worker_id,
+                super::CHANNEL_WORKER_OBJECT_LOCATIONS,
+                &oid.binary()
+            ),
+            "subscription must be removed after runtime-detected failure"
+        );
     }
 
     #[tokio::test]

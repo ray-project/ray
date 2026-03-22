@@ -25,6 +25,17 @@ use crate::table_storage::GcsTableStorage;
 pub type NodeAddedCallback = Box<dyn Fn(&ray_proto::ray::rpc::GcsNodeInfo) + Send + Sync>;
 /// Callback invoked when a node is removed from the cluster.
 pub type NodeRemovedCallback = Box<dyn Fn(&ray_proto::ray::rpc::GcsNodeInfo) + Send + Sync>;
+/// Callback invoked when a node is set to draining.
+/// Parameters: (node_id, is_draining, deadline_timestamp_ms)
+pub type NodeDrainingCallback = Box<dyn Fn(&NodeID, bool, i64) + Send + Sync>;
+
+/// Stored drain request info, matching C++ `DrainNodeRequest`.
+#[derive(Debug, Clone)]
+pub struct DrainNodeRequestInfo {
+    pub reason: i32,
+    pub reason_message: String,
+    pub deadline_timestamp_ms: i64,
+}
 
 /// The GCS node manager tracks all nodes in the cluster.
 pub struct GcsNodeManager {
@@ -32,8 +43,8 @@ pub struct GcsNodeManager {
     alive_nodes: DashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>,
     /// Dead nodes (cached for queries).
     dead_nodes: DashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>,
-    /// Nodes being drained.
-    draining_nodes: DashMap<NodeID, i64>, // node_id → deadline_ms
+    /// Nodes being drained — stores full drain request info (C++ parity: `draining_nodes_`).
+    draining_nodes: DashMap<NodeID, DrainNodeRequestInfo>,
     /// Cluster ID (raw 28-byte binary, matching C++ ClusterID::Binary()).
     /// Write-once, read on every client connect — ArcSwap for lock-free reads.
     cluster_id: ArcSwap<Vec<u8>>,
@@ -44,6 +55,7 @@ pub struct GcsNodeManager {
     /// Listeners.
     node_added_listeners: RwLock<Vec<NodeAddedCallback>>,
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
+    node_draining_listeners: RwLock<Vec<NodeDrainingCallback>>,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
     /// Pubsub handler for publishing node state changes (set once during init).
@@ -60,6 +72,7 @@ impl GcsNodeManager {
             all_nodes_snapshot: ArcSwap::from_pointee(Vec::new()),
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
+            node_draining_listeners: RwLock::new(Vec::new()),
             table_storage,
             pubsub_handler: OnceLock::new(),
         }
@@ -234,11 +247,43 @@ impl GcsNodeManager {
         Ok(())
     }
 
-    /// Handle DrainNode RPC.
+    /// Handle DrainNode RPC (legacy NodeInfoGcsService path).
+    /// This is the simple drain that just records the node as draining.
     pub fn handle_drain_node(&self, node_id: &NodeID, deadline_ms: i64) {
         if self.alive_nodes.contains_key(node_id) {
-            self.draining_nodes.insert(*node_id, deadline_ms);
-            tracing::info!(?node_id, deadline_ms, "Node draining");
+            self.set_node_draining(
+                node_id,
+                DrainNodeRequestInfo {
+                    reason: 0,
+                    reason_message: String::new(),
+                    deadline_timestamp_ms: deadline_ms,
+                },
+            );
+        }
+    }
+
+    /// Set a node to draining state with full request info (C++ parity: `SetNodeDraining`).
+    ///
+    /// Stores the drain request and fires all `node_draining_listeners_`.
+    /// If the node is already draining, overwrites the existing request (C++ behavior).
+    pub fn set_node_draining(&self, node_id: &NodeID, request: DrainNodeRequestInfo) {
+        if !self.alive_nodes.contains_key(node_id) {
+            tracing::info!(?node_id, "Skip setting node to draining: already removed");
+            return;
+        }
+
+        let deadline_ms = request.deadline_timestamp_ms;
+        if self.draining_nodes.contains_key(node_id) {
+            tracing::info!(?node_id, "Overwriting existing drain request");
+        } else {
+            tracing::info!(?node_id, deadline_ms, "Set node to draining");
+        }
+        self.draining_nodes.insert(*node_id, request);
+
+        // Fire draining listeners (C++ parity: node_draining_listeners_)
+        let listeners = self.node_draining_listeners.read();
+        for listener in listeners.iter() {
+            listener(node_id, true, deadline_ms);
         }
     }
 
@@ -284,12 +329,30 @@ impl GcsNodeManager {
             .collect()
     }
 
-    /// Get all draining node IDs with their deadlines.
+    /// Get all draining node IDs with their deadline timestamps.
     pub fn get_draining_nodes(&self) -> HashMap<NodeID, i64> {
         self.draining_nodes
             .iter()
-            .map(|entry| (*entry.key(), *entry.value()))
+            .map(|entry| (*entry.key(), entry.value().deadline_timestamp_ms))
             .collect()
+    }
+
+    /// Get all draining node IDs with their full drain request info.
+    pub fn get_draining_nodes_full(&self) -> HashMap<NodeID, DrainNodeRequestInfo> {
+        self.draining_nodes
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect()
+    }
+
+    /// Check if a node is being drained.
+    pub fn is_node_draining(&self, node_id: &NodeID) -> bool {
+        self.draining_nodes.contains_key(node_id)
+    }
+
+    /// Get the drain request for a specific node.
+    pub fn get_drain_request(&self, node_id: &NodeID) -> Option<DrainNodeRequestInfo> {
+        self.draining_nodes.get(node_id).map(|r| r.value().clone())
     }
 
     /// Number of alive nodes.
@@ -305,6 +368,11 @@ impl GcsNodeManager {
     /// Register a node-removed listener.
     pub fn add_node_removed_listener(&self, callback: NodeRemovedCallback) {
         self.node_removed_listeners.write().push(callback);
+    }
+
+    /// Register a node-draining listener (C++ parity: `AddNodeDrainingListener`).
+    pub fn add_node_draining_listener(&self, callback: NodeDrainingCallback) {
+        self.node_draining_listeners.write().push(callback);
     }
 }
 
@@ -738,6 +806,101 @@ mod tests {
         let stored_info = dead_node.death_info.as_ref().expect("death_info should be set");
         assert_eq!(stored_info.reason, 1);
         assert_eq!(stored_info.reason_message, "graceful shutdown");
+    }
+
+    /// GCS-6: set_node_draining stores full request info and fires draining listeners.
+    #[tokio::test]
+    async fn test_set_node_draining_fires_listeners_and_stores_request() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls_clone = calls.clone();
+        mgr.add_node_draining_listener(Box::new(move |nid, is_draining, deadline| {
+            calls_clone.lock().unwrap().push((*nid, is_draining, deadline));
+        }));
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+
+        let nid = node_id(1);
+        mgr.set_node_draining(
+            &nid,
+            DrainNodeRequestInfo {
+                reason: 3,
+                reason_message: "preemption".to_string(),
+                deadline_timestamp_ms: 99999,
+            },
+        );
+
+        // Verify full request info stored
+        let info = mgr.get_drain_request(&nid).expect("should have drain info");
+        assert_eq!(info.reason, 3);
+        assert_eq!(info.reason_message, "preemption");
+        assert_eq!(info.deadline_timestamp_ms, 99999);
+
+        // Verify listener was called
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, nid);
+        assert!(calls[0].1);
+        assert_eq!(calls[0].2, 99999);
+    }
+
+    /// GCS-6: set_node_draining on non-alive node is a no-op.
+    #[tokio::test]
+    async fn test_set_node_draining_non_alive_is_noop() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let called_clone = called.clone();
+        mgr.add_node_draining_listener(Box::new(move |_, _, _| {
+            called_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+        }));
+
+        // Non-existent node — should be no-op, no listener fired
+        mgr.set_node_draining(
+            &node_id(99),
+            DrainNodeRequestInfo {
+                reason: 0,
+                reason_message: String::new(),
+                deadline_timestamp_ms: 0,
+            },
+        );
+        assert!(!mgr.is_node_draining(&node_id(99)));
+        assert!(!called.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    /// GCS-6: overwriting a drain request fires listener again.
+    #[tokio::test]
+    async fn test_set_node_draining_overwrite_fires_listener_again() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let count_clone = count.clone();
+        mgr.add_node_draining_listener(Box::new(move |_, _, _| {
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        let nid = node_id(1);
+
+        mgr.set_node_draining(&nid, DrainNodeRequestInfo {
+            reason: 0, reason_message: "first".to_string(), deadline_timestamp_ms: 100,
+        });
+        mgr.set_node_draining(&nid, DrainNodeRequestInfo {
+            reason: 1, reason_message: "second".to_string(), deadline_timestamp_ms: 200,
+        });
+
+        assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 2);
+        let info = mgr.get_drain_request(&nid).unwrap();
+        assert_eq!(info.reason, 1);
+        assert_eq!(info.reason_message, "second");
+        assert_eq!(info.deadline_timestamp_ms, 200);
     }
 
     /// Test that unregister_node without death_info leaves death_info as None.

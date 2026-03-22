@@ -115,7 +115,7 @@ pub async fn start_test_gcs_server_with_config(
         placement_group_manager.initialize().await.unwrap();
 
         // Build services
-        let job_svc = JobInfoGcsServiceImpl { job_manager };
+        let job_svc = JobInfoGcsServiceImpl { job_manager, kv_manager: None, worker_client: None };
         let node_mgr_for_autoscaler = Arc::clone(&node_manager);
         let node_svc = NodeInfoGcsServiceImpl {
             node_manager,
@@ -125,7 +125,7 @@ pub async fn start_test_gcs_server_with_config(
         let kv_svc = InternalKVGcsServiceImpl { kv_manager };
         let worker_svc = WorkerInfoGcsServiceImpl { worker_manager };
         let pg_svc = PlacementGroupInfoGcsServiceImpl {
-            placement_group_manager,
+            placement_group_manager: placement_group_manager.clone(),
         };
         let resource_svc = NodeResourceInfoGcsServiceImpl { resource_manager };
         let runtime_env_svc = RuntimeEnvGcsServiceImpl;
@@ -138,6 +138,9 @@ pub async fn start_test_gcs_server_with_config(
         let autoscaler_svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager,
             node_manager: node_mgr_for_autoscaler,
+            placement_group_manager,
+            raylet_client: None,
+            actor_manager: None,
         };
 
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
@@ -217,6 +220,7 @@ pub async fn start_test_raylet_server() -> TestRayletServer {
     let nm = Arc::new(NodeManager::new(config));
     let svc = NodeManagerServiceImpl {
         node_manager: Arc::clone(&nm),
+        subscriber_client_factory: parking_lot::Mutex::new(None),
     };
 
     let (addr_tx, addr_rx) = oneshot::channel::<SocketAddr>();

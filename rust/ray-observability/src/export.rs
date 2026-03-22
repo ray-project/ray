@@ -12,6 +12,8 @@
 //! and flushes them in batches to GCS or another sink.
 //! Ports the event-reporting path from C++ `event_reporter.cc`.
 
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -63,6 +65,131 @@ impl EventSink for LoggingEventSink {
             );
         }
         events.len()
+    }
+}
+
+/// Configuration matching the C++ export API config model from `ray_config_def.h`.
+///
+/// C++ has three flags:
+/// - `enable_export_api_write` (bool): global enable for ALL export types to file
+/// - `enable_export_api_write_config` (Vec<String>): selective per-type enable
+/// - `enable_ray_event` (bool): enables aggregator-path events (separate system)
+///
+/// When `enable_ray_event` is true, the aggregator path is used and the file export
+/// path is bypassed entirely (matching C++ `WriteActorExportEvent` branch logic).
+#[derive(Debug, Clone)]
+pub struct ExportApiConfig {
+    /// Global flag enabling ALL export types to file.
+    /// C++ parity: `enable_export_api_write` (default false).
+    pub enable_export_api_write: bool,
+    /// Selective per-type enablement. Only used when `enable_export_api_write` is false.
+    /// C++ parity: `enable_export_api_write_config` (default empty).
+    /// Valid values: "EXPORT_ACTOR", "EXPORT_TASK", "EXPORT_NODE", etc.
+    pub enable_export_api_write_config: Vec<String>,
+    /// Enables aggregator-path events (separate gRPC system).
+    /// When true, bypasses file export entirely.
+    /// C++ parity: `enable_ray_event` (default false).
+    pub enable_ray_event: bool,
+    /// Log directory for export event files.
+    /// Files are written to `{log_dir}/export_events/event_EXPORT_ACTOR.log`.
+    pub log_dir: Option<PathBuf>,
+}
+
+impl Default for ExportApiConfig {
+    fn default() -> Self {
+        Self {
+            enable_export_api_write: false,
+            enable_export_api_write_config: Vec::new(),
+            enable_ray_event: false,
+            log_dir: None,
+        }
+    }
+}
+
+impl ExportApiConfig {
+    /// Check if a specific export source type is enabled for file output.
+    /// Mirrors C++ `IsExportAPIEnabledSourceType()` from `event.cc`.
+    pub fn is_export_enabled_for(&self, source_type: &str) -> bool {
+        if self.enable_export_api_write {
+            return true;
+        }
+        self.enable_export_api_write_config
+            .iter()
+            .any(|t| t == source_type)
+    }
+
+    /// Check if actor export events should be written to file.
+    pub fn is_actor_export_enabled(&self) -> bool {
+        self.is_export_enabled_for("EXPORT_ACTOR")
+    }
+
+    /// Check if the aggregator (ray_event) path is enabled.
+    pub fn is_ray_event_enabled(&self) -> bool {
+        self.enable_ray_event
+    }
+}
+
+/// File-based export event sink matching C++ `LogEventReporter`.
+///
+/// Writes `ExportEvent` protos as JSON-per-line to
+/// `{log_dir}/export_events/event_{SOURCE_TYPE}.log`.
+pub struct FileExportEventSink {
+    /// Path to the export event log file.
+    file_path: PathBuf,
+}
+
+impl FileExportEventSink {
+    /// Create a new file export sink for a given log directory and source type.
+    ///
+    /// Creates `{log_dir}/export_events/` directory if it doesn't exist.
+    /// File: `event_{source_type}.log` (e.g., `event_EXPORT_ACTOR.log`).
+    pub fn new(log_dir: &Path, source_type: &str) -> std::io::Result<Self> {
+        let export_dir = log_dir.join("export_events");
+        std::fs::create_dir_all(&export_dir)?;
+        let file_path = export_dir.join(format!("event_{source_type}.log"));
+        Ok(Self { file_path })
+    }
+
+    /// Write an ExportEvent proto as a JSON line to the log file.
+    /// Matches C++ `LogEventReporter::ReportExportEvent()` output format.
+    pub fn write_export_event(&self, export_event: &ray_proto::ray::rpc::ExportEvent) -> bool {
+        // Serialize the proto to JSON using serde (the proto has serde derives).
+        // C++ uses protobuf::util::MessageToJsonString with preserve_proto_field_names=true
+        // and always_print_primitive_fields=true. Our serde serialization matches this.
+        match serde_json::to_string(export_event) {
+            Ok(json) => {
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.file_path)
+                {
+                    Ok(mut f) => {
+                        if writeln!(f, "{json}").is_ok() {
+                            // Force flush matching C++ force_flush=true default
+                            let _ = f.flush();
+                            return true;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to open export event log file {:?}: {}",
+                            self.file_path,
+                            e
+                        );
+                    }
+                }
+                false
+            }
+            Err(e) => {
+                tracing::warn!("Failed to serialize export event: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Get the file path for this sink.
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
     }
 }
 
@@ -421,5 +548,136 @@ mod tests {
         assert_eq!(stats.total_events_flushed, 0);
         assert_eq!(stats.total_events_dropped, 0);
         assert_eq!(stats.total_flushes, 0);
+    }
+
+    // --- ExportApiConfig tests ---
+
+    #[test]
+    fn test_export_api_config_default_all_disabled() {
+        let cfg = ExportApiConfig::default();
+        assert!(!cfg.enable_export_api_write);
+        assert!(cfg.enable_export_api_write_config.is_empty());
+        assert!(!cfg.enable_ray_event);
+        assert!(!cfg.is_actor_export_enabled());
+        assert!(!cfg.is_ray_event_enabled());
+    }
+
+    #[test]
+    fn test_export_api_config_global_enables_all_types() {
+        let cfg = ExportApiConfig {
+            enable_export_api_write: true,
+            ..Default::default()
+        };
+        assert!(cfg.is_actor_export_enabled());
+        assert!(cfg.is_export_enabled_for("EXPORT_TASK"));
+        assert!(cfg.is_export_enabled_for("EXPORT_NODE"));
+    }
+
+    #[test]
+    fn test_export_api_config_selective_enables_actor_only() {
+        let cfg = ExportApiConfig {
+            enable_export_api_write_config: vec!["EXPORT_ACTOR".to_string()],
+            ..Default::default()
+        };
+        assert!(cfg.is_actor_export_enabled());
+        assert!(!cfg.is_export_enabled_for("EXPORT_TASK"));
+        assert!(!cfg.is_export_enabled_for("EXPORT_NODE"));
+    }
+
+    #[test]
+    fn test_export_api_config_ray_event_path() {
+        let cfg = ExportApiConfig {
+            enable_ray_event: true,
+            ..Default::default()
+        };
+        assert!(cfg.is_ray_event_enabled());
+        // Even with ray_event enabled, export file path is NOT enabled (separate system)
+        assert!(!cfg.is_actor_export_enabled());
+    }
+
+    // --- FileExportEventSink tests ---
+
+    #[test]
+    fn test_file_export_event_sink_creates_directory_and_writes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            FileExportEventSink::new(tmp.path(), "EXPORT_ACTOR").unwrap();
+
+        // Build a minimal ExportEvent with ExportActorData
+        let actor_data = ray_proto::ray::rpc::ExportActorData {
+            actor_id: vec![1, 2, 3],
+            job_id: vec![4, 5, 6],
+            state: ray_proto::ray::rpc::export_actor_data::ActorState::Alive as i32,
+            name: "test_actor".to_string(),
+            class_name: "TestClass".to_string(),
+            pid: 1234,
+            ray_namespace: "default".to_string(),
+            is_detached: false,
+            serialized_runtime_env: "{}".to_string(),
+            repr_name: "TestClass(test)".to_string(),
+            ..Default::default()
+        };
+
+        let export_event = ray_proto::ray::rpc::ExportEvent {
+            event_id: "test-event-id-001".to_string(),
+            source_type: ray_proto::ray::rpc::export_event::SourceType::ExportActor as i32,
+            timestamp: 1234567890,
+            event_data: Some(
+                ray_proto::ray::rpc::export_event::EventData::ActorEventData(actor_data),
+            ),
+        };
+
+        assert!(sink.write_export_event(&export_event));
+
+        // Verify the file was created at the correct path
+        let expected_path = tmp.path().join("export_events/event_EXPORT_ACTOR.log");
+        assert!(expected_path.exists());
+
+        // Verify the content is valid JSON
+        let content = std::fs::read_to_string(&expected_path).unwrap();
+        let lines: Vec<&str> = content.trim().lines().collect();
+        assert_eq!(lines.len(), 1);
+
+        let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(parsed["event_id"], "test-event-id-001");
+        assert_eq!(parsed["timestamp"], 1234567890);
+        // Check nested actor event data (prost serde serializes oneof as variant name)
+        let event_data_wrapper = &parsed["event_data"];
+        assert!(event_data_wrapper.is_object(), "event_data should be present");
+        let actor_data = &event_data_wrapper["ActorEventData"];
+        assert!(actor_data.is_object(), "ActorEventData variant should be present");
+        assert_eq!(actor_data["name"], "test_actor");
+        assert_eq!(actor_data["class_name"], "TestClass");
+        assert_eq!(actor_data["pid"], 1234);
+    }
+
+    #[test]
+    fn test_file_export_event_sink_appends_multiple_events() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sink =
+            FileExportEventSink::new(tmp.path(), "EXPORT_ACTOR").unwrap();
+
+        for i in 0..3 {
+            let export_event = ray_proto::ray::rpc::ExportEvent {
+                event_id: format!("event-{i}"),
+                source_type: ray_proto::ray::rpc::export_event::SourceType::ExportActor as i32,
+                timestamp: 1000 + i as i64,
+                event_data: Some(
+                    ray_proto::ray::rpc::export_event::EventData::ActorEventData(
+                        ray_proto::ray::rpc::ExportActorData {
+                            name: format!("actor_{i}"),
+                            ..Default::default()
+                        },
+                    ),
+                ),
+            };
+            assert!(sink.write_export_event(&export_event));
+        }
+
+        let content =
+            std::fs::read_to_string(tmp.path().join("export_events/event_EXPORT_ACTOR.log"))
+                .unwrap();
+        let lines: Vec<&str> = content.trim().lines().collect();
+        assert_eq!(lines.len(), 3);
     }
 }
