@@ -380,15 +380,15 @@ class ActorPoolMapOperator(MapOperator):
         bundle_queue: "HashLinkedQueue",
         metrics: OpRuntimeMetrics,
     ) -> List[Tuple[RefBundle, "ActorHandle"]]:
-        """Dequeue original bundles and rebundle per-block MCF assignments by actor.
+        """Dequeue original bundles and rebundle per-block assignments by actor.
 
-        After the MCF solver assigns individual blocks to actors, this groups
+        After the solver assigns individual blocks to actors, this groups
         those assignments by actor, merges blocks into one RefBundle per actor,
         and dequeues the original bundles from the queue. Any per-block bundles
         that were not assigned (due to insufficient actor slots) are re-enqueued.
 
         Args:
-            assignments: Per-block (bundle, actor) pairs from the MCF solver.
+            assignments: Per-block (bundle, actor) pairs from the solver.
             pending_bundles: Original bundles to dequeue from the queue.
             all_per_block_bundles: All per-block bundles that were fed to the
                 solver, including those that may not have been assigned.
@@ -408,7 +408,7 @@ class ActorPoolMapOperator(MapOperator):
         # Identify which per-block bundles were assigned.
         assigned_block_ids = {id(block_bundle) for block_bundle, _ in assignments}
 
-        # Re-enqueue any per-block bundles that were NOT assigned.
+        # Re-enqueue any per-block bundles that were NOT assigned by the solver.
         for block_bundle in all_per_block_bundles:
             if id(block_bundle) not in assigned_block_ids:
                 bundle_queue.add(block_bundle)
@@ -434,9 +434,9 @@ class ActorPoolMapOperator(MapOperator):
         """Try to dispatch tasks from the internal queue. Returns the # of tasks submitted.
 
         When locality is enabled, bundles are disaggregated into per-block
-        bundles so the MCF solver can make block-level assignment decisions.
-        After MCF, blocks assigned to the same actor are rebundled into a
-        single RefBundle and submitted as one task.
+        bundles so the solver can make block-level assignment decisions.
+        After assignment, blocks assigned to the same actor are rebundled
+        into a single RefBundle and submitted as one task.
         """
 
         # Collect all pending bundles for batch assignment.
@@ -444,17 +444,11 @@ class ActorPoolMapOperator(MapOperator):
         if not pending_bundles:
             return 0
 
-        # Only disaggregate into per-block bundles when locality is enabled
-        # AND min_rows_per_bundle is not set. When min_rows_per_bundle is set,
-        # bundles were intentionally created by the bundler and should not be
-        # split apart.
-        disaggregate = (
-            self._actor_locality_enabled and self._min_rows_per_bundle is None
-        )
-
-        if disaggregate:
+        if self._actor_locality_enabled:
             # Disaggregate multi-block bundles into per-block bundles so the
-            # MCF solver sees every block individually.
+            # solver sees every block individually, maximizing the number of
+            # actors that receive work. After assignment,
+            # _dequeue_and_rebundle_by_actor recombines blocks per-actor.
             per_block_bundles = []
             for bundle in pending_bundles:
                 if len(bundle.blocks) == 1:
@@ -474,13 +468,6 @@ class ActorPoolMapOperator(MapOperator):
                 bundles=per_block_bundles,
                 actor_locality_enabled=True,
             )
-        elif self._actor_locality_enabled:
-            # Locality enabled but bundles were intentionally bundled
-            # (min_rows_per_bundle set) — assign whole bundles, not per-block.
-            assignments = self._actor_pool.select_actors_batch(
-                bundles=pending_bundles,
-                actor_locality_enabled=True,
-            )
         else:
             assignments = self._actor_pool.select_actors_batch(
                 bundles=pending_bundles,
@@ -490,7 +477,7 @@ class ActorPoolMapOperator(MapOperator):
         if not assignments:
             return 0
 
-        if disaggregate:
+        if self._actor_locality_enabled:
             assignments = self._dequeue_and_rebundle_by_actor(
                 assignments,
                 pending_bundles,
@@ -1004,7 +991,7 @@ class _ActorPool(AutoscalingActorPool):
     ) -> List[Tuple[RefBundle, ActorHandle]]:
         """Select actors for a batch of bundles.
 
-        When locality is enabled, uses min-cost max-flow to find the globally
+        When locality is enabled, uses linear sum assignment to find the
         optimal assignment that minimizes total data movement. When locality is
         disabled, assigns bundles to least-loaded actors using a heap.
 
@@ -1356,13 +1343,13 @@ class _ActorPool(AutoscalingActorPool):
 
         cost_matrix = np.empty((num_bundles, num_actors), dtype=np.int64)
         for bundle_idx, bundle in enumerate(bundles):
-            preferred_locs = bundle.get_preferred_object_locations()
+            preferred_locs = bundle.get_preferred_object_locations()  # bytes per node
             max_local = max(preferred_locs.values(), default=0)
             for actor_idx, actor_location in enumerate(actor_locations):
-                local_bytes = preferred_locs.get(actor_location, 0)
-                locality_cost = max_local - local_bytes
+                bytes_on_actor_node = preferred_locs.get(actor_location, 0)
+                movement_cost = max_local - bytes_on_actor_node
                 cost_matrix[bundle_idx, actor_idx] = (
-                    locality_cost * load_tiebreaker_scale
+                    movement_cost * load_tiebreaker_scale
                     + actor_tasks_in_flight[actor_idx]
                 )
 
