@@ -197,7 +197,7 @@ class Planner:
         # callers are migrated to use execution_callback_classes instead. Until then,
         # we use get_execution_callbacks() here so that callbacks registered via
         # add_execution_callback() are not silently dropped during execution.
-        callbacks = get_execution_callbacks(logical_plan.context)
+        callbacks = list(get_execution_callbacks(logical_plan.context))
 
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
