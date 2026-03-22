@@ -521,18 +521,22 @@ def test_actor_pool_scheduling_with_bundling(
         )
         assert op.metrics.obj_store_mem_internal_outqueue == 0
 
-    # Adding 1 more input triggers task scheduling
+    # Adding 1 more input triggers task scheduling.
+    # With locality-aware disaggregation, the 5-block bundle is split into
+    # per-block bundles and assigned across both actors (merged into 1 task
+    # per actor), so 2 tasks are launched.
     op.add_input(input_op.get_next(), 0)
 
-    assert op.num_active_tasks() == 1
+    num_initial_tasks = op.num_active_tasks()
+    assert num_initial_tasks == 2
     # Queue is now empty
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
-    # Running task has pending inputs/outputs
-    single_task_pending_inputs = op.metrics.obj_store_mem_pending_task_inputs
-    single_task_pending_outputs = op.metrics.obj_store_mem_pending_task_outputs
-    assert single_task_pending_inputs > 0
-    # assert single_task_pending_outputs > 0
+    # Running tasks have pending inputs/outputs
+    initial_pending_inputs = op.metrics.obj_store_mem_pending_task_inputs
+    initial_pending_outputs = op.metrics.obj_store_mem_pending_task_outputs
+    assert initial_pending_inputs > 0
+    # assert initial_pending_outputs > 0
 
     # Add more inputs, but less than necessary to launch another task
     for i in range(MIN_ROWS_PER_BUNDLE - 1):
@@ -548,24 +552,20 @@ def test_actor_pool_scheduling_with_bundling(
         assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
 
         # While bundling, no *new* tasks are scheduled
-        assert op.num_active_tasks() == 1
+        assert op.num_active_tasks() == num_initial_tasks
 
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
             (i + 1) * 800, rel=0.5
         )
         assert op.metrics.obj_store_mem_internal_outqueue == 0
-        assert (
-            op.metrics.obj_store_mem_pending_task_inputs == single_task_pending_inputs
-        )
-        assert (
-            op.metrics.obj_store_mem_pending_task_outputs == single_task_pending_outputs
-        )
+        assert op.metrics.obj_store_mem_pending_task_inputs == initial_pending_inputs
+        assert op.metrics.obj_store_mem_pending_task_outputs == initial_pending_outputs
 
     # Mark inputs as completed
     op.all_inputs_done()
 
-    # Bundler should be drained and 1 more task launched
-    assert op.num_active_tasks() == 2
+    # Bundler should be drained and more tasks launched (blocks spread across actors)
+    assert op.num_active_tasks() == num_initial_tasks * 2
     assert op._block_ref_bundler.num_blocks() == 0
 
     assert op.metrics.obj_store_mem_internal_inqueue == 0

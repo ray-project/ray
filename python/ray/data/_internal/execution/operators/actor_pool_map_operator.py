@@ -1302,10 +1302,14 @@ class _ActorPool(AutoscalingActorPool):
         """Select actors using linear sum assignment to minimize data movement.
 
         Models the assignment as a bipartite cost matrix where rows are bundles
-        and columns are actor slots. Each actor with K remaining task slots is
-        expanded into K identical columns. The solver finds the minimum-cost
-        1:1 matching, which is equivalent to the optimal assignment respecting
-        actor capacity constraints.
+        and columns are actor slots. Each actor is expanded into num_bundles
+        identical columns so that any actor can receive all blocks. The solver
+        finds the minimum-cost 1:1 matching that optimizes locality.
+
+        After assignment, blocks for the same actor are merged into a single
+        task by the caller, so per-actor task-slot limits do not need to be
+        enforced here (available actors are already filtered by
+        _schedulable_actors).
 
         Cost encoding:
           cost = locality_cost * load_tiebreaker_scale + num_tasks_in_flight
@@ -1317,18 +1321,9 @@ class _ActorPool(AutoscalingActorPool):
         """
         from scipy.optimize import linear_sum_assignment
 
-        max_in_flight = self.max_tasks_in_flight_per_actor()
-
         num_bundles = len(bundles)
         num_actors = len(available_actors)
-
-        # Compute remaining task slots per actor.
-        actor_remaining_slots = [
-            max_in_flight - self._running_actors[actor].num_tasks_in_flight
-            for actor in available_actors
-        ]
-        total_slots = sum(actor_remaining_slots)
-        if min(num_bundles, total_slots) == 0:
+        if num_bundles == 0 or num_actors == 0:
             return []
 
         # Build the bundle x actor cost matrix.
@@ -1339,6 +1334,7 @@ class _ActorPool(AutoscalingActorPool):
             self._running_actors[actor].num_tasks_in_flight
             for actor in available_actors
         ]
+        max_in_flight = self.max_tasks_in_flight_per_actor()
         load_tiebreaker_scale = max_in_flight + 1
 
         cost_matrix = np.empty((num_bundles, num_actors), dtype=np.int64)
@@ -1353,19 +1349,24 @@ class _ActorPool(AutoscalingActorPool):
                     + actor_tasks_in_flight[actor_idx]
                 )
 
-        # Expand each actor into `remaining_slots` identical columns so that
-        # the 1:1 assignment solver respects per-actor capacity limits.
-        expanded_cost = np.empty((num_bundles, total_slots), dtype=np.int64)
+        # Expand each actor into ceil(num_bundles / num_actors) identical
+        # columns.  This is enough so that ALL blocks can be assigned in a
+        # single solver round (no re-enqueuing), while still encouraging the
+        # solver to spread blocks across actors for parallelism.  After
+        # assignment, blocks for the same actor are merged into a single task,
+        # so per-actor task-slot limits do not apply here.
+        slots_per_actor = -(-num_bundles // num_actors)  # ceil division
+        total_cols = slots_per_actor * num_actors
+        expanded_cost = np.empty((num_bundles, total_cols), dtype=np.int64)
         # Maps expanded column index back to the original actor index.
-        col_to_actor = np.empty(total_slots, dtype=np.int32)
+        col_to_actor = np.empty(total_cols, dtype=np.int32)
         col = 0
         for actor_idx in range(num_actors):
-            slots = actor_remaining_slots[actor_idx]
-            expanded_cost[:, col : col + slots] = cost_matrix[
+            expanded_cost[:, col : col + slots_per_actor] = cost_matrix[
                 :, actor_idx : actor_idx + 1
             ]
-            col_to_actor[col : col + slots] = actor_idx
-            col += slots
+            col_to_actor[col : col + slots_per_actor] = actor_idx
+            col += slots_per_actor
 
         row_indices, col_indices = linear_sum_assignment(expanded_cost)
 
