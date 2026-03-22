@@ -4268,14 +4268,14 @@
 
 - name: llm_serve_sglang_e2e
   frequency: manual
-  python: "3.12"
+  python: "3.11"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: gpu-cu130
+      type: llm-cu128
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
