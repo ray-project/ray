@@ -941,8 +941,7 @@ class vLLMEngineStage(StatefulStage):
             bundle_per_worker = placement_group_config.pop("bundle_per_worker", None)
             if bundle_per_worker is not None:
                 placement_group_config["bundles"] = [
-                    bundle_per_worker.copy()
-                    for _ in range(num_bundles_per_replica)
+                    bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
                 ]
         if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
