@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
+from ray import ObjectRef
+from ray.actor import ActorHandle
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.util.annotations import DeveloperAPI
 
 
@@ -30,6 +33,54 @@ class ActorPoolScalingRequest:
         return ActorPoolScalingRequest(delta=delta, force=force, reason=reason)
 
 
+@dataclass(frozen=True)
+class AutoscalingActorConfig:
+    """
+    per_actor_resource_usage: The resource usage per actor.
+    min_size: The minimum number of running actors to be maintained
+        in the pool. Note, that this constraint could be violated when
+        no new work is available for scheduling in the actor pool (ie
+        when operator completes execution).
+    max_size: The maximum number of running actors to be maintained
+        in the pool.
+    initial_size: The initial number of actors to start with.
+    max_actor_concurrency: The maximum number of concurrent tasks a
+        single actor can execute (derived from `ray_remote_args`
+        passed to the operator).
+    max_tasks_in_flight_per_actor: The maximum number of tasks that can
+        be submitted to a single actor at any given time.
+    """
+
+    min_size: int
+    max_size: int
+    initial_size: int
+    max_tasks_in_flight_per_actor: int
+    max_actor_concurrency: int
+    per_actor_resource_usage: ExecutionResources
+
+    def __post_init__(self):
+        assert self.min_size >= 1
+        assert self.max_size >= self.min_size
+        assert self.initial_size <= self.max_size
+        assert self.initial_size >= self.min_size
+        assert self.max_tasks_in_flight_per_actor >= 1
+
+
+@dataclass(frozen=True)
+class ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
+
+
 @DeveloperAPI
 class AutoscalingActorPool(ABC):
     """Abstract interface of an autoscaling actor pool.
@@ -39,24 +90,19 @@ class AutoscalingActorPool(ABC):
     pools.
     """
 
-    @abstractmethod
-    def min_size(self) -> int:
-        """Min size of the actor pool."""
-        ...
+    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
-    @abstractmethod
-    def max_size(self) -> int:
-        """Max size of the actor pool."""
-        ...
-
-    @abstractmethod
-    def current_size(self) -> int:
-        """Current size of the actor pool."""
-        ...
+    def __init__(self, config: AutoscalingActorConfig):
+        self._config = config
 
     @abstractmethod
     def num_running_actors(self) -> int:
         """Number of running actors."""
+        ...
+
+    @abstractmethod
+    def num_restarting_actors(self) -> int:
+        """Number of restarting actors"""
         ...
 
     @abstractmethod
@@ -70,20 +116,14 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def max_tasks_in_flight_per_actor(self) -> int:
-        """Max number of in-flight tasks per actor."""
-        ...
-
-    @abstractmethod
-    def max_actor_concurrency(self) -> int:
-        """Returns max number of tasks single actor could run concurrently."""
-        ...
-
-    @abstractmethod
     def num_tasks_in_flight(self) -> int:
         """Number of current in-flight tasks (ie total nubmer of tasks that have been
         submitted to the actor pool)."""
         ...
+
+    def can_schedule_task(self) -> bool:
+        """Returns `True` iff the actor pool has an available actor that can run a task."""
+        return self.select_actors() is not None
 
     @abstractmethod
     def scale(self, req: ActorPoolScalingRequest):
@@ -91,12 +131,127 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
+    def refresh_actor_state(self):
+        """Refreshes the actor pool state (for, example, running, restarting, pending)"""
+        ...
+
+    @abstractmethod
+    def on_task_submitted(self, actor: ActorHandle):
+        """Callback when an actor is picked for running a task"""
+        ...
+
+    @abstractmethod
+    def on_task_completed(self, actor: ActorHandle):
+        """Called when a task completes. Returns the provided actor to the pool."""
+        ...
+
+    @abstractmethod
+    def select_actors(
+        self,
+        bundle: Optional[RefBundle] = None,
+        actor_locality_enabled: bool = False,
+    ) -> Optional[ActorHandle]:
+        """Select an actor to process the given bundle.
+
+        When ``bundle`` is ``None``, returns any available actor with spare
+        capacity (used by ``can_schedule_task`` to probe schedulability).
+        When ``bundle`` is provided, returns the best actor for that bundle
+        (considering locality when ``actor_locality_enabled`` is True).
+
+        Args:
+            bundle: The bundle to find an actor for. If ``None``, returns any
+                available actor with spare capacity.
+            actor_locality_enabled: Whether to consider locality when selecting
+                an actor.
+
+        Returns:
+            An actor handle if an actor with capacity is available, otherwise
+            ``None``.
+        """
+        ...
+
+    @abstractmethod
+    def get_pending_actor_refs(self) -> List[ObjectRef]:
+        """Return the list of object refs for actors that are pending creation."""
+        ...
+
+    @abstractmethod
+    def pending_to_running(self, ready_ref: ObjectRef) -> Optional[ActorHandle]:
+        """Mark the actor corresponding to the provided ready future as running.
+
+        Args:
+            ready_ref: The ready future for the actor to mark as running.
+
+        Returns:
+            The actor handle if the actor is still alive, otherwise ``None``.
+        """
+        ...
+
+    @abstractmethod
+    def get_actor_location(self, actor: ActorHandle) -> str:
+        """Get the node_id of the actor"""
+        ...
+
+    @abstractmethod
+    def shutdown(self, force: bool = False):
+        """Kills all actors, including running/active actors.
+
+        This is called once the operator is shutting down.
+        """
+        ...
+
+    def get_logical_id_label_key(self) -> str:
+        """Get the label key for the logical actor ID.
+
+        Actors launched by this pool should have this label.
+        """
+        return self._LOGICAL_ACTOR_ID_LABEL_KEY
+
+    def get_actor_info(self) -> ActorPoolInfo:
+        """Returns current snapshot of actors' being used in the pool"""
+        return ActorPoolInfo(
+            running=self.num_alive_actors(),
+            pending=self.num_pending_actors(),
+            restarting=self.num_restarting_actors(),
+        )
+
+    def num_alive_actors(self) -> int:
+        """Alive actors are all the running actors in ALIVE state."""
+        return self.num_running_actors() - self.num_restarting_actors()
+
+    def num_idle_actors(self) -> int:
+        """Return the number of idle actors in the pool."""
+        return self.num_running_actors() - self.num_active_actors()
+
     def per_actor_resource_usage(self) -> ExecutionResources:
         """Per actor resource usage."""
-        ...
+        return self._config.per_actor_resource_usage
+
+    def max_actor_concurrency(self) -> int:
+        """Returns max number of tasks single actor could run concurrently."""
+        return self._config.max_actor_concurrency
+
+    def max_tasks_in_flight_per_actor(self) -> int:
+        """Max number of in-flight tasks per actor."""
+        return self._config.max_tasks_in_flight_per_actor
+
+    def initial_size(self) -> int:
+        return self._config.initial_size
+
+    def current_size(self) -> int:
+        return self.num_pending_actors() + self.num_running_actors()
+
+    def min_size(self) -> int:
+        """Min size of the actor pool."""
+        return self._config.min_size
+
+    def max_size(self) -> int:
+        """Max size of the actor pool."""
+        return self._config.max_size
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""
+
         # If there are no running actors, we set the utilization to indicate that the pool should be scaled up immediately.
         if self.current_size() == 0:
             return float("inf")
