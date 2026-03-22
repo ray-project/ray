@@ -45,6 +45,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
     lance.write_dataset(df1, path)
 
     ds_lance = lance.dataset(path)
+    assert ds_lance is not None
     df2 = pa.table(
         {
             "one": [1, 2, 3, 4, 5, 6],
@@ -96,6 +97,7 @@ def test_lance_read_with_scanner_fragments(data_path):
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
     dataset = lance.write_dataset(table, path, max_rows_per_file=2)
+    assert dataset is not None
 
     fragments = dataset.get_fragments()
     ds = ray.data.read_lance(path, scanner_options={"fragments": fragments[:1]})
@@ -130,6 +132,7 @@ def test_lance_write(data_path):
     ).write_lance(data_path, schema=schema)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 10
     assert ds.schema.names == schema.names
     # The schema is platform-dependent, because numpy uses int32 on Windows.
@@ -145,6 +148,7 @@ def test_lance_write(data_path):
     ).write_lance(data_path, mode="append")
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 20
     tbl = ds.to_table()
     assert sorted(tbl["id"].to_pylist()) == list(range(20))
@@ -155,6 +159,7 @@ def test_lance_write(data_path):
     ).write_lance(data_path, schema=schema, mode="overwrite")
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -168,6 +173,7 @@ def test_lance_write_min_rows_per_file(data_path):
     ).write_lance(data_path, schema=schema, min_rows_per_file=100)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     assert ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -183,6 +189,7 @@ def test_lance_write_max_rows_per_file(data_path):
     ).write_lance(data_path, schema=schema, max_rows_per_file=1)
 
     ds = lance.dataset(data_path)
+    assert ds is not None
     assert ds.count_rows() == 10
     assert ds.schema == schema
 
@@ -199,6 +206,7 @@ def test_lance_read_with_version(data_path):
 
     # Merge new data to create a later version (latest)
     ds_lance = lance.dataset(path)
+    assert ds_lance is not None
     # Get the initial version
     initial_version = ds_lance.version
 
