@@ -26,7 +26,7 @@ class BatcherInterface:
         """
         raise NotImplementedError()
 
-    def done_adding(self) -> bool:
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
         raise NotImplementedError()
 
@@ -84,7 +84,7 @@ class Batcher(BatcherInterface):
             self._buffer.append(block)
             self._buffer_size += BlockAccessor.for_block(block).num_rows()
 
-    def done_adding(self) -> bool:
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the batcher."""
         self._done_adding = True
 
@@ -269,7 +269,7 @@ class ShufflingBatcher(BatcherInterface):
 
         return self._average_row_nbytes * self._min_rows_to_trigger_compaction
 
-    def done_adding(self) -> bool:
+    def done_adding(self) -> None:
         """Indicate to the batcher that no more blocks will be added to the batcher.
 
         No more blocks should be added to the batcher after calling this.

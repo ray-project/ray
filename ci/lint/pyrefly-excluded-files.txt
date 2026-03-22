@@ -2,7 +2,6 @@ python/ray/data/_internal/arrow_block.py
 python/ray/data/_internal/arrow_ops/transform_polars.py
 python/ray/data/_internal/arrow_ops/transform_pyarrow.py
 python/ray/data/_internal/arrow_utils.py
-python/ray/data/_internal/batcher.py
 python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
 python/ray/data/_internal/cluster_autoscaler/default_autoscaling_coordinator.py
