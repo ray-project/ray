@@ -1066,7 +1066,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   int32_t attempt_number = 1;
   std::string component_type = "core_worker";
   std::string component_id = "worker_123";
-  std::string node_ip = "192.168.1.1";
+  std::string node_ip = "127.0.0.1";
   std::string event_name = "test_profile_event";
   int64_t start_time = 1000;
 
@@ -1131,6 +1131,115 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   EXPECT_EQ(event_entry.start_time(), start_time);
   EXPECT_EQ(event_entry.end_time(), 2000);
   EXPECT_EQ(event_entry.extra_data(), "test_extra_data");
+}
+
+TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEventsMultipleEvents) {
+  auto task_id = RandomTaskId();
+  auto job_id = JobID::FromInt(123);
+  int32_t attempt_number = 1;
+  std::string component_type = "core_worker";
+  std::string component_id = "worker_123";
+  std::string node_ip = "127.0.0.1";
+
+  // Create first profile event
+  auto profile_event1 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:deserialize_arguments",
+                                                           1000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event1->SetEndTime(2000);
+  profile_event1->SetExtraData("extra_data_1");
+
+  // Create second profile event
+  auto profile_event2 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:execute",
+                                                           2000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event2->SetEndTime(3000);
+  profile_event2->SetExtraData("extra_data_2");
+
+  // Create third profile event
+  auto profile_event3 = std::make_unique<TaskProfileEvent>(task_id,
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:store_outputs",
+                                                           3000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
+  profile_event3->SetEndTime(4000);
+  profile_event3->SetExtraData("extra_data_3");
+
+  // Convert all events to the same RayEventsTuple
+  RayEventsTuple ray_events_tuple;
+  profile_event1->ToRpcRayEvents(ray_events_tuple);
+  profile_event2->ToRpcRayEvents(ray_events_tuple);
+  profile_event3->ToRpcRayEvents(ray_events_tuple);
+
+  // Verify that only the profile event is populated
+  EXPECT_FALSE(ray_events_tuple.task_definition_event.has_value());
+  EXPECT_FALSE(ray_events_tuple.task_lifecycle_event.has_value());
+  ASSERT_TRUE(ray_events_tuple.task_profile_event.has_value());
+
+  const auto &ray_event = ray_events_tuple.task_profile_event.value();
+
+  // Verify base fields
+  EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::CORE_WORKER);
+  EXPECT_EQ(ray_event.event_type(), rpc::events::RayEvent::TASK_PROFILE_EVENT);
+  EXPECT_EQ(ray_event.severity(), rpc::events::RayEvent::INFO);
+  EXPECT_FALSE(ray_event.event_id().empty());
+  EXPECT_EQ(ray_event.session_name(), "test_session_name");
+
+  // Verify task profile events are populated
+  ASSERT_TRUE(ray_event.has_task_profile_events());
+  const auto &task_profile_events = ray_event.task_profile_events();
+
+  EXPECT_EQ(task_profile_events.task_id(), task_id.Binary());
+  EXPECT_EQ(task_profile_events.job_id(), job_id.Binary());
+  EXPECT_EQ(task_profile_events.attempt_number(), attempt_number);
+
+  // Verify all 3 profile events are present
+  ASSERT_TRUE(task_profile_events.has_profile_events());
+  const auto &profile_events = task_profile_events.profile_events();
+
+  EXPECT_EQ(profile_events.component_type(), component_type);
+  EXPECT_EQ(profile_events.component_id(), component_id);
+  EXPECT_EQ(profile_events.node_ip_address(), node_ip);
+
+  // Verify there are 3 events
+  ASSERT_EQ(profile_events.events_size(), 3);
+
+  // Check each event entry
+  const auto &event_entry1 = profile_events.events(0);
+  EXPECT_EQ(event_entry1.event_name(), "task:deserialize_arguments");
+  EXPECT_EQ(event_entry1.start_time(), 1000);
+  EXPECT_EQ(event_entry1.end_time(), 2000);
+  EXPECT_EQ(event_entry1.extra_data(), "extra_data_1");
+
+  const auto &event_entry2 = profile_events.events(1);
+  EXPECT_EQ(event_entry2.event_name(), "task:execute");
+  EXPECT_EQ(event_entry2.start_time(), 2000);
+  EXPECT_EQ(event_entry2.end_time(), 3000);
+  EXPECT_EQ(event_entry2.extra_data(), "extra_data_2");
+
+  const auto &event_entry3 = profile_events.events(2);
+  EXPECT_EQ(event_entry3.event_name(), "task:store_outputs");
+  EXPECT_EQ(event_entry3.start_time(), 3000);
+  EXPECT_EQ(event_entry3.end_time(), 4000);
+  EXPECT_EQ(event_entry3.extra_data(), "extra_data_3");
 }
 
 TEST_F(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents) {

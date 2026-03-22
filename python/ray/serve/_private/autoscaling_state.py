@@ -23,6 +23,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -86,6 +89,7 @@ class DeploymentAutoscalingState:
         # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
+        self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         # Track timestamps of last scale up and scale down events
@@ -143,6 +147,11 @@ class DeploymentAutoscalingState:
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
+        gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
+        if gang_size is not None and gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -185,6 +194,9 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
+        self._cached_running_replica_strs = {
+            r.to_full_id_str() for r in running_replicas
+        }
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -431,15 +443,11 @@ class DeploymentAutoscalingState:
         timeseries_list = []
 
         for handle_metric in self._handle_requests.values():
-            for replica_id in self._running_replicas:
-                if (
-                    RUNNING_REQUESTS_KEY not in handle_metric.metrics
-                    or replica_id not in handle_metric.metrics[RUNNING_REQUESTS_KEY]
-                ):
+            running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
+            for replica_str in self._cached_running_replica_strs:
+                if replica_str not in running_reqs:
                     continue
-                timeseries_list.append(
-                    handle_metric.metrics[RUNNING_REQUESTS_KEY][replica_id]
-                )
+                timeseries_list.append(running_reqs[replica_str])
 
         return timeseries_list
 
@@ -489,11 +497,27 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
+
+            # Exclude early "partial" period: when series have misaligned start times,
+            # late-starting series are implicitly 0 before their first data point, which
+            # undercounts the total and biases aggregations. Start the window at the
+            # timestamp when all series have contributed at least one point.
+            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+            # to 10ms; if aligned_start is before the first merged point, the gap would
+            # be treated as 0 and bias the average downward.
+            window_start = None
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start <= merged_timeseries[-1].timestamp:
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
+                window_start=window_start,
             )
             return value if value is not None else 0.0
 
@@ -641,11 +665,12 @@ class DeploymentAutoscalingState:
         """
         total_requests = 0
 
-        for id in self._running_replicas:
-            if id in self._replica_metrics:
-                total_requests += self._replica_metrics[id].aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, 0
-                )
+        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
+        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
+        for report in self._replica_metrics.values():
+            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
+            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
+                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
 
         metrics_collected_on_replicas = total_requests > 0
 
@@ -654,13 +679,12 @@ class DeploymentAutoscalingState:
             total_requests += handle_metric.aggregated_queued_requests
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:
-                for replica_id in self._running_replicas:
-                    if replica_id in handle_metric.aggregated_metrics.get(
-                        RUNNING_REQUESTS_KEY, {}
-                    ):
-                        total_requests += handle_metric.aggregated_metrics.get(
-                            RUNNING_REQUESTS_KEY
-                        ).get(replica_id)
+                running_reqs = handle_metric.aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY, {}
+                )
+                for replica_str, count in running_reqs.items():
+                    if replica_str in self._cached_running_replica_strs:
+                        total_requests += count
         return total_requests
 
     def _should_aggregate_metrics_at_controller(self) -> bool:

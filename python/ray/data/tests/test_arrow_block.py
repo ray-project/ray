@@ -20,7 +20,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -215,9 +214,6 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to
@@ -251,7 +247,10 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 # Test for https://github.com/ray-project/ray/issues/49338.
-def test_build_block_with_null_column(ray_start_regular_shared):
+def test_build_block_with_null_column(ray_start_regular_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     # The blocks need to contain a tensor column to trigger the bug.
     block1 = BlockAccessor.batch_to_block(
         {"string": [None], "array": np.zeros((1, 2, 2))}
@@ -267,6 +266,7 @@ def test_build_block_with_null_column(ray_start_regular_shared):
 
     rows = list(BlockAccessor.for_block(block).iter_rows(True))
     assert len(rows) == 2
+
     assert rows[0]["string"] is None
     assert rows[1]["string"] == "spam"
     assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))

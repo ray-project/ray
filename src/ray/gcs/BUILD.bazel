@@ -390,6 +390,7 @@ ray_cc_library(
         "//src/ray/util:thread_checker",
         "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
