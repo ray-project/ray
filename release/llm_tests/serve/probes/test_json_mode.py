@@ -218,5 +218,5 @@ async def test_invalid_schema(model: str, openai_async_client):
         "response_format": response_format,
     }
 
-    with pytest.raises(openai.InternalServerError):
+    with pytest.raises(openai.BadRequestError):
         await querier.query(model, stream=False, **params)
