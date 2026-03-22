@@ -120,6 +120,49 @@ def test_python_global_event_logger(tmp_path):
             assert data["custom_fields"]["b"] == "b"
 
 
+def test_event_logger_flushes_all_handlers(tmp_path):
+    """Test that _emit flushes all handlers, not just the first one.
+
+    Regression test for https://github.com/ray-project/ray/issues/61873
+    """
+    from unittest.mock import MagicMock
+    from ray._private.event.event_logger import EventLoggerAdapter
+
+    # Create a mock logger with multiple handlers
+    mock_logger = MagicMock()
+    handlers = [MagicMock() for _ in range(3)]
+    mock_logger.handlers = handlers
+
+    # Create EventLoggerAdapter with the mock logger
+    adapter = EventLoggerAdapter(event_pb2.Event.SourceType.GCS, mock_logger)
+
+    # Emit an event
+    adapter.info("test message")
+
+    # Verify all handlers were flushed
+    for handler in handlers:
+        handler.flush.assert_called_once()
+
+
+def test_event_logger_no_handlers(tmp_path):
+    """Test that _emit handles empty handlers list gracefully.
+
+    Regression test for https://github.com/ray-project/ray/issues/61873
+    """
+    from unittest.mock import MagicMock
+    from ray._private.event.event_logger import EventLoggerAdapter
+
+    # Create a mock logger with no handlers
+    mock_logger = MagicMock()
+    mock_logger.handlers = []
+
+    # Create EventLoggerAdapter with the mock logger
+    adapter = EventLoggerAdapter(event_pb2.Event.SourceType.GCS, mock_logger)
+
+    # Emit an event - should not raise IndexError
+    adapter.info("test message")  # This would raise IndexError before the fix
+
+
 def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
