@@ -1288,6 +1288,8 @@ numpy==1.26.4
     #   webdataset
     #   xgboost
     #   zoopt
+nvidia-ml-py==13.595.45
+    # via deepspeed
 nvidia-nccl-cu12==2.26.2
     # via xgboost
 oauth2client==4.1.3
