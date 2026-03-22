@@ -1,3 +1,3 @@
 # Contributing
 
-Addressing good-first-issue #4528: [tune] Integration with TensorBoard HParams Dashboard
+Addressing good-first-issue #4444: [tune] Programmatic stopping criteria
