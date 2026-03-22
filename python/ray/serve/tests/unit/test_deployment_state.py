@@ -1648,11 +1648,15 @@ def test_rolling_update_percentage_configurable(mock_deployment_state_manager):
     assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
     dsm.update()
 
-    # 5 old replicas should be stopping, 5 still running.
+    # 5 old replicas should be stopping, 5 still running, and 5 new starting.
     check_counts(
         ds,
-        total=10,
-        by_state=[(ReplicaState.RUNNING, 5, v1), (ReplicaState.STOPPING, 5, v1)],
+        total=15,
+        by_state=[
+            (ReplicaState.RUNNING, 5, v1),
+            (ReplicaState.STOPPING, 5, v1),
+            (ReplicaState.STARTING, 5, v2),
+        ],
     )
 
 
