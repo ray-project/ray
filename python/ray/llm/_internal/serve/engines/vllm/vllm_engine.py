@@ -1,6 +1,7 @@
 import argparse
 import dataclasses
 import inspect
+import json
 import typing
 from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
 
@@ -329,7 +330,7 @@ class VLLMEngine(LLMEngine):
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
         self._oai_serving_completion = getattr(state, "openai_serving_completion", None)
-        self._oai_serving_embedding = getattr(state, "openai_serving_embedding", None)
+        self._oai_serving_embedding = getattr(state, "serving_embedding", None)
         self._oai_serving_transcription = getattr(
             state, "openai_serving_transcription", None
         )
@@ -579,7 +580,8 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
+        # vLLM's ServingEmbedding is a callable, not a class with create_embedding
+        embedding_response = await self._oai_serving_embedding(
             request,
             raw_request=raw_request,
         )
@@ -588,8 +590,14 @@ class VLLMEngine(LLMEngine):
             yield ErrorResponse(
                 error=ErrorInfo(**embedding_response.error.model_dump())
             )
+            return
+
+        # vLLM returns a Starlette Response object, extract the JSON content
+        if hasattr(embedding_response, 'body'):
+            content = json.loads(embedding_response.body)
+            yield EmbeddingResponse(**content)
         else:
-            yield EmbeddingResponse(**embedding_response.model_dump())
+            yield embedding_response
 
     async def transcriptions(
         self,
