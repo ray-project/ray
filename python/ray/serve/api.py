@@ -59,7 +59,12 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TracingConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -74,6 +79,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[None, dict, "TracingConfig"] = None,
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -99,12 +105,16 @@ def start(
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        tracing_config: [EXPERIMENTAL] Tracing config for OpenTelemetry tracing
+            across all Serve components. Can be passed as a dictionary or
+            ``TracingConfig`` object.
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config,
         **kwargs,
     )
 

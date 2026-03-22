@@ -49,6 +49,8 @@ TRACE_STACK: ContextVar[List[Any]] = ContextVar(
     "trace_stack"
 )  # Create tracer once at module level
 
+_tracing_enabled: bool = False
+
 _tracer = None
 _tracer_lock = threading.Lock()
 
@@ -235,6 +237,8 @@ def setup_tracing(
         bool: True if tracing setup is successful, False otherwise.
     """
     if tracing_exporter_import_path == "":
+        global _tracing_enabled
+        _tracing_enabled = False
         return False
 
     # Check dependencies
@@ -270,6 +274,8 @@ def setup_tracing(
     for span_processor in span_processors:
         trace.get_tracer_provider().add_span_processor(span_processor)
 
+    global _tracing_enabled
+    _tracing_enabled = True
     return True
 
 
@@ -414,7 +420,7 @@ def set_span_exception(exc: Exception, escaped: bool = False):
 
 
 def is_tracing_enabled() -> bool:
-    return RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "" and trace is not None
+    return _tracing_enabled and trace is not None
 
 
 def is_span_recording() -> bool:

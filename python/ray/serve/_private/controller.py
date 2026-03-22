@@ -96,6 +96,7 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
+    TracingConfig,
     ReplicaDetails,
     ReplicaRank,
     ServeActorDetails,
@@ -148,6 +149,7 @@ class ServeController:
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
+        global_tracing_config: Optional["TracingConfig"] = None,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -171,6 +173,12 @@ class ServeController:
         if log_config_checkpoint is not None:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
+
+        # Tracing config is static — no checkpoint, no long-poll.
+        if global_tracing_config is None:
+            from ray.serve.schema import TracingConfig
+            global_tracing_config = TracingConfig()
+        self.global_tracing_config = global_tracing_config
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -208,6 +216,7 @@ class ServeController:
             head_node_id=self._controller_node_id,
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
+            tracing_config=self.global_tracing_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_actor_class=get_proxy_actor_class(),
             running_native_proxies=self._ha_proxy_enabled,
@@ -234,6 +243,7 @@ class ServeController:
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
             self.autoscaling_state_manager,
+            tracing_config=self.global_tracing_config,
         )
 
         # Manage all applications' state
@@ -243,6 +253,7 @@ class ServeController:
             self.endpoint_state,
             self.kv_store,
             self.global_logging_config,
+            self.global_tracing_config,
         )
 
         # Controller actor details

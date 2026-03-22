@@ -72,6 +72,7 @@ from ray.serve.schema import (
     DeploymentTopology,
     LoggingConfig,
     ServeApplicationSchema,
+    TracingConfig,
 )
 from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
@@ -246,7 +247,8 @@ class ApplicationState:
         autoscaling_state_manager: AutoscalingStateManager,
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
-        external_scaler_enabled: bool,
+        tracing_config: Optional["TracingConfig"] = None,
+        external_scaler_enabled: bool = False,
     ):
         """
         Initialize an ApplicationState instance.
@@ -287,6 +289,7 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=None,
         )
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -1171,12 +1174,14 @@ class ApplicationStateManager:
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
     ):
         self._deployment_state_manager = deployment_state_manager
         self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
 
         self._shutting_down = False
 
@@ -1209,6 +1214,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
+                    self._tracing_config,
                     checkpoint_data.external_scaler_enabled,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -1264,6 +1270,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     self._endpoint_state,
                     self._logging_config,
+                    self._tracing_config,
                     external_scaler_enabled,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
@@ -1320,6 +1327,7 @@ class ApplicationStateManager:
                     self._autoscaling_state_manager,
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
+                    tracing_config=self._tracing_config,
                     external_scaler_enabled=app_config.external_scaler_enabled,
                 )
 

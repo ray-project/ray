@@ -40,6 +40,7 @@ from ray.serve.schema import (
     ProxyDetails,
     ProxyStatus,
     Target,
+    TracingConfig,
 )
 from ray.util import metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -111,6 +112,7 @@ class ActorProxyWrapper(ProxyWrapper):
     def __init__(
         self,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
         actor_handle: Optional[ActorHandle] = None,
         http_options: Optional[HTTPOptions] = None,
         grpc_options: Optional[gRPCOptions] = None,
@@ -130,6 +132,7 @@ class ActorProxyWrapper(ProxyWrapper):
             port=port,
             proxy_actor_class=proxy_actor_class,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
         self._ready_check_future = None
         self._health_check_future = None
@@ -151,6 +154,7 @@ class ActorProxyWrapper(ProxyWrapper):
         node_ip_address: str,
         port: int,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy.
@@ -183,6 +187,7 @@ class ActorProxyWrapper(ProxyWrapper):
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
     @property
@@ -598,6 +603,7 @@ class ProxyStateManager:
         head_node_id: str,
         cluster_node_info_cache: ClusterNodeInfoCache,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
         grpc_options: Optional[gRPCOptions] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
@@ -605,6 +611,7 @@ class ProxyStateManager:
         running_native_proxies: bool = False,
     ):
         self.logging_config = logging_config
+        self.tracing_config = tracing_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
@@ -855,6 +862,7 @@ class ProxyStateManager:
 
         return self._actor_proxy_wrapper_class(
             logging_config=self.logging_config,
+            tracing_config=self.tracing_config,
             http_options=http_options,
             grpc_options=grpc_options,
             name=name,

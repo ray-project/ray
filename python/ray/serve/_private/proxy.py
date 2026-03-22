@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS,
     RAY_SERVE_PROXY_GC_THRESHOLD,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     REQUEST_LATENCY_BUCKETS_MS,
     SERVE_CONTROLLER_NAME,
     SERVE_HTTP_REQUEST_ID_HEADER,
@@ -100,7 +101,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.schema import EncodingType, LoggingConfig, TracingConfig
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -1465,6 +1466,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1473,11 +1475,13 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
+            tracing_config: Tracing configuration
             log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
@@ -1611,12 +1615,14 @@ class ProxyActor(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
         self._grpc_options = grpc_options
@@ -1634,7 +1640,18 @@ class ProxyActor(ProxyActorInterface):
 
         try:
             is_tracing_setup_successful = setup_tracing(
-                component_name="proxy", component_id=node_ip_address
+                component_name="proxy",
+                component_id=node_ip_address,
+                tracing_exporter_import_path=(
+                    self._tracing_config.exporter_import_path
+                    if self._tracing_config and self._tracing_config.enabled
+                    else ""
+                ),
+                tracing_sampling_ratio=(
+                    self._tracing_config.sampling_ratio
+                    if self._tracing_config
+                    else RAY_SERVE_TRACING_SAMPLING_RATIO
+                ),
             )
             if is_tracing_setup_successful:
                 logger.info("Successfully set up tracing for proxy")

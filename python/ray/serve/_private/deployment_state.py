@@ -555,10 +555,12 @@ class ActorReplicaWrapper:
         self,
         replica_id: ReplicaID,
         version: DeploymentVersion,
+        tracing_config=None,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._actor_name = replica_id.to_full_id_str()
+        self._tracing_config = tracing_config
 
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
@@ -909,6 +911,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                self._tracing_config,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -1521,9 +1524,11 @@ class DeploymentReplica:
         self,
         replica_id: ReplicaID,
         version: DeploymentVersion,
+        tracing_config=None,
     ):
         self._replica_id = replica_id
-        self._actor = ActorReplicaWrapper(replica_id, version)
+        self._actor = ActorReplicaWrapper(replica_id, version, tracing_config)
+        self._tracing_config = tracing_config
         self._start_time = None
         self._shutdown_start_time: Optional[float] = None
         self._actor_details = ReplicaDetails(
@@ -2544,12 +2549,14 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        tracing_config=None,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._tracing_config = tracing_config
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -2784,6 +2791,7 @@ class DeploymentState:
             new_deployment_replica = DeploymentReplica(
                 replica_id,
                 self._target_state.version,
+                self._tracing_config,
             )
             # If replica is no longer alive, simply don't add it to the
             # deployment state manager to track.
@@ -3603,6 +3611,7 @@ class DeploymentState:
             new_deployment_replica = DeploymentReplica(
                 replica_id,
                 self._target_state.version,
+                self._tracing_config,
             )
             scheduling_request = new_deployment_replica.start(
                 self._target_state.info,
@@ -3685,6 +3694,7 @@ class DeploymentState:
                 new_deployment_replica = DeploymentReplica(
                     replica_id,
                     self._target_state.version,
+                    self._tracing_config,
                 )
 
                 scheduling_request = new_deployment_replica.start(
@@ -4902,10 +4912,12 @@ class DeploymentStateManager:
         autoscaling_state_manager: AutoscalingStateManager,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
+        tracing_config=None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
+        self._tracing_config = tracing_config
         self._deployment_scheduler = default_impl.create_deployment_scheduler(
             cluster_node_info_cache,
             head_node_id_override,
@@ -4944,6 +4956,7 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
+            self._tracing_config,
         )
 
     def _map_actor_names_to_deployment(

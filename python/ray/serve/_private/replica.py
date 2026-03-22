@@ -78,6 +78,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
@@ -1006,6 +1007,7 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config=None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -1013,6 +1015,7 @@ class ReplicaBase(ABC):
         self._deployment_config = deployment_config
         self._ingress = ingress
         self._route_prefix = route_prefix
+        self._tracing_config = tracing_config
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -1821,6 +1824,16 @@ class Replica(ReplicaBase):
                 component_type=ServeComponentType.REPLICA,
                 component_name=self._component_name,
                 component_id=self._component_id,
+                tracing_exporter_import_path=(
+                    self._tracing_config.exporter_import_path
+                    if self._tracing_config and self._tracing_config.enabled
+                    else ""
+                ),
+                tracing_sampling_ratio=(
+                    self._tracing_config.sampling_ratio
+                    if self._tracing_config
+                    else RAY_SERVE_TRACING_SAMPLING_RATIO
+                ),
             )
             if is_tracing_setup_successful:
                 logger.info("Successfully set up tracing for replica")
@@ -2706,6 +2719,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config=None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2722,6 +2736,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            tracing_config=tracing_config,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

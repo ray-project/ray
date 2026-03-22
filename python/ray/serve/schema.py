@@ -30,8 +30,11 @@ from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
+    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -215,6 +218,71 @@ class LoggingConfig(BaseModel):
         if not isinstance(other, LoggingConfig):
             return False
         return self._compute_hash() == other._compute_hash()
+
+
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config for configuring OpenTelemetry tracing in Serve.
+
+    This config is global (cluster-level only) and static (set once at
+    ``serve.start()`` or via the YAML ``ServeDeploySchema``).  Changes
+    require a Serve restart.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import TracingConfig
+
+            serve.start(
+                tracing_config=TracingConfig(
+                    enabled=True,
+                    exporter_import_path="my_module:my_exporter",
+                    sampling_ratio=0.05,
+                )
+            )
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default_factory=lambda: bool(RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH),
+        description=(
+            "Enable OpenTelemetry tracing. Defaults to True if the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH env var is set."
+        ),
+    )
+    exporter_import_path: str = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        description=(
+            "Import path to a span exporter factory that returns "
+            "List[SpanProcessor]. When enabled=True and this field is unset, "
+            "the built-in file exporter is used automatically."
+        ),
+    )
+    sampling_ratio: float = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_SAMPLING_RATIO,
+        description=(
+            "Trace sampling ratio (0.0-1.0). Defaults to the "
+            "RAY_SERVE_TRACING_SAMPLING_RATIO env var (default 0.01)."
+        ),
+    )
+
+    @field_validator("sampling_ratio")
+    @classmethod
+    def valid_sampling_ratio(cls, v):
+        if not 0.0 <= v <= 1.0:
+            raise ValueError(
+                f"Got {v} for sampling_ratio. Must be between 0.0 and 1.0."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _fill_default_exporter(self) -> "TracingConfig":
+        if self.enabled and not self.exporter_import_path:
+            self.exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        return self
 
 
 @PublicAPI(stability="stable")
@@ -999,6 +1067,10 @@ class ServeDeploySchema(BaseModel):
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
+    )
+    tracing_config: Optional[TracingConfig] = Field(
+        default=None,
+        description="Tracing config for all Serve components (proxies and replicas).",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
