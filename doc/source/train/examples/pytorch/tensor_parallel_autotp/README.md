@@ -128,7 +128,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch==2.9 transformers==4.44.2 datasets==2.21.0 deepspeed==0.18.8
+pip install torch==2.9.1 torchvision==0.24.1 transformers==4.48.0 datasets==2.21.0 deepspeed==0.18.8
 ```
 
 
@@ -732,6 +732,9 @@ storage_path = "/mnt/cluster_storage/ray_train_tp_autotp"  # Use persistent/shar
 run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
+    worker_runtime_env={
+        "pip": ["torch==2.9.1", "torchvision==0.24.1", "transformers==4.48.0", "datasets==2.21.0", "deepspeed==0.18.8"],
+    },
 )
 
 # Initialize and launch the trainer
