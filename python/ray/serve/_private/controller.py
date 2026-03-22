@@ -1102,6 +1102,15 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
 
+        # Update tracing config if provided in the new config.
+        # Tracing is static (no hot-reload of existing actors), but newly
+        # created proxies and replicas will pick up the updated config.
+        if config.tracing_config is not None:
+            self.global_tracing_config = config.tracing_config
+            self.proxy_state_manager.tracing_config = config.tracing_config
+            self.application_state_manager._tracing_config = config.tracing_config
+            self.deployment_state_manager._tracing_config = config.tracing_config
+
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging
             # config.
