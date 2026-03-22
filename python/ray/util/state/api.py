@@ -1270,6 +1270,10 @@ def get_log(
         _interval: The interval in secs to print new logs when `follow=True`.
         filter_ansi_code: A boolean flag for determining whether to filter ANSI escape codes.
             Setting to `True` removes ANSI escape codes from the output. The default value is `False`.
+        headers: Headers to use when sending requests to the HTTP server, used for cases like
+            authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to a file
+            or directory of trusted certificates.
 
     Return:
         A Generator of log line, None for SendType and ReturnType.
@@ -1341,9 +1345,11 @@ def list_logs(
         node_ip: Ip of the node containing the logs.
         glob_filter: Name of the file (relative to the ray log directory) to be
             retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
-        actor_id: Id of the actor if getting logs from an actor.
         timeout: Max timeout for requests made when getting the logs.
-        _interval: The interval in secs to print new logs when `follow=True`.
+        headers: Headers to use when sending requests to the HTTP server, used for cases like
+            authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to a file
+            or directory of trusted certificates.
 
     Return:
         A dictionary where the keys are log groups (e.g. gcs, raylet, worker), and
@@ -1414,6 +1420,10 @@ def summarize_tasks(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP server, used for cases like
+            authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to a file
+            or directory of trusted certificates.
 
     Return:
         Dictionarified
@@ -1449,6 +1459,10 @@ def summarize_actors(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP server, used for cases like
+            authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to a file
+            or directory of trusted certificates.
 
     Return:
         Dictionarified
@@ -1484,6 +1498,10 @@ def summarize_objects(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
+        headers: Headers to use when sending requests to the HTTP server, used for cases like
+            authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to a file
+            or directory of trusted certificates.
 
     Return:
         Dictionarified :class:`~ray.util.state.common.ObjectSummaries`

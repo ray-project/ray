@@ -2458,8 +2458,6 @@ python/ray/util/state/api.py
     DOC103: Method `StateApiClient.summary`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [resource: SummaryResource]. Arguments in the docstring but not in the function signature: [resource_name: ].
     DOC402: Function `get_log` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `get_log` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
-    DOC102: Function `list_logs`: Docstring contains more arguments than in function signature.
-    DOC103: Function `list_logs`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [_interval: , actor_id: ].
     DOC201: Function `list_logs` does not have a return section in docstring
     DOC201: Function `summarize_tasks` does not have a return section in docstring
     DOC201: Function `summarize_actors` does not have a return section in docstring
@@ -2481,36 +2479,16 @@ python/ray/util/state/state_cli.py
     DOC201: Function `_get_available_resources` does not have a return section in docstring
     DOC101: Function `get_table_output`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `get_table_output`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [detail: bool].
-    DOC101: Function `ray_get`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `ray_get`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], timeout: float].
-    DOC101: Function `ray_list`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `ray_list`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: str, detail: bool, filter: List[str], format: str, limit: int, timeout: float].
-    DOC101: Function `task_summary`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `task_summary`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `task_summary`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: str, ctx: , timeout: float].
-    DOC101: Function `actor_summary`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `actor_summary`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `actor_summary`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: str, ctx: , timeout: float].
-    DOC101: Function `object_summary`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `object_summary`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `object_summary`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: str, ctx: , timeout: float].
     DOC201: Function `_get_head_node_ip` does not have a return section in docstring
-    DOC101: Function `log_cluster`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `log_cluster`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `log_cluster`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], ctx: , encoding: str, encoding_errors: str, follow: bool, glob_filter: str, interval: float, node_id: Optional[str], node_ip: Optional[str], tail: int, timeout: int].
     DOC201: Function `log_cluster` does not have a return section in docstring
-    DOC101: Function `log_actor`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `log_actor`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `log_actor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], ctx: , err: bool, follow: bool, id: Optional[str], interval: float, node_id: Optional[str], node_ip: Optional[str], pid: Optional[str], tail: int, timeout: int].
-    DOC101: Function `log_worker`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `log_worker`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `log_worker`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], ctx: , err: bool, follow: bool, interval: float, node_id: Optional[str], node_ip: Optional[str], pid: Optional[str], tail: int, timeout: int].
-    DOC101: Function `log_job`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `log_job`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `log_job`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], ctx: , follow: bool, interval: float, submission_id: Optional[str], tail: int, timeout: int].
-    DOC101: Function `log_task`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `log_task`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `log_task`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [address: Optional[str], attempt_number: int, ctx: , err: bool, follow: bool, interval: float, tail: int, task_id: Optional[str], timeout: int].
 --------------------
 python/ray/util/state/state_manager.py
     DOC101: Function `api_with_network_error_handler`: Docstring contains fewer arguments than in function signature.
