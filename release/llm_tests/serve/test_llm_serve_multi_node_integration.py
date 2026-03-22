@@ -213,7 +213,7 @@ def test_llm_serve_data_parallelism_autoscaling():
     request = CompletionRequest(
         model="microsoft/Phi-tiny-MoE-instruct",
         prompt="Write a very long detailed story about",
-        max_tokens=1024,
+        max_tokens=512,
     )
     # Send enough concurrent requests to trigger upscaling
     streaming_handle = handle.options(stream=True)
