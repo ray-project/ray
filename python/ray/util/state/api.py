@@ -119,6 +119,7 @@ class StateApiClient(SubmissionClient):
         address: Optional[str] = None,
         cookies: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
         """Initialize a StateApiClient and check the connection to the cluster.
 
@@ -131,14 +132,17 @@ class StateApiClient(SubmissionClient):
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
+            verify: Boolean indication to verify the server's TLS certificate or a path
+                to a file or directory of trusted certificates.
         """
         if requests is None:
             raise RuntimeError(
                 "The Ray state CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
-        if not headers:
-            headers = {"Content-Type": "application/json"}
+        base_headers = {"Content-Type": "application/json"}
+        if headers:
+            base_headers.update(headers)
 
         # Resolve API server URL
         api_server_url = get_address_for_submission_client(address)
@@ -146,8 +150,9 @@ class StateApiClient(SubmissionClient):
         super().__init__(
             address=api_server_url,
             create_cluster_if_needed=False,
-            headers=headers,
+            headers=base_headers,
             cookies=cookies,
+            verify=verify,
         )
 
     @classmethod
@@ -1195,6 +1200,8 @@ def get_log(
     attempt_number: int = 0,
     _interval: Optional[float] = None,
     filter_ansi_code: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Optional[Union[str, bool]] = True,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
 
@@ -1290,11 +1297,17 @@ def get_log(
     if filter_ansi_code is not None:
         options_dict["filter_ansi_code"] = filter_ansi_code
 
+    request_headers: Dict[str, Any] = {}
+    if headers:
+        request_headers.update(headers)
+    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+
     with requests.get(
         f"{api_server_url}/api/v0/logs/{media_type}?"
         f"{urllib.parse.urlencode(options_dict)}",
         stream=True,
-        headers=get_auth_headers_if_auth_enabled({}),
+        headers=request_headers,
+        verify=verify,
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
@@ -1311,6 +1324,8 @@ def list_logs(
     node_ip: Optional[str] = None,
     glob_filter: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Optional[Union[str, bool]] = True,
 ) -> Dict[str, List[str]]:
     """Listing log files available.
 
@@ -1351,9 +1366,15 @@ def list_logs(
         options_dict["glob"] = glob_filter
     options_dict["timeout"] = timeout
 
+    request_headers: Dict[str, Any] = {}
+    if headers:
+        request_headers.update(headers)
+    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}",
-        headers=get_auth_headers_if_auth_enabled({}),
+        headers=request_headers,
+        verify=verify,
     )
     # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
@@ -1378,6 +1399,8 @@ def summarize_tasks(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the tasks in cluster.
 
@@ -1397,7 +1420,7 @@ def summarize_tasks(
     Raises:
         RayStateApiException: if the CLI is failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1411,6 +1434,8 @@ def summarize_actors(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the actors in cluster.
 
@@ -1430,7 +1455,7 @@ def summarize_actors(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1444,6 +1469,8 @@ def summarize_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the objects in cluster.
 
@@ -1462,7 +1489,7 @@ def summarize_objects(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address).summary(
+    return StateApiClient(address=address, headers=headers, verify=verify).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,

@@ -495,6 +495,126 @@ def test_parse_filter():
         _parse_filter("key>value!=")
 
 
+def test_state_cli_list_supports_headers_and_verify(monkeypatch):
+    import ray.util.state.state_cli as state_cli
+
+    captured = {}
+
+    class DummyStateApiClient:
+        def __init__(self, address=None, headers=None, verify=True, **kwargs):
+            captured["address"] = address
+            captured["headers"] = headers
+            captured["verify"] = verify
+
+        def list(self, *args, **kwargs):
+            return []
+
+    monkeypatch.setattr(state_cli, "StateApiClient", DummyStateApiClient)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        state_cli.ray_list,
+        [
+            "actors",
+            "--headers",
+            '{"Authorization": "Bearer test"}',
+            "--verify",
+            "false",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"Authorization": "Bearer test"}
+    assert captured["verify"] is False
+
+
+def test_state_cli_list_supports_headers_env_var(monkeypatch):
+    import ray.util.state.state_cli as state_cli
+
+    captured = {}
+
+    class DummyStateApiClient:
+        def __init__(self, address=None, headers=None, verify=True, **kwargs):
+            captured["headers"] = headers
+            captured["verify"] = verify
+
+        def list(self, *args, **kwargs):
+            return []
+
+    monkeypatch.setattr(state_cli, "StateApiClient", DummyStateApiClient)
+    monkeypatch.setenv("RAY_STATE_HEADERS", '{"X-Test": "1"}')
+
+    runner = CliRunner()
+    result = runner.invoke(state_cli.ray_list, ["actors"])
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"X-Test": "1"}
+    assert captured["verify"] is True
+
+
+def test_state_cli_list_rejects_invalid_headers(monkeypatch):
+    import ray.util.state.state_cli as state_cli
+
+    captured = {}
+
+    class DummyStateApiClient:
+        def __init__(self, address=None, headers=None, verify=True, **kwargs):
+            captured["headers"] = headers
+            captured["verify"] = verify
+
+        def list(self, *args, **kwargs):
+            return []
+
+    monkeypatch.setattr(state_cli, "StateApiClient", DummyStateApiClient)
+
+    runner = CliRunner()
+    result = runner.invoke(state_cli.ray_list, ["actors", "--headers", "{bad json"])
+    assert result.exit_code != 0
+    assert "Failed to parse headers into JSON" in result.output
+
+
+def test_state_cli_summary_supports_headers_and_verify(monkeypatch):
+    import ray.util.state.state_cli as state_cli
+
+    captured = {}
+
+    def dummy_summarize_tasks(*, headers=None, verify=True, **kwargs):
+        captured["headers"] = headers
+        captured["verify"] = verify
+        return {}
+
+    monkeypatch.setattr(state_cli, "summarize_tasks", dummy_summarize_tasks)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        state_cli.summary_state_cli_group,
+        ["tasks", "--headers", '{"X-Test": "1"}', "--verify", "false"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"X-Test": "1"}
+    assert captured["verify"] is False
+
+
+def test_state_cli_logs_supports_headers_and_verify(monkeypatch):
+    import ray.util.state.state_cli as state_cli
+
+    captured = {}
+
+    def dummy_list_logs(*, headers=None, verify=True, **kwargs):
+        captured["headers"] = headers
+        captured["verify"] = verify
+        return {"raylet": ["raylet.out", "raylet.err"]}
+
+    monkeypatch.setattr(state_cli, "list_logs", dummy_list_logs)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        state_cli.logs_state_cli_group,
+        ["cluster", "--node-ip", "127.0.0.1", "--headers", '{"X-Test": "1"}', "--verify", "false"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"X-Test": "1"}
+    assert captured["verify"] is False
+
+
 # Without this, capsys will have a race condition
 # that causes
 # ValueError: I/O operation on closed file.

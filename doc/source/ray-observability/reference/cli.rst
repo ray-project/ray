@@ -28,6 +28,16 @@ State CLI allows users to access the state of various resources (e.g., actor, ta
 .. click:: ray.util.state.state_cli:ray_get
    :prog: ray get
 
+Authentication
+--------------
+
+All State CLI commands accept ``--headers`` and ``--verify`` for secured clusters:
+
+- ``--headers``: JSON string for custom HTTP headers, e.g. ``'{"Authorization": "Bearer <token>"}'``.
+  You can also set ``RAY_STATE_HEADERS`` environment variable with the same JSON to apply to all state CLI commands.
+- ``--verify``: Boolean to enable/disable TLS certificate verification or a path to a CA bundle/directory.
+  Examples: ``--verify true`` (default), ``--verify false``, ``--verify /path/to/ca-bundle.pem``.
+
 .. _ray-logs-api-cli-ref:
 
 Log
