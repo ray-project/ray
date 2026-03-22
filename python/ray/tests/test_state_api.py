@@ -608,7 +608,15 @@ def test_state_cli_logs_supports_headers_and_verify(monkeypatch):
     runner = CliRunner()
     result = runner.invoke(
         state_cli.logs_state_cli_group,
-        ["cluster", "--node-ip", "127.0.0.1", "--headers", '{"X-Test": "1"}', "--verify", "false"],
+        [
+            "cluster",
+            "--node-ip",
+            "127.0.0.1",
+            "--headers",
+            '{"X-Test": "1"}',
+            "--verify",
+            "false",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert captured["headers"] == {"X-Test": "1"}
