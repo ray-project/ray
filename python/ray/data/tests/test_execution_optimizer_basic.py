@@ -44,7 +44,7 @@ def test_read_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     op = get_parquet_read_logical_op()
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_op = planner.plan(plan)[0].dag
 
     assert op.name == "ReadParquet"
     assert isinstance(physical_op, MapOperator)
@@ -90,7 +90,7 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -106,7 +106,7 @@ def test_split_blocks_operator(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert physical_op.name == "MapBatches(<lambda>)"
@@ -129,7 +129,7 @@ def test_from_operators(ray_start_regular_shared_2_cpus):
         planner = create_planner()
         op = op_cls([], [])
         plan = LogicalPlan(op, ctx)
-        physical_op = planner.plan(plan).dag
+        physical_op, _ = planner.plan(plan).dag
 
         assert op.name == op_cls.__name__
         assert isinstance(physical_op, InputDataBuffer)
@@ -204,7 +204,7 @@ def test_map_batches_operator(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_op, _ = planner.plan(plan).dag
 
     assert op.name == "MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -232,7 +232,7 @@ def test_map_rows_operator(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_op, _ = planner.plan(plan).dag
 
     assert op.name == "Map(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -259,7 +259,7 @@ def test_filter_operator(ray_start_regular_shared_2_cpus):
         fn=lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_op, _ = planner.plan(plan).dag
 
     assert op.name == "Filter(<lambda>)"
     assert isinstance(physical_op, MapOperator)
@@ -335,7 +335,7 @@ def test_flat_map(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_op, _ = planner.plan(plan).dag
 
     assert op.name == "FlatMap(<lambda>)"
     assert isinstance(physical_op, MapOperator)
