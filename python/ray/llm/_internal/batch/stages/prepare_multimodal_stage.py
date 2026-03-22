@@ -1,7 +1,6 @@
 """Prepare Multimodal Stage"""
 
 import asyncio
-import copyreg
 from typing import Any, AsyncIterator, Dict, List
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
