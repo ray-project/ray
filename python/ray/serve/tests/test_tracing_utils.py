@@ -37,6 +37,7 @@ from ray.serve._private.tracing_utils import (
     setup_tracing,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
+from ray.serve.schema import TracingConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import gRPCInputStream
 from ray.serve.tests.conftest import *  # noqa
@@ -1128,6 +1129,192 @@ def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
     assert f"/ray.serve.UserDefinedService/{method_name}" == attrs["rpc.method"]
     assert attrs["rpc.grpc.status_code"] == "OK"
     assert grpc_proxy_span["status"]["status_code"] == "OK"
+
+    shutil.rmtree(spans_dir)
+
+
+def test_tracing_config_enabled(serve_and_ray_shutdown):
+    """Test that serve.start(tracing_config=TracingConfig(...)) produces spans."""
+
+    @serve.deployment
+    class TracedModel:
+        def __call__(self, req: starlette.requests.Request):
+            return "traced"
+
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=TracingConfig(
+            enabled=True,
+            sampling_ratio=1.0,
+        ),
+    )
+    serve.run(TracedModel.bind())
+
+    # Set up upstream tracing and make a request
+    setup_tracing(
+        component_name="upstream_app",
+        component_id="tracing_config_test",
+        tracing_sampling_ratio=1.0,
+    )
+    tracer = trace.get_tracer("test_tracing_config")
+    with tracer.start_as_current_span("upstream_tracing_config"):
+        ctx = get_trace_context()
+        headers = {}
+        TraceContextTextMapPropagator().inject(headers, ctx)
+        url = get_application_url("HTTP")
+        r = httpx.post(f"{url}/", headers=headers)
+        assert r.text == "traced"
+
+    serve.shutdown()
+
+    # Verify spans were produced
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    files = os.listdir(spans_dir)
+
+    # Should have replica spans, proxy spans, and upstream spans
+    replica_filename = None
+    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    upstream_filename = None
+    for file in files:
+        if "replica" in file:
+            replica_filename = file
+        elif "proxy" in file:
+            proxy_filename = file
+        elif "upstream" in file:
+            upstream_filename = file
+
+    assert replica_filename, "No replica span file found"
+    assert upstream_filename, "No upstream span file found"
+
+    replica_spans = load_spans(os.path.join(spans_dir, replica_filename))
+    assert len(replica_spans) > 0, "No replica spans found"
+
+    # Verify replica spans have expected attributes
+    handle_span = next(
+        (s for s in replica_spans if "replica_handle_request" in s["name"]),
+        None,
+    )
+    assert handle_span is not None, "No replica_handle_request span found"
+
+    shutil.rmtree(spans_dir)
+
+
+def test_tracing_config_disabled(serve_and_ray_shutdown):
+    """Test that TracingConfig(enabled=False) does not produce replica/proxy spans."""
+
+    @serve.deployment
+    class UntracedModel:
+        def __call__(self, req: starlette.requests.Request):
+            return "untraced"
+
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=TracingConfig(
+            enabled=False,
+        ),
+    )
+    serve.run(UntracedModel.bind())
+
+    url = get_application_url("HTTP")
+    r = httpx.post(f"{url}/")
+    assert r.text == "untraced"
+
+    serve.shutdown()
+
+    # Verify NO serve span files were produced (no proxy/replica spans)
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    if os.path.exists(spans_dir):
+        files = os.listdir(spans_dir)
+        for file in files:
+            assert "replica" not in file, (
+                f"Found replica span file {file} when tracing was disabled"
+            )
+            assert "proxy" not in file, (
+                f"Found proxy span file {file} when tracing was disabled"
+            )
+
+
+def test_tracing_config_custom_sampling_ratio(serve_and_ray_shutdown):
+    """Test that TracingConfig sampling_ratio is respected."""
+
+    @serve.deployment
+    class SampledModel:
+        def __call__(self, req: starlette.requests.Request):
+            return "sampled"
+
+    # Use sampling_ratio=0.0 so no traces are sampled
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=TracingConfig(
+            enabled=True,
+            sampling_ratio=0.0,
+        ),
+    )
+    serve.run(SampledModel.bind())
+
+    url = get_application_url("HTTP")
+    # Make multiple requests — with 0% sampling none should be traced
+    for _ in range(5):
+        r = httpx.post(f"{url}/")
+        assert r.text == "sampled"
+
+    serve.shutdown()
+
+    # With 0% sampling, no spans should be produced by replica/proxy
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    if os.path.exists(spans_dir):
+        for file in os.listdir(spans_dir):
+            if "replica" in file or "proxy" in file:
+                spans = load_spans(os.path.join(spans_dir, file))
+                assert len(spans) == 0, (
+                    f"Expected no spans with 0% sampling, found {len(spans)} "
+                    f"in {file}"
+                )
+
+
+def test_tracing_config_from_dict(serve_and_ray_shutdown):
+    """Test that tracing_config can be passed as a plain dict."""
+
+    @serve.deployment
+    class DictConfigModel:
+        def __call__(self, req: starlette.requests.Request):
+            return "dict_config"
+
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config={
+            "enabled": True,
+            "sampling_ratio": 1.0,
+        },
+    )
+    serve.run(DictConfigModel.bind())
+
+    setup_tracing(
+        component_name="upstream_app",
+        component_id="dict_config_test",
+        tracing_sampling_ratio=1.0,
+    )
+    tracer = trace.get_tracer("test_dict_config")
+    with tracer.start_as_current_span("upstream_dict_config"):
+        ctx = get_trace_context()
+        headers = {}
+        TraceContextTextMapPropagator().inject(headers, ctx)
+        url = get_application_url("HTTP")
+        r = httpx.post(f"{url}/", headers=headers)
+        assert r.text == "dict_config"
+
+    serve.shutdown()
+
+    # Verify spans were produced
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    assert os.path.exists(spans_dir), "Spans directory not created"
+    files = os.listdir(spans_dir)
+    replica_files = [f for f in files if "replica" in f]
+    assert len(replica_files) > 0, "No replica span files found"
 
     shutil.rmtree(spans_dir)
 
