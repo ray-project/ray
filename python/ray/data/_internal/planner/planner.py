@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
-    from ray.data._internal.execution.execution_callback import ExecutionCallback
-
 from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import (
     ExecutionCallback,
