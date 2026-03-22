@@ -19,7 +19,7 @@ from ray._private.utils import (
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
-from ray.dashboard.modules.job.cli_utils import add_common_job_options
+from ray.dashboard.modules.job.cli_utils import add_common_job_options, parse_headers
 from ray.dashboard.modules.job.utils import redact_url_password
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
@@ -45,19 +45,7 @@ def _get_sdk_client(
 
 
 def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
-    if headers is None and "RAY_JOB_HEADERS" in os.environ:
-        headers = os.environ["RAY_JOB_HEADERS"]
-    if headers is not None:
-        try:
-            return json.loads(headers)
-        except Exception as exc:
-            raise ValueError(
-                """Failed to parse headers into JSON.
-                Expected format: {{"KEY": "VALUE"}}, got {}, {}""".format(
-                    headers, exc
-                )
-            )
-    return None
+    return parse_headers(headers, env_var="RAY_JOB_HEADERS")
 
 
 def _log_big_success_msg(success_msg):

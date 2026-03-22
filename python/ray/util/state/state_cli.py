@@ -11,7 +11,7 @@ import yaml
 import ray._private.services as services
 from ray._common.network_utils import parse_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.dashboard.modules.job.cli_utils import BoolOrStringParam
+from ray.dashboard.modules.job.cli_utils import BoolOrStringParam, parse_headers
 from ray.util.annotations import PublicAPI
 from ray.util.state import (
     StateApiClient,
@@ -363,23 +363,10 @@ headers_option = click.option(
 
 
 def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
-    if headers is None and "RAY_STATE_HEADERS" in os.environ:
-        headers = os.environ["RAY_STATE_HEADERS"]
-    if headers is None:
-        return None
     try:
-        parsed = json.loads(headers)
-    except Exception as exc:
-        raise click.UsageError(
-            "Failed to parse headers into JSON. "
-            f'Expected format: {{"KEY": "VALUE"}}, got {headers}, {exc}'
-        )
-    if not isinstance(parsed, dict):
-        raise click.UsageError(
-            "Failed to parse headers into JSON. "
-            f"Expected a JSON object, got: {headers}"
-        )
-    return parsed
+        return parse_headers(headers, env_var="RAY_STATE_HEADERS")
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
 
 
 @click.command()
@@ -1088,6 +1075,7 @@ def log_cluster(
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
     """  # noqa: E501
+    parsed_headers = _handle_headers(headers)
 
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
@@ -1098,7 +1086,7 @@ def log_cluster(
         node_ip=node_ip,
         glob_filter=glob_filter,
         timeout=timeout,
-        headers=_handle_headers(headers),
+        headers=parsed_headers,
         verify=verify,
     )
 
@@ -1130,7 +1118,7 @@ def log_cluster(
         timeout=timeout,
         encoding=encoding,
         encoding_errors=encoding_errors,
-        headers=_handle_headers(headers),
+        headers=parsed_headers,
         verify=verify,
     )
 

@@ -46,6 +46,14 @@ logger = logging.getLogger(__name__)
 _MAX_HTTP_RESPONSE_EXCEPTION_TEXT = 500
 
 
+def _prepare_request_headers(
+    headers: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    request_headers = headers.copy() if headers else {}
+    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+    return request_headers
+
+
 @contextmanager
 def warnings_on_slow_request(
     *, address: str, endpoint: str, timeout: float, explain: bool
@@ -1297,10 +1305,7 @@ def get_log(
     if filter_ansi_code is not None:
         options_dict["filter_ansi_code"] = filter_ansi_code
 
-    request_headers: Dict[str, Any] = {}
-    if headers:
-        request_headers.update(headers)
-    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+    request_headers = _prepare_request_headers(headers)
 
     with requests.get(
         f"{api_server_url}/api/v0/logs/{media_type}?"
@@ -1366,10 +1371,7 @@ def list_logs(
         options_dict["glob"] = glob_filter
     options_dict["timeout"] = timeout
 
-    request_headers: Dict[str, Any] = {}
-    if headers:
-        request_headers.update(headers)
-    request_headers.update(get_auth_headers_if_auth_enabled(request_headers))
+    request_headers = _prepare_request_headers(headers)
 
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}",

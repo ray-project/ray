@@ -1,5 +1,7 @@
 import functools
-from typing import Union
+import json
+import os
+from typing import Any, Dict, Optional, Union
 
 import click
 
@@ -24,6 +26,31 @@ class BoolOrStringParam(click.ParamType):
             return value
         else:
             return bool_cast(value)
+
+
+def parse_headers(
+    headers: Optional[str],
+    *,
+    env_var: str,
+    env_var_fallback: bool = True,
+) -> Optional[Dict[str, Any]]:
+    if headers is None and env_var_fallback and env_var in os.environ:
+        headers = os.environ[env_var]
+    if headers is None:
+        return None
+    try:
+        parsed = json.loads(headers)
+    except Exception as exc:
+        raise ValueError(
+            "Failed to parse headers into JSON. "
+            f'Expected format: {{"KEY": "VALUE"}}, got {headers}, {exc}'
+        )
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "Failed to parse headers into JSON. "
+            f"Expected a JSON object, got: {headers}"
+        )
+    return parsed
 
 
 def add_common_job_options(func):
