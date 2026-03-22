@@ -1,3 +1,3 @@
 # Contributing
 
-Addressing good-first-issue #4444: [tune] Programmatic stopping criteria
+Addressing good-first-issue #26670: [autoscaler][logs] Improve status logging
