@@ -183,40 +183,45 @@ class IcebergCheckpointLoader:
         import pickle
 
         results = []
-        try:
-            selector = pyarrow.fs.FileSelector(self.path)
-            info_list = self.filesystem.get_file_info(selector)
-            # Only load metadata when its corresponding parquet ID file exists.
-            #
-            # This prevents treating "meta-only" partial state as committed progress.
-            # It can happen if a worker crashes after writing metadata but before
-            # persisting the parquet checkpoint IDs. Without this guard, we'd load
-            # an IcebergWriteResult for rows that the restore path will not skip.
-            #
-            # Note: The inverse partial state ("parquet-only") is avoided by writing
-            # metadata before parquet in the writer.
-            parquet_ids = {
-                info.base_name[: -len(".parquet")]
-                for info in info_list
-                if info.type == pyarrow.fs.FileType.File
-                and info.base_name.endswith(".parquet")
-            }
-            for info in info_list:
-                if info.type == pyarrow.fs.FileType.File:
-                    # Match "{uuid}.meta.pkl"
-                    if info.base_name.endswith(".meta.pkl"):
-                        file_id = info.base_name[: -len(".meta.pkl")]
-                        if file_id not in parquet_ids:
-                            continue
-                        try:
-                            with self.filesystem.open_input_stream(info.path) as f:
-                                results.append(pickle.load(f))
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to load checkpoint metadata {info.base_name}: {e}"
-                            )
-        except Exception as e:
-            logger.warning(f"Failed to list checkpoint directory: {e}")
+        selector = pyarrow.fs.FileSelector(self.path)
+        info_list = self.filesystem.get_file_info(selector)
+        # Only load metadata when its corresponding parquet ID file exists.
+        #
+        # This prevents treating "meta-only" partial state as committed progress.
+        # It can happen if a worker crashes after writing metadata but before
+        # persisting the parquet checkpoint IDs. Without this guard, we'd load
+        # an IcebergWriteResult for rows that the restore path will not skip.
+        #
+        # Note: The inverse partial state ("parquet-only") is avoided by writing
+        # metadata before parquet in the writer.
+        parquet_ids = {
+            info.base_name[: -len(".parquet")]
+            for info in info_list
+            if info.type == pyarrow.fs.FileType.File and info.base_name.endswith(".parquet")
+        }
+
+        load_errors = []
+        for info in info_list:
+            if info.type != pyarrow.fs.FileType.File:
+                continue
+            # Match "{uuid}.meta.pkl"
+            if not info.base_name.endswith(".meta.pkl"):
+                continue
+            file_id = info.base_name[: -len(".meta.pkl")]
+            if file_id not in parquet_ids:
+                continue
+            try:
+                with self.filesystem.open_input_stream(info.path) as f:
+                    results.append(pickle.load(f))
+            except Exception as e:
+                load_errors.append((info.base_name, e))
+
+        if load_errors:
+            first_name, first_exc = load_errors[0]
+            raise RuntimeError(
+                f"Failed to load {len(load_errors)} checkpoint metadata files; "
+                f"first failure: {first_name}: {first_exc}"
+            ) from first_exc
         return results
 
     def get_checkpoint_ids(self, id_col: str) -> "set[Any]":
