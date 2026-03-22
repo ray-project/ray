@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
@@ -167,6 +167,28 @@ class AutoscalingActorPool(ABC):
         Returns:
             An actor handle if an actor with capacity is available, otherwise
             ``None``.
+        """
+        ...
+
+    @abstractmethod
+    def select_actors_batch(
+        self,
+        bundles: List[RefBundle],
+        actor_locality_enabled: bool = False,
+    ) -> List[Tuple[RefBundle, ActorHandle]]:
+        """Select actors for a batch of bundles.
+
+        When locality is enabled, implementations may assign bundles using a
+        globally optimal strategy (e.g. minimizing total data movement).
+        When locality is disabled, bundles are typically assigned to
+        least-loaded actors.
+
+        Args:
+            bundles: The bundles to assign actors to.
+            actor_locality_enabled: Whether actor locality is enabled.
+
+        Returns:
+            List of (bundle, actor) pairs for the assigned bundles.
         """
         ...
 

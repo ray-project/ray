@@ -645,12 +645,6 @@ class TestActorPool(unittest.TestCase):
         bundles = make_ref_bundles([[0], [1]])
         b0, b1 = bundles
 
-        # B0 has data on both nodes, B1 only on N1.
-        preferred_locs = {
-            id(b0): {"node1": 100, "node2": 50},
-            id(b1): {"node1": 200},
-        }
-
         actor_n1 = self._add_ready_actor(pool, node_id="node1")
         actor_n2 = self._add_ready_actor(pool, node_id="node2")
 

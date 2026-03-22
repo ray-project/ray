@@ -461,12 +461,12 @@ class ActorPoolMapOperator(MapOperator):
                     per_block_bundles.append(bundle)
                 else:
                     for i, (block_ref, meta) in enumerate(bundle.blocks):
-                        slice = bundle.slices[i] if bundle.slices else None
+                        block_slice = bundle.slices[i] if bundle.slices else None
                         single = RefBundle(
                             blocks=((block_ref, meta),),
                             schema=bundle.schema,
                             owns_blocks=bundle.owns_blocks,
-                            slices=(slice,) if slice is not None else None,
+                            slices=(block_slice,) if block_slice is not None else None,
                         )
                         per_block_bundles.append(single)
 
@@ -996,6 +996,7 @@ class _ActorPool(AutoscalingActorPool):
         if state.num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
+    @override
     def select_actors_batch(
         self,
         bundles: List[RefBundle],
