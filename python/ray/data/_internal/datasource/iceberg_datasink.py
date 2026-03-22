@@ -596,11 +596,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     "Failed to load checkpoint results; aborting commit to avoid data loss."
                 ) from e
 
-        valid_results = [
-            r
-            for r in write_returns
-            if r and (r.data_files or (r.upsert_keys is not None))
-        ]
+        valid_results = [r for r in write_returns if r and r.data_files]
 
         if not valid_results:
             logger.info("[on_write_complete] No data to commit to Iceberg table.")
@@ -622,8 +618,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                         seen_data_file_paths.add(file_path)
                     all_data_files.append(df)
                 all_schemas.extend(result.schemas)
-            if result.upsert_keys is not None:
-                upsert_keys_tables.append(result.upsert_keys)
+                if result.upsert_keys is not None:
+                    upsert_keys_tables.append(result.upsert_keys)
 
         logger.info(
             "[on_write_complete] Collected results: %d data files, %d schema blocks, "
