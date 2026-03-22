@@ -9,10 +9,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
-    RAY_NIXL_CPU_MEMORY_POOL_SIZE,
-    RAY_NIXL_GPU_MEMORY_POOL_SIZE,
-    RAY_NIXL_MEMORY_POOL_ENABLED,
 )
+from ray.experimental.rdt.nixl_memory_pool import MemoryPoolManager
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -21,8 +19,6 @@ from ray.experimental.rdt.tensor_transport_manager import (
 
 if TYPE_CHECKING:
     import torch
-
-from ray.experimental.rdt.nixl_memory_pool import MemoryPoolManager
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +39,8 @@ class NixlTransportMetadata(TensorTransportMetadata):
         nixl_agent_meta_version: The version of the NIXL agent metadata.
         pool_offsets: Offsets of each tensor in the memory pool.
         pool_sizes: Sizes of each allocated block in bytes.
+        pool_storage_ptrs: Storage data pointers for each tensor, used for
+            deduplication-aware garbage collection.
     """
 
     nixl_serialized_descs: Optional[bytes] = None
@@ -52,6 +50,7 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
     pool_offsets: Optional[List[int]] = None
     pool_sizes: Optional[List[int]] = None
+    pool_storage_ptrs: Optional[List[int]] = None
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
@@ -61,6 +60,15 @@ class NixlTransportMetadata(TensorTransportMetadata):
 class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
+
+
+@dataclass
+class PoolTensorDesc:
+    """Tracks a storage's allocation in the memory pool for deduplication."""
+
+    pool_offset: int  # Offset in pool
+    tensor_size: int  # Size in bytes (full storage size)
+    ref_count: int  # Number of active object refs using this pool slot
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -85,7 +93,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._nixl_agent_meta_version = 0
         self._cpu_memory_pool: Optional[MemoryPoolManager] = None
         self._gpu_memory_pool: Optional[MemoryPoolManager] = None
-        self._memory_pool_initialized = False
+        # Pool-level dedup cache: keyed by storage data_ptr, tracks
+        # pool offset/size and ref count so identical storages aren't copied twice.
+        self._pool_tensor_cache: Dict[int, PoolTensorDesc] = {}
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -101,6 +111,31 @@ class NixlTensorTransport(TensorTransportManager):
     def register_nixl_memory(self, tensor: "torch.Tensor") -> None:
         """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
         self._add_tensor_descs([tensor])
+
+    def register_nixl_memory_pool(self, size: int, device: "torch.device") -> None:
+        """Pre-allocates a memory pool and registers it with NIXL.
+
+        Args:
+            size: Size of the memory pool in bytes.
+            device: Device to allocate the pool on (cpu or cuda).
+
+        Raises:
+            ValueError: If a pool is already registered for the given device.
+        """
+        if self._get_memory_pool(device.type) is not None:
+            raise ValueError(
+                f"A memory pool is already registered for device '{device.type}'. "
+                "Only one pool per device type is supported."
+            )
+        nixl_agent = self.get_nixl_agent()
+        pool = MemoryPoolManager(pool_size=size, device=device)
+        nixl_agent.register_memory(pool.get_pool_tensor())
+        if device.type == "cpu":
+            self._cpu_memory_pool = pool
+        elif device.type == "cuda":
+            self._gpu_memory_pool = pool
+        else:
+            raise ValueError(f"Unsupported device type: {device.type}")
 
     def get_nixl_agent(self):
         """
@@ -120,42 +155,6 @@ class NixlTensorTransport(TensorTransportManager):
 
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
-
-        if RAY_NIXL_MEMORY_POOL_ENABLED and not self._memory_pool_initialized:
-            self._memory_pool_initialized = True
-            import torch
-
-            if RAY_NIXL_CPU_MEMORY_POOL_SIZE > 0:
-                try:
-                    self._cpu_memory_pool = MemoryPoolManager(
-                        pool_size=RAY_NIXL_CPU_MEMORY_POOL_SIZE,
-                        device=torch.device("cpu"),
-                    )
-                    self._nixl_agent.register_memory(
-                        self._cpu_memory_pool.get_pool_tensor()
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to initialize NIXL CPU memory pool: {e}. "
-                        "CPU pool disabled."
-                    )
-                    self._cpu_memory_pool = None
-
-            if RAY_NIXL_GPU_MEMORY_POOL_SIZE > 0 and torch.cuda.is_available():
-                try:
-                    self._gpu_memory_pool = MemoryPoolManager(
-                        pool_size=RAY_NIXL_GPU_MEMORY_POOL_SIZE,
-                        device=torch.device("cuda"),
-                    )
-                    self._nixl_agent.register_memory(
-                        self._gpu_memory_pool.get_pool_tensor()
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to initialize NIXL GPU memory pool: {e}. "
-                        "GPU pool disabled."
-                    )
-                    self._gpu_memory_pool = None
 
         return self._nixl_agent
 
@@ -215,7 +214,12 @@ class NixlTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
-                xfer_descs, pool_offsets, pool_sizes = None, None, None
+                xfer_descs, pool_offsets, pool_sizes, pool_storage_ptrs = (
+                    None,
+                    None,
+                    None,
+                    None,
+                )
                 pool = self._get_memory_pool(device.type)
                 # Try allocating from memory pool.
                 if pool is not None:
@@ -223,6 +227,7 @@ class NixlTensorTransport(TensorTransportManager):
                         xfer_descs,
                         pool_offsets,
                         pool_sizes,
+                        pool_storage_ptrs,
                     ) = self._allocate_from_memory_pool(rdt_object, pool)
                 if xfer_descs is None:
                     self._add_tensor_descs(rdt_object)
@@ -235,7 +240,7 @@ class NixlTensorTransport(TensorTransportManager):
             else:
                 serialized_descs, agent_meta = None, None
                 agent_name, agent_meta_version = None, None
-                pool_offsets, pool_sizes = None, None
+                pool_offsets, pool_sizes, pool_storage_ptrs = None, None, None
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
@@ -246,6 +251,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent_meta_version=agent_meta_version,
                 pool_offsets=pool_offsets,
                 pool_sizes=pool_sizes,
+                pool_storage_ptrs=pool_storage_ptrs,
             )
             self._put_meta(obj_id, ret)
             return ret
@@ -403,13 +409,21 @@ class NixlTensorTransport(TensorTransportManager):
                 return
             self._managed_meta_nixl.pop(obj_id, None)
 
-            # If memory pool was used, free the memory blocks.
+            # If memory pool was used, free the memory blocks via dedup cache.
             if tensor_transport_meta.pool_offsets is not None:
                 pool = self._get_memory_pool(tensor_transport_meta.tensor_device)
-                pool.free_multiple(
-                    tensor_transport_meta.pool_offsets,
-                    tensor_transport_meta.pool_sizes,
-                )
+                offsets_to_free = []
+                sizes_to_free = []
+                for ptr in tensor_transport_meta.pool_storage_ptrs:
+                    if ptr in self._pool_tensor_cache:
+                        desc = self._pool_tensor_cache[ptr]
+                        desc.ref_count -= 1
+                        if desc.ref_count == 0:
+                            offsets_to_free.append(desc.pool_offset)
+                            sizes_to_free.append(desc.tensor_size)
+                            self._pool_tensor_cache.pop(ptr)
+                if offsets_to_free:
+                    pool.free_multiple(offsets_to_free, sizes_to_free)
             else:
                 for tensor in tensors:
                     key = tensor.untyped_storage().data_ptr()
@@ -485,66 +499,129 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _allocate_from_memory_pool(
         self, tensors: List["torch.Tensor"], pool: MemoryPoolManager
-    ) -> Tuple[Optional[Any], Optional[List[int]], Optional[List[int]]]:
+    ) -> Tuple[
+        Optional[Any], Optional[List[int]], Optional[List[int]], Optional[List[int]]
+    ]:
         """
-        Allocate memory from the given memory pool for the given tensors.
+        Allocate memory from the given memory pool for the given tensors,
+        with storage-level deduplication: tensors sharing the same underlying
+        storage (including views) reuse the same pool allocation.
+
+        Note: Must be called under self._cache_lock, which also protects
+        pool._free_blocks and self._pool_tensor_cache from concurrent access.
         """
+        new_allocations = None
+        needs_alloc_ptrs: List[int] = []
         try:
             import torch
 
-            # Calculate sizes for each tensor
-            tensor_sizes = [t.numel() * t.element_size() for t in tensors]
+            # Classify each tensor as cache-hit or needs-allocation.
+            # We key by the storage data_ptr so views of the same tensor
+            # share one pool slot.
+            storage_ptrs: List[int] = []
+            needs_alloc_ptr_to_idx: Dict[int, int] = {}
+            needs_alloc_sizes: List[int] = []
+            needs_alloc_tensors: List["torch.Tensor"] = []
 
-            # Try to allocate all tensors from memory pool atomically
-            # If any allocation fails, return None so that we fall back to traditional mode.
-            allocations = pool.allocate_multiple(tensor_sizes)
-            if allocations is not None:
-                # All allocations succeeded
-                pool_offsets = []
-                pool_sizes = []  # Track sizes for garbage collection
-                pool_tensors = []  # Create tensor views into the pool
-                pool_tensor = pool.get_pool_tensor()
+            for tensor in tensors:
+                ptr = tensor.untyped_storage().data_ptr()
+                storage_ptrs.append(ptr)
+                if ptr in self._pool_tensor_cache:
+                    # Cache hit — will reuse existing pool allocation
+                    continue
+                if ptr not in needs_alloc_ptr_to_idx:
+                    # New storage that needs allocation
+                    needs_alloc_ptr_to_idx[ptr] = len(needs_alloc_ptrs)
+                    needs_alloc_ptrs.append(ptr)
+                    storage_size = tensor.untyped_storage().nbytes()
+                    needs_alloc_sizes.append(storage_size)
+                    needs_alloc_tensors.append(tensor)
 
-                for i, tensor in enumerate(tensors):
-                    offset, allocated_size = allocations[i]
-                    tensor_size = tensor_sizes[i]
+            # Allocate from the pool for new storages only.
+            if needs_alloc_sizes:
+                new_allocations = pool.allocate_multiple(needs_alloc_sizes)
+                if new_allocations is None:
+                    # Pool is full — fall back to traditional mode
+                    return None, None, None, None
 
-                    # Copy tensor to memory pool
-                    pool.copy_to_pool(tensor, offset)
-                    pool_offsets.append(offset)
-                    pool_sizes.append(tensor_size)
+            # Copy newly-allocated storages to pool and update cache.
+            pool_tensor = pool.get_pool_tensor()
+            for i, ptr in enumerate(needs_alloc_ptrs):
+                offset, _ = new_allocations[i]
+                tensor = needs_alloc_tensors[i]
+                storage_size = needs_alloc_sizes[i]
 
-                    # Create a tensor view into the pool at this offset
-                    # This allows us to create xfer descs for the specific memory region
-                    pool_bytes = pool_tensor[offset : offset + tensor_size]
-                    pool_tensor_view = pool_bytes.view(tensor.dtype).reshape(
-                        tensor.shape
-                    )
-                    pool_tensors.append(pool_tensor_view)
+                # Copy the full underlying storage to the pool
+                storage_bytes = torch.tensor(
+                    [],
+                    dtype=torch.uint8,
+                    device=tensor.device,
+                ).set_(tensor.untyped_storage())
+                pool_tensor[offset : offset + storage_size].copy_(storage_bytes)
 
-                if pool.device.type == "cuda":
-                    torch.cuda.synchronize(pool.device)
+                # Add to dedup cache with ref_count=0 (will be incremented below)
+                self._pool_tensor_cache[ptr] = PoolTensorDesc(
+                    pool_offset=offset,
+                    tensor_size=storage_size,
+                    ref_count=0,
+                )
 
-                # NIXL requires descriptors for the specific memory regions being transferred.
-                pool_xfer_descs = self.get_nixl_agent().get_xfer_descs(pool_tensors)
+            if pool.device.type == "cuda":
+                torch.cuda.synchronize(pool.device)
 
-                return pool_xfer_descs, pool_offsets, pool_sizes
+            # Increment ref_counts and build per-tensor pool info.
+            pool_offsets: List[int] = []
+            pool_sizes: List[int] = []
+            pool_tensors_for_descs: List["torch.Tensor"] = []
+
+            for tensor, ptr in zip(tensors, storage_ptrs):
+                desc = self._pool_tensor_cache[ptr]
+                desc.ref_count += 1
+
+                view_byte_size = tensor.numel() * tensor.element_size()
+                # Compute the offset of this specific tensor within its storage
+                storage_offset_bytes = tensor.storage_offset() * tensor.element_size()
+                tensor_pool_offset = desc.pool_offset + storage_offset_bytes
+
+                pool_offsets.append(tensor_pool_offset)
+                pool_sizes.append(view_byte_size)
+
+                # Create a tensor view into the pool for this specific tensor
+                pool_bytes = pool_tensor[
+                    tensor_pool_offset : tensor_pool_offset + view_byte_size
+                ]
+                pool_tensor_view = pool_bytes.view(tensor.dtype).reshape(tensor.shape)
+                pool_tensors_for_descs.append(pool_tensor_view)
+
+            # Build xfer descriptors for all tensors.
+            pool_xfer_descs = self.get_nixl_agent().get_xfer_descs(
+                pool_tensors_for_descs
+            )
+
+            return pool_xfer_descs, pool_offsets, pool_sizes, storage_ptrs
+
         except Exception as e:
             # Fall back to traditional mode on error
             logger.error(
                 f"Memory pool allocation failed: {e}. "
                 "Falling back to traditional mode."
             )
+            # Best-effort cleanup of any new allocations
             try:
-                if allocations is not None:
-                    pool.free_multiple(
-                        [a[0] for a in allocations],
-                        [a[1] for a in allocations],
-                    )
-            except Exception as e:
-                logger.error(f"Memory pool free failed: {e}.")
+                if new_allocations is not None:
+                    offsets_to_free = []
+                    sizes_to_free = []
+                    for i, ptr in enumerate(needs_alloc_ptrs):
+                        if ptr in self._pool_tensor_cache:
+                            desc = self._pool_tensor_cache.pop(ptr)
+                            offsets_to_free.append(desc.pool_offset)
+                            sizes_to_free.append(desc.tensor_size)
+                    if offsets_to_free:
+                        pool.free_multiple(offsets_to_free, sizes_to_free)
+            except Exception as cleanup_err:
+                logger.error(f"Memory pool cleanup failed: {cleanup_err}.")
 
-        return None, None, None
+        return None, None, None, None
 
     def _get_memory_pool(self, device_type: str) -> Optional[MemoryPoolManager]:
         if device_type == "cpu":

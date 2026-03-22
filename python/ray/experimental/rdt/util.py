@@ -265,6 +265,44 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     nixl_transport.register_nixl_memory(tensor)
 
 
+@PublicAPI(stability="alpha")
+def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
+    """Pre-allocates a memory pool and registers it with NIXL.
+
+    This enables pool-based memory management for NIXL transfers, which can improve
+    performance by avoiding repeated memory registration/deregistration. The pool is
+    registered once with NIXL and individual tensors are copied into it on ``ray.put``.
+
+    Tensors sharing the same underlying storage (including views) are automatically
+    deduplicated within the pool — only one copy of each unique storage is allocated.
+
+    Args:
+        size: Size of the memory pool in bytes.
+        device: Device to allocate the pool on (e.g., ``torch.device("cpu")``
+            or ``torch.device("cuda")``).
+
+    Example:
+
+        .. code-block:: python
+
+            import torch
+            import ray
+            from ray.experimental import register_nixl_memory_pool
+
+            @ray.remote(num_gpus=1, enable_tensor_transport=True)
+            class Trainer:
+                def __init__(self):
+                    # Pre-allocate a 1GB GPU memory pool for NIXL transfers
+                    register_nixl_memory_pool(1024 * 1024 * 1024, torch.device("cuda"))
+
+                def get_weight_ref(self):
+                    weight = torch.randn(1000, 1000, device="cuda")
+                    return ray.put(weight, _tensor_transport="nixl")
+    """
+    nixl_transport = get_tensor_transport_manager("NIXL")
+    nixl_transport.register_nixl_memory_pool(size, device)
+
+
 def create_empty_tensors_from_metadata(
     tensor_transport_meta: TensorTransportMetadata,
 ) -> List["torch.Tensor"]:

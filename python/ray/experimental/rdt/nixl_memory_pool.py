@@ -68,6 +68,12 @@ class MemoryPoolManager:
         if not sizes or any(s <= 0 for s in sizes):
             return None
 
+        # If total free space is less than total requested, fail fast.
+        total_requested = sum(sizes)
+        total_free = sum(b.size for b in self._free_blocks)
+        if total_free < total_requested:
+            return None
+
         # Allocate largest first to reduce fragmentation; then return in original order.
         order = sorted(range(len(sizes)), key=lambda i: -sizes[i])
         sorted_sizes = [sizes[i] for i in order]
@@ -135,20 +141,3 @@ class MemoryPoolManager:
                 self._free_blocks.pop(i + 1)
             else:
                 i += 1
-
-    def copy_to_pool(self, tensor: "torch.Tensor", offset: int) -> None:
-        """Copy tensor data to the memory pool at the specified offset.
-
-        Args:
-            tensor: Source tensor to copy from.
-            offset: Destination offset in the memory pool (bytes).
-
-        Returns:
-            None.
-        """
-        bytes_to_copy = tensor.numel() * tensor.element_size()
-
-        flat_tensor = tensor.contiguous().view(-1)
-        pool_bytes = self._pool_tensor[offset : offset + bytes_to_copy]
-        pool_view = pool_bytes.view(tensor.dtype)
-        pool_view.copy_(flat_tensor.to(dtype=tensor.dtype))

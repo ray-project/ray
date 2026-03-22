@@ -557,14 +557,25 @@ def test_nixl_memory_pool(ray_start_regular, device):
     """
     Test NIXL memory pool: use the pre-allocated memory pool for NIXL transfers when available.
     """
-    runtime_env = {
-        "env_vars": {
-            "RAY_NIXL_MEMORY_POOL_ENABLED": "1",
-            "RAY_NIXL_CPU_MEMORY_POOL_SIZE": "48" if device == "cpu" else "0",
-            "RAY_NIXL_GPU_MEMORY_POOL_SIZE": "48" if device == "cuda" else "0",
-        }
-    }
-    src_actor = GPUTestActor.options(runtime_env=runtime_env).remote()
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+
+        @ray.method(tensor_transport="nixl")
+        def echo(self, data, device):
+            return data.to(device)
+
+        def get_nixl_transport_metadata(self, obj_id: str):
+            return get_tensor_transport_manager("NIXL")._get_meta(obj_id)
+
+        def get_num_managed_meta_nixl(self):
+            return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
+
+    src_actor = PoolActor.remote(device, 48)
     dst_actor = GPUTestActor.remote()
 
     # Transfer the first small tensor (using memory pool internally).
@@ -607,6 +618,99 @@ def test_nixl_memory_pool(ray_start_regular, device):
         ray.get(src_actor.get_nixl_transport_metadata.remote(ref4.hex())).pool_offsets
         is not None
     )
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_memory_pool_deduplication(ray_start_regular):
+    """
+    Test that putting the same tensor twice into the memory pool reuses the same
+    pool allocation (same offset), and that GC only frees after both refs are gone.
+    """
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    tensor = torch.tensor([1, 2, 3], dtype=torch.float32).to("cuda")
+    tensor_size = tensor.untyped_storage().nbytes()
+
+    # Register a pool large enough to hold two copies (but dedup should only use one)
+    transport.register_nixl_memory_pool(tensor_size * 2, torch.device("cuda"))
+
+    storage_ptr = tensor.untyped_storage().data_ptr()
+
+    # First put
+    obj_id1 = "dedup_obj_1"
+    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [tensor])
+    assert meta1.pool_offsets is not None
+    assert storage_ptr in transport._pool_tensor_cache
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 1
+    first_offset = meta1.pool_offsets[0]
+
+    # Second put of the same tensor — should reuse same pool allocation
+    obj_id2 = "dedup_obj_2"
+    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [tensor])
+    assert meta2.pool_offsets is not None
+    assert meta2.pool_offsets[0] == first_offset  # Same offset = deduplicated
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 2
+
+    # GC first ref — pool slot should NOT be freed yet
+    transport.garbage_collect(obj_id1, meta1, [tensor])
+    assert storage_ptr in transport._pool_tensor_cache
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 1
+
+    # GC second ref — pool slot should now be freed
+    transport.garbage_collect(obj_id2, meta2, [tensor])
+    assert storage_ptr not in transport._pool_tensor_cache
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_memory_pool_view_deduplication(ray_start_regular):
+    """
+    Test that views of the same tensor share a single pool allocation,
+    both within one object and across multiple objects.
+    """
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    base = torch.tensor([[1, 2], [3, 4], [5, 6]], dtype=torch.float32).to("cuda")
+    storage_size = base.untyped_storage().nbytes()
+
+    transport.register_nixl_memory_pool(storage_size * 3, torch.device("cuda"))
+
+    view_a = base[0:2]
+    view_b = base[1:3]
+    storage_ptr = base.untyped_storage().data_ptr()
+
+    # Both views share the same storage
+    assert view_a.untyped_storage().data_ptr() == storage_ptr
+    assert view_b.untyped_storage().data_ptr() == storage_ptr
+
+    # Put both views in one object — should allocate storage once, ref_count=2
+    obj_id1 = "view_obj_1"
+    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view_a, view_b])
+    assert meta1.pool_offsets is not None
+    assert len(meta1.pool_offsets) == 2
+    assert storage_ptr in transport._pool_tensor_cache
+    # Two tensors in same object with same storage → ref_count=2
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 2
+
+    # Put one view in another object — should reuse, ref_count=3
+    obj_id2 = "view_obj_2"
+    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
+    assert meta2.pool_offsets is not None
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 3
+
+    # GC first object (2 views) — ref_count should drop by 2
+    transport.garbage_collect(obj_id1, meta1, [view_a, view_b])
+    assert storage_ptr in transport._pool_tensor_cache
+    assert transport._pool_tensor_cache[storage_ptr].ref_count == 1
+
+    # GC second object — pool slot should now be freed
+    transport.garbage_collect(obj_id2, meta2, [view_a])
+    assert storage_ptr not in transport._pool_tensor_cache
 
 
 if __name__ == "__main__":
