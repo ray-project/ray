@@ -1619,6 +1619,114 @@ def test_reconfigure_throttling(mock_deployment_state_manager):
     )
 
 
+def test_rolling_update_percentage_configurable(mock_deployment_state_manager):
+    """Test that rolling_update_percentage controls how many replicas update per wave.
+
+    With 10 replicas and rolling_update_percentage=0.5, 5 replicas should update
+    at a time instead of the default 2 (20%).
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    b_info_1, v1 = deployment_info(
+        num_replicas=10, version="1", rolling_update_percentage=0.5
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, v1)])
+
+    # Deploy new version. With rolling_update_percentage=0.5, rollout_size should
+    # be max(int(0.5 * 10), 1) = 5, so 5 replicas should be stopped at once.
+    b_info_2, v2 = deployment_info(
+        num_replicas=10, version="2", rolling_update_percentage=0.5
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    dsm.update()
+
+    # 5 old replicas should be stopping, 5 still running.
+    check_counts(
+        ds,
+        total=10,
+        by_state=[(ReplicaState.RUNNING, 5, v1), (ReplicaState.STOPPING, 5, v1)],
+    )
+
+
+def test_nonblocking_reconfigure(mock_deployment_state_manager):
+    """Test that blocking_reconfigure=False keeps replicas in RUNNING during reconfigure.
+
+    When user_config changes and blocking_reconfigure=False, replicas should stay
+    in RUNNING state (serving traffic) instead of transitioning to UPDATING.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    b_info_1, v1 = deployment_info(
+        num_replicas=2,
+        version="1",
+        user_config="1",
+        blocking_reconfigure=False,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+
+    # Deploy new user_config with blocking_reconfigure=False.
+    b_info_2, v2 = deployment_info(
+        num_replicas=2,
+        version="1",
+        user_config="2",
+        blocking_reconfigure=False,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    dsm.update()
+
+    # With blocking_reconfigure=False, replicas should stay RUNNING (not UPDATING).
+    # The reconfigure remote call is still fired, but the replica keeps serving.
+    assert ds._replicas.count(states=[ReplicaState.UPDATING]) == 0
+    assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 2
+
+
+def test_blocking_reconfigure_default(mock_deployment_state_manager):
+    """Test that blocking_reconfigure=True (default) transitions replicas to UPDATING.
+
+    This verifies the default behavior is preserved.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    b_info_1, v1 = deployment_info(num_replicas=2, version="1", user_config="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+
+    # Deploy new user_config with default blocking_reconfigure=True.
+    b_info_2, v2 = deployment_info(num_replicas=2, version="1", user_config="2")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    dsm.update()
+
+    # With default blocking_reconfigure=True, one replica should be UPDATING.
+    check_counts(
+        ds,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1, v1), (ReplicaState.UPDATING, 1, v2)],
+    )
+
+
 def test_new_version_and_scale_down(mock_deployment_state_manager):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be

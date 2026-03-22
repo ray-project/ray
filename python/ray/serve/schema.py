@@ -463,6 +463,25 @@ class DeploymentSchema(BaseModel):
             "init_kwargs, and actor_options."
         ),
     )
+    rolling_update_percentage: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "The percentage of replicas to update at a time during a "
+            "rolling update. Must be between 0.0 and 1.0 (exclusive of 0). "
+            "Defaults to 0.2 (20%)."
+        ),
+        gt=0.0,
+        le=1.0,
+    )
+    blocking_reconfigure: bool = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Whether replicas should stop serving traffic while "
+            "reconfiguring (i.e., while the reconfigure method is running). "
+            "If False, replicas continue serving traffic during reconfiguration. "
+            "Defaults to True."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

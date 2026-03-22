@@ -219,6 +219,18 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    rolling_update_percentage: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    blocking_reconfigure: bool = Field(
+        default=True,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
