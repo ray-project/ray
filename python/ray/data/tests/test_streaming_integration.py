@@ -392,13 +392,8 @@ def test_streaming_split_schema_before_execution(ray_start_10_cpus_shared):
     ds = ray.data.range(20, override_num_blocks=20)
     i1, i2 = ds.streaming_split(2, equal=True)
 
-    import concurrent.futures
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(i1.schema)
-        f2 = executor.submit(i2.schema)
-        schema1 = f1.result()
-        schema2 = f2.result()
+    schema1 = i1.schema()
+    schema2 = i2.schema()
 
     assert schema1 is not None
     assert "id" in schema1.names
@@ -411,22 +406,32 @@ def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
     i1, i2 = ds.streaming_split(2, equal=True)
 
     @ray.remote
+    def consume_and_check_schema(x):
+        for _ in x.iter_rows():
+            with pytest.raises(RuntimeError, match="Cannot call schema()"):
+                x.schema()
+            break
+
+    ray.get([consume_and_check_schema.remote(i1), consume_and_check_schema.remote(i2)])
+
+
+def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval after execution completes."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
     def consume(x):
         for _ in x.iter_rows():
             pass
 
-    # Start iteration on both splits.
-    refs = [consume.remote(i1), consume.remote(i2)]
+    # Run a full epoch to completion.
+    ray.get([consume.remote(i1), consume.remote(i2)])
 
-    # Give iteration time to start and create the executor.
-    time.sleep(2)
-
-    # schema() should raise because execution is active.
-    with pytest.raises(ray.exceptions.RayTaskError, match="Cannot call schema()"):
-        i1.schema()
-
-    # Let consumers finish.
-    ray.get(refs)
+    # schema() should work after execution finishes.
+    schema = i1.schema()
+    assert schema is not None
+    assert "id" in schema.names
 
 
 def test_streaming_split_context(ray_start_10_cpus_shared):

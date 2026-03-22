@@ -181,10 +181,10 @@ class SplitCoordinator:
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:
-            if self._executor is not None:
+            if self._executor is not None and self._executor.is_alive():
                 raise RuntimeError(
                     "Cannot call schema() during active dataset execution. "
-                    "Call schema() before iterating over the dataset, or call "
+                    "Call schema() before or after iterating over the dataset, or call "
                     "schema() directly on the source Dataset object."
                 )
             if self._schema is None:
