@@ -273,8 +273,11 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     performance by avoiding repeated memory registration/deregistration. The pool is
     registered once with NIXL and individual tensors are copied into it on ``ray.put``.
 
-    Tensors sharing the same underlying storage (including views) are automatically
-    deduplicated within the pool — only one copy of each unique storage is allocated.
+    Within a single ``ray.put`` call, tensors sharing the same underlying storage
+    (including views) are automatically deduplicated — only one copy of each unique
+    storage is allocated. Across multiple ``ray.put`` calls, if the same storage
+    appears again, the existing pool slot is reused (saving allocation overhead)
+    and the data is always re-copied to ensure freshness.
 
     Args:
         size: Size of the memory pool in bytes.

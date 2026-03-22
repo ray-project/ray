@@ -125,11 +125,11 @@ class MemoryPoolManager:
         Returns:
             None.
         """
+        if not offsets:
+            return
         for offset, size in zip(offsets, sizes):
             self._free_blocks.append(MemoryBlock(offset=offset, size=size))
 
-        if not offsets:
-            return
         # Single pass: merge all adjacent free blocks
         self._free_blocks.sort(key=lambda b: b.offset)
         i = 0
