@@ -172,18 +172,18 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
 
 
 @pytest.mark.parametrize(
-    "engine_kwargs_extra,expected_resources",
+    "engine_kwargs_extra,expected_num_bundles",
     [
-        ({"tensor_parallel_size": 2}, {"num_cpus": 2, "num_gpus": 2}),
+        ({"tensor_parallel_size": 2}, 2),
         (
             {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
-            {"num_cpus": 4, "num_gpus": 4},
+            4,
         ),
-        ({}, {"num_cpus": 1, "num_gpus": 1}),  # Default case
+        ({}, 1),  # Default case: tp=1, pp=1 → executor_backend="uni"
     ],
 )
 def test_vllm_engine_processor_bundle_per_worker(
-    gpu_type, model_opt_125m, engine_kwargs_extra, expected_resources
+    gpu_type, model_opt_125m, engine_kwargs_extra, expected_num_bundles
 ):
     """Test bundle_per_worker auto-expands based on tp*pp."""
     engine_kwargs = dict(max_model_len=8192)
@@ -204,14 +204,26 @@ def test_vllm_engine_processor_bundle_per_worker(
     stage.map_batches_kwargs.pop("runtime_env")
     stage.map_batches_kwargs.pop("compute")
 
-    # With tp*pp and bundle_per_worker={'CPU': 1, 'GPU': 1},
-    # should expand to tp*pp bundles.
     expected_kwargs = {
         "zero_copy_batch": True,
         "max_concurrency": 8,
         "accelerator_type": gpu_type,
     }
-    expected_kwargs.update(expected_resources)
+
+    if expected_num_bundles > 1:
+        # TP/PP > 1 -> executor_backend="ray"
+        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+        assert ray_remote_args_fn.args[0] == expected_num_bundles
+        assert ray_remote_args_fn.args[1] == gpu_type
+        expected_bundles = [{"CPU": 1, "GPU": 1}] * expected_num_bundles
+        assert ray_remote_args_fn.args[2]["bundles"] == expected_bundles
+        assert ray_remote_args_fn.args[2]["strategy"] == "PACK"
+        expected_kwargs["num_gpus"] = 0
+    else:
+        # TP=1, PP=1 -> executor_backend="uni"
+        expected_kwargs["num_cpus"] = 1
+        expected_kwargs["num_gpus"] = 1
+
     assert stage.map_batches_kwargs == expected_kwargs
 
 
