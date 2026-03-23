@@ -65,12 +65,14 @@ def check_internal_kv_gced():
 @pytest.mark.parametrize("cookies", [None, {"test_cookie_key": "test_cookie_val"}])
 @pytest.mark.parametrize("metadata", [None, {"test_metadata_key": "test_metadata_val"}])
 @pytest.mark.parametrize("headers", [None, {"test_headers_key": "test_headers_val"}])
+@pytest.mark.parametrize("extra_kwargs", [{}, {"cloud": "my-cloud"}])
 def test_parse_cluster_info(
     address_param: Tuple[str, str, str],
     create_cluster_if_needed: bool,
     cookies: Optional[Dict[str, str]],
     metadata: Optional[Dict[str, str]],
     headers: Optional[Dict[str, str]],
+    extra_kwargs: Dict[str, str],
 ):
     """
     Test ray.dashboard.modules.dashboard_sdk.parse_cluster_info for different
@@ -100,6 +102,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
         elif module_string == "other_module":
             assert (
@@ -109,6 +112,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
                 == "Other module ClusterInfo"
             )
@@ -119,6 +123,7 @@ def test_parse_cluster_info(
                 cookies=cookies,
                 metadata=metadata,
                 headers=headers,
+                **extra_kwargs,
             )
 
 
