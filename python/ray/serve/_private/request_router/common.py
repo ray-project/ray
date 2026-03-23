@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
-from ray.serve._private.common import ReplicaID, RequestMetadata
+from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
 from ray.serve._private.constants import (
     RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
@@ -13,7 +13,6 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.serve._private.request_router.replica_wrapper import RunningReplica
-    from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -93,7 +92,7 @@ class ReplicaSelection:
 
     # Internal fields (not part of public API)
     _replica: "RunningReplica"
-    _deployment_handle: Optional["DeploymentHandle"]
+    _deployment_id: Optional[DeploymentID]
     _method_name: str
     _slot_token: str  # Token for reserved slot
     _dispatched: bool = field(

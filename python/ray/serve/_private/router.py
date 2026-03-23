@@ -1124,7 +1124,7 @@ class AsyncioRouter:
                 node_id=replica.node_id,
                 availability_zone=replica.availability_zone,
                 _replica=replica,
-                _deployment_handle=None,  # Will be injected by DeploymentHandle.choose_replica
+                _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
             )

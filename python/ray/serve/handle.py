@@ -260,8 +260,8 @@ class _DeploymentHandleBase(Generic[T]):
 
         # Call the router's choose_replica and inject the deployment handle
         async with self._router.choose_replica(metadata, *args, **kwargs) as selection:
-            # Inject the deployment handle for validation
-            selection._deployment_handle = self
+            # Record the owning deployment for dispatch-time validation.
+            selection._deployment_id = self.deployment_id
             yield selection
 
     def _dispatch(
@@ -273,13 +273,13 @@ class _DeploymentHandleBase(Generic[T]):
         """Dispatch a request to a previously selected replica."""
         # Validate that the selection belongs to the same deployment
         if (
-            selection._deployment_handle is not None
-            and selection._deployment_handle.deployment_id != self.deployment_id
+            selection._deployment_id is not None
+            and selection._deployment_id != self.deployment_id
         ):
             raise ValueError(
                 f"Cannot dispatch a selection created for a different deployment. "
                 f"This handle is for {self.deployment_id}, but the selection was created "
-                f"for {selection._deployment_handle.deployment_id}."
+                f"for {selection._deployment_id}."
             )
 
         if not self.is_initialized:
