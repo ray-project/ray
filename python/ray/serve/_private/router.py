@@ -1351,10 +1351,7 @@ class SingletonThreadRouter(Router):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
-        """Dispatch request to a previously selected replica.
-
-        Similar to assign_request, wraps the async dispatch in a concurrent.futures.Future.
-        """
+        """Dispatch request to a previously selected replica."""
         return self._wrap_asyncio_call_in_future(
             self._asyncio_router.dispatch(
                 selection, request_meta, *request_args, **request_kwargs
@@ -1381,7 +1378,14 @@ class SingletonThreadRouter(Router):
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
         ):
-            """Callback to propagate cancellation from concurrent.futures.Future to ReplicaResult."""
+            """Callback attached to the asyncio Task running assign_request.
+
+            This runs when the asyncio Task finishes (completes, fails, or is cancelled).
+            Its primary goal is to propagate cancellation initiated via the
+            `concurrent_future` back to the `ReplicaResult` in situations where
+            asyncio_future didn't see the cancellation event in time. Think of it
+            like a second line of defense for cancellation of replica results.
+            """
             if (
                 concurrent_future.cancelled()
                 and not asyncio_future.cancelled()
