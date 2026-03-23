@@ -37,9 +37,9 @@ from ray.serve._private.tracing_utils import (
     setup_tracing,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.schema import TracingConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import gRPCInputStream
+from ray.serve.schema import TracingConfig
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.utils import get_trace_context
 from ray.tests.conftest import *  # noqa
