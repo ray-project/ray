@@ -10,7 +10,13 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError as ValidationErrorV1
+
+# Import native Pydantic v2 ValidationError for schemas using native Pydantic
+try:
+    from pydantic import ValidationError as ValidationErrorV2
+except ImportError:
+    ValidationErrorV2 = ValidationErrorV1  # Fallback if only v1 is available
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -151,17 +157,19 @@ class ServeHead(SubprocessModule):
         from ray.serve.schema import ServeDeploySchema
 
         try:
-            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
+            config: ServeDeploySchema = ServeDeploySchema.model_validate(
+                await req.json()
+            )
+        except (ValidationErrorV1, ValidationErrorV2) as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.dict()
+        config_http_options = config.http_options.model_dump()
         location = ProxyLocation._to_deployment_mode(config.proxy_location)
         full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.dict()
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(

@@ -162,6 +162,9 @@ message ActorTableData {
   map<string, string> label_selector = 35;
   // Number of times this actor is restarted due to node preemption.
   uint64 num_restarts_due_to_node_preemption = 36;
+  // The key-value labels for actor.
+  map<string, string> labels = 37;
+  optional FallbackStrategy fallback_strategy = 38;
 }
 
 message ErrorTableData {
@@ -535,13 +538,6 @@ message ResourcesData {
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
   bool object_pulls_queued = 10;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 11;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 12;
-  // The timestamp that normal task resources are measured.
-  int64 resources_normal_task_timestamp = 13;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
