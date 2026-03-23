@@ -203,6 +203,7 @@ py_test_module_list(
     size = "enormous",
     files = [
         "test_autoscaling_policy.py",
+        "test_autoscaling_with_streaming.py",
         "test_deploy.py",
         "test_fastapi.py",
         "test_gang_scheduling.py",
