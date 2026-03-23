@@ -34,20 +34,21 @@ KEY_COLUMNS = ["column00"]  # l_orderkey
 
 
 def load_dataset(sf):
-    """Read the dataset with Daft and collect it so both runs share data."""
+    """Return a lazy Daft dataframe (no materialization)."""
     import daft
 
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
-    print(f"Loading sf={sf} from S3 with Daft ... ", end="", flush=True)
-    df = daft.read_parquet(path).collect()
-    num_rows = len(df)
-    num_partitions = df.num_partitions()
-    print(f"done ({num_rows:,} rows, {num_partitions} partitions)")
-    return df
+    return daft.read_parquet(path)
 
 
-def run_one(df, sf, num_partitions):
-    """Run a single Daft repartition and return elapsed time and row count."""
+def run_one(sf, num_partitions):
+    """Run a single Daft repartition and return elapsed time and row count.
+
+    Loads a fresh lazy dataset each time so the read is part of the pipeline,
+    matching the Ray Data benchmark setup.
+    """
+    df = load_dataset(sf)
+
     print(f"  [daft] sf={sf}, partitions={num_partitions} ... ", end="", flush=True)
 
     start = time.perf_counter()
@@ -57,7 +58,7 @@ def run_one(df, sf, num_partitions):
     num_rows = len(result)
     print(f"{elapsed:.1f}s ({num_rows:,} rows)")
 
-    del result
+    del result, df
     gc.collect()
 
     return elapsed, num_rows
@@ -109,46 +110,34 @@ def main():
         with open(args.output, "w") as f:
             json.dump(output, f, indent=2)
 
-    # Group by SF to load dataset once per SF.
-    from itertools import groupby
+    for sf, num_partitions in BENCHMARK_MATRIX:
+        print(f"--- sf={sf}, partitions={num_partitions} ---")
 
-    for sf, group in groupby(BENCHMARK_MATRIX, key=lambda x: x[0]):
-        partition_list = [num_partitions for _, num_partitions in group]
-        df = load_dataset(sf)
+        times = []
+        num_rows = 0
 
-        for num_partitions in partition_list:
-            print(f"--- sf={sf}, partitions={num_partitions} ---")
+        for run in range(args.num_runs):
+            try:
+                elapsed, num_rows = run_one(sf, num_partitions)
+                times.append(elapsed)
+            except Exception as e:
+                print(f"  [daft] FAILED: {e}")
+                times.append(None)
 
-            times = []
-            num_rows = 0
+        valid_times = [t for t in times if t is not None]
+        entry = {
+            "sf": sf,
+            "num_partitions": num_partitions,
+            "strategy": "daft",
+            "num_rows": num_rows,
+            "times": times,
+            "avg_time": sum(valid_times) / len(valid_times) if valid_times else None,
+            "best_time": min(valid_times) if valid_times else None,
+        }
+        results.append(entry)
+        flush_results()
 
-            for run in range(args.num_runs):
-                try:
-                    elapsed, num_rows = run_one(df, sf, num_partitions)
-                    times.append(elapsed)
-                except Exception as e:
-                    print(f"  [daft] FAILED: {e}")
-                    times.append(None)
-
-            valid_times = [t for t in times if t is not None]
-            entry = {
-                "sf": sf,
-                "num_partitions": num_partitions,
-                "strategy": "daft",
-                "num_rows": num_rows,
-                "times": times,
-                "avg_time": sum(valid_times) / len(valid_times)
-                if valid_times
-                else None,
-                "best_time": min(valid_times) if valid_times else None,
-            }
-            results.append(entry)
-            flush_results()
-
-            print()
-
-        del df
-        gc.collect()
+        print()
 
     print(f"Results written to {args.output}")
 

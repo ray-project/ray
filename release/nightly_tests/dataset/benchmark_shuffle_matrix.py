@@ -26,7 +26,6 @@ BENCHMARK_MATRIX = [
     (10, 500),
     (10, 1000),
     (100, 100),
-    (100, 500),
     (100, 1000),
 ]
 
@@ -40,12 +39,9 @@ KEY_COLUMNS = ["column00"]  # l_orderkey
 
 
 def load_dataset(sf):
-    """Read and materialize the dataset once per SF so both strategies share it."""
+    """Return a lazy dataset (no materialization)."""
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
-    print(f"Loading sf={sf} from S3 ... ", end="", flush=True)
-    ds = ray.data.read_parquet(path).materialize()
-    print(f"done ({ds.count():,} rows, {ds.num_blocks()} blocks)")
-    return ds
+    return ray.data.read_parquet(path)
 
 
 def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=120, poll_s=5):
@@ -65,8 +61,14 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=120, poll_s=5):
     print(f"    object store drain timed out after {timeout_s}s", flush=True)
 
 
-def run_one(ds, sf, num_partitions, strategy, label):
-    """Run a single repartition and return elapsed time and row count."""
+def run_one(sf, num_partitions, strategy, label):
+    """Run a single repartition and return elapsed time and row count.
+
+    Loads a fresh dataset each time so data is evenly distributed across
+    the cluster rather than pinned to whichever nodes cached it first.
+    """
+    ds = load_dataset(sf)
+
     ds.context.shuffle_strategy = strategy
     if strategy == ShuffleStrategy.ACTORLESS_HASH_SHUFFLE:
         ds.context.override_object_store_memory_limit_fraction = 0.5
@@ -93,8 +95,8 @@ def run_one(ds, sf, num_partitions, strategy, label):
     num_rows = result.count()
     print(f"{elapsed:.1f}s ({num_rows:,} rows)")
 
-    # Clean up shuffle output and wait for object store to settle.
-    del result, repartitioned
+    # Clean up everything and wait for object store to settle.
+    del result, repartitioned, ds
     gc.collect()
     wait_for_object_store_to_drain()
 
@@ -145,50 +147,37 @@ def main():
         with open(args.output, "w") as f:
             json.dump(output, f, indent=2)
 
-    # Group matrix by SF so we load each dataset only once.
-    from itertools import groupby
+    for sf, num_partitions in BENCHMARK_MATRIX:
+        print(f"--- sf={sf}, partitions={num_partitions} ---")
 
-    for sf, group in groupby(BENCHMARK_MATRIX, key=lambda x: x[0]):
-        partition_list = [num_partitions for _, num_partitions in group]
-        ds = load_dataset(sf)
+        for strategy, label in STRATEGIES:
+            times = []
+            num_rows = 0
 
-        for num_partitions in partition_list:
-            print(f"--- sf={sf}, partitions={num_partitions} ---")
+            for run in range(args.num_runs):
+                try:
+                    elapsed, num_rows = run_one(sf, num_partitions, strategy, label)
+                    times.append(elapsed)
+                except Exception as e:
+                    print(f"  [{label}] FAILED: {e}")
+                    times.append(None)
 
-            for strategy, label in STRATEGIES:
-                times = []
-                num_rows = 0
+            valid_times = [t for t in times if t is not None]
+            entry = {
+                "sf": sf,
+                "num_partitions": num_partitions,
+                "strategy": label,
+                "num_rows": num_rows,
+                "times": times,
+                "avg_time": sum(valid_times) / len(valid_times)
+                if valid_times
+                else None,
+                "best_time": min(valid_times) if valid_times else None,
+            }
+            results.append(entry)
+            flush_results()
 
-                for run in range(args.num_runs):
-                    try:
-                        elapsed, num_rows = run_one(
-                            ds, sf, num_partitions, strategy, label
-                        )
-                        times.append(elapsed)
-                    except Exception as e:
-                        print(f"  [{label}] FAILED: {e}")
-                        times.append(None)
-
-                valid_times = [t for t in times if t is not None]
-                entry = {
-                    "sf": sf,
-                    "num_partitions": num_partitions,
-                    "strategy": label,
-                    "num_rows": num_rows,
-                    "times": times,
-                    "avg_time": sum(valid_times) / len(valid_times)
-                    if valid_times
-                    else None,
-                    "best_time": min(valid_times) if valid_times else None,
-                }
-                results.append(entry)
-                flush_results()
-
-            print()
-
-        # Free the base dataset before loading the next SF.
-        del ds
-        gc.collect()
+        print()
 
     print(f"Results written to {args.output}")
 
