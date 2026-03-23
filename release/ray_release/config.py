@@ -81,6 +81,11 @@ LEGACY_COMPUTE_CONFIG_KEYS = {
 CLOUD_ID_TO_NAME = {
     "cld_kvedZWag2qA8i5BjxUevf5i7": "anyscale_v2_default_cloud",
     "cld_wy5a6nhazplvu32526ams61d98": "serve_release_tests_cloud",
+    "cld_HSrCZdMCYDe1NmMCJhYRgQ4p": "aioa_aws_735219725452_us_west_2_0000",
+    "cld_5nnv7pt2jn2312x2e5v72z53n2": "anyscale_aks_public_default_cloud_us_west_2",
+    "cld_vy7xqacrvddvbuy95auinvuqmt": "oss_release_tests_gce",
+    "cld_k8WcxPgjUtSE8RVmfZpTLuKM": "anyscale_k8s_gcp_cloud",
+    "cld_tPsS3nQz8p5cautbyWgEdr4y": "anyscale_gce_cloud",
 }
 
 
