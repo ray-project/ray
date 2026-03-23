@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import time
 from collections import OrderedDict, deque
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
@@ -174,9 +174,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         while self._poll_validations() != 0 or self._kick_off_validations() != 0:
-            time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
+            await asyncio.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
         tasks = list(self._finished_validations.keys())
         for task in tasks:
@@ -187,13 +187,18 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             )
         self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics)
 
+    def before_controller_abort(self):
+        for task in self._pending_validations.keys():
+            ray.cancel(task)
+
     def after_controller_state_update(
         self,
         previous_state: "TrainControllerState",
         current_state: "TrainControllerState",
     ):
         # TODO: figure out if there's a better place to poll validations
-        # TODO: consider cleaning up validation tasks in before_controller_abort
+        if current_state.is_terminal():
+            return
         self._poll_validations()
         self._kick_off_validations()
 

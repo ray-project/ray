@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Tuple
 from unittest.mock import patch
 
+import grpc
 import httpx
 import pytest
 import starlette
@@ -33,10 +34,12 @@ from ray.serve._private.logging_utils import (
     get_serve_logs_dir,
     redirected_print,
 )
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import get_application_url, ping_grpc_call_method
 from ray.serve._private.utils import get_component_file_name
+from ray.serve.config import gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import EncodingType, LoggingConfig
+from ray.serve.tests.test_config_files.grpc_deployment import g
 from ray.util.state import list_actors, list_nodes
 
 
@@ -1144,6 +1147,97 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
 
         # Clean up logger handlers
         logger.handlers.clear()
+
+
+@pytest.mark.parametrize(
+    "ray_instance, expect_client_ip",
+    [
+        ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"}, True),
+        ({}, False),
+    ],
+    indirect=["ray_instance"],
+)
+def test_http_access_log_client_address(
+    serve_and_ray_shutdown, ray_instance, expect_client_ip
+):
+    """Test that client IP:port in access logs is controlled by the feature flag."""
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name="deployment_name")
+    @serve.ingress(fastapi_app)
+    class Handler:
+        @fastapi_app.get("/")
+        def get_root(self):
+            return PlainTextResponse("ok")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        url = get_application_url(use_localhost=True)
+        r = httpx.get(url)
+        assert r.status_code == 200
+
+        def check_log():
+            s = f.getvalue()
+            if "GET / 200" not in s:
+                return False
+            has_client_ip = bool(re.search(r"127\.0\.0\.1:\d+", s))
+            assert has_client_ip == expect_client_ip, (
+                f"Expected client IP {'present' if expect_client_ip else 'absent'} "
+                f"in log, but got: {s}"
+            )
+            return True
+
+        wait_for_condition(check_log, timeout=20)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1",
+    reason="gRPC not supported for HAProxy.",
+)
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
+    ],
+    indirect=True,
+)
+def test_grpc_access_log_client_address(serve_and_ray_shutdown, ray_instance):
+    """Test that gRPC access logs include client address when feature flag is on."""
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc."
+        "add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+
+    serve.run(g)
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+        ping_grpc_call_method(channel, "default")
+
+        def check_log():
+            s = f.getvalue()
+            # The replica access log uses "CALL" as the method for gRPC __call__.
+            if "CALL" not in s or "OK" not in s:
+                return False
+            # gRPC may connect over IPv4 (127.0.0.1) or IPv6 ([::1]).
+            has_client_ip = bool(re.search(r"(127\.0\.0\.1|\[::1\]):\d+", s))
+            assert has_client_ip, f"Expected client IP in gRPC access log, but got: {s}"
+            return True
+
+        wait_for_condition(check_log, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

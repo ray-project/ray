@@ -90,8 +90,6 @@ class LocalLeaseManagerInterface {
   virtual bool ReturnCpuResourcesToUnblockedWorker(
       std::shared_ptr<WorkerInterface> worker) = 0;
 
-  virtual ResourceSet CalcNormalTaskResources() const = 0;
-
   virtual void RecordMetrics() const = 0;
 
   virtual SchedulerMetrics &GetSchedulerMetrics() const = 0;

@@ -292,8 +292,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
           if (wait_time > sched_cls_cap_max_ms_) {
             wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
+            RAY_LOG(WARNING)
+                << "Starting too many worker processes for a single type of task. "
+                   "Worker process startup is being throttled (wait_time="
+                << wait_time << "ms). This limit prevents deadlocks for nested tasks. "
+                << "If your workload does not use nested tasks, consider setting "
+                   "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
@@ -1146,37 +1150,6 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   } else {
     return false;
   }
-}
-
-ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
-  ResourceSet total_normal_task_resources;
-  for (auto &entry : leased_workers_) {
-    std::shared_ptr<WorkerInterface> worker = entry.second;
-    auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
-    if (!lease_spec.PlacementGroupBundleId().first.IsNil()) {
-      continue;
-    }
-
-    auto actor_id = worker->GetActorId();
-    if (!actor_id.IsNil() && lease_spec.IsActorCreationTask()) {
-      // This task ID corresponds to an actor creation task.
-      continue;
-    }
-
-    if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_set = allocated_instances->ToResourceSet();
-      // Blocked normal task workers have temporarily released its allocated CPU.
-      if (worker->IsBlocked()) {
-        for (const auto &resource_id : allocated_instances->ResourceIds()) {
-          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
-            resource_set.Set(resource_id, 0);
-          }
-        }
-      }
-      total_normal_task_resources += resource_set;
-    }
-  }
-  return total_normal_task_resources;
 }
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(

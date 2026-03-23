@@ -398,7 +398,10 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.infer_metadata().input_files
+        input_files = self._logical_plan.dag.infer_metadata().input_files
+        if input_files is None:
+            return None
+        return list(set(input_files))
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
