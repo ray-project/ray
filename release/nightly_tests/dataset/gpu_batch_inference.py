@@ -1,5 +1,6 @@
 import argparse
 import time
+import uuid
 from typing import Dict
 
 import numpy as np
@@ -9,6 +10,8 @@ from torchvision.models import ResNet50_Weights, resnet50
 
 import ray
 from ray.data import ActorPoolStrategy
+
+WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 
 def parse_args():
@@ -48,11 +51,6 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
-    # The preprocessing UDF converts images from uint8 to float64, which increases
-    # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
-    # our target block size is 128 MiB, we set the batch size to around 90 images (128
-    # MiB / 1.5) to avoid running out of memory.
-    PREPROCESS_BATCH_SIZE = 90
     # Largest batch that can fit on a T4.
     INFERENCE_BATCH_SIZE = 900
 
@@ -85,6 +83,8 @@ def main(args):
         transformed_batch = transform(tensor_batch).numpy()
         return {"image": transformed_batch}
 
+    # Take advantage of vectorization
+    # Keep memory low
     class Predictor:
         def __init__(self, model):
             self.model = ray.get(model)
@@ -102,41 +102,27 @@ def main(args):
         compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        compute = ActorPoolStrategy(min_size=1, max_size=10)
+        compute = None
         num_gpus = 1
-    ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
+    ds = ds.map_batches(preprocess)
     ds = ds.map_batches(
         Predictor,
         batch_size=INFERENCE_BATCH_SIZE,
         compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
-        max_concurrency=2,
     )
 
-    total_images = 0
-
-    # NOTE: We're iterating over ref-bundles to avoid pulling blocks into the
-    #       driver, therefore making it a factor impacting benchmark performance
-    for bundle in ds.iter_internal_ref_bundles():
-        total_images += bundle.num_rows()
+    ds.write_parquet(WRITE_PATH)
 
     end_time = time.time()
 
     total_time = end_time - start_time
-    throughput = total_images / (total_time)
     total_time_without_metadata_fetch = end_time - start_time_without_metadata_fetching
-    throughput_without_metadata_fetch = total_images / (
-        total_time_without_metadata_fetch
-    )
 
     print("Total time (sec): ", total_time)
-    print("Throughput (img/sec): ", throughput)
     print("Total time w/o metadata fetching (sec): ", total_time_without_metadata_fetch)
-    print(
-        "Throughput w/o metadata fetching (img/sec): ",
-        throughput_without_metadata_fetch,
-    )
+
     if chaos_test:
         dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
         assert dead_nodes
@@ -145,11 +131,9 @@ def main(args):
     # For structured output integration with internal tooling
     results = {
         BenchmarkMetric.RUNTIME: total_time,
-        BenchmarkMetric.THROUGHPUT: throughput,
         "data_directory": data_directory,
         "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
-        "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
 
     return results
