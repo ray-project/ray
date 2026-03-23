@@ -408,9 +408,6 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # This prevents runtime errors on workers when files are not accessible
     # Only validate for local paths - remote URIs will be downloaded by Ray
     working_dir = runtime_env["working_dir"]
-    # Convert Path to string if needed
-    if isinstance(working_dir, Path):
-        working_dir = str(working_dir)
     if _is_path(working_dir):
         _check_working_dir_files(options, runtime_env)
 
