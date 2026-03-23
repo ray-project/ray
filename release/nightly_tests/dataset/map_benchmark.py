@@ -111,9 +111,7 @@ def parse_args() -> argparse.Namespace:
         "--fail-at-call",
         type=int,
         default=50,
-        help=(
-            "Per-actor call count at which selected actors raise a transient error."
-        ),
+        help=("Per-actor call count at which selected actors raise a transient error."),
     )
     parser.add_argument(
         "--kill-actor-indices",
@@ -161,9 +159,7 @@ def parse_args() -> argparse.Namespace:
         "--num-runs",
         type=int,
         default=1,
-        help=(
-            "Number of times to repeat the benchmark. Reports mean/std across runs."
-        ),
+        help=("Number of times to repeat the benchmark. Reports mean/std across runs."),
     )
     args = parser.parse_args()
     validate_args(args)
@@ -225,7 +221,9 @@ class FaultInjectionCoordinator:
             self._stage_next_actor_index[stage_idx] = actor_index + 1
             index_by_id[actor_id] = actor_index
 
-        self._actor_handles_by_index.setdefault(stage_idx, {})[actor_index] = actor_handle
+        self._actor_handles_by_index.setdefault(stage_idx, {})[
+            actor_index
+        ] = actor_handle
         self._actor_nodes_by_index.setdefault(stage_idx, {})[actor_index] = node_id
         return actor_index
 
@@ -326,7 +324,11 @@ class FaultInjectionCoordinator:
         if target_node_ip is None or self._node_killer is None:
             return False
 
-        ray.get(self._node_killer._kill_resource.remote(target_node_id, target_node_ip, None))
+        ray.get(
+            self._node_killer._kill_resource.remote(
+                target_node_id, target_node_ip, None
+            )
+        )
         self._killed_node_id = target_node_id
         return True
 
@@ -403,7 +405,9 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.pipeline_stages > 1 and not (
         args.api == "map_batches" and args.compute == "actors"
     ):
-        raise ValueError("--pipeline-stages > 1 requires --api map_batches --compute actors")
+        raise ValueError(
+            "--pipeline-stages > 1 requires --api map_batches --compute actors"
+        )
 
     fault_modes = [
         bool(args.fail_actor_index_list),
@@ -419,9 +423,7 @@ def validate_args(args: argparse.Namespace) -> None:
     if requires_actor_fault_injection(args) and not (
         args.api == "map_batches" and args.compute == "actors"
     ):
-        raise ValueError(
-            "Fault injection requires --api map_batches --compute actors"
-        )
+        raise ValueError("Fault injection requires --api map_batches --compute actors")
 
 
 def parse_actor_indices(value: str) -> List[int]:
@@ -530,7 +532,9 @@ def run_single_benchmark(args: argparse.Namespace, run_index: int) -> Dict[str, 
         return run_result
     except Exception as exc:
         run_result["status"] = "error"
-        run_result["time"] = time.perf_counter() - start_time if "start_time" in locals() else 0.0
+        run_result["time"] = (
+            time.perf_counter() - start_time if "start_time" in locals() else 0.0
+        )
         run_result["error"] = format_exception(exc)
         if coordinator is not None:
             run_result["fault_summary"] = ray.get(coordinator.summary.remote())
@@ -683,9 +687,7 @@ def validate_fault_summary(args: argparse.Namespace, summary: Dict[str, Any]) ->
 def get_alive_worker_node_count() -> int:
     head_node_id = ray.get_runtime_context().get_node_id()
     return sum(
-        1
-        for node in ray.nodes()
-        if node["Alive"] and node["NodeID"] != head_node_id
+        1 for node in ray.nodes() if node["Alive"] and node["NodeID"] != head_node_id
     )
 
 
