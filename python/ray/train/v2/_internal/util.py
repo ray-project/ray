@@ -5,6 +5,7 @@ import logging
 import time
 import traceback
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -91,6 +92,36 @@ def construct_train_func(
                 return train_func()
 
     return train_fn
+
+
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
+
+    def module_names(self) -> tuple[str, ...]:
+        """Returns the relevant module names for the training framework.
+
+        These module names are used by Train state version collection (see
+        `_get_framework_version`) to gather versions of key framework-related packages.
+
+        Note: If adding a new module, make sure to use the module name rather than
+        the distribution name. (e.g. sklearn instead of scikit-learn)
+        """
+        if self is TrainingFramework.TORCH:
+            return ("torch",)
+        if self is TrainingFramework.JAX:
+            return ("jax", "jaxlib")
+        if self is TrainingFramework.TENSORFLOW:
+            return ("tensorflow", "keras")
+        if self is TrainingFramework.XGBOOST:
+            return ("xgboost",)
+        if self is TrainingFramework.LIGHTGBM:
+            return ("lightgbm",)
+
+        return (self.value,)
 
 
 class ObjectRefWrapper(Generic[T]):
