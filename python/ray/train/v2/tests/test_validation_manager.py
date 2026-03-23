@@ -1,3 +1,4 @@
+import asyncio
 import time
 import unittest.mock
 from unittest.mock import create_autospec
@@ -53,7 +54,7 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     monkeypatch.setattr(ray, "get", lambda x: {"score": 1})
 
     # Call before_controller_shutdown
-    vm.before_controller_shutdown()
+    asyncio.run(vm.before_controller_shutdown())
     assert mock_wait.call_count == 2
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
         unittest.mock.call(

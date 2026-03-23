@@ -1,21 +1,36 @@
 import abc
 import logging
+import os
+import posixpath
 import time
 from typing import List, Optional
 
 import numpy
 import pyarrow
+from pyarrow.fs import FileSelector, FileType
 
 import ray
+from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
 from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
+from ray.data.checkpoint.util import build_pending_checkpoint_trie
 from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for checkpoint recovery operations.
+# These can be overridden via environment variables for testing or tuning.
+CHECKPOINT_RECOVERY_MAX_ATTEMPTS = int(
+    os.environ.get("RAY_DATA_CHECKPOINT_RECOVERY_MAX_ATTEMPTS", "3")
+)
+CHECKPOINT_RECOVERY_MAX_BACKOFF_S = int(
+    os.environ.get("RAY_DATA_CHECKPOINT_RECOVERY_MAX_BACKOFF_S", "8")
+)
 
 
 class CheckpointFilter(abc.ABC):
@@ -32,6 +47,84 @@ class CheckpointFilter(abc.ABC):
         self.id_column = self.ckpt_config.id_column
         self.filesystem = self.ckpt_config.filesystem
         self.filter_num_threads = self.ckpt_config.filter_num_threads
+
+
+@ray.remote(num_cpus=0)
+def _clean_pending_checkpoints_task(
+    checkpoint_path_unwrapped: str,
+    checkpoint_filesystem: pyarrow.fs.FileSystem,
+    data_file_dir_unwrapped: str,
+    data_file_filesystem: pyarrow.fs.FileSystem,
+) -> int:
+    """Delete data files that have matching pending checkpoint files, then
+    delete the pending checkpoints.
+
+    This runs as a remote task to avoid blocking the driver during potentially
+    slow filesystem operations (especially on cloud storage like S3).
+
+    Algorithm:
+    1. List all files in checkpoint dir, find those ending with .pending.parquet
+    2. Build a PrefixTrie from their basenames (strip .pending.parquet)
+    3. List all data files in data_file_dir (recursively for partitions)
+    4. For each data file, if trie.has_prefix_of(basename) -> delete it
+    5. Delete all the pending checkpoint files
+    6. Return count of pending checkpoints cleaned
+
+    Args:
+        checkpoint_path_unwrapped: The unwrapped checkpoint path.
+        checkpoint_filesystem: The filesystem for checkpoint files.
+        data_file_dir_unwrapped: The unwrapped directory where data files are
+            written (protocol prefix already stripped).
+        data_file_filesystem: The filesystem for data files. May differ from
+            checkpoint_filesystem (e.g., checkpoints on local disk, data on S3).
+
+    Returns:
+        Number of pending checkpoints cleaned.
+    """
+
+    def _clean() -> int:
+        # 1. List all files in checkpoint dir, find pending ones
+        ckpt_files = checkpoint_filesystem.get_file_info(
+            FileSelector(checkpoint_path_unwrapped, recursive=False)
+        )
+        pending_suffix = f"{PENDING_CHECKPOINT_SUFFIX}.parquet"
+        pending_file_paths = [
+            f
+            for f in ckpt_files
+            if f.type == FileType.File and f.path.endswith(pending_suffix)
+        ]
+
+        if not pending_file_paths:
+            return 0
+
+        # 2. Build prefix trie from pending checkpoint basenames
+        trie = build_pending_checkpoint_trie(pending_file_paths, pending_suffix)
+
+        # 3. List all data files (recursively for partitions)
+        data_files = data_file_filesystem.get_file_info(
+            FileSelector(data_file_dir_unwrapped, recursive=True, allow_not_found=True)
+        )
+
+        # 4. Delete data files matching a pending checkpoint prefix
+        for f in data_files:
+            if f.type != FileType.File:
+                continue
+            basename = posixpath.basename(f.path)
+            if trie.has_prefix_of(basename):
+                data_file_filesystem.delete_file(f.path)
+
+        # 5. Delete all pending checkpoint files
+        for f in pending_file_paths:
+            checkpoint_filesystem.delete_file(f.path)
+
+        return len(pending_file_paths)
+
+    return call_with_retry(
+        _clean,
+        description="clean pending checkpoints",
+        max_attempts=CHECKPOINT_RECOVERY_MAX_ATTEMPTS,
+        max_backoff_s=CHECKPOINT_RECOVERY_MAX_BACKOFF_S,
+    )
 
 
 @ray.remote(max_retries=-1)
@@ -174,12 +267,32 @@ class IdColumnCheckpointLoader(CheckpointLoader):
 class BatchBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends."""
 
-    def load_checkpoint(self) -> ObjectRef[Block]:
+    def load_checkpoint(
+        self,
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> ObjectRef[Block]:
         """Load checkpointed ids as a sorted block.
+
+        This method first cleans up any pending checkpoints from incomplete
+        2-phase commits, then loads the committed checkpoint data.
+
+        Args:
+            data_file_dir: Optional directory where data files are written.
+                If provided, pending checkpoints will be used to find and
+                delete matching data files before loading.
+            data_file_filesystem: Optional filesystem for data files. If not
+                provided, defaults to the checkpoint filesystem. Should be
+                provided when data files are on a different filesystem than
+                checkpoints.
 
         Returns:
             ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
         """
+        # Clean up pending checkpoints before loading (runs as a Ray task)
+        if data_file_dir is not None:
+            self._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
+
         loader = IdColumnCheckpointLoader(
             checkpoint_path=self.checkpoint_path,
             filesystem=self.filesystem,
@@ -187,6 +300,41 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
             checkpoint_path_partition_filter=self.ckpt_config.checkpoint_path_partition_filter,
         )
         return loader.load_checkpoint()
+
+    def _clean_pending_checkpoints(
+        self,
+        data_file_dir: str,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> None:
+        """Clean up pending checkpoints from incomplete 2-phase commits.
+
+        Finds pending checkpoint files, builds a prefix trie from their basenames,
+        deletes matching data files, then deletes the pending checkpoints.
+
+        Runs as a Ray task to avoid blocking the driver during potentially
+        slow filesystem operations (especially on cloud storage like S3).
+
+        Args:
+            data_file_dir: The directory where data files are written.
+            data_file_filesystem: The filesystem for data files. If not
+                provided, defaults to the checkpoint filesystem.
+        """
+        if data_file_filesystem is None:
+            data_file_filesystem = self.filesystem
+        try:
+            cleaned_count = ray.get(
+                _clean_pending_checkpoints_task.remote(
+                    self.checkpoint_path_unwrapped,
+                    self.filesystem,
+                    _unwrap_protocol(data_file_dir),
+                    data_file_filesystem,
+                )
+            )
+            if cleaned_count > 0:
+                logger.info(f"Cleaned up {cleaned_count} pending checkpoint(s)")
+        except ray.exceptions.RayTaskError:
+            logger.exception("Failed to clean up pending checkpoints")
+            raise
 
     def delete_checkpoint(self) -> None:
         self.filesystem.delete_dir(self.checkpoint_path_unwrapped)
