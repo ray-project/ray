@@ -568,8 +568,13 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             res["locality_hits"] = self._locality_hits
             res["locality_misses"] = self._locality_misses
-        res["pending_actors"] = self._actor_pool.num_pending_actors()
-        res["restarting_actors"] = self._actor_pool.num_restarting_actors()
+        actor_info = self._actor_pool.get_actor_info()
+        res["pending_actors"] = actor_info.pending
+        res["restarting_actors"] = actor_info.restarting
+        res["active_actors"] = actor_info.active
+        res["idle_actors"] = actor_info.idle
+        res["pool_utilization"] = actor_info.pool_utilization
+        res["tasks_in_flight"] = actor_info.tasks_in_flight
         return res
 
     @staticmethod

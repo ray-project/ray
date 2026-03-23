@@ -234,6 +234,10 @@ def gen_expected_metrics(
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': N",
@@ -318,6 +322,10 @@ def gen_expected_metrics(
             "'num_alive_actors': Z",
             "'num_restarting_actors': Z",
             "'num_pending_actors': Z",
+            "'num_active_actors': Z",
+            "'num_idle_actors': Z",
+            "'pool_utilization': Z",
+            "'num_tasks_in_flight': Z",
             "'obj_store_mem_internal_inqueue_blocks': Z",
             "'obj_store_mem_internal_outqueue_blocks': Z",
             "'obj_store_mem_freed': Z",
@@ -810,6 +818,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -970,6 +982,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_alive_actors: Z,\n"
         "      num_restarting_actors: Z,\n"
         "      num_pending_actors: Z,\n"
+        "      num_active_actors: Z,\n"
+        "      num_idle_actors: Z,\n"
+        "      pool_utilization: Z,\n"
+        "      num_tasks_in_flight: Z,\n"
         "      obj_store_mem_internal_inqueue_blocks: Z,\n"
         "      obj_store_mem_internal_outqueue_blocks: Z,\n"
         "      obj_store_mem_freed: N,\n"
@@ -1083,6 +1099,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_alive_actors: Z,\n"
         "            num_restarting_actors: Z,\n"
         "            num_pending_actors: Z,\n"
+        "            num_active_actors: Z,\n"
+        "            num_idle_actors: Z,\n"
+        "            pool_utilization: Z,\n"
+        "            num_tasks_in_flight: Z,\n"
         "            obj_store_mem_internal_inqueue_blocks: Z,\n"
         "            obj_store_mem_internal_outqueue_blocks: Z,\n"
         "            obj_store_mem_freed: N,\n"
