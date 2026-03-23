@@ -146,6 +146,11 @@ def _sanitize_chat_completion_request(
     TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
     """
     for i, message in enumerate(request.messages):
+        # SGLang messages are Pydantic BaseModels (no .get()); convert to dicts
+        # so the same logic works for both vLLM (TypedDict) and SGLang.
+        if not isinstance(message, dict):
+            request.messages[i] = message = message.model_dump()
+
         if message.get("role") == "assistant":
             if (tool_calls_validator := message.get("tool_calls", None)) is not None:
                 try:

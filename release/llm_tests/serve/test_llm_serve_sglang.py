@@ -166,8 +166,8 @@ def test_sglang_detokenize(sglang_client):
     )
     assert detok_resp.status_code == 200
     data = detok_resp.json()
-    assert "prompt" in data
-    assert "Hello world" in data["prompt"]
+    assert "text" in data
+    assert "Hello world" in data["text"]
 
 
 @pytest.fixture(scope="module")
