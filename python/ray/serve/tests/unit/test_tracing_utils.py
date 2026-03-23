@@ -32,3 +32,9 @@ class TestIsTracingEnabled:
         """is_tracing_enabled() returns False when flag is explicitly False."""
         tracing_utils._tracing_enabled = False
         assert tracing_utils.is_tracing_enabled() is False
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
