@@ -344,9 +344,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         dashboard_export_addr,
         config,
     ) = _setup_cluster_for_test
-    enable_ray_event = (
-        config.get("enable_ray_event", False) if isinstance(config, dict) else False
-    )
     assert_sent_metric = (
         config.get("assert_sent_metric", False) if isinstance(config, dict) else False
     )
