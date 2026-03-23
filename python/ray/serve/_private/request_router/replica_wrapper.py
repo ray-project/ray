@@ -202,8 +202,7 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
-        # Slot reservation tracking for choose_replica/dispatch pattern
-        # Maps slot_token -> True to track active reservations
+        # Active slot reservation tokens for the choose_replica/dispatch pattern.
         self._reserved_slots: Set[str] = set()
 
     @property
