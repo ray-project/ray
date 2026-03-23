@@ -38,3 +38,4 @@
 //python/ray/serve/tests:test_streaming_response
 //python/ray/serve/tests:test_target_capacity
 //python/ray/serve/tests:test_websockets
+//python/ray/serve/tests:test_autoscaling_with_streaming
