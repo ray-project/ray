@@ -704,6 +704,8 @@ class DataContext:
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
     # Use new C++-backed Core Actor Pool for improved performance and cross-actor retry
     use_core_actor_pool: bool = DEFAULT_USE_CORE_ACTOR_POOL
+    # Enable actor pool on-exit hook for graceful cleanup of actors.
+    _enable_actor_pool_on_exit_hook: bool = False
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
