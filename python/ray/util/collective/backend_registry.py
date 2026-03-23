@@ -26,7 +26,12 @@ class BackendRegistry:
             raise ValueError(f"Backend {name} not registered")
         return self._map[name]
 
+    def is_registered(self, name: str) -> bool:
+        """Check if a backend is registered (regardless of availability)."""
+        return name.upper() in self._map
+
     def check(self, name: str) -> bool:
+        """Check if a backend is both registered and available."""
         try:
             cls = self.get(name)
             return cls.check_backend_availability()

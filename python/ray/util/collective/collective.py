@@ -259,12 +259,17 @@ def create_collective_group(
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
 
-    # Check if backend is registered
+    # Check if backend is registered and available
     backend_upper = backend.upper()
-    if not _global_registry.check(backend_upper):
+    if not _global_registry.is_registered(backend_upper):
         raise RuntimeError(
             f"Backend {backend_upper} is not registered. "
             f"Please register it using register_collective_backend('{backend_upper}', YourBackendClass)."
+        )
+    if not _global_registry.check(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is registered but not available. "
+            f"Please check the installation requirements for this backend."
         )
 
     # avoid a circular dependency
