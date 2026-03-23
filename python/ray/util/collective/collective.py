@@ -4,13 +4,11 @@ import logging
 import os
 import socket
 import threading
-import time
 from typing import List, Tuple
 
 import numpy as np
 
 import ray
-import ray.experimental.internal_kv as _internal_kv
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
 from ray.util.collective.backend_registry import (
@@ -30,7 +28,6 @@ except ImportError:
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
-        get_master_address_metadata_key as _get_master_addr_key,
     )
 
     register_collective_backend("GLOO", TorchGLOOGroup)
@@ -94,25 +91,6 @@ class GroupManager(object):
             )
 
         if backend == "GLOO":
-            metadata_key = _get_master_addr_key(group_name)
-            if rank == 0:
-                addr, port = get_address_and_port()
-                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
-            else:
-                # Wait until rank 0 publishes the metadata or timeout.
-                deadline_s = time.time() + (
-                    gloo_timeout / 1000.0 if gloo_timeout else 30.0
-                )
-                while True:
-                    meta = _internal_kv._internal_kv_get(metadata_key)
-                    if meta is not None:
-                        break
-                    if time.time() > deadline_s:
-                        raise TimeoutError(
-                            f"Timed out waiting for GLOO rendezvous metadata for group '{group_name}'."
-                        )
-                    time.sleep(0.05)
-
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )

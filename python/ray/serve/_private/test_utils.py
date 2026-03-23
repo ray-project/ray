@@ -273,6 +273,67 @@ class MockDeploymentHandle:
         self._running_replicas_populated = val
 
 
+class MockDeploymentActorWrapper:
+    """Mock for DeploymentActorWrapper with per-instance setters."""
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        config,
+        code_version: str,
+        recovered_handle=None,
+    ):
+        self._deployment_id = deployment_id
+        self._config = config
+        self._code_version = code_version
+        self._handle = recovered_handle
+        self._ready = False  # Recovered starts pending until set_ready()
+        self._start_error_msg: Optional[str] = None
+        self._check_ready_error_msg: Optional[str] = None
+        self.killed = False
+        self.pending_killed = False
+        self._start_fail_count = 0
+        self._start_fail_msg = None
+
+    @property
+    def actor_logical_name(self) -> str:
+        return self._config.name
+
+    @property
+    def code_version(self) -> str:
+        return self._code_version
+
+    def set_ready(self):
+        self._ready = True
+
+    def set_start_error(self, error_msg: str):
+        """Make start() fail with this error (persists until cleared)."""
+        self._start_error_msg = error_msg
+
+    def set_check_ready_error(self, error_msg: str):
+        self._check_ready_error_msg = error_msg
+
+    def set_failed_to_start(self, error_msg: str = "constructor failed"):
+        """Simulate start failure (like replica's set_failed_to_start). check_ready will return this error."""
+        self._check_ready_error_msg = error_msg
+
+    def start(self, deployment_runtime_env=None):
+        if self._start_error_msg is not None:
+            return False, self._start_error_msg
+        # Match real behavior: created actor starts as pending until ready.
+        return True, None
+
+    def check_ready(self):
+        if self._check_ready_error_msg is not None:
+            return False, self._check_ready_error_msg
+        if self._ready:
+            return True, None
+        return False, None
+
+    def kill(self) -> None:
+        self.killed = True
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
@@ -1221,7 +1282,20 @@ def get_metric_dictionaries(
     name: str,
     timeout: float = 20,
     timeseries: Optional[PrometheusTimeseries] = None,
+    wait: bool = True,
 ) -> List[Dict]:
+    """Get metric samples as list of label dicts.
+
+    Args:
+        name: Metric name to fetch.
+        timeout: Timeout for each fetch attempt.
+        timeseries: Optional shared timeseries to populate.
+        wait: If True (default), wait for metric to appear before returning.
+            If False, fetch once and return immediately (possibly empty).
+
+    Returns:
+        List of metric samples as label dicts.
+    """
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
@@ -1235,7 +1309,18 @@ def get_metric_dictionaries(
         )
         return True
 
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout * 4)
+    if wait:
+        wait_for_condition(
+            metric_available, retry_interval_ms=1000, timeout=timeout * 4
+        )
+    else:
+        # Fetch once without asserting - allows outer wait_for_condition to retry
+        fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:
