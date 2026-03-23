@@ -122,6 +122,9 @@ class RayParams:
         cluster_id: The cluster ID in hex string.
         resource_isolation_config: settings for cgroupv2 based isolation of ray
             system processes (defaults to no isolation if config not provided)
+        proxy_server_url: The proxy url to redirect dashboard backend request to.
+            By default, the dashboard requests will be directed to the Ray api server.
+            Ex: http://historyserver:8080
     """
 
     def __init__(
@@ -184,6 +187,7 @@ class RayParams:
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
+        proxy_server_url: Optional[str] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -243,6 +247,7 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+        self.proxy_server_url = proxy_server_url
 
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:

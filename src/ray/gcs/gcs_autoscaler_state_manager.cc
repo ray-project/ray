@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
@@ -514,6 +515,47 @@ void GcsAutoscalerStateManager::HandleDrainNode(
                                               "will not be drained. Rejection reason: "
                                            << raylet_reply.rejection_reason_message();
           reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
+        }
+        send_reply_callback(status, nullptr, nullptr);
+      });
+}
+
+void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
+    rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+    rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (request.node_id().size() != NodeID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
+  const NodeID node_id = NodeID::FromBinary(request.node_id());
+
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> maybe_node =
+      gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    send_reply_callback(
+        Status::NotFound(absl::StrFormat("Raylet %s is not alive.", node_id.Hex())),
+        nullptr,
+        nullptr);
+    return;
+  }
+
+  auto &node = maybe_node.value();
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  raylet_client->ResizeLocalResourceInstances(
+      std::move(*request.mutable_resources()),
+      [reply, send_reply_callback](
+          const Status &status, rpc::ResizeLocalResourceInstancesReply &&raylet_reply) {
+        if (status.ok()) {
+          *reply->mutable_total_resources() =
+              std::move(*raylet_reply.mutable_total_resources());
         }
         send_reply_callback(status, nullptr, nullptr);
       });

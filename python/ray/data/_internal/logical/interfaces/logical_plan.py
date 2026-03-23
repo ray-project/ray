@@ -44,7 +44,10 @@ class LogicalPlan(Plan):
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self.dag.infer_metadata().input_files
+        input_files = self.dag.infer_metadata().input_files
+        if input_files is None:
+            return None
+        return list(set(input_files))
 
     def initial_num_blocks(self) -> Optional[int]:
         """Get the estimated number of blocks from the logical plan

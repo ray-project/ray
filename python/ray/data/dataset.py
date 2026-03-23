@@ -40,6 +40,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -80,11 +81,12 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import (
@@ -642,8 +644,10 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame`` (requires cudf to be installed).
+                If ``batch_format`` is set to ``None`` input block format
+                will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -968,8 +972,9 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
+                If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -980,7 +985,7 @@ class Dataset:
             A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "cudf"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -1016,6 +1021,15 @@ class Dataset:
                 if column_idx == -1:
                     return batch.append_column(col, column)
                 return batch.set_column(column_idx, col, column)
+
+            elif batch_format == "cudf":
+                import cudf
+
+                # cuDF uses pandas-like API: batch[col] = column
+                if isinstance(column, (cudf.DataFrame, cudf.Index, cudf.Series)):
+                    column.index = batch.index
+                batch[col] = column
+                return batch
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -1801,7 +1815,7 @@ class Dataset:
     def random_shuffle(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1815,17 +1829,34 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds = ray.data.range(100)
             >>> ds.random_shuffle().take(3)  # doctest: +SKIP
-            {'id': 41}, {'id': 21}, {'id': 92}]
+            [{'id': 41}, {'id': 21}, {'id': 92}]
             >>> ds.random_shuffle(seed=42).take(3)  # doctest: +SKIP
-            {'id': 77}, {'id': 21}, {'id': 63}]
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Fully deterministic across executions:
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 29}, {'id': 79}, {'id': 39}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 40}, {'id': 7}, {'id': 90}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same shuffle order across executions). If None, the shuffle
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on seed behavior.
             num_blocks: This parameter is deprecated. It was previously intended to
                 specify the number of output blocks in the shuffled dataset, but is no
                 longer supported. To control the number of output blocks, use
@@ -1844,10 +1875,18 @@ class Dataset:
                 "does not support to change the number of output blocks. Use "
                 "repartition() instead.",  # noqa: E501
             )
+
+        # We set use_timestamp_as_default=True to pin the seed at plan time
+        # so that retried shuffle tasks produce the same output.
+        # See https://github.com/ray-project/ray/pull/50924.
+        seed_config = RandomSeedConfig.create_seed_config(
+            seed, use_timestamp_as_default=True
+        )
+
         plan = self._plan.copy()
         op = RandomShuffle(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
@@ -1858,7 +1897,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -1873,28 +1912,46 @@ class Dataset:
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
             >>> ds.randomize_block_order().take(5)  # doctest: +SKIP
             {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 40}, {'id': 41}, {'id': 42}, {'id': 43}, {'id': 28}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 92}, {'id': 93}, {'id': 94}, {'id': 95}, {'id': 88}]
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same block order across executions). If None, the block
+                order is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             The block-shuffled :class:`Dataset`.
         """  # noqa: E501
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         plan = self._plan.copy()
         op = RandomizeBlocks(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int] = None
+        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
+        In other words, this method "randomly filters" the rows of the dataset without
+        shuffling (i.e., changing the order of the rows).
 
         .. note::
 
@@ -1903,18 +1960,29 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds1 = ray.data.range(100)
             >>> ds1.random_sample(0.1).count()  # doctest: +SKIP
             10
+            >>> # Deterministic across executions
             >>> ds2 = ray.data.range(1000)
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
+            >>> # Different sample each execution
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 2}, {'id': 9}]
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 15}, {'id': 23}]
 
         Args:
-            fraction: The fraction of elements to sample.
-            seed: Seeds the python random pRNG generator.
+            fraction: The fraction of elements to sample. It must be between 0 and 1 (inclusive).
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same sample across executions). If None, the sample
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             Returns a :class:`Dataset` containing the sampled rows.
@@ -1928,18 +1996,24 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        def random_sample(batch: DataBatch, seed: Optional[int]):
+        def random_sample(
+            batch: DataBatch, seed_config: RandomSeedConfig, data_context: DataContext
+        ):
             ctx = TaskContext.get_current()
+
+            seed_result = seed_config.get_seed_tuple(data_context=data_context)
 
             if "rng" in ctx.kwargs:
                 rng = ctx.kwargs["rng"]
-            elif seed is None:
+            elif seed_result is None:
                 rng = np.random.default_rng()
                 ctx.kwargs["rng"] = rng
             else:
-                rng = np.random.default_rng([ctx.task_idx, seed])
+                rng = np.random.default_rng(seed_result.to_rng_args(ctx.task_idx))
                 ctx.kwargs["rng"] = rng
 
             mask_idx = np.where(rng.random(len(batch)) < fraction)[0]
@@ -1952,7 +2026,7 @@ class Dataset:
 
         return self.map_batches(
             random_sample,
-            fn_args=[seed],
+            fn_args=(seed_config, self.context),
             batch_format=None,
             batch_size=None,
         )
@@ -2658,9 +2732,9 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(8)
             >>> train, test = ds.streaming_train_test_split(test_size=0.25, split_type="hash", hash_column="id")
-            >>> train.take_batch()
+            >>> train.take_batch()  # doctest: +SKIP
             {'id': array([0, 2, 3, 4, 5, 6])}
-            >>> test.take_batch()
+            >>> test.take_batch()  # doctest: +SKIP
             {'id': array([1, 7])}
 
         Args:
@@ -3675,7 +3749,9 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -4002,7 +4078,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return list(set(self._logical_plan.input_files()))
+        return self._logical_plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5508,6 +5584,59 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_kafka(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        key_field: Optional[str] = None,
+        key_serializer: str = "string",
+        value_serializer: str = "json",
+        producer_config: Optional[Dict[str, Any]] = None,
+        *,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """
+        Convenience method to write Ray Dataset to Kafka.
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_kafka("my-topic", "localhost:9092")
+
+        Args:
+            topic: Kafka topic name
+            bootstrap_servers: Comma-separated Kafka broker addresses
+            key_field: Optional field name to use as message key
+            key_serializer: Key serialization format ('json', 'string', or 'bytes')
+            value_serializer: Value serialization format ('json', 'string', or 'bytes')
+            producer_config: Additional Kafka producer configuration (confluent-kafka/librdkafka format)
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """
+        sink = KafkaDatasink(
+            topic=topic,
+            bootstrap_servers=bootstrap_servers,
+            key_field=key_field,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+            producer_config=producer_config,
+        )
+        self.write_datasink(
+            sink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
         self,
@@ -5679,7 +5808,9 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -7113,7 +7244,7 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return self.base_schema.names
+        return list(self.base_schema.names)
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
@@ -7125,7 +7256,10 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
-        from ray.data.extensions import ArrowTensorType, TensorDtype
+        from ray.data._internal.tensor_extensions.arrow import (
+            create_arrow_fixed_shape_tensor_type,
+        )
+        from ray.data.extensions import TensorDtype
 
         def _convert_to_pa_type(
             dtype: Union[np.dtype, pd.ArrowDtype, BaseMaskedDtype],
@@ -7145,18 +7279,16 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
-                if self._context.use_arrow_tensor_v2:
-                    pa_tensor_type_class = ArrowTensorTypeV2
-                else:
-                    pa_tensor_type_class = ArrowTensorType
-
-                # Manually convert our Pandas tensor extension type to Arrow.
-                arrow_types.append(
-                    pa_tensor_type_class(
-                        shape=dtype._shape,
-                        dtype=_convert_to_pa_type(dtype._dtype),
+                pa_dtype = _convert_to_pa_type(dtype._dtype)
+                if any(dim is None for dim in dtype._shape):
+                    tensor_type = ArrowVariableShapedTensorType(
+                        pa_dtype, len(dtype._shape)
                     )
-                )
+                else:
+                    tensor_type = create_arrow_fixed_shape_tensor_type(
+                        shape=dtype._shape, dtype=pa_dtype
+                    )
+                arrow_types.append(tensor_type)
 
             else:
                 try:

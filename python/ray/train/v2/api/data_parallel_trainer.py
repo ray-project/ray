@@ -117,6 +117,10 @@ class DataParallelTrainer:
 
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+        if self.scaling_config.elasticity_enabled:
+            usage_lib.record_extra_usage_tag(
+                usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED, "1"
+            )
 
     def _validate_configs(self):
         if not is_v2_enabled():
@@ -302,7 +306,7 @@ class DataParallelTrainer:
             if sigint_count <= 1:
                 try:
                     ray.get(controller.abort.remote())
-                except ray.exceptions.ActorDiedError:
+                except ray.exceptions.RayActorError:
                     # We catch the error and exit 0 to indicate graceful termination.
                     # However, for some reason the process still exits with 1.
                     sys.exit(0)
