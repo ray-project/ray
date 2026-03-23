@@ -4,5 +4,5 @@
 
 set -exo pipefail
 
-# Update accelerate version
-pip3 install --no-cache-dir --upgrade "trl[vllm]" numpy pandas math_verify
+# Install TRL and math_verify
+pip3 install --no-cache-dir "trl[vllm]" math_verify
