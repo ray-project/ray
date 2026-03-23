@@ -28,7 +28,7 @@ from ray.train.v2.api.report_config import (
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator, Dataset
+    from ray.data import DataIterator
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -64,9 +64,6 @@ class TrainRunContext:
 
     # The configuration for the training backend (e.g., PyTorch, XGBoost).
     backend_config: "BackendConfig"
-
-    # The datasets used in the current training run.
-    datasets: Dict[str, "Dataset"]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
