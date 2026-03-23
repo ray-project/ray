@@ -18,40 +18,40 @@ from ray._private.state_api_test_utils import (
 )
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
-    Address,
-    CoreWorkerStats,
-    ObjectRefInfo,
     TaskInfoEntry,
     TaskStatus,
     TaskType,
-    WorkerType,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
-    PlacementGroupTableData,
     TaskEvents,
     TaskStateUpdate,
-    WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
-    GcsStatus,
     GetAllActorInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
-    GetTaskEventsReply,
 )
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
-from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvState as RuntimeEnvStateProto,
-)
 from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
 )
 from ray.runtime_env import RuntimeEnv
+from ray.tests.test_state_api import (
+    generate_actor_data,
+    generate_early_return_task_data,
+    generate_failure_test_data,
+    generate_node_data,
+    generate_object_info,
+    generate_pg_data,
+    generate_runtime_env_info,
+    generate_task_data,
+    generate_task_event,
+    generate_worker_data,
+)
 from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -82,175 +82,6 @@ async def state_api_manager_e2e(ray_start_with_dashboard):
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)
     yield manager
-
-
-def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
-    return ActorTableData(
-        actor_id=id,
-        state=state,
-        name="abc",
-        pid=1234,
-        class_name=class_name,
-        address=Address(node_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
-        job_id=b"123",
-        node_id=None,
-        ray_namespace="",
-    )
-
-
-def generate_pg_data(id):
-    return PlacementGroupTableData(
-        placement_group_id=id,
-        state=PlacementGroupTableData.PlacementGroupState.CREATED,
-        name="abc",
-        creator_job_dead=True,
-        creator_actor_dead=False,
-    )
-
-
-def generate_node_data(id):
-    return GcsNodeInfo(
-        node_id=id,
-        state=GcsNodeInfo.GcsNodeState.ALIVE,
-        node_manager_address="127.0.0.1",
-        raylet_socket_name="abcd",
-        object_store_socket_name="False",
-    )
-
-
-def generate_worker_data(
-    id,
-    pid=1234,
-    worker_launch_time_ms=1,
-    worker_launched_time_ms=2,
-    start_time_ms=3,
-    end_time_ms=4,
-):
-    return WorkerTableData(
-        worker_address=Address(
-            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
-        ),
-        is_alive=True,
-        timestamp=1234,
-        worker_type=WorkerType.WORKER,
-        pid=pid,
-        exit_type=None,
-        worker_launch_time_ms=worker_launch_time_ms,
-        worker_launched_time_ms=worker_launched_time_ms,
-        start_time_ms=start_time_ms,
-        end_time_ms=end_time_ms,
-    )
-
-
-def generate_task_event(
-    id,
-    name="class",
-    func_or_class="class",
-    state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-    type=TaskType.NORMAL_TASK,
-    node_id=NodeID.from_random(),
-    attempt_number=0,
-    job_id=b"0001",
-):
-    if node_id is not None:
-        node_id = node_id.binary()
-
-    task_info = TaskInfoEntry(
-        task_id=id,
-        name=name,
-        func_or_class_name=func_or_class,
-        type=type,
-    )
-    state_updates = TaskStateUpdate(
-        node_id=node_id,
-        state_ts_ns={state: 1},
-    )
-    return TaskEvents(
-        task_id=id,
-        job_id=job_id,
-        attempt_number=attempt_number,
-        task_info=task_info,
-        state_updates=state_updates,
-    )
-
-
-def generate_task_data(events_by_task):
-    return GetTaskEventsReply(
-        status=GcsStatus(),
-        events_by_task=events_by_task,
-        num_status_task_events_dropped=0,
-        num_profile_task_events_dropped=0,
-        num_total_stored=len(events_by_task),
-    )
-
-
-def generate_failure_test_data():
-    return GetTaskEventsReply(
-        status=GcsStatus(code=34, message="Unknown filter predicate"),
-        events_by_task=[],
-        num_status_task_events_dropped=0,
-        num_profile_task_events_dropped=0,
-        num_total_stored=0,
-        num_filtered_on_gcs=0,
-        num_truncated=0,
-    )
-
-
-def generate_early_return_task_data():
-    return GetTaskEventsReply(
-        num_profile_task_events_dropped=0,
-        num_status_task_events_dropped=0,
-        num_total_stored=0,
-        num_filtered_on_gcs=0,
-        num_truncated=0,
-    )
-
-
-def generate_object_info(
-    obj_id,
-    size_bytes=1,
-    callsite="main.py",
-    task_state=TaskStatus.PENDING_NODE_ASSIGNMENT,
-    local_ref_count=1,
-    attempt_number=1,
-    pid=1234,
-    ip="1234",
-    worker_type=WorkerType.DRIVER,
-    pinned_in_memory=True,
-):
-    return CoreWorkerStats(
-        pid=pid,
-        worker_type=worker_type,
-        ip_address=ip,
-        object_refs=[
-            ObjectRefInfo(
-                object_id=obj_id,
-                call_site=callsite,
-                object_size=size_bytes,
-                local_ref_count=local_ref_count,
-                submitted_task_ref_count=1,
-                contained_in_owned=[],
-                pinned_in_memory=pinned_in_memory,
-                task_status=task_state,
-                attempt_number=attempt_number,
-            )
-        ],
-    )
-
-
-def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
-    return GetRuntimeEnvsInfoReply(
-        runtime_env_states=[
-            RuntimeEnvStateProto(
-                runtime_env=runtime_env.serialize(),
-                ref_cnt=1,
-                success=success,
-                error=None,
-                creation_time_ms=creation_time,
-            )
-        ],
-        total=1,
-    )
 
 
 @pytest.mark.asyncio

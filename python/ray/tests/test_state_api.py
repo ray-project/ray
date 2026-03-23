@@ -35,13 +35,20 @@ from ray.core.generated.common_pb2 import (
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
+    GcsNodeInfo,
+    PlacementGroupTableData,
     TaskEvents,
     TaskStateUpdate,
+    WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
     GcsStatus,
     GetAllActorInfoReply,
     GetTaskEventsReply,
+)
+from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as RuntimeEnvStateProto,
 )
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import convert_filters_type
@@ -125,6 +132,50 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
     )
 
 
+def generate_pg_data(id):
+    return PlacementGroupTableData(
+        placement_group_id=id,
+        state=PlacementGroupTableData.PlacementGroupState.CREATED,
+        name="abc",
+        creator_job_dead=True,
+        creator_actor_dead=False,
+    )
+
+
+def generate_node_data(id):
+    return GcsNodeInfo(
+        node_id=id,
+        state=GcsNodeInfo.GcsNodeState.ALIVE,
+        node_manager_address="127.0.0.1",
+        raylet_socket_name="abcd",
+        object_store_socket_name="False",
+    )
+
+
+def generate_worker_data(
+    id,
+    pid=1234,
+    worker_launch_time_ms=1,
+    worker_launched_time_ms=2,
+    start_time_ms=3,
+    end_time_ms=4,
+):
+    return WorkerTableData(
+        worker_address=Address(
+            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+        ),
+        is_alive=True,
+        timestamp=1234,
+        worker_type=WorkerType.WORKER,
+        pid=pid,
+        exit_type=None,
+        worker_launch_time_ms=worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
+    )
+
+
 def generate_task_event(
     id,
     name="class",
@@ -167,6 +218,28 @@ def generate_task_data(events_by_task):
     )
 
 
+def generate_failure_test_data():
+    return GetTaskEventsReply(
+        status=GcsStatus(code=34, message="Unknown filter predicate"),
+        events_by_task=[],
+        num_status_task_events_dropped=0,
+        num_profile_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
+def generate_early_return_task_data():
+    return GetTaskEventsReply(
+        num_profile_task_events_dropped=0,
+        num_status_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
 def generate_object_info(
     obj_id,
     size_bytes=1,
@@ -196,6 +269,21 @@ def generate_object_info(
                 attempt_number=attempt_number,
             )
         ],
+    )
+
+
+def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
+    return GetRuntimeEnvsInfoReply(
+        runtime_env_states=[
+            RuntimeEnvStateProto(
+                runtime_env=runtime_env.serialize(),
+                ref_cnt=1,
+                success=success,
+                error=None,
+                creation_time_ms=creation_time,
+            )
+        ],
+        total=1,
     )
 
 
