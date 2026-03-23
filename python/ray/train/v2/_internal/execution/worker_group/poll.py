@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 from ray._private.ray_logging import NUMBERS
 from ray.train.v2._internal.exceptions import (
@@ -40,6 +40,7 @@ class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
+    returned_value: Any = field(default=None)
 
 
 @dataclass(frozen=True)

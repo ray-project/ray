@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 import pandas as pd
 
@@ -186,6 +186,7 @@ class TrainController:
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
+        self._returned_values: Optional[List[Any]] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -548,6 +549,10 @@ class TrainController:
                 )
 
             if worker_group_status.finished and not worker_group_status.errors:
+                self._returned_values = [
+                    worker_group_status.worker_statuses[i].returned_value
+                    for i in range(len(worker_group_status.worker_statuses))
+                ]
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -685,6 +690,7 @@ class TrainController:
             best_checkpoints=best_checkpoints,
             metrics_dataframe=metrics_dataframe,
             _storage_filesystem=storage.storage_filesystem,
+            returned_values=self._returned_values,
         )
 
     def get_result(self) -> Result:

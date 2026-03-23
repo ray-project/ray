@@ -139,8 +139,9 @@ class RayTrainWorker:
             raise
 
         def train_fn_with_final_checkpoint_flush():
-            train_fn()
+            result = train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
+            return result
 
         # Create and start the training thread.
         get_train_context().execution_context.training_thread_runner.run(
@@ -177,8 +178,17 @@ class RayTrainWorker:
             training_report
         )
 
+        returned_value = (
+            execution_context.training_thread_runner.get_return_value()
+            if not running
+            else None
+        )
+
         return WorkerStatus(
-            running=running, error=error, training_report=training_report
+            running=running,
+            error=error,
+            training_report=training_report,
+            returned_value=returned_value,
         )
 
     def shutdown(self):
