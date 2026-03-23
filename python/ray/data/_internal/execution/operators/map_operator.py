@@ -239,8 +239,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
 
-        self.__map_transformer_ref = None
-
     @functools.cached_property
     def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
         """Lazily serialize _map_transformer to object store on first access.
