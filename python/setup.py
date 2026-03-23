@@ -307,6 +307,7 @@ if setup_spec.type == SetupType.RAY:
             setup_spec.extras["serve"]
             + [
                 "celery",
+                "taskiq",
             ]
         )
     )
@@ -365,10 +366,8 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.15.0",
+                "vllm[audio]>=0.17.0",
                 "nixl>=0.6.1",
-                # TODO(llm): remove after next vLLM version bump
-                "transformers>=4.57.3",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",

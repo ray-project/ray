@@ -170,6 +170,20 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
         stack=False,
     ),
     Panel(
+        id=64,
+        title="Running Tasks by Node",
+        description="Current count of tasks that are currently executing, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='clamp_min(sum(ray_tasks{{State=~"RUNNING*",Source="executor",instance=~"$Instance",{global_filters}}}) by (instance), 0)',
+                legend="{{instance}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=33,
         title="All Actors by State",
         description='Note: not impacted by "Instance" variable.\n\nCurrent count of actors, grouped by lifecycle state (e.g., alive, restarting, dead/terminated).\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',
@@ -564,6 +578,34 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
             Target(
                 expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) * 100 / (sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName))',
                 legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=62,
+        title="Node GPU Power",
+        description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
+        unit="mwatt",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Power: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=63,
+        title="Node GPU Temperature",
+        description="Current GPU temperature per node in Celsius. Supported on NVIDIA GPUs.",
+        unit="celsius",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Temperature: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
         fill=0,

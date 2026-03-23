@@ -110,6 +110,7 @@
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 /ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+/ci/ray_ci/serve_hap_test_names.txt @ray-project/ray-serve
 
 /.rayciversion @ray-project/ray-ci
 

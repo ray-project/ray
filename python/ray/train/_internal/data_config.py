@@ -1,4 +1,5 @@
 import copy
+import os
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
@@ -124,15 +125,19 @@ class DataConfig:
             execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overridden by the user,
-                # add training-reserved resources to Data's exclude_resources.
-                execution_options.exclude_resources = (
-                    execution_options.exclude_resources.add(
-                        ExecutionResources(
-                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                if not self._is_v2_autoscaler():
+                    # V1 only: add training-reserved resources to Data's
+                    # exclude_resources. Under the V2 cluster autoscaler,
+                    # the scaling policy registers training resources with
+                    # the AutoscalingCoordinator directly, so
+                    # exclude_resources is not needed.
+                    execution_options.exclude_resources = (
+                        execution_options.exclude_resources.add(
+                            ExecutionResources(
+                                cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                            )
                         )
                     )
-                )
 
             ds = ds.copy(ds)
             ds.context.execution_options = execution_options
@@ -151,6 +156,22 @@ class DataConfig:
         return output
 
     @staticmethod
+    def _is_v2_autoscaler() -> bool:
+        """Check if Ray Data is set to use the V2 cluster autoscaler."""
+        from ray.data._internal.cluster_autoscaler import (
+            CLUSTER_AUTOSCALER_ENV_KEY,
+            DEFAULT_CLUSTER_AUTOSCALER_VERSION,
+            ClusterAutoscalerVersion,
+        )
+
+        return (
+            os.environ.get(
+                CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
+            )
+            == ClusterAutoscalerVersion.V2
+        )
+
+    @staticmethod
     def default_ingest_options() -> "ExecutionOptions":
         """The default Ray Data options used for data ingest.
 
@@ -162,9 +183,6 @@ class DataConfig:
 
         ctx = DataContext.get_current()
         return ExecutionOptions(
-            # TODO(hchen): Re-enable `locality_with_output` by default after fixing
-            # https://github.com/ray-project/ray/issues/40607
-            locality_with_output=ctx.execution_options.locality_with_output,
             resource_limits=ctx.execution_options.resource_limits,
             exclude_resources=ctx.execution_options.exclude_resources,
             preserve_order=ctx.execution_options.preserve_order,

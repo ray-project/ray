@@ -417,12 +417,12 @@ class TestCli(unittest.TestCase):
             [
                 "--no-annotate",
                 "--no-header",
-                "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index https://download.pytorch.org/whl/cu128",
             ]
         ) == [
             "--no-annotate",
             "--no-header",
-            "--extra-index-url",
+            "--index",
             "https://download.pytorch.org/whl/cu128",
         ]
 
@@ -1028,7 +1028,7 @@ class TestCli(unittest.TestCase):
             for pkg in expected_packages:
                 assert pkg in names, f"Expected package {pkg} not found"
 
-            # Verify options (--index-url and --extra-index-url)
+            # Verify options (--index-url and --index)
             assert len(rf.options) >= 1
 
             # Verify packages with environment markers are parsed
@@ -1051,6 +1051,46 @@ class TestCli(unittest.TestCase):
             names2 = sorted([req.name for req in rf2.requirements])
             assert names == names2
             assert len(rf2.requirements) == len(rf.requirements)
+
+    def test_expand_with_relaxed_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            compiled_depset = Depset(
+                name="general_depset__py311_cpu",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                constraints=["requirement_constraints_test.txt"],
+                output="requirements_compiled_general.txt",
+                config_name="test.depsets.yaml",
+            )
+            relaxed_depset = Depset(
+                name="relaxed_depset",
+                operation="relax",
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                output="requirements_compiled_relaxed.txt",
+                config_name="test.depsets.yaml",
+            )
+            expanded_depset = Depset(
+                name="expand_relaxed_depset",
+                operation="expand",
+                depsets=["relaxed_depset"],
+                output="requirements_compiled_expand_relaxed.txt",
+                config_name="test.depsets.yaml",
+                append_flags=["--no-annotate"],
+            )
+            write_to_config_file(
+                tmpdir,
+                [compiled_depset, relaxed_depset, expanded_depset],
+                "test.depsets.yaml",
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.execute()
+            output_file = Path(tmpdir) / "requirements_compiled_expand_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" in names
 
     def test_relax(self):
         with tempfile.TemporaryDirectory() as tmpdir:

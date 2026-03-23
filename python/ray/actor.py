@@ -3,6 +3,7 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     Dict,
     Generic,
@@ -16,9 +17,9 @@ from typing import (
 )
 
 try:
-    from typing import Concatenate, ParamSpec
+    from typing import Never, ParamSpec
 except ImportError:
-    from typing_extensions import Concatenate, ParamSpec
+    from typing_extensions import Never, ParamSpec
 
 import ray._common.signature as signature
 import ray._private.ray_constants as ray_constants
@@ -297,10 +298,176 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
         ...
 
 
+class _MethodDecorator:
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0], Awaitable[_Ret]]
+    ) -> _RemoteMethod0[_Ret, _T0]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0], _Ret]
+    ) -> _RemoteMethod0[_Ret, _T0]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1], Awaitable[_Ret]]
+    ) -> _RemoteMethod1[_Ret, _T0, _T1]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1], _Ret]
+    ) -> _RemoteMethod1[_Ret, _T0, _T1]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2], Awaitable[_Ret]]
+    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2], _Ret]
+    ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3], Awaitable[_Ret]]
+    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3], _Ret]
+    ) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], Awaitable[_Ret]]
+    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret]
+    ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], Awaitable[_Ret]]
+    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], _Ret]
+    ) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], Awaitable[_Ret]],
+    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
+    ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[
+            [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], Awaitable[_Ret]
+        ],
+    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _Ret],
+    ) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[
+            [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], Awaitable[_Ret]
+        ],
+    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
+    ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[
+            [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            Awaitable[_Ret],
+        ],
+    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: Callable[
+            [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret
+        ],
+    ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: Callable[[Any], Awaitable[_Ret]]
+    ) -> _RemoteMethodNoArgs[_Ret]:
+        ...
+
+    @overload
+    def __call__(self, __method: Callable[[Any], _Ret]) -> _RemoteMethodNoArgs[_Ret]:
+        ...
+
+    def __call__(self, __method):  # type: ignore[misc]
+        ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0], Awaitable[_Ret]],
+) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
 @overload
 def method(
     __method: Callable[[Any, _T0], _Ret],
 ) -> _RemoteMethod0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1], Awaitable[_Ret]],
+) -> _RemoteMethod1[_Ret, _T0, _T1]:
     ...
 
 
@@ -313,8 +480,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2], Awaitable[_Ret]],
+) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2], _Ret],
 ) -> _RemoteMethod2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3], Awaitable[_Ret]],
+) -> _RemoteMethod3[_Ret, _T0, _T1, _T2, _T3]:
     ...
 
 
@@ -327,8 +508,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], Awaitable[_Ret]],
+) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4], _Ret],
 ) -> _RemoteMethod4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5], Awaitable[_Ret]],
+) -> _RemoteMethod5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
     ...
 
 
@@ -341,8 +536,22 @@ def method(
 
 @overload
 def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], Awaitable[_Ret]],
+) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _Ret],
 ) -> _RemoteMethod6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], Awaitable[_Ret]],
+) -> _RemoteMethod7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
     ...
 
 
@@ -355,6 +564,15 @@ def method(
 
 @overload
 def method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], Awaitable[_Ret]
+    ],
+) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _Ret],
 ) -> _RemoteMethod8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
     ...
@@ -362,8 +580,24 @@ def method(
 
 @overload
 def method(
+    __method: Callable[
+        [Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], Awaitable[_Ret]
+    ],
+) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
     __method: Callable[[Any, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _Ret],
 ) -> _RemoteMethod9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    __method: Callable[[Any], Awaitable[_Ret]],
+) -> _RemoteMethodNoArgs[_Ret]:
     ...
 
 
@@ -384,7 +618,7 @@ def method(
     _generator_backpressure_num_objects: Optional[int] = None,
     enable_task_events: Optional[bool] = None,
     tensor_transport: Optional[str] = None,
-) -> Callable[[Callable[Concatenate[Any, _P], _Ret]], Any]:
+) -> _MethodDecorator:
     ...
 
 
@@ -470,7 +704,7 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             tensor_transport = kwargs["tensor_transport"]
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -691,7 +925,7 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -802,6 +1036,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
+        _labels: Optional[Dict[str, str]] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -831,8 +1066,8 @@ class ActorMethod:
                     f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
                     "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
                 )
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.actor_has_tensor_transport(
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            if not rdt_manager.actor_has_tensor_transport(
                 self._actor, tensor_transport
             ):
                 raise ValueError(
@@ -842,7 +1077,7 @@ class ActorMethod:
                 )
 
             # Wait for source actor to have the transport registered.
-            gpu_object_manager.wait_until_custom_transports_registered(self._actor)
+            rdt_manager.wait_until_custom_transports_registered(self._actor)
 
         args = args or []
         kwargs = kwargs or {}
@@ -855,10 +1090,8 @@ class ActorMethod:
                     "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
                 )
 
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
-                dst_actor, args
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, args)
 
             return dst_actor._actor_method_call(
                 self._method_name,
@@ -874,6 +1107,7 @@ class ActorMethod:
                 ),
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
+                labels=_labels,
             )
 
         # Apply the decorator if there is one.
@@ -885,10 +1119,8 @@ class ActorMethod:
             # Currently, we only support RDT when num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
             object_ref = object_refs
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(
-                object_ref, self._actor, tensor_transport
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.add_rdt_ref(object_ref, self._actor, tensor_transport)
 
         return object_refs
 
@@ -1856,8 +2088,8 @@ class ActorClass(Generic[T]):
         )
 
         if meta.enable_tensor_transport:
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.register_custom_transports_on_actor(actor_handle)
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.register_custom_transports_on_actor(actor_handle)
 
         return actor_handle
 
@@ -2084,6 +2316,7 @@ class ActorHandle(Generic[T]):
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -2107,6 +2340,7 @@ class ActorHandle(Generic[T]):
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
+            labels: Optional key-value labels to attach to this actor method task.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2171,6 +2405,7 @@ class ActorHandle(Generic[T]):
             generator_backpressure_num_objects,
             enable_task_events,
             tensor_transport,
+            labels,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -2186,7 +2421,7 @@ class ActorHandle(Generic[T]):
 
         return object_refs
 
-    def __getattr__(self, item: str) -> Any:
+    def __getattr__(self, item: str) -> Never:
         """Handle dynamic attribute access for actor methods.
 
         This method is called when accessing attributes that don't exist as direct

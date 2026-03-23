@@ -34,6 +34,7 @@ from ray.data._internal.logical.rules import (
 )
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -49,7 +50,7 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
-        seed=0,
+        seed_config=RandomSeedConfig(seed=0),
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -400,14 +401,15 @@ def test_execute_to_legacy_block_list(
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
-    assert ds._plan._snapshot_stats is None
+    assert ds._plan._cache.get_stats() is None
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
 
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
+    stats = ds._plan._cache.get_stats()
+    assert stats is not None
+    assert "ReadRange" in stats.metadata
+    assert stats.time_total_s > 0
 
 
 def test_streaming_executor(
