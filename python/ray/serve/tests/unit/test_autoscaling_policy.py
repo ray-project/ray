@@ -9,6 +9,11 @@ from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
+from ray.serve._private.metrics_utils import (
+    aggregate_timeseries,
+    merge_instantaneous_total,
+    time_weighted_average,
+)
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -17,7 +22,12 @@ from ray.serve.autoscaling_policy import (
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext, GangSchedulingConfig
+from ray.serve.config import (
+    AggregationFunction,
+    AutoscalingConfig,
+    AutoscalingContext,
+    GangSchedulingConfig,
+)
 
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
@@ -62,6 +72,68 @@ def create_context_with_overrides(
     params.update(kwargs)
 
     return AutoscalingContext(**params)
+
+
+def test_exclude_early_partial_period_in_timeseries_aggregation():
+    """Test that time-weighted average excludes the early partial period when
+    series have misaligned start times.
+
+    When merging multiple timeseries (e.g., from different replicas), series
+    that start late are implicitly 0 before their first data point. This
+    undercounts the total and biases the mean downward. The fix excludes
+    the partial period by starting the averaging window when all series
+    have contributed at least one point.
+    """
+    # Two replicas with misaligned starts: r1 starts at 0.2, r2 starts at 0.1
+    # From 0.1 to 0.2, only r2 contributes (total=3); from 0.2 onward both (total=8)
+    base_time = 1000.0  # Use epoch-like timestamps
+    series1 = [
+        TimeStampedValue(base_time + 0.2, 5.0),
+        TimeStampedValue(base_time + 0.8, 7.0),
+        TimeStampedValue(base_time + 1.5, 6.0),
+    ]
+    series2 = [
+        TimeStampedValue(base_time + 0.1, 3.0),
+        TimeStampedValue(base_time + 0.9, 4.0),
+        TimeStampedValue(base_time + 1.4, 8.0),
+    ]
+
+    merged = merge_instantaneous_total([series1, series2])
+    # Merged: (0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)
+    last_window_s = 0.5  # Extend window to base_time + 2.0
+
+    # Without aligned window: includes partial period [0.1, 0.2) where total=3
+    avg_without_aligned = time_weighted_average(
+        merged,
+        window_start=None,
+        window_end=None,
+        last_window_s=last_window_s,
+    )
+
+    # With aligned window (start at 0.2 when all series have reported): excludes partial
+    aligned_start = base_time + 0.2
+    avg_with_aligned = time_weighted_average(
+        merged,
+        window_start=aligned_start,
+        window_end=None,
+        last_window_s=last_window_s,
+    )
+
+    # The aligned average should be higher because we excluded the period
+    # [0.1, 0.2) where the total was underestimated (3 instead of 8)
+    assert avg_with_aligned > avg_without_aligned, (
+        f"Aligned avg ({avg_with_aligned}) should exceed unaligned ({avg_without_aligned}) "
+        "since we exclude the partial period with underestimated total"
+    )
+
+    # Verify aggregate_timeseries with window_start produces the aligned result
+    result = aggregate_timeseries(
+        merged,
+        AggregationFunction.MEAN,
+        last_window_s=last_window_s,
+        window_start=aligned_start,
+    )
+    assert result == avg_with_aligned
 
 
 def _run_upscale_downscale_flow(
@@ -1234,6 +1306,66 @@ class TestGangSchedulingAutoscalingPolicy:
         )
         decision = state.get_decision_num_replicas(curr_target_num_replicas=8)
         assert decision == 4
+
+
+class TestWarmupScalingFeedbackLoop:
+    """Regression tests for a feedback loop that causes deployments to scale
+    to max_replicas during warmup when upscaling_factor > 1.
+
+    When current_num_replicas == 0 (replicas scheduled but not yet RUNNING)
+    and there is no traffic, the policy should hold the target steady.
+    """
+
+    @pytest.mark.parametrize("upscaling_factor", [0.5, 1.0, 1.5, 2.0, 10.0])
+    def test_no_runaway_scaling_during_warmup(self, upscaling_factor):
+        min_replicas = 2
+        max_replicas = 10
+        config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            target_ongoing_requests=0.2,
+            upscaling_factor=upscaling_factor,
+            upscale_delay_s=5.0,
+            downscale_delay_s=30.0,
+        )
+
+        target = min_replicas
+        policy_state = {}
+
+        for tick in range(100):
+            ctx = AutoscalingContext(
+                config=config,
+                current_num_replicas=0,
+                target_num_replicas=target,
+                total_num_requests=0,
+                total_queued_requests=0,
+                capacity_adjusted_min_replicas=min_replicas,
+                capacity_adjusted_max_replicas=max_replicas,
+                policy_state=policy_state,
+                deployment_id=None,
+                deployment_name=None,
+                app_name=None,
+                running_replicas=[],
+                current_time=None,
+                aggregated_metrics=None,
+                raw_metrics=None,
+                last_scale_up_time=None,
+                last_scale_down_time=None,
+                total_pending_async_requests=0,
+            )
+
+            new_target, policy_state = wrapped_replica_queue_length_autoscaling_policy(
+                ctx=ctx
+            )
+            assert new_target == target, (
+                f"Tick {tick}: target changed from {target} to {new_target} "
+                f"with upscaling_factor={upscaling_factor}, "
+                f"current_num_replicas=0, total_num_requests=0. "
+                f"This indicates a feedback loop bug."
+            )
+            target = new_target
+
+        assert target == min_replicas
 
 
 if __name__ == "__main__":

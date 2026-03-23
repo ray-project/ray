@@ -22,7 +22,7 @@ package(
 
 exports_files([
     ".rayciversion",
-    "ray-images.yaml",
+    "ray-images.json",
 ])
 
 # C/C++ toolchain constraint configs.
