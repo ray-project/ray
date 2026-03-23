@@ -57,7 +57,7 @@ Step 2: Register Your Backend
     register_collective_backend("MY_BACKEND", MyCustomBackend)
 
 Important: Registration Requirements
------------------------------------
+------------------------------------
 
 **Your backend must be registered on both the driver and all actors before using collective operations.**
 
@@ -190,20 +190,21 @@ Each worker explicitly calls ``init_collective_group`` to initialize its group m
 Comparison Table
 ^^^^^^^^^^^^^^^^
 
-+----------------------------------+--------------------------------+--------------------------------+
-| Aspect                           | Driver-Managed (Approach 1)    | Worker-Managed (Approach 2)   |
-+==================================+================================+================================+
-| Driver calls                     | ``create_collective_group``    | Nothing                        |
-+----------------------------------+--------------------------------+--------------------------------+
-| Worker calls                     | Only ``register_collective_``  | ``register_collective_backend``|
-|                                  | ``backend``                    | + ``init_collective_group``    |
-+----------------------------------+--------------------------------+--------------------------------+
-| Group initialization             | Automatic (on first collective | Explicit (in worker setup)     |
-|                                  | operation)                     |                                |
-+----------------------------------+--------------------------------+--------------------------------+
-| Use case                         | Declarative, centralized       | Fine-grained control           |
-|                                  | management                     | over initialization            |
-+----------------------------------+--------------------------------+--------------------------------+
++-------------------+-----------------------------+------------------------------+
+| Aspect            | Driver-Managed (Approach 1) | Worker-Managed (Approach 2)  |
++===================+=============================+==============================+
+| Driver calls      | ``create_collective_group`` | Nothing                      |
++-------------------+-----------------------------+------------------------------+
+| Worker calls      | ``register_collective_``    | ``register_collective_``     |
+|                   | ``backend`` only            | ``backend`` +                |
+|                   |                             | ``init_collective_group``    |
++-------------------+-----------------------------+------------------------------+
+| Group init        | Automatic (on first         | Explicit (in worker setup)   |
+|                   | collective operation)       |                              |
++-------------------+-----------------------------+------------------------------+
+| Use case          | Declarative, centralized    | Fine-grained control over    |
+|                   | management                  | initialization               |
++-------------------+-----------------------------+------------------------------+
 
 Complete Example
 ----------------
