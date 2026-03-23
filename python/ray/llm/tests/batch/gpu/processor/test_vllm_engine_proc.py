@@ -663,5 +663,67 @@ class TestVLLMEngineProcessorConfig:
                 )
 
 
+def test_trust_remote_code(gpu_type, model_internlm2_1_8b):
+    """
+    Test that trust_remote_code models load correctly from cloud storage.
+    """
+
+    # internlm2 base model has no built-in chat template
+    chat_template = (
+        "{{ bos_token }}"
+        "{% for message in messages %}"
+        "{{ '<|im_start|>' + message['role'] + '\\n'"
+        " + message['content'] | trim + '<|im_end|>\\n' }}"
+        "{% endfor %}"
+        "{% if add_generation_prompt %}"
+        "{{ '<|im_start|>assistant\\n' }}"
+        "{% endif %}"
+    )
+
+    processor_config = vLLMEngineProcessorConfig(
+        model_source=model_internlm2_1_8b,
+        engine_kwargs=dict(
+            trust_remote_code=True,
+            enable_prefix_caching=False,
+            enable_chunked_prefill=True,
+            max_num_batched_tokens=2048,
+            max_model_len=2048,
+            enforce_eager=True,
+        ),
+        batch_size=16,
+        accelerator_type=gpu_type,
+        concurrency=1,
+        chat_template_stage=ChatTemplateStageConfig(
+            enabled=True, chat_template=chat_template
+        ),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        detokenize_stage=DetokenizeStageConfig(enabled=True),
+    )
+
+    processor = build_processor(
+        processor_config,
+        preprocess=lambda row: dict(
+            messages=[
+                {"role": "user", "content": f"{row['id']} + 1 = ?"},
+            ],
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=20,
+                detokenize=False,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp": row["generated_text"],
+        },
+    )
+
+    ds = ray.data.range(10)
+    ds = processor(ds)
+    ds = ds.materialize()
+    outs = ds.take_all()
+    assert len(outs) == 10
+    assert all("resp" in out for out in outs)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
