@@ -460,7 +460,7 @@ async def test_choose_replica_and_dispatch_parallel(serve_instance):
     assert (
         result["decode"]["actual_replica_id"] == result["decode"]["selected_replica_id"]
     ), (
-        f"dispatch sent request to wrong replica for prefill: "
+        f"dispatch sent request to wrong replica for decode: "
         f"selected {result['decode']['selected_replica_id']}, but got response from {result['decode']['actual_replica_id']}"
     )
 
