@@ -16,6 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -33,6 +35,11 @@ namespace rpc {
 using ray::rpc::events::AddEventsReply;
 using ray::rpc::events::AddEventsRequest;
 
+/// The maximum number of retries to wait for the event aggregator server to be ready.
+/// This setting allows for 30 seconds of retries.
+constexpr int kEventAggregatorInitMaxRetries = 30;
+constexpr int kEventAggregatorInitRetryDelayMs = 1000;
+
 /// Client used for sending ray events to the event aggregator server in the dashboard
 /// agent.
 class EventAggregatorClient {
@@ -43,6 +50,9 @@ class EventAggregatorClient {
                          const ClientCallback<AddEventsReply> &callback) = 0;
 
   virtual void Connect(const int port) {}
+
+  virtual void WaitForServerReady(
+      std::function<void(const Status &)> init_exporter_fn) = 0;
 };
 
 class EventAggregatorClientImpl : public EventAggregatorClient {
@@ -93,6 +103,13 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
         /*server_name=*/"Event aggregator");
   }
 
+  void WaitForServerReady(std::function<void(const Status &)> init_exporter_fn) override {
+    WaitForServerReadyWithRetry(std::move(init_exporter_fn),
+                                0,
+                                kEventAggregatorInitMaxRetries,
+                                kEventAggregatorInitRetryDelayMs);
+  }
+
   // Use VOID_RETRYABLE_RPC_CLIENT_METHOD for automatic retry with exponential backoff
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
                                    rpc::events::EventAggregatorService,
@@ -102,6 +119,66 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
                                    override)
 
  private:
+  virtual void CheckServerReady(const ClientCallback<AddEventsReply> &callback) {
+    RAY_CHECK(grpc_client_ != nullptr)
+        << "EventAggregatorClientImpl::Connect must be called before "
+           "WaitForServerReady.";
+    grpc_client_->CallMethod<AddEventsRequest, AddEventsReply>(
+        &rpc::events::EventAggregatorService::Stub::PrepareAsyncAddEvents,
+        AddEventsRequest(),
+        callback,
+        "EventAggregatorService.grpc_client.AddEvents",
+        kEventAggregatorInitRetryDelayMs);
+  }
+
+  void WaitForServerReadyWithRetry(std::function<void(const Status &)> init_exporter_fn,
+                                   int retry_count,
+                                   int max_retry,
+                                   int retry_interval_ms) {
+    if (exporter_initialized_) {
+      return;
+    }
+
+    if (retry_count == 0) {
+      RAY_LOG(INFO) << "Initializing event aggregator client ...";
+    }
+
+    CheckServerReady(
+        [this,
+         init_exporter_fn = std::move(init_exporter_fn),
+         retry_count,
+         max_retry,
+         retry_interval_ms](const Status &status, const AddEventsReply &reply) mutable {
+          if (status.ok()) {
+            bool expected = false;
+            if (!exporter_initialized_.compare_exchange_strong(expected, true)) {
+              return;
+            }
+            init_exporter_fn(status);
+            RAY_LOG(INFO) << "Event aggregator client initialized.";
+            return;
+          }
+          if (retry_count >= max_retry) {
+            init_exporter_fn(Status::RpcError(
+                "Running out of retries to initialize the event aggregator.", 14));
+            return;
+          }
+          client_call_manager_->GetMainService().post(
+              [this,
+               init_exporter_fn = std::move(init_exporter_fn),
+               retry_count,
+               max_retry,
+               retry_interval_ms]() mutable {
+                WaitForServerReadyWithRetry(std::move(init_exporter_fn),
+                                            retry_count + 1,
+                                            max_retry,
+                                            retry_interval_ms);
+              },
+              "EventAggregatorClient.WaitForServerReadyWithRetry",
+              retry_interval_ms * 1000);
+        });
+  }
+
   // Saved for deferred connection.
   ClientCallManager *client_call_manager_;
   // Config values read once at construction time.
@@ -112,6 +189,14 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   std::shared_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
   // Retryable client for automatic retry with exponential backoff.
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
+  // Whether the client is initialized.
+  std::atomic<bool> exporter_initialized_{false};
+
+  friend class EventAggregatorClientTest;
+  FRIEND_TEST(EventAggregatorClientTest, WaitForServerReadyWithRetrySuccess);
+  FRIEND_TEST(EventAggregatorClientTest, WaitForServerReadyWithRetryFailure);
+  FRIEND_TEST(EventAggregatorClientTest, ConcurrentCallbacksCallInitExporterFnOnlyOnce);
+  FRIEND_TEST(EventAggregatorClientTest, ExhaustedRetriesReturnsFailure);
 };
 
 }  // namespace rpc

@@ -308,9 +308,11 @@ def _setup_cluster_for_test(request, ray_start_cluster):
 
 
 # Metrics emitted by the ray event recorder (GCS server).
-_RAY_EVENT_RECORDER_METRICS = [
-    "ray_ray_event_recorder_events_sent_total",
+_RAY_EVENT_RECORDER_DROPPED_METRICS = [
     "ray_ray_event_recorder_dropped_events_total",
+]
+_RAY_EVENT_RECORDER_SENT_METRICS = [
+    "ray_ray_event_recorder_events_sent_total",
 ]
 
 
@@ -322,7 +324,13 @@ _RAY_EVENT_RECORDER_METRICS = [
         {
             "enable_metrics_collection": True,
             "enable_ray_event": True,
-            # Tiny buffer to force event drops
+            "assert_sent_metric": True,
+        },
+        {
+            "enable_metrics_collection": True,
+            "enable_ray_event": True,
+            "assert_dropped_metric": True,
+            # Tiny buffer to force event drops so the recorder metric is exported.
             "ray_event_recorder_max_queued_events": 1,
         },
     ],
@@ -338,6 +346,14 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     ) = _setup_cluster_for_test
     enable_ray_event = (
         config.get("enable_ray_event", False) if isinstance(config, dict) else False
+    )
+    assert_sent_metric = (
+        config.get("assert_sent_metric", False) if isinstance(config, dict) else False
+    )
+    assert_dropped_metric = (
+        config.get("assert_dropped_metric", False)
+        if isinstance(config, dict)
+        else False
     )
     ray_timeseries = PrometheusTimeseries()
     autoscaler_timeseries = PrometheusTimeseries()
@@ -391,8 +407,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         # When ray events are enabled, verify event recorder metrics are present.
-        if enable_ray_event:
-            for metric in _RAY_EVENT_RECORDER_METRICS:
+        if assert_dropped_metric:
+            for metric in _RAY_EVENT_RECORDER_DROPPED_METRICS:
                 assert (
                     metric in metric_names
                 ), f"ray event recorder metric {metric} not in {metric_names}"
@@ -468,6 +484,29 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
     except RuntimeError:
         # print(f"The components are {pformat(ray_timeseries)}")
         test_cases()  # Should fail assert
+
+    if assert_sent_metric:
+
+        @ray.remote
+        class EventRecorderProbeActor:
+            def ping(self):
+                return True
+
+        probe = EventRecorderProbeActor.remote()
+        ray.get(probe.ping.remote())
+
+        def sent_metric_is_exported():
+            fetch_prometheus_timeseries(prom_addresses, ray_timeseries)
+            metric_names = ray_timeseries.metric_descriptors.keys()
+            return all(
+                metric in metric_names for metric in _RAY_EVENT_RECORDER_SENT_METRICS
+            )
+
+        wait_for_condition(
+            sent_metric_is_exported,
+            timeout=TEST_TIMEOUT_S,
+            retry_interval_ms=1000,
+        )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")

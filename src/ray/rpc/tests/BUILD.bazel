@@ -51,3 +51,16 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "event_aggregator_client_test",
+    size = "small",
+    srcs = [
+        "event_aggregator_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/rpc:event_aggregator_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

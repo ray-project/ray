@@ -952,20 +952,32 @@ void GcsServer::InitMetricsExporter(int metrics_agent_port) {
       io_context_provider_.GetDefaultIOContext(),
       client_call_manager_);
 
-  metrics_agent_client_->WaitForServerReady([this, metrics_agent_port](
-                                                const Status &server_status) {
-    if (server_status.ok()) {
-      stats::ConnectOpenCensusExporter(metrics_agent_port);
-      stats::InitOpenTelemetryExporter(metrics_agent_port);
-      ray_event_recorder_->StartExportingEvents();
-      RAY_LOG(INFO) << "Metrics exporter initialized with port " << metrics_agent_port;
-    } else {
-      RAY_LOG(ERROR)
-          << "Failed to establish connection to the event+metrics exporter agent. "
-             "Events and metrics will not be exported. "
-          << "Exporter agent status: " << server_status.ToString();
-    }
-  });
+  metrics_agent_client_->WaitForServerReady(
+      [this, metrics_agent_port](const Status &server_status) {
+        if (server_status.ok()) {
+          stats::ConnectOpenCensusExporter(metrics_agent_port);
+          stats::InitOpenTelemetryExporter(metrics_agent_port);
+          event_aggregator_client_->WaitForServerReady(
+              [this, metrics_agent_port](const Status &aggregator_status) {
+                if (aggregator_status.ok()) {
+                  ray_event_recorder_->StartExportingEvents();
+                  RAY_LOG(INFO)
+                      << "Metrics exporter initialized with port " << metrics_agent_port
+                      << " and event aggregator is ready.";
+                } else {
+                  RAY_LOG(ERROR)
+                      << "Metrics exporter initialized, but the event aggregator service "
+                         "is not ready. Ray events will not be exported. "
+                      << "Event aggregator status: " << aggregator_status.ToString();
+                }
+              });
+        } else {
+          RAY_LOG(ERROR)
+              << "Failed to establish connection to the event+metrics exporter agent. "
+                 "Events and metrics will not be exported. "
+              << "Exporter agent status: " << server_status.ToString();
+        }
+      });
 }
 
 }  // namespace gcs
