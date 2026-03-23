@@ -83,8 +83,6 @@ def main(args):
         transformed_batch = transform(tensor_batch).numpy()
         return {"image": transformed_batch}
 
-    # Take advantage of vectorization
-    # Keep memory low
     class Predictor:
         def __init__(self, model):
             self.model = ray.get(model)
