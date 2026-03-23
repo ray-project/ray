@@ -128,16 +128,3 @@ def is_registered_collective_backend(name: str) -> bool:
         True if the backend is registered, False otherwise.
     """
     return name.upper() in _global_registry._map
-
-
-def unregister_collective_backend(name: str) -> None:
-    """Unregister a collective backend.
-
-    This is mainly used for testing purposes to clean up between tests.
-
-    Args:
-        name: The name of backend to unregister (e.g., "NCCL", "GLOO").
-    """
-    upper_name = name.upper()
-    if upper_name in _global_registry._map:
-        del _global_registry._map[upper_name]

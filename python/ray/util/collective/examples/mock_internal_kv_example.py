@@ -12,14 +12,13 @@ from ray.util.collective import (
     init_collective_group,
 )
 from ray.util.collective.backend_registry import (
+    _global_registry,
     register_collective_backend,
-    unregister_collective_backend,
 )
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
-    Backend,
     BarrierOptions,
     BroadcastOptions,
     RecvOptions,
@@ -31,6 +30,13 @@ from ray.util.collective.types import (
 
 if TYPE_CHECKING:
     pass
+
+
+def _unregister_collective_backend(name: str) -> None:
+    """Helper function to unregister a backend for testing purposes."""
+    upper_name = name.upper()
+    if upper_name in _global_registry._map:
+        del _global_registry._map[upper_name]
 
 
 def get_data_key(group_name: str, rank: int, op_name: str):
@@ -275,8 +281,15 @@ class MockInternalKVGroup(BaseGroup):
         raise NotImplementedError("recv is not implemented in MockInternalKVGroup")
 
 
-def test_mock_backend():
-    """Test with Ray actors."""
+def test_mock_backend_create_group():
+    """Test using create_collective_group (driver-managed approach).
+
+    In this approach:
+    - Driver calls create_collective_group() to declare the group
+    - Workers only need to register the backend
+    - Workers do NOT call init_collective_group()
+    - The group is automatically initialized when workers call collective ops
+    """
 
     ray.init()
     register_collective_backend("MOCK", MockInternalKVGroup)
@@ -286,18 +299,10 @@ def test_mock_backend():
         def __init__(self, rank):
             self.rank = rank
 
-        def setup(self, world_size):
+        def setup(self):
             from ray.util.collective.backend_registry import register_collective_backend
-            from ray.util.collective.types import Backend
 
             register_collective_backend("MOCK", MockInternalKVGroup)
-
-            init_collective_group(
-                world_size=world_size,
-                rank=self.rank,
-                backend=Backend.MOCK,
-                group_name="default",
-            )
 
         def broadcast_test(self):
             if self.rank == 0:
@@ -319,10 +324,76 @@ def test_mock_backend():
         actors=actors,
         world_size=3,
         ranks=[0, 1, 2],
-        backend=Backend.MOCK,
+        backend="MOCK",
         group_name="default",
     )
 
+    ray.get([a.setup.remote() for a in actors])
+
+    results = ray.get([a.broadcast_test.remote() for a in actors])
+    expected = [[42.0, 43.0, 44.0]] * 3
+    if results == expected:
+        print("Broadcast test passed!")
+    else:
+        print(f"Broadcast test failed! Expected {expected}, got {results}")
+
+    results = ray.get([a.allreduce_test.remote() for a in actors])
+
+    if results == [6.0, 6.0, 6.0]:
+        print("AllReduce test passed!")
+    else:
+        print(f"AllReduce test failed! Expected [6.0, 6.0, 6.0], got {results}")
+
+    ray.shutdown()
+    _unregister_collective_backend("MOCK")
+    print("test_mock_backend_create_group completed!")
+
+
+def test_mock_backend_init_group():
+    """Test using init_collective_group (worker-managed approach).
+
+    In this approach:
+    - Workers call init_collective_group() inside their setup method
+    - Driver does NOT call create_collective_group()
+    - Each worker explicitly initializes its own group membership
+    """
+
+    ray.init()
+
+    @ray.remote
+    class Worker:
+        def __init__(self, rank):
+            self.rank = rank
+
+        def setup(self, world_size):
+            from ray.util.collective.backend_registry import register_collective_backend
+
+            register_collective_backend("MOCK", MockInternalKVGroup)
+
+            init_collective_group(
+                world_size=world_size,
+                rank=self.rank,
+                backend="MOCK",
+                group_name="default",
+            )
+
+        def broadcast_test(self):
+            if self.rank == 0:
+                tensor = np.array([42.0, 43.0, 44.0], dtype=np.float32)
+            else:
+                tensor = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
+            broadcast(tensor, src_rank=0)
+            return tensor.tolist()
+
+        def allreduce_test(self):
+            tensor = np.array([float(self.rank + 1)], dtype=np.float32)
+            allreduce(tensor, op=ReduceOp.SUM)
+            return tensor.item()
+
+    actors = [Worker.remote(rank=i) for i in range(3)]
+
+    # Do NOT call create_collective_group here
     ray.get([a.setup.remote(3) for a in actors])
 
     results = ray.get([a.broadcast_test.remote() for a in actors])
@@ -340,12 +411,20 @@ def test_mock_backend():
         print(f"AllReduce test failed! Expected [6.0, 6.0, 6.0], got {results}")
 
     ray.shutdown()
-    unregister_collective_backend("MOCK")
-    print("All tests completed!")
+    _unregister_collective_backend("MOCK")
+    print("test_mock_backend_init_group completed!")
 
 
-def test_mock_backend_missing_registration():
-    """Test error handling when backend is not registered."""
+def test_mock_backend_worker_not_registered():
+    """Test error handling when backend is not registered in worker.
+
+    This test uses create_collective_group (driver-managed approach).
+    The driver registers the backend, but workers do not.
+    When workers try to call collective ops, they should fail.
+
+    Note: We use world_size=1 to avoid "Unhandled error" messages
+    from multiple workers failing simultaneously.
+    """
 
     ray.init()
     register_collective_backend("MOCK", MockInternalKVGroup)
@@ -355,39 +434,48 @@ def test_mock_backend_missing_registration():
         def __init__(self, rank):
             self.rank = rank
 
-        def setup(self, world_size):
-            init_collective_group(
-                world_size=world_size,
-                rank=self.rank,
-                backend="MOCK",
-                group_name="default",
-            )
+        def broadcast_test(self):
+            tensor = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            broadcast(tensor, src_rank=0)
+            return tensor.tolist()
 
-    actors = [Worker.remote(rank=i) for i in range(2)]
+    # Use single actor to avoid multiple "Unhandled error" messages
+    actors = [Worker.remote(rank=0)]
 
     create_collective_group(
         actors=actors,
-        world_size=2,
-        ranks=[0, 1],
-        backend=Backend.MOCK,
+        world_size=1,
+        ranks=[0],
+        backend="MOCK",
         group_name="default",
     )
 
+    test_passed = False
     try:
-        ray.get([a.setup.remote(2) for a in actors])
+        ray.get([a.broadcast_test.remote() for a in actors])
         print("ERROR: Should have raised an exception for missing registration!")
     except Exception as e:
-        if "not registered" in str(e):
-            print("Test passed! Correctly raised error for missing registration.")
+        if "not registered" in str(e) or "not initialized" in str(e):
+            print(
+                "Test passed! Correctly raised error for missing worker registration."
+            )
+            test_passed = True
         else:
             print(f"ERROR: Unexpected error: {e}")
 
     ray.shutdown()
-    unregister_collective_backend("MOCK")
+    _unregister_collective_backend("MOCK")
+
+    if not test_passed:
+        print("Test failed!")
 
 
 def test_mock_backend_driver_not_registered():
-    """Test error handling when backend is not registered on driver."""
+    """Test error handling when backend is not registered on driver.
+
+    This test uses create_collective_group, but the driver doesn't
+    register the backend first, so it should fail immediately.
+    """
 
     ray.init()
 
@@ -395,19 +483,6 @@ def test_mock_backend_driver_not_registered():
     class Worker:
         def __init__(self, rank):
             self.rank = rank
-
-        def setup(self, world_size):
-            from ray.util.collective.backend_registry import register_collective_backend
-            from ray.util.collective.types import Backend
-
-            register_collective_backend("MOCK", MockInternalKVGroup)
-
-            init_collective_group(
-                world_size=world_size,
-                rank=self.rank,
-                backend=Backend.MOCK,
-                group_name="default",
-            )
 
     actors = [Worker.remote(rank=i) for i in range(2)]
 
@@ -422,17 +497,33 @@ def test_mock_backend_driver_not_registered():
         print("ERROR: Should have raised an exception for missing registration!")
     except Exception as e:
         if "not registered" in str(e):
-            print("Test passed! Correctly raised error for missing registration.")
+            print(
+                "Test passed! Correctly raised error for missing driver registration."
+            )
         else:
             print(f"ERROR: Unexpected error: {e}")
 
     ray.shutdown()
-    unregister_collective_backend("MOCK")
+    _unregister_collective_backend("MOCK")
 
 
 if __name__ == "__main__":
-    test_mock_backend()
-    print("\n" + "=" * 50 + "\n")
-    test_mock_backend_missing_registration()
-    print("\n" + "=" * 50 + "\n")
+    print("=" * 60)
+    print("Test 1: create_collective_group approach (driver-managed)")
+    print("=" * 60)
+    test_mock_backend_create_group()
+
+    print("\n" + "=" * 60)
+    print("Test 2: init_collective_group approach (worker-managed)")
+    print("=" * 60)
+    test_mock_backend_init_group()
+
+    print("\n" + "=" * 60)
+    print("Test 3: Error handling - worker not registered")
+    print("=" * 60)
+    test_mock_backend_worker_not_registered()
+
+    print("\n" + "=" * 60)
+    print("Test 4: Error handling - driver not registered")
+    print("=" * 60)
     test_mock_backend_driver_not_registered()
