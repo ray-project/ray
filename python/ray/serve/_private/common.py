@@ -971,23 +971,6 @@ class DeploymentSnapshot(BaseModel):
             return f"{val * 1000:.0f}ms"
         return f"{val:.2f}s"
 
-    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
-        """Return True if scaling-related fields are equal.
-
-        Used for autoscaling snapshot log deduplication. Compares only:
-        target_replicas, min_replicas, max_replicas, scaling_status
-        """
-        if not isinstance(other, DeploymentSnapshot):
-            return False
-        return (
-            self.app == other.app
-            and self.deployment == other.deployment
-            and self.target_replicas == other.target_replicas
-            and self.min_replicas == other.min_replicas
-            and self.max_replicas == other.max_replicas
-            and self.scaling_status == other.scaling_status
-        )
-
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"

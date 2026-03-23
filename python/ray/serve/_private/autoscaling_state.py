@@ -732,67 +732,6 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
-    def _create_deployment_snapshot(
-        self,
-        *,
-        ctx: AutoscalingContext,
-        target_replicas: int,
-    ) -> DeploymentSnapshot:
-        """Create a fully-populated DeploymentSnapshot using data already available in
-        AutoscalingState and the provided context.
-        """
-        current_replicas = ctx.current_num_replicas
-        min_replicas = ctx.capacity_adjusted_min_replicas
-        max_replicas = ctx.capacity_adjusted_max_replicas
-
-        queued_requests = ctx.total_queued_requests
-
-        if self._latest_metrics_timestamp is not None:
-            time_since_last_collected_metrics_s = (
-                time.time() - self._latest_metrics_timestamp
-            )
-        else:
-            time_since_last_collected_metrics_s = None
-
-        if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
-        elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
-        else:
-            scaling_status_raw = AutoscalingStatus.STABLE
-
-        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
-
-        look_back_period_s = self._config.look_back_period_s
-        metrics_health = DeploymentSnapshot.format_metrics_health_text(
-            time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
-            look_back_period_s=look_back_period_s,
-        )
-
-        errors: List[str] = []
-
-        if time_since_last_collected_metrics_s is None:
-            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
-
-        policy = ctx.config.policy.get_policy()
-        policy_name_str = f"{policy.__module__}.{policy.__name__}"
-        return DeploymentSnapshot(
-            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            app=self._deployment_id.app_name,
-            deployment=self._deployment_id.name,
-            current_replicas=current_replicas,
-            target_replicas=target_replicas,
-            min_replicas=min_replicas,
-            max_replicas=max_replicas,
-            scaling_status=scaling_status,
-            policy_name=policy_name_str,
-            look_back_period_s=look_back_period_s,
-            queued_requests=float(queued_requests),
-            ongoing_requests=float(ctx.total_num_requests),
-            metrics_health=metrics_health,
-            errors=errors,
-        )
-
     def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
         """Return the cached deployment snapshot, building it lazily if needed."""
         if self._cached_deployment_snapshot is not None:
