@@ -727,8 +727,12 @@ class HAProxyApi(ProxyApi):
                 if self.cfg.inject_process_id_header and self.cfg.reload_id is None:
                     self.cfg.reload_id = f"initial-{int(time.time() * 1000)}"
 
-                if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()):
-                    logger.warning(f"'{RAY_SERVE_HAPROXY_BALANCE_ALGORITHM}' isn't a valid balancing algorithm. HAProxy will use leastconn instead. Valid algorithms match: leastconn, roundrobin, random, random(<draws>)")
+                if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(
+                    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
+                ):
+                    logger.warning(
+                        f"'{RAY_SERVE_HAPROXY_BALANCE_ALGORITHM}' isn't a valid balancing algorithm. HAProxy will use leastconn instead. Valid algorithms match: leastconn, roundrobin, random, random(<draws>)"
+                    )
 
                 self._generate_config_file_internal()
                 logger.info("Successfully generated HAProxy config file.")

@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.haproxy import (
-    HAPROXY_BALANCE_ALGORITHM_PATTERN,
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
