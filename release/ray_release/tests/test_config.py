@@ -555,12 +555,10 @@ def test_get_test_cloud_name_from_cluster_cloud():
     assert get_test_cloud_name(test) == "my_cloud"
 
 
-@patch("ray_release.config.anyscale")
-def test_get_test_cloud_name_from_cloud_id(mock_anyscale):
+def test_get_test_cloud_name_from_cloud_id():
     """get_test_cloud_name() falls back to anyscale.cloud.get() when no cloud name."""
     mock_cloud = MagicMock()
     mock_cloud.name = "resolved_cloud_name"
-    mock_anyscale.cloud.get.return_value = mock_cloud
 
     test = Test(
         {
@@ -568,15 +566,18 @@ def test_get_test_cloud_name_from_cloud_id(mock_anyscale):
             "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_abc123"},
         }
     )
+    test.anyscale = MagicMock()
+    test.anyscale.cloud.get.return_value = mock_cloud
+
     assert get_test_cloud_name(test) == "resolved_cloud_name"
-    mock_anyscale.cloud.get.assert_called_once_with(id="cld_abc123")
+    test.anyscale.cloud.get.assert_called_once_with(id="cld_abc123")
 
 
-@patch("ray_release.config.anyscale")
-def test_load_and_validate_test_collection_file(mock_anyscale):
+@patch("ray_release.test.Anyscale")
+def test_load_and_validate_test_collection_file(MockAnyscale):
     mock_cloud = MagicMock()
     mock_cloud.name = "anyscale_v2_default_cloud"
-    mock_anyscale.cloud.get.return_value = mock_cloud
+    MockAnyscale.return_value.cloud.get.return_value = mock_cloud
 
     tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
     assert [test for test in tests if test.get_name() == "test_name"]

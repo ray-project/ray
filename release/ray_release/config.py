@@ -5,7 +5,6 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-import anyscale
 import jsonschema
 import yaml
 
@@ -427,7 +426,7 @@ def get_test_cloud_name(test: Test) -> str:
     if cloud_name:
         return cloud_name
     cloud_id = get_test_cloud_id(test)
-    cloud = anyscale.cloud.get(id=cloud_id)
+    cloud = test.anyscale.cloud.get(id=cloud_id)
     return cloud.name
 
 

@@ -31,6 +31,14 @@ class Anyscale:
 
         return self._anyscale_pkg
 
+    @property
+    def compute_config(self):
+        return self._anyscale().compute_config
+
+    @property
+    def cloud(self):
+        return self._anyscale().cloud
+
     def project_name_by_id(self, project_id: str) -> str:
         return self._anyscale().project.get(project_id).name
 

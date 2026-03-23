@@ -1,8 +1,5 @@
 import time
 
-import anyscale
-from anyscale.compute_config.models import ComputeConfig
-
 from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.config import COMPUTE_CONFIG_MODEL_FIELDS
@@ -232,8 +229,9 @@ class MinimalClusterManager(ClusterManager):
         )
 
         # Check if compute config already exists by name
+        anyscale_sdk = self.test.anyscale
         try:
-            compute_config_version = anyscale.compute_config.get(
+            compute_config_version = anyscale_sdk.compute_config.get(
                 self.cluster_compute_name
             )
             self.cluster_compute_id = compute_config_version.id
@@ -253,6 +251,7 @@ class MinimalClusterManager(ClusterManager):
         # keys like idle_termination_minutes/maximum_uptime_minutes that
         # were added by set_cluster_compute() and are not part of the
         # ComputeConfig model.
+        ComputeConfig = anyscale_sdk.compute_config.ComputeConfig
         config_dict = {
             k: v
             for k, v in self.cluster_compute.items()
@@ -261,10 +260,10 @@ class MinimalClusterManager(ClusterManager):
         config = ComputeConfig.from_dict(config_dict)
 
         try:
-            full_name = anyscale.compute_config.create(
+            full_name = anyscale_sdk.compute_config.create(
                 config, name=self.cluster_compute_name
             )
-            compute_config_version = anyscale.compute_config.get(full_name)
+            compute_config_version = anyscale_sdk.compute_config.get(full_name)
             self.cluster_compute_id = compute_config_version.id
         except Exception as e:
             if _repeat:

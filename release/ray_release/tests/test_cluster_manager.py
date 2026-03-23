@@ -3,7 +3,7 @@ import sys
 import time
 import unittest
 from typing import Callable
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from freezegun import freeze_time
 
@@ -755,13 +755,14 @@ class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
         self.sdk.reset()
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale")
-    def testFindExistingComputeConfig(self, mock_anyscale):
+    def testFindExistingComputeConfig(self):
         """Find existing compute config via anyscale.compute_config.get."""
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
         self.assertTrue(self.cluster_manager.cluster_compute_name)
         self.assertIsNone(self.cluster_manager.cluster_compute_id)
 
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
         mock_anyscale.compute_config.get.return_value = APIDict(
             id="existing_id", name="test:1", config=None
         )
@@ -775,13 +776,14 @@ class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
         mock_anyscale.compute_config.create.assert_not_called()
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale")
-    def testCreateComputeConfigSucceed(self, mock_anyscale):
+    def testCreateComputeConfigSucceed(self):
         """Compute config not found, create new, and succeed."""
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
         self.assertTrue(self.cluster_manager.cluster_compute_name)
         self.assertIsNone(self.cluster_manager.cluster_compute_id)
 
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
         # get: first call raises (not found), second call returns version
         mock_anyscale.compute_config.get.side_effect = [
             Exception("not found"),
@@ -796,13 +798,14 @@ class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
         self.assertEqual(mock_anyscale.compute_config.get.call_count, 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale")
-    def testCreateComputeConfigCreateFailFail(self, mock_anyscale):
+    def testCreateComputeConfigCreateFailFail(self):
         """Compute config not found, create fails both times."""
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
         self.assertTrue(self.cluster_manager.cluster_compute_name)
         self.assertIsNone(self.cluster_manager.cluster_compute_id)
 
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
         # get always raises (not found)
         mock_anyscale.compute_config.get.side_effect = Exception("not found")
         # create always fails
@@ -817,13 +820,14 @@ class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
         self.assertEqual(mock_anyscale.compute_config.create.call_count, 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
-    @patch("ray_release.cluster_manager.minimal.anyscale")
-    def testCreateComputeConfigCreateFailSucceed(self, mock_anyscale):
+    def testCreateComputeConfigCreateFailSucceed(self):
         """Compute config not found, create fails once, succeeds on retry."""
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
         self.assertTrue(self.cluster_manager.cluster_compute_name)
         self.assertIsNone(self.cluster_manager.cluster_compute_id)
 
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
         # get: raises on lookups (attempts 1 and 2), succeeds on post-create fetch
         mock_anyscale.compute_config.get.side_effect = [
             Exception("not found"),  # attempt 1: lookup
