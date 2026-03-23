@@ -228,6 +228,10 @@ void ActorManager::WaitForActorRefDeleted(
   }
 }
 
+void ActorManager::SetActorPoolStateCallback(ActorPoolStateCallback callback) {
+  actor_pool_state_callback_ = std::move(callback);
+}
+
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
   const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
@@ -249,6 +253,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                           /*dead=*/false,
                                           actor_data.death_cause(),
                                           /*is_restartable=*/true);
+    if (actor_pool_state_callback_) {
+      actor_pool_state_callback_(actor_id, /*is_alive=*/false, NodeID::Nil());
+    }
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
     actor_task_submitter_.DisconnectActor(actor_id,
@@ -256,12 +263,18 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                           /*dead=*/true,
                                           actor_data.death_cause(),
                                           gcs::IsActorRestartable(actor_data));
+    if (actor_pool_state_callback_) {
+      actor_pool_state_callback_(actor_id, /*is_alive=*/false, NodeID::Nil());
+    }
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
     actor_task_submitter_.ConnectActor(
         actor_id, actor_data.address(), actor_data.num_restarts());
+    if (actor_pool_state_callback_) {
+      actor_pool_state_callback_(actor_id, /*is_alive=*/true, node_id);
+    }
   } else {
     // The actor is being created and not yet ready, just ignore!
   }
