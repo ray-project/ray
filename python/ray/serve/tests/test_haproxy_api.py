@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.haproxy import (
+    HAPROXY_BALANCE_ALGORITHM_PATTERN,
     BackendConfig,
     HAProxyApi,
     HAProxyConfig,
@@ -290,6 +291,7 @@ defaults
     errorfile 502 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
+    balance leastconn
 frontend prometheus
     bind :9101
     mode http
@@ -323,7 +325,6 @@ backend default_backend
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
 backend api_backend
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -342,7 +343,6 @@ backend api_backend
     server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -1660,6 +1660,32 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
             ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
 
         await api.stop()
+
+
+@pytest.mark.parametrize(
+    "env_value,expected",
+    [
+        ("leastconn", "leastconn"),
+        ("roundrobin", "roundrobin"),
+        ("random", "random"),
+        ("random(2)", "random(2)"),
+        ("random(10)", "random(10)"),
+        ("LEASTCONN", "leastconn"),
+        ("Random(3)", "random(3)"),
+        ("rando", "leastconn"),
+        ("random(abc)", "leastconn"),
+        ("test", "leastconn"),
+        ("", "leastconn"),
+    ],
+)
+def test_balance_algorithm_validation(env_value, expected):
+    """Test that HAProxyConfig.balance_algorithm returns the env var value
+    when valid, and falls back to leastconn when invalid."""
+    with mock.patch(
+        "ray.serve._private.haproxy.RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", env_value
+    ):
+        config = HAProxyConfig()
+        assert config.balance_algorithm == expected
 
 
 if __name__ == "__main__":

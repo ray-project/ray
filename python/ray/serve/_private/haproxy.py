@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -64,6 +65,11 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+HAPROXY_BALANCE_ALGORITHM_PATTERN = re.compile(
+    r"^(leastconn|roundrobin|random(\(\d+\))?)$"
+)
 
 
 @dataclass
@@ -384,6 +390,14 @@ class HAProxyConfig:
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
+
+    @property
+    def balance_algorithm(self) -> str:
+        lb_algo = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
+        if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(lb_algo):
+            lb_algo = "leastconn"
+
+        return lb_algo
 
     @property
     def frontend_host(self) -> str:
@@ -712,6 +726,9 @@ class HAProxyApi(ProxyApi):
                 # Set initial reload ID if header injection is enabled and ID is not set
                 if self.cfg.inject_process_id_header and self.cfg.reload_id is None:
                     self.cfg.reload_id = f"initial-{int(time.time() * 1000)}"
+
+                if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()):
+                    logger.warning(f"'{RAY_SERVE_HAPROXY_BALANCE_ALGORITHM}' isn't a valid balancing algorithm. HAProxy will use leastconn instead. Valid algorithms match: leastconn, roundrobin, random, random(<draws>)")
 
                 self._generate_config_file_internal()
                 logger.info("Successfully generated HAProxy config file.")
