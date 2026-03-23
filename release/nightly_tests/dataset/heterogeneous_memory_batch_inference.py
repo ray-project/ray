@@ -30,7 +30,7 @@ import argparse
 import time
 
 import numpy as np
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
