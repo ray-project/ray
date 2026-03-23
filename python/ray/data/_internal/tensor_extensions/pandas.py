@@ -439,12 +439,15 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        # Since pyarrow.lib.Array.to_numpy() by default returns a view of the array, we need to pass zero_copy_only=False to ensure we get a copy.
-        # From the Arrow documentation (https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy)
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
                 # shape.
+                # iterchunks() yields pa.Array (not pa.ChunkedArray), so
+                # to_numpy() defaults to zero_copy_only=True and raises if a copy
+                # is needed (e.g. nulls). pa.ChunkedArray.to_numpy() defaults to
+                # False because non-contiguous chunks always require a copy.
+                # https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy
                 values = np.concatenate(
                     [
                         chunk.to_numpy(zero_copy_only=False)
@@ -452,6 +455,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                     ]
                 )
             else:
+                # chunk(0) returns pa.Array with zero_copy_only=True by default
                 values = array.chunk(0).to_numpy(zero_copy_only=False)
         else:
             values = array.to_numpy(zero_copy_only=False)
