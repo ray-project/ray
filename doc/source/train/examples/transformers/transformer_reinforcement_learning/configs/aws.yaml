@@ -3,7 +3,7 @@ head_node_type:
   instance_type: m5.2xlarge
 
 worker_node_types:
-  - instance_type: g4dn.12xlarge  # 4x T4 GPUs
-    name: '4xT4:48CPU-192GB'
+  - instance_type: g5.12xlarge  # 4x A10G GPUs
+    name: '4xA10G:48CPU-192GB'
     min_workers: 1
     max_workers: 1
