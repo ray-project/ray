@@ -64,9 +64,6 @@ except ImportError:
             ScoringResponse as _ScoreResponse,
             TokenizeRequest as _TokenizeCompletionRequest,
             TokenizeResponse as _TokenizeResponse,
-            TranscriptionRequest as _TranscriptionRequest,
-            TranscriptionResponse as _TranscriptionResponse,
-            TranscriptionStreamResponse as _TranscriptionStreamResponse,
         )
     except ImportError:
         raise ImportError(
@@ -74,6 +71,29 @@ except ImportError:
             "for Ray Serve LLM protocol models. Install with: "
             "`pip install ray[llm]` or `pip install sglang[all]`"
         )
+
+    def _unsupported_model(name: str, feature: str = ""):
+        """Create a BaseModel stub that raises NotImplementedError on instantiation."""
+        msg = f"{name} is not supported with the current backend." + (
+            f" {feature}" if feature else ""
+        )
+
+        class _Stub(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+
+            def __init__(self, **kwargs):
+                raise NotImplementedError(msg)
+
+        _Stub.__name__ = _Stub.__qualname__ = name
+        return _Stub
+
+    # SGLang does not provide transcription protocol models.
+    _vllm_hint = "Install vLLM to use transcription endpoints."
+    _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _vllm_hint)
+    _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _vllm_hint)
+    _TranscriptionStreamResponse = _unsupported_model(
+        "TranscriptionStreamResponse", _vllm_hint
+    )
 
     # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
     # pattern, so we define our own.
