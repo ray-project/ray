@@ -184,6 +184,19 @@ class _DeploymentHandleBase(Generic[T]):
             return False
         return self.init_options._run_router_in_separate_loop
 
+    def _init_router_and_get_metadata(self) -> Tuple[Router, RequestMetadata]:
+        if not self.is_initialized:
+            self._init()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options, self.handle_options
+        )
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        return self._router, metadata
+
     def _options(
         self, _prefer_local_routing=DEFAULT.VALUE, **kwargs
     ) -> "DeploymentHandle[T]":
@@ -218,12 +231,7 @@ class _DeploymentHandleBase(Generic[T]):
         args: Tuple[Any],
         kwargs: Dict[str, Any],
     ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
-        if not self.is_initialized:
-            self._init()
-
-        metadata = serve._private.default_impl.get_request_metadata(
-            self.init_options, self.handle_options
-        )
+        router, metadata = self._init_router_and_get_metadata()
 
         self.request_counter.inc(
             tags={
@@ -231,10 +239,7 @@ class _DeploymentHandleBase(Generic[T]):
                 "application": metadata.app_name,
             }
         )
-        if self._router is None:
-            raise RuntimeError("Router is not initialized")
-
-        return self._router.assign_request(metadata, *args, **kwargs), metadata
+        return router.assign_request(metadata, *args, **kwargs), metadata
 
     @asynccontextmanager
     async def _choose_replica(
@@ -243,23 +248,16 @@ class _DeploymentHandleBase(Generic[T]):
         kwargs: Dict[str, Any],
     ) -> AsyncIterator[ReplicaSelection]:
         """Execute the request router to select a replica without dispatching."""
-        if not self.is_initialized:
-            self._init()
-
-        metadata = serve._private.default_impl.get_request_metadata(
-            self.init_options, self.handle_options
-        )
+        router, metadata = self._init_router_and_get_metadata()
         self.request_counter.inc(
             tags={
                 "route": metadata.route,
                 "application": metadata.app_name,
             }
         )
-        if self._router is None:
-            raise RuntimeError("Router is not initialized")
 
         # Call the router's choose_replica and inject the deployment handle
-        async with self._router.choose_replica(metadata, *args, **kwargs) as selection:
+        async with router.choose_replica(metadata, *args, **kwargs) as selection:
             # Record the owning deployment for dispatch-time validation.
             selection._deployment_id = self.deployment_id
             yield selection
@@ -282,17 +280,8 @@ class _DeploymentHandleBase(Generic[T]):
                 f"for {selection._deployment_id}."
             )
 
-        if not self.is_initialized:
-            self._init()
-
-        metadata = serve._private.default_impl.get_request_metadata(
-            self.init_options, self.handle_options
-        )
-
-        if self._router is None:
-            raise RuntimeError("Router is not initialized")
-
-        return self._router.dispatch(selection, metadata, *args, **kwargs), metadata
+        router, metadata = self._init_router_and_get_metadata()
+        return router.dispatch(selection, metadata, *args, **kwargs), metadata
 
     def options(
         self,
