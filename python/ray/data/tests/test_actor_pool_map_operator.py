@@ -76,7 +76,7 @@ class PoolWorker:
     def get_location(self) -> str:
         return self.node_id
 
-    def on_exit(self):
+    def __ray_shutdown__(self):
         pass
 
 
@@ -170,7 +170,6 @@ class TestActorPool(unittest.TestCase):
             create_actor_fn=self._create_actor_fn,
             map_worker_cls_name=map_worker_cls_name,
             config=config,
-            _enable_actor_pool_on_exit_hook=False,
         )
         return pool
 
@@ -862,7 +861,6 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
         map_worker_cls_name="MapWorker(TestOp)",
         config=config,
         debounce_period_s=0,
-        _enable_actor_pool_on_exit_hook=False,
     )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
