@@ -324,6 +324,9 @@ class DeploymentConfig(BaseModel):
 
     def to_proto(self):
         data = self.model_dump()
+        # Use a sentinel field to distinguish "blocking_reconfigure=False"
+        # from "not set" since proto3 defaults bool to false.
+        data["has_blocking_reconfigure"] = True
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -548,6 +551,15 @@ class DeploymentConfig(BaseModel):
             data["deployment_actors"] = deployment_actors
         else:
             data.pop("deployment_actors", None)
+
+        # Handle proto3 zero-value defaults for rolling update fields.
+        # During rolling upgrades, older controllers send configs without
+        # these fields; proto3 defaults double to 0.0 and bool to false.
+        if not data.get("rolling_update_percentage"):
+            data.pop("rolling_update_percentage", None)
+        # Use the sentinel to distinguish explicit False from proto3 default.
+        if not data.pop("has_blocking_reconfigure", False):
+            data.pop("blocking_reconfigure", None)
 
         return cls(**data)
 

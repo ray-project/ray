@@ -243,6 +243,19 @@ message DeploymentConfig {
 
   // Deployment-scoped actors managed by the controller.
   repeated DeploymentActorConfig deployment_actors = 22;
+
+  // The percentage of replicas to update at a time during a rolling update.
+  // Defaults to 0.2 (20%). A value of 0.0 in proto means "use default".
+  double rolling_update_percentage = 23;
+
+  // Whether replicas should stop serving traffic while reconfiguring.
+  // NOTE: proto3 defaults bool to false. We use a wrapper to distinguish
+  // "explicitly set to false" from "not set". See has_blocking_reconfigure.
+  bool blocking_reconfigure = 24;
+
+  // Whether blocking_reconfigure was explicitly set. Needed because proto3
+  // cannot distinguish false from unset for bool fields.
+  bool has_blocking_reconfigure = 25;
 }
 
 // Deployment language.
