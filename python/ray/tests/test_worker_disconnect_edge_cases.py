@@ -1,5 +1,5 @@
-import threading
 import sys
+import threading
 from types import SimpleNamespace
 from typing import List, Tuple
 
