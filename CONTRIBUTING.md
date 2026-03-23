@@ -1,3 +1,3 @@
 # Contributing
 
-Addressing good-first-issue #29456: [Core] Implement Ray based concurrent.futures.Executor 
+Addressing good-first-issue #6855: Needs flags to enable/disable printing colored log messages
