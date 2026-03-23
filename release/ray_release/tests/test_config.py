@@ -1,11 +1,11 @@
 import copy
 import sys
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from ray_release.config import (
+    CLOUD_ID_TO_NAME,
     _substitute_variable,
     get_test_cloud_name,
     load_schema_file,
@@ -555,30 +555,31 @@ def test_get_test_cloud_name_from_cluster_cloud():
     assert get_test_cloud_name(test) == "my_cloud"
 
 
-def test_get_test_cloud_name_from_cloud_id():
-    """get_test_cloud_name() falls back to anyscale.cloud.get() when no cloud name."""
-    mock_cloud = MagicMock()
-    mock_cloud.name = "resolved_cloud_name"
+def test_get_test_cloud_name_from_cloud_id_mapping():
+    """get_test_cloud_name() falls back to CLOUD_ID_TO_NAME mapping."""
+    for cloud_id, expected_name in CLOUD_ID_TO_NAME.items():
+        test = Test(
+            {
+                "name": "test",
+                "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": cloud_id},
+            }
+        )
+        assert get_test_cloud_name(test) == expected_name
 
+
+def test_get_test_cloud_name_unknown_cloud_id():
+    """get_test_cloud_name() raises KeyError for unknown cloud_id."""
     test = Test(
         {
             "name": "test",
-            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_abc123"},
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_unknown"},
         }
     )
-    test.anyscale = MagicMock()
-    test.anyscale.cloud.get.return_value = mock_cloud
-
-    assert get_test_cloud_name(test) == "resolved_cloud_name"
-    test.anyscale.cloud.get.assert_called_once_with(id="cld_abc123")
+    with pytest.raises(KeyError):
+        get_test_cloud_name(test)
 
 
-@patch("ray_release.test.Anyscale")
-def test_load_and_validate_test_collection_file(MockAnyscale):
-    mock_cloud = MagicMock()
-    mock_cloud.name = "anyscale_v2_default_cloud"
-    MockAnyscale.return_value.cloud.get.return_value = mock_cloud
-
+def test_load_and_validate_test_collection_file():
     tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
     assert [test for test in tests if test.get_name() == "test_name"]
 
