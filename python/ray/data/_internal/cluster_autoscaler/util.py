@@ -6,6 +6,25 @@ from ray.data._internal.execution.interfaces import ExecutionResources
 logger = logging.getLogger(__name__)
 
 
+def is_autoscaling_enabled() -> bool:
+    """Check if any node type has autoscaling enabled (can scale up).
+
+    A node type is autoscalable if max_count == -1 (unlimited) or
+    max_count > min_count. If no cluster config is available or no node type
+    is autoscalable, returns False.
+    """
+    import ray
+
+    cluster_config = ray._private.state.state.get_cluster_config()
+    if not cluster_config or not cluster_config.node_group_configs:
+        return False
+    return any(
+        ngc.max_count == -1 or ngc.max_count > ngc.min_count
+        for ngc in cluster_config.node_group_configs
+        if ngc.resources and ngc.max_count != 0
+    )
+
+
 def cap_resource_request_to_limits(
     active_bundles: List[Dict],
     pending_bundles: List[Dict],

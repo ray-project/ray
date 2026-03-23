@@ -30,8 +30,19 @@ class StubUtilizationGauge(ResourceUtilizationGauge):
         return self._utilization
 
 
+_IS_AUTOSCALING_ENABLED_PATH = (
+    "ray.data._internal.cluster_autoscaler."
+    "default_cluster_autoscaler_v2.is_autoscaling_enabled"
+)
+
+
 class TestClusterAutoscaling:
     """Tests for cluster autoscaling functions in DefaultClusterAutoscalerV2."""
+
+    @pytest.fixture(autouse=True)
+    def mock_autoscaling_enabled(self):
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=True):
+            yield
 
     def setup_class(self):
         self._node_type1 = {
@@ -594,6 +605,60 @@ class TestClusterAutoscaling:
             f"Expected log message not found.\n"
             f"Expected: {expected_message}\n"
             f"Actual logs: {log_messages}"
+        )
+
+    def test_log_groups_nodes_with_similar_memory(self, propagate_logs, caplog):
+        """Test that nodes with slightly different memory are grouped in the log.
+
+        Nodes of the same type can report slightly different physical memory
+        (e.g. 14.9 GiB vs 14.91 GiB). The log should group them into one entry.
+        """
+        GiB = 1024**3
+        fake_coordinator = FakeAutoscalingCoordinator()
+        # Two specs that differ only slightly in memory
+        spec_a = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.9 * GiB))
+        spec_b = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.91 * GiB))
+        assert spec_a != spec_b, "Specs should differ at byte level"
+
+        utilization = ExecutionResources(cpu=1, gpu=1, object_store_memory=1)
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {spec_a: 1, spec_b: 1},
+        )
+
+        with caplog.at_level(logging.INFO):
+            autoscaler.try_trigger_scaling()
+
+        log_messages = [r.message for r in caplog.records]
+        scaling_logs = [m for m in log_messages if "Requesting" in m]
+        # Should show one node shape entry, not two separate entries.
+        assert len(scaling_logs) == 1
+
+    def test_no_log_when_autoscaling_disabled(self, propagate_logs, caplog):
+        """Test that no autoscaling log is emitted when autoscaling is disabled."""
+        fake_coordinator = FakeAutoscalingCoordinator()
+        node_spec = _NodeResourceSpec.of(cpu=8, gpu=0, mem=1000)
+        utilization = ExecutionResources(cpu=1, gpu=0, object_store_memory=1)
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            execution_id="test_execution_id",
+            resource_utilization_calculator=StubUtilizationGauge(utilization),
+            min_gap_between_autoscaling_requests_s=0,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_spec: 2},
+        )
+
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+            with caplog.at_level(logging.INFO):
+                autoscaler.try_trigger_scaling()
+
+        assert not any(
+            "Requesting" in msg for msg in [r.message for r in caplog.records]
         )
 
 

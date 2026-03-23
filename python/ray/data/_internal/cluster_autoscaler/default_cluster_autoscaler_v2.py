@@ -14,7 +14,7 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
-from .util import cap_resource_request_to_limits
+from .util import cap_resource_request_to_limits, is_autoscaling_enabled
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
@@ -64,6 +64,23 @@ class _NodeResourceSpec:
 
     def to_bundle(self):
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
+
+
+def _round_and_count(bundles: List[Dict[str, Any]]) -> Counter:
+    """Count bundles by node spec, rounding memory to the nearest 0.1 GiB.
+
+    This groups nodes of the same type that report slightly different physical
+    memory (e.g. 14.9 GiB vs 14.91 GiB) into one entry for cleaner log output.
+    """
+    from ray.data._internal.util import GiB
+
+    tenth_gib = GiB // 10
+    rounded = []
+    for bundle in bundles:
+        spec = _NodeResourceSpec.from_bundle(bundle)
+        mem = round(spec.mem / tenth_gib) * tenth_gib if spec.mem > 0 else 0
+        rounded.append(_NodeResourceSpec(cpu=spec.cpu, gpu=spec.gpu, mem=mem))
+    return Counter(rounded)
 
 
 def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
@@ -244,7 +261,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             active_bundles, pending_bundles, self._resource_limits
         )
 
-        if resource_request != active_bundles:
+        if resource_request != active_bundles and is_autoscaling_enabled():
             self._log_resource_request(util, active_bundles, resource_request)
 
         self._send_resource_request(resource_request)
@@ -264,12 +281,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
         )
 
-        current_node_counts = Counter(
-            [_NodeResourceSpec.from_bundle(bundle) for bundle in active_bundles]
-        )
-        requested_node_counts = Counter(
-            [_NodeResourceSpec.from_bundle(bundle) for bundle in resource_request]
-        )
+        current_node_counts = _round_and_count(active_bundles)
+        requested_node_counts = _round_and_count(resource_request)
         for node_spec, requested_count in requested_node_counts.items():
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
