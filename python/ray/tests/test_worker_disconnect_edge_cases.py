@@ -133,6 +133,7 @@ def test_disconnect_does_not_join_current_logger_thread():
     dummy_worker, originals = _install_dummy_worker_and_logging()
 
     try:
+
         def target():
             core_worker.disconnect()
 
@@ -205,5 +206,3 @@ def test_shutdown_multiple_cycles(shutdown_only):
         assert ray.is_initialized()
         ray.shutdown()
         assert not ray.is_initialized()
-
-

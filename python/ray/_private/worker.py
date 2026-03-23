@@ -2790,10 +2790,7 @@ def disconnect(exiting_interpreter=False):
         def _safe_join_and_clear_thread(thread_attr_name):
             if hasattr(worker, thread_attr_name):
                 thread_obj = getattr(worker, thread_attr_name)
-                if (
-                    thread_obj is not None
-                    and thread_obj is not current_thread
-                ):
+                if thread_obj is not None and thread_obj is not current_thread:
                     thread_obj.join()
                 # Clear the reference so a subsequent disconnect() call does not
                 # attempt to join an already-finished or invalid thread object.
