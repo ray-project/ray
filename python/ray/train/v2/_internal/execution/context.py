@@ -57,7 +57,7 @@ class TrainRunContext:
     run_config: RunConfig
 
     # The configuration passed to the training function.
-    train_loop_config: Optional[Dict[str, Any]]
+    train_loop_config: Optional[Dict]
 
     # The scaling configuration for the current training run.
     scaling_config: ScalingConfig
