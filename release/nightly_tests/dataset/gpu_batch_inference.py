@@ -110,7 +110,6 @@ def main(args):
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
     )
-
     ds.write_parquet(WRITE_PATH)
 
     end_time = time.time()
