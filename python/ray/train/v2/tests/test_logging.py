@@ -6,7 +6,6 @@ import pytest
 
 import ray
 from ray.runtime_context import get_runtime_context
-from ray.train.v2._internal.constants import LOG_LEVEL_ENV_VAR
 from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
 from ray.train.v2.api.config import RunConfig
@@ -186,15 +185,6 @@ def test_log_level_from_run_config_worker(worker_logging):
     context = _create_train_context_with_log_level("DEBUG")
     config = LoggingManager._get_worker_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-    assert config["root"]["level"] == "DEBUG"
-
-
-def test_log_level_env_var_overrides_run_config(controller_logging, monkeypatch):
-    """Test that the env var overrides the RunConfig log level."""
-    monkeypatch.setenv(LOG_LEVEL_ENV_VAR, "WARNING")
-    context = _create_run_context_with_log_level("DEBUG")
-    config = LoggingManager._get_controller_logger_config_dict(context)
-    assert config["loggers"]["ray.train"]["level"] == "WARNING"
 
 
 def test_invalid_log_level_string_raises():

@@ -368,7 +368,6 @@ class RunConfig:
         log_level: The log level for Ray Train controller and worker loggers.
             Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
             If not set, defaults to ``"INFO"``.
-            Can be overridden by the ``RAY_TRAIN_LOG_LEVEL`` environment variable.
     """
 
     name: Optional[str] = None
@@ -426,13 +425,13 @@ class RunConfig:
             self.name = f"ray_train_run-{date_str()}"
 
         if self.log_level is not None:
-            if not isinstance(self.log_level, str):
-                raise ValueError(
-                    f"Invalid log_level: {self.log_level!r}. "
-                    "Must be a string "
-                    "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
-                )
-            if not isinstance(logging.getLevelName(self.log_level.upper()), int):
+            if not isinstance(self.log_level, str) or self.log_level.upper() not in {
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL",
+            }:
                 raise ValueError(
                     f"Invalid log_level: {self.log_level!r}. "
                     "Must be a valid logging level string "

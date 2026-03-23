@@ -7,7 +7,6 @@ import ray
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter
 from ray._private.log import PlainRayHandler
-from ray.train.v2._internal.constants import LOG_LEVEL_ENV_VAR
 from ray.train.v2._internal.execution.context import TrainContext, TrainRunContext
 from ray.train.v2._internal.util import get_module_name
 
@@ -179,14 +178,10 @@ class LoggingManager:
     def _resolve_log_level(
         context: Union[TrainRunContext, TrainContext],
     ) -> str:
-        """Resolve the log level from env var, RunConfig, or default.
+        """Resolve the log level from RunConfig, or default.
 
-        Priority: env var > RunConfig > default "INFO"
+        Priority: RunConfig > default "INFO"
         """
-        env_level = os.environ.get(LOG_LEVEL_ENV_VAR)
-        if env_level:
-            return env_level.upper()
-
         if isinstance(context, TrainContext):
             run_config = context.train_run_context.get_run_config()
         else:
@@ -246,10 +241,6 @@ class LoggingManager:
             "level": log_level,
             "handlers": ["file_train_sys_worker", "file_train_app_worker", "console"],
             "propagate": False,
-        }
-        config_dict["root"] = {
-            "level": log_level,
-            "handlers": ["file_train_app_worker", "console"],
         }
         return config_dict
 
