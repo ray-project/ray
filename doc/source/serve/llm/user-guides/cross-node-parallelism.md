@@ -75,7 +75,7 @@ The following example shows how to configure a model with both TP and PP (4 GPUs
 
 You can customize how Ray places vLLM engine workers across nodes using `placement_group_config` with either `bundle_per_worker` (simple) or `bundles` (advanced).
 
-### Simple configuration with bundle_per_worker
+### Basic configuration with bundle_per_worker
 
 The `bundle_per_worker` option inside `placement_group_config` lets you specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`. This field takes priority over `placement_group_config.bundles`.
 
