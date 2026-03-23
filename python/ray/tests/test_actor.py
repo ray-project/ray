@@ -907,7 +907,7 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
-def test_options_no_ref_cycle(ray_start_regular):
+def test_options_no_ref_cycle(ray_start_regular_shared):
     """ActorMethod.options() must not prevent the ActorHandle from being freed
     by reference counting alone. Regression test for #61922."""
     import gc
