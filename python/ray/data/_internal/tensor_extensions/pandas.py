@@ -439,24 +439,17 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        # zero_copy_only=False is needed for ARROW_NATIVE (pa.fixed_shape_tensor).
-        # V1/V2 use ArrowTensorArray.to_numpy() which explicitly ignores zero_copy_only
-        # and always reads directly from the raw buffer. PyArrow's built-in
-        # FixedShapeTensorArray.to_numpy() enforces it and requires a copy.
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
                 # shape.
                 values = np.concatenate(
-                    [
-                        chunk.to_numpy(zero_copy_only=False)
-                        for chunk in array.iterchunks()
-                    ]
+                    [chunk.to_numpy() for chunk in array.iterchunks()]
                 )
             else:
-                values = array.chunk(0).to_numpy(zero_copy_only=False)
+                values = array.chunk(0).to_numpy()
         else:
-            values = array.to_numpy(zero_copy_only=False)
+            values = array.to_numpy()
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
