@@ -1,5 +1,4 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
-import inspect
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union

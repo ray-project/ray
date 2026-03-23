@@ -94,7 +94,7 @@ class TestRemoteNumReturns:
 class TestMethodNumReturns:
     """Test num_returns validation for @ray.method decorator."""
 
-    def test_num_returns_negative_raises_error(self, shutdown_only):
+    def test_num_returns_negative_raises_error(self):
         """Test that num_returns < 0 raises ValueError at decoration time."""
         with pytest.raises(ValueError, match="num_returns must be >= 0"):
 
@@ -104,7 +104,7 @@ class TestMethodNumReturns:
                 def method(self):
                     return 1
 
-    def test_num_returns_streaming_with_non_generator_raises_error(self, shutdown_only):
+    def test_num_returns_streaming_with_non_generator_raises_error(self):
         """Test that num_returns='streaming' with non-generator raises ValueError."""
         with pytest.raises(
             ValueError, match="num_returns='streaming' can only be used with generator"
@@ -116,7 +116,7 @@ class TestMethodNumReturns:
                 def method(self):
                     return 1
 
-    def test_num_returns_dynamic_with_non_generator_raises_error(self, shutdown_only):
+    def test_num_returns_dynamic_with_non_generator_raises_error(self):
         """Test that num_returns='dynamic' with non-generator raises ValueError."""
         with pytest.raises(
             ValueError, match="num_returns='dynamic' can only be used with generator"
@@ -128,7 +128,7 @@ class TestMethodNumReturns:
                 def method(self):
                     return 1
 
-    def test_num_returns_streaming_with_generator_succeeds(self, shutdown_only):
+    def test_num_returns_streaming_with_generator_succeeds(self):
         """Test that num_returns='streaming' with generator method succeeds."""
 
         @ray.remote
@@ -138,7 +138,7 @@ class TestMethodNumReturns:
                 for i in range(3):
                     yield i
 
-    def test_num_returns_dynamic_with_generator_succeeds(self, shutdown_only):
+    def test_num_returns_dynamic_with_generator_succeeds(self):
         """Test that num_returns='dynamic' with generator method succeeds."""
 
         @ray.remote
@@ -148,7 +148,7 @@ class TestMethodNumReturns:
                 for i in range(3):
                     yield i
 
-    def test_num_returns_streaming_with_async_generator_succeeds(self, shutdown_only):
+    def test_num_returns_streaming_with_async_generator_succeeds(self):
         """Test that num_returns='streaming' with async generator method succeeds."""
 
         @ray.remote
@@ -158,7 +158,7 @@ class TestMethodNumReturns:
                 for i in range(3):
                     yield i
 
-    def test_num_returns_positive_integer_succeeds(self, shutdown_only):
+    def test_num_returns_positive_integer_succeeds(self):
         """Test that num_returns with positive integer succeeds."""
 
         @ray.remote
@@ -167,7 +167,7 @@ class TestMethodNumReturns:
             def method(self):
                 return 1, 2
 
-    def test_num_returns_zero_succeeds(self, shutdown_only):
+    def test_num_returns_zero_succeeds(self):
         """Test that num_returns=0 succeeds."""
 
         @ray.remote
@@ -176,7 +176,7 @@ class TestMethodNumReturns:
             def method(self):
                 return
 
-    def test_num_returns_none_succeeds(self, shutdown_only):
+    def test_num_returns_none_succeeds(self):
         """Test that num_returns=None succeeds."""
 
         @ray.remote
@@ -185,7 +185,7 @@ class TestMethodNumReturns:
             def method(self):
                 return 1
 
-    def test_num_returns_default_succeeds(self, shutdown_only):
+    def test_num_returns_default_succeeds(self):
         """Test that default num_returns (not specified) succeeds."""
 
         @ray.remote
