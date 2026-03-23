@@ -42,7 +42,7 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import decompress_metric_report, get_random_string
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, ReplicaUnavailableError
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -117,8 +117,6 @@ class FakeReplica(RunningReplica):
         self._requests_sent = []  # Track all requests sent to this replica
 
         # Create a minimal _replica_info object to satisfy router.py requirements
-        from unittest.mock import Mock
-
         self._replica_info = Mock()
         self._replica_info.node_id = node_id
         self._replica_info.availability_zone = availability_zone
@@ -1141,8 +1139,6 @@ class TestChooseReplica:
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
         )
-
-        from ray.serve.exceptions import ReplicaUnavailableError
 
         async with router.choose_replica(request_metadata) as selection:
             # Simulate replica becoming unavailable

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import sys
 import threading
+from contextlib import AsyncExitStack
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve.api import get_replica_context
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
@@ -350,8 +352,6 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
     @serve.deployment(num_replicas=2)
     class Backend:
         def process(self, msg: str):
-            from ray.serve.api import get_replica_context
-
             replica_id = get_replica_context().replica_id.unique_id
             return {"actual_replica_id": replica_id, "response": msg}
 
@@ -392,21 +392,16 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
 )
 async def test_choose_replica_and_dispatch_parallel(serve_instance):
     """Test parallel selection pattern (e.g., PD proxy) using AsyncExitStack."""
-    from contextlib import AsyncExitStack
 
     @serve.deployment(num_replicas=2)
     class PrefillServer:
         def chat(self, msg: str):
-            from ray.serve.api import get_replica_context
-
             replica_id = get_replica_context().replica_id.unique_id
             return {"actual_replica_id": replica_id, "response": msg}
 
     @serve.deployment(num_replicas=2)
     class DecodeServer:
         def chat(self, msg: str):
-            from ray.serve.api import get_replica_context
-
             replica_id = get_replica_context().replica_id.unique_id
             return {"actual_replica_id": replica_id, "response": msg}
 
