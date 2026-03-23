@@ -1,5 +1,4 @@
 from ray.util.collective.backend_registry import (
-    is_registered_collective_backend,
     register_collective_backend,
 )
 from ray.util.collective.collective import (
@@ -57,5 +56,4 @@ __all__ = [
     "recv_multigpu",
     "get_group_handle",
     "register_collective_backend",
-    "is_registered_collective_backend",
 ]

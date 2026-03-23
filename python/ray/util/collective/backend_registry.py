@@ -116,15 +116,3 @@ def register_collective_backend(name: str, group_cls: Type[BaseGroup]):
     upper_name = name.upper()
     if not hasattr(types.Backend, upper_name):
         setattr(types.Backend, upper_name, upper_name)
-
-
-def is_registered_collective_backend(name: str) -> bool:
-    """Check if a collective backend is registered.
-
-    Args:
-        name: The name of backend to check (e.g., "NCCL", "GLOO").
-
-    Returns:
-        True if the backend is registered, False otherwise.
-    """
-    return name.upper() in _global_registry._map
