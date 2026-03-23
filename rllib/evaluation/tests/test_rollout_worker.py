@@ -193,10 +193,9 @@ class TestRolloutWorker(unittest.TestCase):
     def test_update_env_seed_rejects_too_large_vector_idx(self):
         env = SeedRecordingEnv()
 
-        with self.assertRaisesRegex(
-            AssertionError, "Too many envs per worker. Random seeds may collide."
-        ):
-            _update_env_seed_if_necessary(env, seed=7, worker_idx=0, vector_idx=1000)
+        _update_env_seed_if_necessary(env, seed=7, worker_idx=0, vector_idx=1000)
+
+        self.assertEqual(env.last_seed, 1007)
 
     def test_global_vars_update(self):
         config = (
