@@ -19,7 +19,7 @@ ray_cc_test(
 
 ray_cc_test(
     name = "actor_manager_test",
-    size = "small",
+    size = "medium",
     srcs = ["actor_manager_test.cc"],
     tags = ["team:core"],
     deps = [
