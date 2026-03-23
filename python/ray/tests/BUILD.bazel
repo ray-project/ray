@@ -328,7 +328,6 @@ py_test_module_list(
         "test_ray_debugger.py",
         "test_ray_init.py",
         "test_ray_shutdown.py",
-        "test_worker_disconnect_edge_cases.py",
         "test_resource_metrics.py",
         "test_runtime_context.py",
         "test_runtime_env_env_vars.py",
@@ -350,6 +349,7 @@ py_test_module_list(
         "test_token_auth_integration.py",
         "test_traceback.py",
         "test_worker_capping.py",
+        "test_worker_disconnect_edge_cases.py",
         "test_worker_state.py",
     ],
     tags = [
