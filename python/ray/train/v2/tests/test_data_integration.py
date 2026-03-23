@@ -112,7 +112,6 @@ def test_datasets_callback(ray_start_4_cpus):
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -122,7 +121,10 @@ def test_datasets_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -637,7 +639,6 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -647,7 +648,10 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -697,7 +701,6 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -707,7 +710,10 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
