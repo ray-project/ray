@@ -32,3 +32,7 @@ h5py==3.12.1
 
 # Requirements for rendering.
 moviepy
+
+# numexpr is an optional pandas dependency that gets imported at runtime.
+# It must be explicitly pinned here to ensure compatibility with numpy 2.x.
+numexpr
