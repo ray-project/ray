@@ -835,6 +835,12 @@ class RequestRouter(ABC):
 
         This is used when a reserved slot is released without being dispatched
         (e.g., in choose_replica context manager cleanup).
+
+        We cannot rely on on_new_queue_len_info() to correct the cache in this
+        path. The queue length cache is incremented optimistically when a slot is
+        reserved, before dispatch happens. If dispatch is never called or fails
+        before the request reaches the replica, no queue_len_info response is
+        produced, so the cache would otherwise remain inflated.
         """
         if self._use_replica_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
