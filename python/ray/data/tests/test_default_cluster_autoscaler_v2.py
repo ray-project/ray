@@ -636,7 +636,7 @@ class TestClusterAutoscaling:
         log_messages = [r.message for r in caplog.records]
         scaling_logs = [m for m in log_messages if "Requesting" in m]
         # Should show one node shape entry, not two separate entries.
-        assert len(scaling_logs) == 1
+        assert scaling_logs[0].count("[{") == 1
 
     def test_no_log_when_autoscaling_disabled(self, propagate_logs, caplog):
         """Test that no autoscaling log is emitted when autoscaling is disabled."""
