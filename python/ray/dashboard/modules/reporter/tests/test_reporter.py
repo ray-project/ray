@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 import os
 import sys
@@ -27,6 +28,7 @@ from ray._private.test_utils import (
 )
 from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import (
+    METRICS_GAUGES,
     ReporterAgent,
     TpuUtilizationInfo,
 )
@@ -1349,6 +1351,125 @@ async def test_reporter_dashboard_and_runtime_env_agent(
             return any(proc.cmdline()[0] in s for s in ray_constants.AGENT_PROCESS_LIST)
 
         wait_for_condition(verify, timeout=5, retry_interval_ms=100)
+
+
+# --- Autoscaler cluster-level metrics (v1/v2 compatibility) ---
+_AUTOSCALER_TEST_NODE_TYPE = "node_type_a"
+_AUTOSCALER_TEST_IPS_PENDING = ("10.0.0.2", "10.0.0.3")
+_AUTOSCALER_TEST_IP_FAILED = "10.0.0.4"
+
+
+def _find_metric_value(records, metric_key: str, node_type: str):
+    g = METRICS_GAUGES[metric_key]
+    for r in records:
+        if r.gauge is g and r.tags == {"node_type": node_type}:
+            return r.value
+    return None
+
+
+def _make_reporter_agent_and_capture(tmp_path, *, ip="192.168.79.28"):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = "127.0.0.1:6379"
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    dashboard_agent.ip = "127.0.0.1"
+    dashboard_agent.node_manager_port = 12345
+
+    agent = ReporterAgent(dashboard_agent)
+    agent._is_head_node = True
+    agent._metrics_collection_disabled = False
+
+    captured = {}
+
+    def _capture(records, global_tags=None):
+        captured["records"] = records
+
+    agent._metrics_agent = MagicMock()
+    agent._metrics_agent.record_and_export.side_effect = _capture
+    agent._metrics_agent.clean_all_dead_worker_metrics = MagicMock()
+
+    agent._open_telemetry_metric_recorder = MagicMock()
+    agent._open_telemetry_metric_recorder.record_and_export.side_effect = _capture
+
+    async def fake_collect():
+        s = copy.deepcopy(STATS_TEMPLATE)
+        s["ip"] = ip
+        return s
+
+    agent._async_collect_stats = fake_collect
+    agent._generate_stats_payload = lambda stats: "{}"
+
+    return agent, captured
+
+
+def _assert_cluster_node_metrics(
+    records, node_type: str, *, active, pending, failed, idle_expected
+):
+    assert _find_metric_value(records, "cluster_active_nodes", node_type) == active
+    assert _find_metric_value(records, "cluster_pending_nodes", node_type) == pending
+    assert _find_metric_value(records, "cluster_failed_nodes", node_type) == failed
+
+    idle_val = _find_metric_value(records, "cluster_idle_nodes", node_type)
+    if idle_expected is None:
+        assert idle_val is None
+    else:
+        assert idle_val == idle_expected
+
+
+@pytest.mark.asyncio
+async def test_reporter_v1_autoscaler_uses_debug_status_bytes(tmp_path):
+    agent, captured = _make_reporter_agent_and_capture(tmp_path)
+
+    agent._get_cluster_stats_v2 = MagicMock()
+
+    node_type = _AUTOSCALER_TEST_NODE_TYPE
+    v1_cluster_stats = {
+        "autoscaler_report": {
+            "active_nodes": {node_type: 1},
+            "idle_nodes": None,
+            "pending_nodes": [
+                (ip, node_type, "PENDING") for ip in _AUTOSCALER_TEST_IPS_PENDING
+            ],
+            "failed_nodes": [(_AUTOSCALER_TEST_IP_FAILED, node_type)],
+        }
+    }
+
+    await agent._async_compose_stats_payload(
+        json.dumps(v1_cluster_stats).encode(), autoscaler_v2_enabled=False
+    )
+
+    recs = captured["records"]
+    _assert_cluster_node_metrics(
+        recs, node_type, active=1, pending=2, failed=1, idle_expected=None
+    )
+    agent._get_cluster_stats_v2.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
+    agent, captured = _make_reporter_agent_and_capture(tmp_path)
+
+    node_type = _AUTOSCALER_TEST_NODE_TYPE
+    agent._get_cluster_stats_v2 = MagicMock(
+        return_value={
+            "autoscaler_report": {
+                "active_nodes": {node_type: 1},
+                "idle_nodes": {node_type: 2},
+                "pending_nodes": [
+                    (ip, node_type, "PENDING") for ip in _AUTOSCALER_TEST_IPS_PENDING
+                ],
+                "failed_nodes": [(_AUTOSCALER_TEST_IP_FAILED, node_type)],
+            },
+        }
+    )
+
+    await agent._async_compose_stats_payload(None, autoscaler_v2_enabled=True)
+
+    recs = captured["records"]
+    _assert_cluster_node_metrics(
+        recs, node_type, active=1, pending=2, failed=1, idle_expected=2
+    )
+    agent._get_cluster_stats_v2.assert_called_once()
 
 
 if __name__ == "__main__":

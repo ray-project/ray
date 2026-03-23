@@ -262,7 +262,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             )
             spilled_bytes_total = memory_info.store_stats.spilled_bytes_total
             metrics["object_store_spilled_total_gb"] = round(
-                spilled_bytes_total / (1024**3), 2
+                spilled_bytes_total / (1024**3), 4
             )
         except Exception as e:
             logger.warning(
