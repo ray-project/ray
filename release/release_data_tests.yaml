@@ -581,9 +581,6 @@
     timeout: 3600
     script: >
       python heterogeneous_memory_batch_inference.py
-      --num-rows 400000
-      --gpu-batch-size 256
-      --gpu-concurrency 8
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
