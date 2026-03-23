@@ -103,7 +103,6 @@ class DataParallelTrainer:
             train_loop_config=self.train_loop_config,
             scaling_config=self.scaling_config,
             backend_config=self.backend_config,
-            datasets=self.datasets,
             dataset_config=self.data_config,
         )
 
@@ -210,7 +209,10 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
+        datasets_callback = DatasetsCallback(
+            train_run_context=self.train_run_context,
+            datasets=self.datasets,
+        )
         placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
