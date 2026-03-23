@@ -488,6 +488,91 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
+- name: "actor_pool.{{scenario}}.{{impl}}"
+  python: "3.10"
+  frequency: manual
+  matrix:
+    setup:
+      scenario:
+        - "perf.fixed_pool_4"
+        - "perf.fixed_pool_32"
+        - "perf.dispatch_overhead"
+        - "perf.batch_100"
+        - "perf.batch_1000"
+        - "fault.transient_retry"
+        - "fault.actor_kill"
+        - "fault.cascade_actor_kill_2_stage"
+        - "fault.node_kill_1_stage"
+        - "fault.node_kill_2_stage"
+      impl: [data, core]
+
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
+  run:
+    timeout: 14400
+    script: |
+      set -euo pipefail
+
+      if [ "{{impl}}" = "core" ]; then
+        export RAY_DATA_USE_CORE_ACTOR_POOL=1
+      fi
+
+      NUM_RUNS=3
+
+      case "{{scenario}}" in
+        # Throughput with small fixed pool (4 actors), high data volume
+        "perf.fixed_pool_4")
+          SCENARIO_ARGS="--sf 10 --concurrency 4 4"
+          ;;
+        # Throughput with large fixed pool (32 actors), high data volume
+        "perf.fixed_pool_32")
+          SCENARIO_ARGS="--sf 10 --concurrency 32 32"
+          ;;
+        # Pure dispatch cost with no UDF sleep, isolates scheduling overhead
+        "perf.dispatch_overhead")
+          SCENARIO_ARGS="--sf 1 --concurrency 16 16 --map-batches-sleep-ms 0"
+          ;;
+        # Many small batches (~100x more tasks than default), stresses dispatch path
+        "perf.batch_100")
+          SCENARIO_ARGS="--sf 1 --concurrency 16 16 --batch-size 100"
+          ;;
+        # Medium batches, mid-point between dispatch-bound and compute-bound
+        "perf.batch_1000")
+          SCENARIO_ARGS="--sf 1 --concurrency 16 16 --batch-size 1000"
+          ;;
+        # tests retry, Cross-actor retry within core pool vs same actor retry within data pool
+        "fault.transient_retry")
+          SCENARIO_ARGS="--sf 10 --concurrency 8 8 --fail-actor-indices 0,2 --fail-at-call 50"
+          ;;
+        # Kill 3 actors mid-execution, verify pool recovers and completes
+        "fault.actor_kill")
+          SCENARIO_ARGS="--sf 10 --concurrency 8 8 --kill-actor-indices 0,2,5 --kill-after-tasks 500"
+          ;;
+        # Kill actors in 2-stage pipeline, test cascading reconstruction
+        "fault.cascade_actor_kill_2_stage")
+          SCENARIO_ARGS="--sf 10 --concurrency 4 4 --kill-actor-indices 0,2 --kill-after-tasks 300 --pipeline-stages 2"
+          ;;
+        # Terminate EC2 worker node, verify single-stage recovery
+        # num-runs=1: node recovery can take 20+ min per run
+        "fault.node_kill_1_stage")
+          SCENARIO_ARGS="--sf 10 --concurrency 8 8 --kill-node --kill-node-after-tasks 500 --pipeline-stages 1"
+          NUM_RUNS=1
+          ;;
+        # Terminate EC2 worker node, verify 2-stage cascading recovery
+        # num-runs=1: node recovery can take 20+ min per run
+        "fault.node_kill_2_stage")
+          SCENARIO_ARGS="--sf 10 --concurrency 4 4 --kill-node --kill-node-after-tasks 300 --pipeline-stages 2"
+          NUM_RUNS=1
+          ;;
+        *)
+          echo "Unknown actor_pool scenario: {{scenario}}" >&2
+          exit 1
+          ;;
+      esac
+
+      python map_benchmark.py --api map_batches --batch-format numpy --compute actors --num-runs ${NUM_RUNS} ${SCENARIO_ARGS}
+
 
 ########################
 # Sort and shuffle tests
