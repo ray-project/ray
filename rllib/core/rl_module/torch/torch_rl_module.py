@@ -99,6 +99,12 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        if self.inference_only:
+            raise RuntimeError(
+                "Calling `forward_train` on an inference_only module is not allowed! "
+                "Set the `inference_only=False` flag in the RLModuleSpec (or the "
+                "RLModule's constructor)."
+            )
         self.train()
         return self._forward_train(batch, **kwargs)
 
