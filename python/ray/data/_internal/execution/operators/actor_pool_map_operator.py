@@ -1355,18 +1355,10 @@ class _ActorPool(AutoscalingActorPool):
         # solver to spread blocks across actors for parallelism.  After
         # assignment, blocks for the same actor are merged into a single task,
         # so per-actor task-slot limits do not apply here.
-        slots_per_actor = -(-num_bundles // num_actors)  # ceil division
-        total_cols = slots_per_actor * num_actors
-        expanded_cost = np.empty((num_bundles, total_cols), dtype=np.int64)
+        slots_per_actor = (num_bundles + num_actors - 1) // num_actors
+        expanded_cost = np.repeat(cost_matrix, slots_per_actor, axis=1)
         # Maps expanded column index back to the original actor index.
-        col_to_actor = np.empty(total_cols, dtype=np.int32)
-        col = 0
-        for actor_idx in range(num_actors):
-            expanded_cost[:, col : col + slots_per_actor] = cost_matrix[
-                :, actor_idx : actor_idx + 1
-            ]
-            col_to_actor[col : col + slots_per_actor] = actor_idx
-            col += slots_per_actor
+        col_to_actor = np.repeat(np.arange(num_actors, dtype=np.int32), slots_per_actor)
 
         row_indices, col_indices = linear_sum_assignment(expanded_cost)
 

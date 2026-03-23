@@ -949,14 +949,15 @@ def test_actor_pool_strategy_bundles_to_max_actors(
         .materialize()
     )
 
-    # Check batch size is still respected.
+    # Check that batch_size doesn't prevent work from being distributed across
+    # actors. batch_size controls within-task batching, not actor assignment.
     ds = (
         ray.data.range(10, override_num_blocks=10)
         .map_batches(UDFClass, batch_size=10, concurrency=max_size)
         .materialize()
     )
 
-    assert "1 blocks" in ds.stats()
+    assert f"{max_size} blocks" in ds.stats()
 
 
 def test_nonserializable_map_batches(
