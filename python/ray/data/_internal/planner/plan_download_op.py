@@ -672,7 +672,7 @@ class PartitionActor:
         if self._batch_size_estimate is None:
             self._batch_size_estimate = self._estimate_nrows_per_partition(block)
 
-        if RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
+        if OBSTORE_AVAILABLE and RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
             block = self._attach_file_sizes(block)
 
         yield from _arrow_batcher(block, self._batch_size_estimate)
