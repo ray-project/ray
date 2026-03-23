@@ -128,7 +128,8 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch==2.9.1 torchvision==0.24.1 transformers==4.48.0 datasets==2.21.0 deepspeed==0.18.8
+python -m pip install -U torch==2.9.1 torchvision==0.24.1 transformers==4.48.0 datasets==2.21.0
+python -m pip install -U deepspeed==0.18.8
 ```
 
 
