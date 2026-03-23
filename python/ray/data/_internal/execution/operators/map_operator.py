@@ -241,20 +241,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # _map_transformer_ref is lazily initialized on first access.
         # This ensures on_start callback (if registered) can modify the transformer
         # before serialization (e.g., for Iceberg schema evolution).
-        self.__map_transformer_ref = None
-
-    @property
-    def _map_transformer_ref(self):
-        """Lazily serialize _map_transformer to object store on first access.
-
-        Deferred until first task submission so that on_start callbacks
-        (e.g., on_write_start for Iceberg) can modify the transformer state
-        before serialization.
-        """
-        if self.__map_transformer_ref is None:
-            self.__map_transformer_ref = ray.put(self._map_transformer)
-            self._warn_large_udf()
-        return self.__map_transformer_ref
+        self._map_transformer_ref: Optional[ObjectRef[MapTransformer]] = None
+        self._data_context_ref: Optional[ObjectRef[DataContext]] = None
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -441,6 +429,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
 
+    def _cache_arg_serialization(self):
+        """Lazily serialize _map_transformer, _data_context to object store on start.
+
+        Deferred until first task submission so that on_start callbacks
+        (e.g., on_write_start for Iceberg) can modify the transformer state
+        before serialization.
+        """
+        if self._map_transformer_ref is None:
+            self._map_transformer_ref = ray.put(self._map_transformer)
+            # Trigger the large UDF warning check by accessing the property.
+            # This is needed because ActorPoolMapOperator passes _map_transformer
+            # directly to actors, never accessing the lazy _map_transformer_ref property.
+            self._warn_large_udf()
+        if self._data_context_ref is None:
+            self._data_context_ref = ray.put(self._data_context)
+
     def start(self, options: "ExecutionOptions"):
         super().start(options)
         # Create output queue with desired ordering semantics.
@@ -448,6 +452,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._output_queue = ReorderingBundleQueue()
         else:
             self._output_queue = FIFOBundleQueue()
+
+        self._cache_arg_serialization()
 
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
@@ -471,8 +477,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""
         udf_size = ray.experimental.get_local_object_locations(
-            [self.__map_transformer_ref]
-        )[self.__map_transformer_ref]["object_size"]
+            [self._map_transformer_ref]
+        )[self._map_transformer_ref]["object_size"]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
