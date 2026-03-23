@@ -1,6 +1,9 @@
 import threading
+import sys
 from types import SimpleNamespace
 from typing import List, Tuple
+
+import pytest
 
 import ray
 import ray._private.worker as core_worker
@@ -206,3 +209,7 @@ def test_shutdown_multiple_cycles(shutdown_only):
         assert ray.is_initialized()
         ray.shutdown()
         assert not ray.is_initialized()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
