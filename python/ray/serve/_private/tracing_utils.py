@@ -236,8 +236,9 @@ def setup_tracing(
     Returns:
         bool: True if tracing setup is successful, False otherwise.
     """
+    global _tracing_enabled
+
     if tracing_exporter_import_path == "":
-        global _tracing_enabled
         _tracing_enabled = False
         return False
 
@@ -274,7 +275,6 @@ def setup_tracing(
     for span_processor in span_processors:
         trace.get_tracer_provider().add_span_processor(span_processor)
 
-    global _tracing_enabled
     _tracing_enabled = True
     return True
 

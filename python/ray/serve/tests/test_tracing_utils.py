@@ -1172,15 +1172,12 @@ def test_tracing_config_enabled(serve_and_ray_shutdown):
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    # Should have replica spans, proxy spans, and upstream spans
+    # Should have replica spans and upstream spans
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
     upstream_filename = None
     for file in files:
         if "replica" in file:
             replica_filename = file
-        elif "proxy" in file:
-            proxy_filename = file
         elif "upstream" in file:
             upstream_filename = file
 
