@@ -7,6 +7,7 @@ from ray._common.test_utils import SignalActor
 from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentID,
+    RequestMetadata,
 )
 from ray.serve._private.replica_result import (
     ActorReplicaResult,
@@ -135,6 +136,11 @@ def test_dispatch_rejects_selection_from_different_deployment():
         availability_zone=None,
         _replica=object(),
         _deployment_id=DeploymentID(name="deployment-b", app_name="app"),
+        _request_metadata=RequestMetadata(
+            request_id="request-id",
+            internal_request_id="internal-request-id",
+            call_method="__call__",
+        ),
         _method_name="__call__",
         _slot_token="slot-1",
     )

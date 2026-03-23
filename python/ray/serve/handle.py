@@ -184,18 +184,23 @@ class _DeploymentHandleBase(Generic[T]):
             return False
         return self.init_options._run_router_in_separate_loop
 
-    def _init_router_and_get_metadata(self) -> Tuple[Router, RequestMetadata]:
+    def _init_router(self) -> Router:
         if not self.is_initialized:
             self._init()
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        return self._router
+
+    def _init_router_and_get_metadata(self) -> Tuple[Router, RequestMetadata]:
+        router = self._init_router()
 
         metadata = serve._private.default_impl.get_request_metadata(
             self.init_options, self.handle_options
         )
 
-        if self._router is None:
-            raise RuntimeError("Router is not initialized")
-
-        return self._router, metadata
+        return router, metadata
 
     def _options(
         self, _prefer_local_routing=DEFAULT.VALUE, **kwargs
@@ -280,7 +285,8 @@ class _DeploymentHandleBase(Generic[T]):
                 f"for {selection._deployment_id}."
             )
 
-        router, metadata = self._init_router_and_get_metadata()
+        metadata = selection._request_metadata
+        router = self._init_router()
         return router.dispatch(selection, metadata, *args, **kwargs), metadata
 
     def options(

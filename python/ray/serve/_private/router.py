@@ -1125,6 +1125,7 @@ class AsyncioRouter:
                 availability_zone=replica.availability_zone,
                 _replica=replica,
                 _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
+                _request_metadata=request_meta,
                 _method_name=request_meta.call_method,
                 _slot_token=slot_token,
             )

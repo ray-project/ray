@@ -93,6 +93,7 @@ class ReplicaSelection:
     # Internal fields (not part of public API)
     _replica: "RunningReplica"
     _deployment_id: Optional[DeploymentID]
+    _request_metadata: RequestMetadata
     _method_name: str
     _slot_token: str  # Token for reserved slot
     _dispatched: bool = field(
