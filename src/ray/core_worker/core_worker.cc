@@ -2745,13 +2745,18 @@ void CoreWorker::UnregisterActorPool(const ActorPoolID &pool_id) {
   actor_pool_manager_->UnregisterPool(pool_id);
 }
 
-void CoreWorker::AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id) {
+void CoreWorker::AddActorToPool(const ActorPoolID &pool_id,
+                                const ActorID &actor_id,
+                                const NodeID &location) {
   RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
-  // Get the actor's location from the owner address (best effort)
-  // The actual location will be updated when the actor reports its address
-  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
-  NodeID location = NodeID::FromBinary(actor_handle->GetOwnerAddress().node_id());
-  actor_pool_manager_->AddActorToPool(pool_id, actor_id, location);
+  NodeID resolved_location = location;
+  if (resolved_location.IsNil()) {
+    // Derive from actor handle's owner address (best effort).
+    // The actual location will be updated when the actor reports its address.
+    auto actor_handle = actor_manager_->GetActorHandle(actor_id);
+    resolved_location = NodeID::FromBinary(actor_handle->GetOwnerAddress().node_id());
+  }
+  actor_pool_manager_->AddActorToPool(pool_id, actor_id, resolved_location);
 }
 
 void CoreWorker::RemoveActorFromPool(const ActorPoolID &pool_id,
@@ -2778,6 +2783,21 @@ std::vector<ActorID> CoreWorker::GetActorPoolActors(const ActorPoolID &pool_id) 
 PoolStats CoreWorker::GetActorPoolStats(const ActorPoolID &pool_id) const {
   RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
   return actor_pool_manager_->GetPoolStats(pool_id);
+}
+
+bool CoreWorker::HasActorPool(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->HasPool(pool_id);
+}
+
+int64_t CoreWorker::GetActorPoolOccupiedTaskSlots(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetOccupiedTaskSlots(pool_id);
+}
+
+int32_t CoreWorker::GetActorPoolNumActiveActors(const ActorPoolID &pool_id) const {
+  RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
+  return actor_pool_manager_->GetNumActiveActors(pool_id);
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(

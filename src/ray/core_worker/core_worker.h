@@ -1185,7 +1185,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param pool_id The ID of the pool.
   /// \param actor_id The ID of the actor to add.
-  void AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id);
+  void AddActorToPool(const ActorPoolID &pool_id,
+                      const ActorID &actor_id,
+                      const NodeID &location = NodeID::Nil());
 
   /// Remove an actor from a pool.
   ///
@@ -1218,6 +1220,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param pool_id The ID of the pool.
   /// \return Pool statistics.
   PoolStats GetActorPoolStats(const ActorPoolID &pool_id) const;
+
+  /// Check if a pool exists.
+  bool HasActorPool(const ActorPoolID &pool_id) const;
+
+  /// Returns in_flight + backlog for backpressure decisions.
+  int64_t GetActorPoolOccupiedTaskSlots(const ActorPoolID &pool_id) const;
+
+  /// Returns number of actors with tasks in flight.
+  int32_t GetActorPoolNumActiveActors(const ActorPoolID &pool_id) const;
 
  private:
   /// Submit an actor task on behalf of an actor pool.
