@@ -242,6 +242,10 @@ class LoggingManager:
             "handlers": ["file_train_sys_worker", "file_train_app_worker", "console"],
             "propagate": False,
         }
+        config_dict["root"] = {
+            "level": "INFO",
+            "handlers": ["file_train_app_worker", "console"],
+        }
         return config_dict
 
     @staticmethod
