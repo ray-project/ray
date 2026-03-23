@@ -814,15 +814,7 @@ python/ray/dag/tests/experimental/test_torch_tensor_transport.py
     DOC106: Function `run_worker_to_driver_dag`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `run_worker_to_driver_dag`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
-python/ray/dashboard/dashboard.py
-    DOC101: Method `Dashboard.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `Dashboard.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [minimal: bool, modules_to_load: Optional[Set[str]], session_dir: str, temp_dir: str].
---------------------
 python/ray/dashboard/head.py
-    DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
-    DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
-    DOC101: Method `DashboardHead.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `DashboardHead.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id_hex: str, gcs_address: str, http_host: str, http_port: int, http_port_retries: int, log_dir: str, logging_filename: str, logging_format: str, logging_level: int, logging_rotate_backup_count: int, logging_rotate_bytes: int, minimal: bool, modules_to_load: Optional[Set[str]], node_ip_address: str, serve_frontend: bool, session_dir: str, temp_dir: str].
     DOC103: Method `DashboardHead._load_dashboard_head_modules`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [modules_to_load: Optional[Set[str]]]. Arguments in the docstring but not in the function signature: [modules: ].
     DOC201: Method `DashboardHead._load_dashboard_head_modules` does not have a return section in docstring
     DOC103: Method `DashboardHead._load_subprocess_module_handles`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [modules_to_load: Optional[Set[str]]]. Arguments in the docstring but not in the function signature: [modules: ].
@@ -1165,6 +1157,9 @@ python/ray/data/block.py
     DOC201: Method `BlockAccessor.to_numpy` does not have a return section in docstring
     DOC102: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring contains more arguments than in function signature.
     DOC103: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [block: ].
+--------------------
+python/ray/data/checkpoint/checkpoint_writer.py
+    DOC201: Method `BatchBasedCheckpointWriter.write_block_checkpoint` does not have a return section in docstring
 --------------------
 python/ray/data/context.py
     DOC201: Method `DataContext.get_current` does not have a return section in docstring

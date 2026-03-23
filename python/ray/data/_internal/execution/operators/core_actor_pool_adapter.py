@@ -23,10 +23,10 @@ from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
 from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     ActorPoolScalingRequest,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.physical_operator import _ActorPoolInfo
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -416,7 +416,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             generator_backpressure_num_objects=backpressure,
             enable_task_events=True,
         )
-
         if not object_refs:
             raise RuntimeError(
                 "C++ ActorPoolManager returned no refs — pool has no actors "
@@ -589,9 +588,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         del self._running_actors[actor]
         return ref
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Get actor pool info for metrics."""
-        return _ActorPoolInfo(
+        return ActorPoolInfo(
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),

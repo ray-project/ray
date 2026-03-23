@@ -15,7 +15,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
-    from github import Repository
+    from ray_release.github_client import GitHubRepo
 
 from ray_release.aws import s3_put_rayci_test_data
 from ray_release.configs.global_config import get_global_config
@@ -357,11 +357,11 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
-    def is_jailed_with_open_issue(self, ray_github: "Repository") -> bool:
+    def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
-        from github import GithubException
+        from ray_release.github_client import GitHubException
 
         # is jailed
         state = self.get_state()
@@ -375,7 +375,7 @@ class Test(dict):
         try:
             issue = ray_github.get_issue(issue_number)
             return issue.state == "open"
-        except GithubException as e:
+        except GitHubException as e:
             logger.warning(
                 f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
             )
@@ -441,6 +441,8 @@ class Test(dict):
         byod_type = self.get_byod_type()
         if byod_type.startswith("llm-"):
             return byod_type[len("llm-") :]
+        if byod_type.startswith("gpu-"):
+            return byod_type[len("gpu-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
