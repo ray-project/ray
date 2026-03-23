@@ -1,3 +1,3 @@
 # Contributing
 
-Addressing good-first-issue #23886: [RLlib] Support Graph input batches
+Addressing good-first-issue #29456: [Core] Implement Ray based concurrent.futures.Executor 
