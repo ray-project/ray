@@ -365,7 +365,9 @@ class RunConfig:
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
             for all Ray Train worker actors.
-        log_level: The log level for Ray Train controller and worker loggers.
+        log_level: The log level for Ray Train's internal ``ray.train`` logger
+            on both controller and worker processes. This does not affect the
+            log level of user code in the training function.
             Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
             If not set, defaults to ``"INFO"``.
     """
