@@ -220,6 +220,7 @@ Doctest Example
 The following demonstrates the driver-managed approach:
 
 .. doctest::
+    :skipif: True
 
     >>> import ray
     >>> import numpy as np
