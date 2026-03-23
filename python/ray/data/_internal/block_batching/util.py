@@ -204,7 +204,7 @@ def _format_batch(
     return dataclasses.replace(batch, data=formatted_data)
 
 
-def _make_batch_writable(batch):
+def _make_batch_writable(batch: "DataBatch") -> "DataBatch":
     """Return a writeable batch.
 
     ``pa.Array.to_numpy()`` returns read-only arrays by default, so when
