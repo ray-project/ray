@@ -546,7 +546,7 @@ class Router(ABC):
 
     @abstractmethod
     @asynccontextmanager
-    def choose_replica(
+    async def choose_replica(
         self,
         request_meta: RequestMetadata,
         *request_args,
