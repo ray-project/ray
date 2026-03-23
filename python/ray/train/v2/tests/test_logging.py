@@ -197,23 +197,16 @@ def test_log_level_env_var_overrides_run_config(controller_logging, monkeypatch)
     assert config["loggers"]["ray.train"]["level"] == "WARNING"
 
 
-def test_log_level_int_from_run_config(controller_logging):
-    """Test that an integer log level from RunConfig works."""
-    context = _create_run_context_with_log_level(logging.DEBUG)
-    config = LoggingManager._get_controller_logger_config_dict(context)
-    assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-
-
 def test_invalid_log_level_string_raises():
     """Test that an invalid log level string raises ValueError."""
     with pytest.raises(ValueError, match="Invalid log_level"):
         RunConfig(name="test", log_level="INVALID_LEVEL")
 
 
-def test_invalid_log_level_negative_int_raises():
-    """Test that a negative integer log level raises ValueError."""
+def test_invalid_log_level_type_raises():
+    """Test that a non-string log level raises ValueError."""
     with pytest.raises(ValueError, match="Invalid log_level"):
-        RunConfig(name="test", log_level=-1)
+        RunConfig(name="test", log_level=10)
 
 
 if __name__ == "__main__":

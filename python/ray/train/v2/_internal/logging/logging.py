@@ -193,8 +193,6 @@ class LoggingManager:
             run_config = context.get_run_config()
 
         if run_config.log_level is not None:
-            if isinstance(run_config.log_level, int):
-                return logging.getLevelName(run_config.log_level)
             return run_config.log_level.upper()
 
         return "INFO"
