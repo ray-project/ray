@@ -13,7 +13,7 @@ def is_autoscaling_enabled() -> bool:
     max_count > min_count. If no cluster config is available or no node type
     is autoscalable, returns False.
     """
-    import ray
+    import ray._private.state
 
     cluster_config = ray._private.state.state.get_cluster_config()
     if not cluster_config or not cluster_config.node_group_configs:
