@@ -5084,11 +5084,12 @@
   frequency: weekly
   group: ray-examples
   team: ml
-  working_dir: //doc/source/train/examples/transformers/transformers_reinforcement_learning
+  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
 
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

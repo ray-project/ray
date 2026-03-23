@@ -106,7 +106,7 @@ from pprint import pprint
 pprint(ray.cluster_resources())
 ```
 
-Change these two variables to control whether the training uses CPUs or GPUs, and how many workers to spawn. Each worker claims one CPU or GPU, so make sure not to request more resources than are available. By default, the training runs with one GPU worker.
+Change these two variables to control whether the training uses CPUs or GPUs, and how many workers to spawn. Each worker claims one CPU or GPU, so make sure not to request more resources than are available. By default, the training runs with four GPU worker.
 
 
 ```python
@@ -116,7 +116,7 @@ num_workers = 4  # set this to the number of GPUs or CPUs you want to use
 
 ## 3. Using Hugging Face TRL (Transformer Reinforcement Learning) with Ray Train
 
-In comparison to supervised pre-training where models optimize to minimize the error for their next token, RL-based post-training aims to maximise their reward from a prompt. Therefore, it's crucial to define a reward function to measure the success and to train a model.
+In comparison to supervised pre-training where models optimize to minimize the error for their next token, RL-based post-training aims to maximize their reward from a prompt. Therefore, it's crucial to define a reward function to measure the success and to train a model.
 
 This example uses the `trl.rewards.accuracy_reward` function to check whether the model's answer matches the answer in the dataset. As the answers use the LaTeX format, you must parse responses and solution before comparing them. The default `trl.rewards.accuracy_reward` implementation applies timeouts to the `parse` and `verify` functions, which are incompatible with Ray. The version defined below disables these timeouts by setting `parsing_timeout=0` and `timeout_seconds=0`.
 
@@ -190,6 +190,8 @@ def train_func(config):
         vllm_gpu_memory_utilization=0.3,
         # Run two training epochs over the whole dataset
         num_train_epochs=2,
+        # Number of generations per prompt to sample, equivalent to G in the GRPO loss function.
+        num_generations=8,
         # Save checkpoints and log metrics every epoch
         save_strategy="epoch",
         logging_strategy="epoch",
@@ -206,7 +208,7 @@ def train_func(config):
     # Report metrics and checkpoints to Ray Train
     trainer.add_callback(RayTrainReportCallback())
 
-    # Prepare your trainer for Ray Data integration
+    # Prepare your trainer for TRL and Huggingface Transformer integration
     trainer = prepare_trainer(trainer)
 
     # Start Training
@@ -230,6 +232,9 @@ trainer = TorchTrainer(
     train_func,
     scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     run_config=RunConfig(
+        # On Anyscale this path is auto-mounted shared storage.
+        # For open-source Ray, use a shared NFS path or s3:// URI accessible from all nodes.
+        storage_path="/mnt/cluster_storage/",
         checkpoint_config=CheckpointConfig(
             num_to_keep=1,
             checkpoint_score_attribute="reward",
@@ -250,10 +255,11 @@ You can use the returned `Result` object to access metrics and the Ray Train `Ch
 
 
 ```python
-result
+print(f"Best reward: {result.metrics['reward']}")
+print(f"Best checkpoint: {result.checkpoint}")
 ```
 
-## Scaling to more GPUs or a larger model
+## 4. Scaling to more GPUs or a larger model
 
 The preceding example trains with 4 workers on a small 100-sample subset of the dataset. To scale up, adjust `num_workers` in `ScalingConfig` and the `num_workers` variable at the top of the notebook, along with the dataset size and model.
 
@@ -265,33 +271,8 @@ Replace `"Qwen/Qwen2.5-0.5B"` with a larger checkpoint. Larger models require mo
 - Explore using DeepSpeed ZeRO to distribute the model weights across multiple GPUs.
 - Reducing `vllm_gpu_memory_utilization` from `0.3` to leave more memory for model weights at the cost of a smaller vLLM KV cache.
 
-**Example configuration for 8 GPUs with the full dataset:**
-
-```python
-# In train_func, use the full dataset:
-dataset = load_dataset("trl-lib/DeepMath-103K", split="train").shuffle(seed=42)
-
-training_args = GRPOConfig(
-    per_device_train_batch_size=4,
-    use_vllm=True,
-    vllm_mode="colocate",
-    vllm_gpu_memory_utilization=0.3,
-    num_train_epochs=3,
-)
-
-# Launch with 8 workers
-trainer = TorchTrainer(
-    train_func,
-    scaling_config=ScalingConfig(num_workers=8, use_gpu=True),
-    run_config=RunConfig(
-        checkpoint_config=CheckpointConfig(
-            num_to_keep=1,
-            checkpoint_score_attribute="reward",
-            checkpoint_score_order="max",
-        ),
-    ),
-)
-```
+**Fault Tolerance:**
+For longer runs where worker or node failures are possible, set `failure_config=FailureConfig(max_failures=1)` in `RunConfig`. Ray Train will automatically restart training up to twice on failure. Because this example already saves a checkpoint each epoch, a restarted run resumes from the last checkpoint rather than from scratch.
 
 ## Summary
 
