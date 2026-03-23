@@ -20,6 +20,7 @@ from ray.tests.conftest import *  # noqa
 @pytest.fixture
 def start_mongo():
     import pymongo
+    import pymongo.errors
 
     dbpath = tempfile.mkdtemp(prefix="mongod_test_")
     proc = subprocess.Popen(
