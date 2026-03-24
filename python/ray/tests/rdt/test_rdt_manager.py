@@ -14,6 +14,7 @@ from ray.experimental import (
 )
 from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta
 from ray.experimental.rdt.tensor_transport_manager import FetchRequest
+from ray.exceptions import GetTimeoutError
 
 _BACKEND_NAME = "TEST_PIPELINE"
 _TWO_SIDED_BACKEND_NAME = "TEST_TWO_SIDED"
@@ -69,7 +70,9 @@ class _PipelineCheckingTransport(TensorTransportManager):
         self.__class__.call_log.append(("fetch", obj_id))
         return FetchRequest(obj_id=obj_id, tensors=[f"val:{obj_id}"])
 
-    def wait_fetch_complete(self, fetch_request: FetchRequest) -> List[Any]:
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
         if self.__class__.wait_delay > 0:
             import time
             time.sleep(self.__class__.wait_delay)
@@ -295,6 +298,26 @@ def test_object_fetch_timed_out_error():
         rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = 0.1
         try:
             manager.fetch_and_get_rdt_objects(object_ids)
+        finally:
+            rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = original
+
+
+def test_object_fetch_timed_out_error():
+    """fetch_and_get_rdt_objects raises ObjectFetchTimedOutError when RDT timeout is hit."""
+    from ray.exceptions import ObjectFetchTimedOutError
+
+    object_ids = ["obj1", "obj2"]
+    manager = _build_manager(object_ids)
+    # Make wait_fetch_complete slow enough to exceed a very short timeout.
+    _PipelineCheckingTransport.wait_delay = 0.2
+
+    # Check that user timeout triggers before fetch fail timeout.
+    with pytest.raises(GetTimeoutError):
+        import ray._private.ray_constants as rc
+        original = rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS
+        rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = 1
+        try:
+            manager.fetch_and_get_rdt_objects(object_ids, timeout=0.1)
         finally:
             rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = original
 

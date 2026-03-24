@@ -323,17 +323,22 @@ class NixlTensorTransport(TensorTransportManager):
                 f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
             ) from None
 
-    def wait_fetch_complete(self, fetch_request: FetchRequest) -> List["torch.Tensor"]:
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List["torch.Tensor"]:
         """Waits for a previously initiated fetch to complete and returns the tensors.
 
         Args:
             fetch_request: The NixlFetchRequest returned by fetch_multiple_tensors.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
 
         Returns:
             List of tensors that were transferred.
 
         Raises:
             RayDirectTransportError: If the transfer failed.
+            TimeoutError: If the timeout is exceeded.
         """
         assert isinstance(fetch_request, NixlFetchRequest)
         obj_id = fetch_request.obj_id
@@ -343,6 +348,7 @@ class NixlTensorTransport(TensorTransportManager):
 
         try:
             # Check the state of the transfer continuously.
+            deadline = None if timeout < 0 else time.monotonic() + timeout
             while True:
                 state = fetch_request.nixl_agent.check_xfer_state(
                     fetch_request.xfer_handle
@@ -350,6 +356,10 @@ class NixlTensorTransport(TensorTransportManager):
                 if state == "ERR":
                     raise RuntimeError("NIXL transfer got to Error state.")
                 if state == "PROC":
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"NIXL transfer timed out after {timeout}s for object id: {obj_id}"
+                        )
                     with self._aborted_transfer_obj_ids_lock:
                         if obj_id in self._aborted_transfer_obj_ids:
                             self._aborted_transfer_obj_ids.remove(obj_id)
@@ -361,6 +371,8 @@ class NixlTensorTransport(TensorTransportManager):
                     break
 
             return fetch_request.tensors
+        except TimeoutError:
+            raise
         except Exception:
             from ray.exceptions import RayDirectTransportError
 

@@ -182,7 +182,9 @@ class TensorTransportManager(ABC):
         )
         return FetchRequest(obj_id=obj_id, tensors=tensors)
 
-    def wait_fetch_complete(self, fetch_request: FetchRequest) -> List[Any]:
+    def wait_fetch_complete(
+        self, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
         """Wait for a previously initiated fetch to complete and return the tensors.
 
         The default implementation returns the tensors stored in the FetchRequest
@@ -190,9 +192,14 @@ class TensorTransportManager(ABC):
 
         Args:
             fetch_request: The FetchRequest returned by fetch_multiple_tensors.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
 
         Returns:
             The received tensors.
+
+        Raises:
+            TimeoutError: If timeout is exceeded.
         """
         return fetch_request.tensors
 

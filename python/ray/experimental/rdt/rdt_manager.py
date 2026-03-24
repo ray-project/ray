@@ -557,7 +557,9 @@ class RDTManager:
                 target_buffers,
             )
 
-    def _wait_fetch(self, obj_id: str, fetch_request: FetchRequest) -> List[Any]:
+    def _wait_fetch(
+        self, obj_id: str, fetch_request: FetchRequest, timeout: float = -1
+    ) -> List[Any]:
         """
         Waits for a previously triggered fetch to complete and returns the tensors.
 
@@ -566,12 +568,14 @@ class RDTManager:
             fetch_request: An ObjectStoreFetchRequest representing an object
                 transferred via Ray's object store or a FetchRequest
                 representing an object transferred via a tensor transport.
+            timeout: Maximum time in seconds to wait. -1 means wait indefinitely.
+                0 means return immediately if not ready.
 
         Returns:
             The list of tensors fetched.
         """
         if isinstance(fetch_request, ObjectStoreFetchRequest):
-            return ray.get(fetch_request.object_ref)
+            return ray.get(fetch_request.object_ref, timeout=timeout)
         else:
             from ray.experimental.rdt.util import get_tensor_transport_manager
 
@@ -579,7 +583,9 @@ class RDTManager:
             tensor_transport_manager = get_tensor_transport_manager(
                 rdt_meta.tensor_transport_backend
             )
-            return tensor_transport_manager.wait_fetch_complete(fetch_request)
+            return tensor_transport_manager.wait_fetch_complete(
+                fetch_request, timeout=timeout
+            )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]
@@ -791,7 +797,7 @@ class RDTManager:
 
         Raises:
             GetTimeoutError: If the user-specified timeout is exceeded.
-            TimeoutError: If RDT_FETCH_FAIL_TIMEOUT_SECONDS is exceeded.
+            ObjectFetchTimedOutError: If RDT_FETCH_FAIL_TIMEOUT_SECONDS is exceeded.
         """
         from ray.exceptions import GetTimeoutError, ObjectFetchTimedOutError
 
@@ -844,7 +850,8 @@ class RDTManager:
             # transfers that were already started.
             while fetch_requests:
                 object_id, fetch_request = fetch_requests.popitem()
-                if time.time() > deadline:
+                timeout = deadline - time.time()
+                if timeout < 0:
                     if user_timeout_is_smaller:
                         raise GetTimeoutError(
                             f"ray.get timed out after {timeout}s."
@@ -855,15 +862,17 @@ class RDTManager:
                             owner_address="",
                             call_site="",
                         )
-                result[object_id] = self._wait_fetch(object_id, fetch_request)
+                result[object_id] = self._wait_fetch(
+                    object_id, fetch_request, timeout=timeout
+                )
             return result
         finally:
-            # Wait on remaining requests to ensure cleanup.
-            # TODO(swang): This will wait for other fetches to succeed or error.
-            # Ideally if an exception was already thrown, we should just cancel
-            # the remaining fetches.
+            # Ensure cleanup of remaining fetch requests.
+            # TODO(swang): This assumes wait_fetch with timeout=0 is cheap and
+            # will do the cleanup. A cleaner design is to do cleanup on
+            # FetchRequest.__del__.
             for object_id, fetch_request in fetch_requests.items():
-                self._wait_fetch(object_id, fetch_request)
+                self._wait_fetch(object_id, fetch_request, timeout=0)
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """
