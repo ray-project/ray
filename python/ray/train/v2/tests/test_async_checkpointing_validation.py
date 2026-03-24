@@ -495,7 +495,12 @@ def test_report_validation_fn_resumption(
     # Wait for validation to start, then SIGINT the trainer process.
     ray.get(signal_actor.wait.remote())
     os.kill(process.pid, signal.SIGINT)
-    process.join()
+    # Bound waiting to avoid hanging this test if graceful shutdown stalls.
+    process.join(timeout=30)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=30)
+    assert not process.is_alive(), "Trainer subprocess failed to exit in time."
 
     def validation_fn_finish(checkpoint, score):
         return {"score": score}
