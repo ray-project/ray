@@ -86,7 +86,7 @@ The following example shows a Ray worker group that requests one vGPU per pod.
      spec:
        containers:
          - name: ray-node
-           image: rayproject/ray-ml:2.54.0-gpu
+           image: rayproject/ray-ml:latest-gpu
            ...
            resources:
              limits:
