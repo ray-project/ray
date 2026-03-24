@@ -46,7 +46,7 @@ static pthread_once_t real_funcs_init_once = PTHREAD_ONCE_INIT;
 #define NUM_TLS_SLOTS 8
 #define TLS_SLOT_SIZE 8192
 static __thread char tls_ring[NUM_TLS_SLOTS][TLS_SLOT_SIZE];
-static __thread int tls_ring_idx;
+static __thread unsigned int tls_ring_idx;
 
 static void init_real_funcs(void) {
     real_getenv = (char *(*)(const char *))dlsym(RTLD_NEXT, "getenv");
