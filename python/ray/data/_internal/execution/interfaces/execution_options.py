@@ -104,7 +104,9 @@ class ExecutionResources:
             f"memory={self.memory_str()})"
         )
 
-    def __eq__(self, other: "ExecutionResources") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ExecutionResources):
+            return NotImplemented
         return (
             self.cpu == other.cpu
             and self.gpu == other.gpu
