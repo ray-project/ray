@@ -37,6 +37,17 @@ steps:
       RAY_CUDA_CODE: "cu128"
     tags: cibase
 
+  - name: llmgpubuild-py312
+    wanda: ci/docker/llm.build.wanda.yaml
+    depends_on:
+      - oss-ci-base_cu130-multipy
+    env:
+      PYTHON: "3.12"
+      BASE_TYPE: "cu130"
+      BUILD_VARIANT: "gpubuild-py312"
+      RAY_CUDA_CODE: "cu130"
+    tags: cibase
+
   - label: "llm cpu tests"
     key: "llm-cpu-tests"
     tags:
