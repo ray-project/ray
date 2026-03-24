@@ -70,6 +70,34 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     Finally, make sure you configured the group or pool of GPU Kubernetes nodes, to autoscale.
     Refer to your :ref:`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 
+Configuring Ray pods for vGPU with HAMi
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If your Kubernetes cluster uses `HAMi`_ to provide vGPU resources, you can request vGPU in Ray pods through the HAMi resource keys.
+The following example shows a Ray worker group that requests one vGPU per pod.
+
+.. code-block:: yaml
+
+   groupName: vgpu-group
+   replicas: 0
+   minReplicas: 0
+   maxReplicas: 5
+   ...
+   template:
+     spec:
+       containers:
+         - name: ray-node
+           image: rayproject/ray-ml:2.54.0-gpu
+           ...
+           resources:
+             limits:
+               nvidia.com/gpu: 1
+               nvidia.com/gpucores: 50
+               nvidia.com/gpumem: 20000
+             requests:
+               nvidia.com/gpu: 1
+               nvidia.com/gpucores: 50
+               nvidia.com/gpumem: 20000
+
 GPU multi-tenancy
 _________________
 
@@ -240,3 +268,4 @@ and about NVIDIA's GPU plugin for Kubernetes `here <https://github.com/NVIDIA/k8
 .. _`ExtendedResourceToleration`: https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#extendedresourcetoleration
 .. _`Kubernetes docs`: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
 .. _`bug`: https://github.com/ray-project/kuberay/pull/497/
+.. _`HAMi`: https://github.com/Project-HAMi/HAMi
