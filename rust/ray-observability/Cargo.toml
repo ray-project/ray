@@ -19,6 +19,8 @@ tokio = { workspace = true }
 parking_lot = { workspace = true }
 uuid = { workspace = true }
 nix = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 parking_lot = { workspace = true }

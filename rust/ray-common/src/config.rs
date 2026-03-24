@@ -89,6 +89,20 @@ pub struct RayConfig {
 
     // ─── Cgroup ───────────────────────────────────────────────
     pub enable_cgroup: bool,
+
+    // ─── Export / Event ────────────────────────────────────────
+    /// Global enable for export API file output (all types).
+    /// C++ parity: `enable_export_api_write` (default false).
+    pub enable_export_api_write: bool,
+    /// Selective per-type export API enable (comma-separated).
+    /// C++ parity: `enable_export_api_write_config` (default empty).
+    pub enable_export_api_write_config: String,
+    /// Enable aggregator-path ray events (actor lifecycle, etc.).
+    /// C++ parity: `enable_ray_event` (default false).
+    pub enable_ray_event: bool,
+    /// Periodic flush interval for ray event recorder (ms).
+    /// C++ parity: `ray_events_report_interval_ms` (default 10000).
+    pub ray_events_report_interval_ms: u64,
 }
 
 impl Default for RayConfig {
@@ -120,6 +134,10 @@ impl Default for RayConfig {
             worker_register_timeout_seconds: 60,
             task_retry_delay_ms: 0,
             enable_cgroup: false,
+            enable_export_api_write: false,
+            enable_export_api_write_config: String::new(),
+            enable_ray_event: false,
+            ray_events_report_interval_ms: 10_000,
         }
     }
 }
@@ -262,6 +280,10 @@ impl RayConfig {
         env_override!(memory_usage_threshold, f32);
         env_override!(memory_monitor_refresh_ms, u64);
         env_override!(min_memory_free_bytes, i64);
+        env_override!(enable_export_api_write, bool);
+        env_override!(enable_export_api_write_config, String);
+        env_override!(enable_ray_event, bool);
+        env_override!(ray_events_report_interval_ms, u64);
     }
 }
 

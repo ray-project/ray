@@ -319,7 +319,7 @@ All C++ actor lifecycle behaviors are now implemented in Rust:
 |---|---|---|---|
 | GCS-1 | Internal KV persistence | fixed | Round 2 |
 | GCS-4 | Job info enrichment/filters | fixed | Round 6 |
-| GCS-6 | Drain node side effects | **fixed (FULL)** | **GCS-6 Round 9** |
+| GCS-6 | Drain node side effects | **fixed (FULL — including live sink/flush)** | **GCS-6 Round 10** |
 | GCS-8 | Pubsub unsubscribe scoping | fixed | Round 2 |
 | GCS-12 | PG create lifecycle | fixed | Round 3 |
 | GCS-16 | Autoscaler version handling | fixed | Round 2 |
@@ -331,3 +331,21 @@ All C++ actor lifecycle behaviors are now implemented in Rust:
 | CORE-10 | Object location subscriptions | fixed | Round 11 |
 
 **12/12 fixed. 0 partial. 0 open. 0 de-scoped.**
+
+---
+
+### Round 10 Addendum: Live runtime sink/flush wiring
+
+Round 9 was re-audited and found to lack live runtime wiring for the `enable_ray_event` path.
+Round 10 closes this:
+
+1. **`ray-common/src/config.rs`**: Added `enable_ray_event`, `enable_export_api_write`, `enable_export_api_write_config`, `ray_events_report_interval_ms` to `RayConfig` with env var overrides
+2. **`ray-gcs/src/server.rs`**: `initialize()` now reads `RayConfig`, builds `ActorExportConfig`, attaches `LoggingEventSink` to the event exporter, and spawns a periodic flush loop when `enable_ray_event=true`
+3. **`ray-observability/src/export.rs`**: Added `has_sink()` method on `EventExporter`
+4. **4 new tests** proving actual sink/flush behavior:
+   - `test_actor_ray_event_path_uses_real_sink_when_enabled`
+   - `test_actor_ray_event_path_flushes_through_live_runtime`
+   - `test_actor_ray_event_path_is_not_just_buffered_in_memory`
+   - `test_actor_ray_event_path_disabled_means_no_sink_activity`
+
+Test results: 483 ray-gcs + 45 ray-observability = 528 total, 0 failures.

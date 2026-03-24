@@ -61,6 +61,14 @@ Reference audit:
 | GCS-6 | GCS | `test_actor_export_event_honors_export_api_write_config_actor_only` | unit | added | GCS-6 R9: selective EXPORT_ACTOR config enables file output; EXPORT_TASK does not |
 | GCS-6 | GCS | `test_actor_export_event_payload_matches_expected_fields` | unit | added | GCS-6 R9: all 16 ExportActorData proto fields in file output |
 | GCS-6 | GCS | `test_actor_ray_event_path_emits_when_enable_ray_event_is_enabled` | unit | added | GCS-6 R9: aggregator path buffers events; file export bypassed |
+| GCS-6 | GCS | `test_actor_ray_event_path_uses_real_sink_when_enabled` | unit | added | GCS-6 R10: real sink attached, events delivered through flush |
+| GCS-6 | GCS | `test_actor_ray_event_path_flushes_through_live_runtime` | unit | added | GCS-6 R10: periodic flush loop drains buffer through sink |
+| GCS-6 | GCS | `test_actor_ray_event_path_is_not_just_buffered_in_memory` | unit | added | GCS-6 R10: proves events leave memory via sink, not just sit in buffer |
+| GCS-6 | GCS | `test_actor_ray_event_path_disabled_means_no_sink_activity` | unit | added | GCS-6 R10: disabled path has no sink, no buffer, no flush output |
+| GCS-6 | GCS | `test_actor_ray_event_path_uses_cpp_equivalent_output_channel` | unit | added | GCS-6 R11: EventAggregatorSink writes AddEventsRequest JSON with RayEvent protos |
+| GCS-6 | GCS | `test_actor_ray_event_path_preserves_expected_structured_event_delivery` | unit | added | GCS-6 R11: ActorLifecycleEvent with state_transitions, source_type=GCS, event_type=10 |
+| GCS-6 | GCS | `test_actor_ray_event_path_not_just_tracing_logs` | unit | added | GCS-6 R11: output is AddEventsRequest JSON file, not plain log lines |
+| GCS-6 | GCS | `test_actor_ray_event_path_disabled_means_no_output_channel_activity` | unit | added | GCS-6 R11: disabled path creates no ray_events dir or output file |
 | GCS-7 | GCS | `test_get_all_node_address_and_liveness_filters` | unit/integration | spec | filtered query parity |
 | GCS-8 | GCS | `test_pubsub_long_poll_and_unsubscribe_semantics` | integration | spec | repeated subscribe/unsubscribe |
 | GCS-9 | GCS | `test_actor_lineage_reconstruction_rpc` | integration | added | Rust actor manager + gRPC handler now implement lineage-restart requests with stale-request suppression and restart scheduling tests |
@@ -205,3 +213,21 @@ Reference audit:
 | RAYLET-6 | Raylet | `test_get_node_stats_unreachable_driver_does_not_fallback_to_tracker_data` | unit | added | Round 8: unreachable driver gets default stats, not tracker |
 | RAYLET-6 | Raylet | `test_get_node_stats_live_rpc_success_still_populates_runtime_fields` | unit | added | Round 8: successful stats collection populates all fields |
 | RAYLET-6 | Raylet | `test_get_node_stats_collects_driver_stats_through_same_live_path` | unit | added | Round 7: drivers use same collection path |
+| GCS-6 | GCS | `test_actor_registration_emits_definition_and_lifecycle_events` | unit | added | GCS-6 R12: registration emits 2 separate events (definition + lifecycle) matching C++ |
+| GCS-6 | GCS | `test_actor_registration_event_types_match_cpp_cardinality` | unit | added | GCS-6 R12: definition event has no lifecycle_event nested — separate protos |
+| GCS-6 | GCS | `test_actor_definition_event_includes_required_resources` | unit | added | GCS-6 R12: required_resources populated in ActorDefinitionEvent |
+| GCS-6 | GCS | `test_actor_definition_event_includes_placement_group_and_label_selector` | unit | added | GCS-6 R12: placement_group_id and label_selector populated |
+| GCS-6 | GCS | `test_actor_definition_event_includes_call_site_parent_and_ref_ids` | unit | added | GCS-6 R12: call_site, parent_id, ref_ids populated |
+| GCS-6 | GCS | `test_actor_lifecycle_alive_event_includes_worker_id_and_port` | unit | added | GCS-6 R12: ALIVE transition has worker_id and port |
+| GCS-6 | GCS | `test_actor_lifecycle_dead_event_includes_death_cause` | unit | added | GCS-6 R12: DEAD transition has death_cause |
+| GCS-6 | GCS | `test_actor_lifecycle_restarting_event_includes_restart_reason` | unit | added | GCS-6 R12: RESTARTING transition has restart_reason=NODE_PREEMPTION |
+| GCS-6 | GCS | `test_enable_ray_event_without_structured_sink_is_not_treated_as_full_parity_path` | unit | added | GCS-6 R12: no LoggingEventSink fallback in parity path |
+| GCS-6 | Observability | `test_actor_event_export_merges_same_actor_same_type_events_like_cpp` | unit | added | GCS-6 R13: grouping/merge of same-actor events before export |
+| GCS-6 | Observability | `test_actor_event_export_preserves_cpp_grouping_order` | unit | added | GCS-6 R13: insertion order preserved during grouping |
+| GCS-6 | Observability | `test_actor_event_export_does_not_overlap_in_flight_flushes` | unit | added | GCS-6 R13: flush_in_progress prevents overlapping exports |
+| GCS-6 | Observability | `test_actor_event_export_flushes_on_shutdown` | unit | added | GCS-6 R13: shutdown() does final flush of remaining events |
+| GCS-6 | Observability | `test_actor_event_export_stop_semantics_match_cpp_closely` | unit | added | GCS-6 R13: enabled=false blocks new events after shutdown |
+| GCS-6 | Observability | `test_actor_event_export_uses_runtime_delivery_mechanism_matching_claimed_parity` | unit | added | GCS-6 R13: file output round-trips to AddEventsRequest proto |
+| GCS-6 | GCS Server | `test_gcs_server_shutdown_flushes_actor_events` | integration | added | GCS-6 R14: live server stop() flushes buffered events to output file |
+| GCS-6 | GCS Server | `test_gcs_server_shutdown_rejects_new_actor_events_after_shutdown_boundary` | integration | added | GCS-6 R14: events rejected after live server stop() |
+| GCS-6 | GCS Server | `test_actor_event_output_channel_matches_claimed_full_parity_contract` | integration | added | GCS-6 R14: live server output round-trips to AddEventsRequest proto with correct fields |

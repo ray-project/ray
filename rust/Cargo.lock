@@ -1724,6 +1724,7 @@ name = "ray-observability"
 version = "3.0.0-dev"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "hex",
  "nix",
  "parking_lot",
