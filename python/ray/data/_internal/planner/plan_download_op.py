@@ -417,7 +417,15 @@ async def _download_uris_with_obstore(
                 (start, min(start + range_chunk_size, size))
                 for start in range(0, size, range_chunk_size)
             ]
-            await asyncio.gather(*[_fetch_range(s, e) for s, e in ranges])
+            tasks = [asyncio.ensure_future(_fetch_range(s, e)) for s, e in ranges]
+            try:
+                await asyncio.gather(*tasks)
+            except Exception:
+                for t in tasks:
+                    t.cancel()
+                # Let cancelled tasks finish so semaphore permits are released.
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
             return bytes(result)
         except Exception as e:
             logger.debug(
