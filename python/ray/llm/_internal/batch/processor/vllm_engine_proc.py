@@ -180,7 +180,6 @@ def build_vllm_engine_processor(
         "concurrency": config.concurrency,
         "runtime_env": config.runtime_env,
         "model_source": config.model_source,
-        "trust_remote_code": trust_remote_code,
     }
 
     # Resolve and build PrepareImageStage if enabled
