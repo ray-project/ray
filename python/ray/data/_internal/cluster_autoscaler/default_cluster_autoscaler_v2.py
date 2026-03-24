@@ -19,6 +19,7 @@ from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -51,7 +52,9 @@ class _NodeResourceSpec:
     def of(cls, *, cpu=0, gpu=0, mem=0):
         cpu = math.floor(cpu)
         gpu = math.floor(gpu)
-        mem = math.floor(mem)
+        # Round memory to the nearest 0.1 GiB so that nodes of the same type
+        # with slightly different reported physical memory are grouped together.
+        mem = int(round(mem / GiB, 1) * GiB) if mem > 0 else 0
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
     @classmethod
@@ -64,23 +67,6 @@ class _NodeResourceSpec:
 
     def to_bundle(self):
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
-
-
-def _round_and_count(bundles: List[Dict[str, Any]]) -> Counter:
-    """Count bundles by node spec, rounding memory to the nearest 0.1 GiB.
-
-    This groups nodes of the same type that report slightly different physical
-    memory (e.g. 14.9 GiB vs 14.91 GiB) into one entry for cleaner log output.
-    """
-    from ray.data._internal.util import GiB
-
-    tenth_gib = GiB // 10
-    rounded = []
-    for bundle in bundles:
-        spec = _NodeResourceSpec.from_bundle(bundle)
-        mem = round(spec.mem / tenth_gib) * tenth_gib if spec.mem > 0 else 0
-        rounded.append(_NodeResourceSpec(cpu=spec.cpu, gpu=spec.gpu, mem=mem))
-    return Counter(rounded)
 
 
 def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
@@ -261,8 +247,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             active_bundles, pending_bundles, self._resource_limits
         )
 
-        if resource_request != active_bundles and is_autoscaling_enabled():
-            self._log_resource_request(util, active_bundles, resource_request)
+        if resource_request != active_bundles:
+            self._log_resource_request(
+                util, active_bundles, resource_request, is_autoscaling_enabled()
+            )
 
         self._send_resource_request(resource_request)
 
@@ -271,6 +259,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         current_utilization: ExecutionResources,
         active_bundles: List[Dict[str, float]],
         resource_request: List[Dict[str, float]],
+        autoscaling_enabled: bool = True,
     ) -> None:
         message = (
             "The utilization of one or more logical resource is higher than the "
@@ -281,13 +270,17 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
         )
 
-        current_node_counts = _round_and_count(active_bundles)
-        requested_node_counts = _round_and_count(resource_request)
+        current_node_counts = Counter(
+            [_NodeResourceSpec.from_bundle(bundle) for bundle in active_bundles]
+        )
+        requested_node_counts = Counter(
+            [_NodeResourceSpec.from_bundle(bundle) for bundle in resource_request]
+        )
         for node_spec, requested_count in requested_node_counts.items():
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
-        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING:
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not autoscaling_enabled:
             level = logging.DEBUG
         else:
             level = logging.INFO
