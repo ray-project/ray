@@ -835,44 +835,34 @@ class RDTManager:
         # exactly one secondary copy, even if another secondary copy of the
         # object is already in the local store.
         fetch_requests: Dict[str, "FetchRequest"] = {}
-        try:
-            for object_id in object_ids:
-                if object_id in result:
-                    continue
-                assert self.is_managed_object(object_id), f"No metadata found for {object_id}"
+        for object_id in object_ids:
+            if object_id in result:
+                continue
+            assert self.is_managed_object(object_id), f"No metadata found for {object_id}"
 
-                fetch_requests[object_id] = self._trigger_fetch(
-                    object_id, use_object_store
-                )
+            fetch_requests[object_id] = self._trigger_fetch(
+                object_id, use_object_store
+            )
 
-            # Always wait for all in-flight fetches to complete, even if
-            # _trigger_fetch failed for some object. This cleans up any async
-            # transfers that were already started.
-            while fetch_requests:
-                object_id, fetch_request = fetch_requests.popitem()
-                timeout = deadline - time.time()
-                if timeout < 0:
-                    if user_timeout_is_smaller:
-                        raise GetTimeoutError(
-                            f"ray.get timed out after {timeout}s."
-                        )
-                    else:
-                        raise ObjectFetchTimedOutError(
-                            object_ref_hex=object_id,
-                            owner_address="",
-                            call_site="",
-                        )
-                result[object_id] = self._wait_fetch(
-                    object_id, fetch_request, timeout=timeout
-                )
-            return result
-        finally:
-            # Ensure cleanup of remaining fetch requests.
-            # TODO(swang): This assumes wait_fetch with timeout=0 is cheap and
-            # will do the cleanup. A cleaner design is to do cleanup on
-            # FetchRequest.__del__.
-            for object_id, fetch_request in fetch_requests.items():
-                self._wait_fetch(object_id, fetch_request, timeout=0)
+        # Wait for all in-flight fetches to complete.
+        while fetch_requests:
+            object_id, fetch_request = fetch_requests.popitem()
+            timeout = deadline - time.time()
+            if timeout < 0:
+                if user_timeout_is_smaller:
+                    raise GetTimeoutError(
+                        f"ray.get timed out after {timeout}s."
+                    )
+                else:
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
+            result[object_id] = self._wait_fetch(
+                object_id, fetch_request, timeout=timeout
+            )
+        return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
         """

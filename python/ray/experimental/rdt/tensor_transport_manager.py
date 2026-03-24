@@ -42,6 +42,10 @@ class FetchRequest:
     after a synchronous recv. Transports with true async capability may
     subclass this to carry additional state needed by wait_fetch_complete.
 
+    Subclasses should handle all resource cleanup in __del__ rather than
+    in wait_fetch_complete, so that resources are released even if the
+    caller never waits on the request.
+
     Args:
         obj_id: The object ID for the fetch operation.
         tensors: The fetched tensors.

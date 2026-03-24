@@ -69,6 +69,17 @@ class NixlFetchRequest(FetchRequest):
     nixl_agent: Any = None
     remote_name: Optional[str] = None
     remove_tensor_descs: bool = False
+    transport: Any = None
+
+    def __del__(self):
+        if self.transport is not None:
+            self.transport._cleanup_transfer(
+                self.obj_id,
+                self.tensors,
+                self.xfer_handle,
+                self.remote_name,
+                self.remove_tensor_descs,
+            )
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -311,6 +322,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent=nixl_agent,
                 remote_name=remote_name,
                 remove_tensor_descs=added_tensor_descs,
+                transport=self,
             )
         except Exception:
             self._cleanup_transfer(
@@ -380,14 +392,6 @@ class NixlTensorTransport(TensorTransportManager):
                 f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
                 f"The exception thrown from nixl transfer was:\n {traceback.format_exc()}"
             ) from None
-        finally:
-            self._cleanup_transfer(
-                obj_id,
-                fetch_request.tensors,
-                fetch_request.xfer_handle,
-                fetch_request.remote_name,
-                fetch_request.remove_tensor_descs,
-            )
 
     def _cleanup_transfer(
         self,
