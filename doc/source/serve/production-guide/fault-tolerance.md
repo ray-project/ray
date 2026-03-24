@@ -694,7 +694,7 @@ These environment variables control fault tolerance-related behavior. Set them b
 
 **Default**: None (no timeout)
 
-Ray Serve persists deployment configurations and state in the [Global Control Store (GCS)](gcs-server) using its internal KV interface. Each read and write to the GCS KV store uses this timeout. By default, no timeout is set and these operations block until the GCS responds. If the GCS becomes unavailable (for example, during a head node restart), Serve operations that depend on the KV store — such as fetching or updating deployment configs — hang until the GCS recovers.
+Ray Serve persists deployment configurations and state in the Global Control Store (GCS) using its internal KV interface. Each read and write to the GCS KV store uses this timeout. By default, no timeout is set and these operations block until the GCS responds. If the GCS becomes unavailable (for example, during a head node restart), Serve operations that depend on the KV store — such as fetching or updating deployment configs — hang until the GCS recovers.
 
 Setting this value causes those operations to fail fast with a timeout error instead of blocking indefinitely, allowing Serve to detect GCS failures and trigger recovery sooner.
 
