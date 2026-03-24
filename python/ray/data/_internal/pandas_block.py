@@ -66,31 +66,31 @@ class PandasRow(Mapping):
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
-    def __init__(self, row: Any):
-        self._row = row
+    def __init__(self, df: "pandas.DataFrame", row_idx: int):
+        self._batch = df
+        self._row_idx = row_idx
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
         def get_item(keys: List[str]) -> Any:
-            col = self._row[keys]
-            if len(col) == 0:
-                return None
-
-            items = col.iloc[0]
-            if isinstance(items.iloc[0], TensorArrayElement):
-                # Getting an item in a Pandas tensor column may return
-                # a TensorArrayElement, which we have to convert to an ndarray.
-                return tuple(item.to_numpy() for item in items)
-
+            items = []
+            for col_name in keys:
+                if col_name not in self._batch.columns:
+                    return None
+                val = self._batch[col_name].iloc[self._row_idx]
+                if isinstance(val, TensorArrayElement):
+                    # Getting an item in a Pandas tensor column may return
+                    # a TensorArrayElement, which we have to convert to an ndarray.
+                    val = val.to_numpy()
+                items.append(val)
+                
+            # Try to interpret this as a numpy-type value.
+            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             try:
-                # Try to interpret this as a numpy-type value.
-                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
                 return tuple(item for item in items)
-
             except (AttributeError, ValueError) as e:
                 logger.warning(f"Failed to convert {items} to a tuple", exc_info=e)
-
                 # Fallback to the original form.
                 return items
 
@@ -102,21 +102,19 @@ class PandasRow(Mapping):
         if items is None:
             return None
 
-        elif is_single_item:
-            return items[0]
-        else:
-            return items
+        return items[0] if is_single_item else items
 
     def __iter__(self) -> Iterator:
-        for k in self._row.columns:
+        for k in self._batch.columns:
             yield k
 
     def __len__(self):
-        return self._row.shape[1]
+        return self._batch.shape[1]
 
     def as_pydict(self) -> Dict[str, Any]:
         pydict: Dict[str, Any] = {}
-        for key, value in self.items():
+        for key in self:
+            value = self._batch[key].iloc[self._row_idx]
             # Convert NA to None for consistency across block formats. `pd.isna`
             # returns True for both NA and NaN, but since we want to preserve NaN
             # values, we check for identity instead.
@@ -365,8 +363,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         super().__init__(table)
 
     def _get_row(self, index: int) -> PandasRow:
-        base_row = self.slice(index, index + 1, copy=False)
-        return PandasRow(base_row)
+        return PandasRow(self._table, index)
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()

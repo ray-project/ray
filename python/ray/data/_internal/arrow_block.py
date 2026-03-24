@@ -89,8 +89,11 @@ class ArrowRow(Mapping):
     Row of a tabular Dataset backed by a Arrow Table block.
     """
 
-    def __init__(self, row: Any):
-        self._row = row
+    def __init__(
+        self, batch: Union["pyarrow.Table", "pyarrow.RecordBatch"], row_idx: int
+    ):
+        self._batch = batch
+        self._row_idx = row_idx
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import get_arrow_extension_tensor_types
@@ -98,23 +101,29 @@ class ArrowRow(Mapping):
         tensor_arrow_extension_types = get_arrow_extension_tensor_types()
 
         def get_item(keys: List[str]) -> Any:
-            schema = self._row.schema
+            schema = self._batch.schema
             if isinstance(schema.field(keys[0]).type, tensor_arrow_extension_types):
                 # Build a tensor row.
                 return tuple(
                     [
                         ArrowBlockAccessor._build_tensor_row(
-                            self._row, col_name=key, row_idx=0
+                            self._batch, col_name=key, row_idx=self._row_idx
                         )
                         for key in keys
                     ]
                 )
 
-            table = self._row.select(keys)
-            if len(table) == 0:
-                return None
+            # Pyarrow select internally creates a new table by slicing which is expensive.
+            # Instead, access the columns directly at row_idx.
+            items = []
+            for col_name in keys:
+                col_idx = schema.get_field_index(col_name)
+                if col_idx == -1:
+                    # key not found
+                    return None
+                col = self._batch.column(col_idx)
+                items.append(col[self._row_idx])
 
-            items = [col[0] for col in table.columns]
             try:
                 # Try to interpret this as a pyarrow.Scalar value.
                 return tuple([item.as_py() for item in items])
@@ -137,11 +146,11 @@ class ArrowRow(Mapping):
             return items
 
     def __iter__(self) -> Iterator:
-        for k in self._row.column_names:
+        for k in self._batch.column_names:
             yield k
 
     def __len__(self):
-        return self._row.num_columns
+        return self._batch.num_columns
 
     def as_pydict(self) -> Dict[str, Any]:
         return dict(self.items())
@@ -219,8 +228,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         self._max_chunk_size: Optional[int] = None
 
     def _get_row(self, index: int) -> ArrowRow:
-        base_row = self.slice(index, index + 1, copy=False)
-        return ArrowRow(base_row)
+        return ArrowRow(self._table, index)
 
     def column_names(self) -> List[str]:
         return self._table.column_names
