@@ -178,7 +178,7 @@ class RayTrainWorker:
             training_report
         )
 
-        returned_value = (
+        return_value = (
             execution_context.training_thread_runner.get_return_value()
             if not running
             else None
@@ -188,7 +188,7 @@ class RayTrainWorker:
             running=running,
             error=error,
             training_report=training_report,
-            returned_value=returned_value,
+            return_value=return_value,
         )
 
     def shutdown(self):

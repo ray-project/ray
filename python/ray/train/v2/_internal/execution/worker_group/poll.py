@@ -40,7 +40,7 @@ class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
     training_report: Optional[_TrainingReport] = None
-    returned_value: Any = field(default=None)
+    return_value: Any = field(default=None)
 
 
 @dataclass(frozen=True)
