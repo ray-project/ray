@@ -386,7 +386,7 @@ class HAProxyConfig:
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
-    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
+    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
     @property
     def frontend_host(self) -> str:
