@@ -571,6 +571,18 @@ Prometheus histograms aggregate data into predefined buckets, which can affect t
 For accurate percentile calculations, configure bucket boundaries that closely match your expected latency distribution. For example, if most requests complete in 10-100ms, use finer-grained buckets in that range.
 :::
 
+### Metrics export interval
+
+By default, Ray Serve batches metric exports to reduce overhead. You can configure the export interval using the `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` environment variable:
+
+```bash
+export RAY_SERVE_METRICS_EXPORT_INTERVAL_MS=500
+```
+
+**Default**: `100` milliseconds. Set to `0` to disable metric caching entirely and export all metrics eagerly. This interval applies to both the router and replica metric pipelines.
+
+Increasing this value reduces metric export overhead at the cost of less frequent metric updates. Decreasing it provides more up-to-date metrics but increases export frequency.
+
 ### Request lifecycle and metrics
 
 The following diagram shows where metrics are captured along the request path:

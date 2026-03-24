@@ -85,6 +85,20 @@ When using model composition, you can send requests from an upstream deployment 
 :end-before: __serve_model_composition_example_end__
 ```
 
+## Configuring model ID matching timeout
+
+When a request arrives with a `serve_multiplexed_model_id`, the Serve router attempts to match it to a replica that already has the model loaded. If no matching replica becomes available within the timeout, the request falls back to the default routing strategy and is sent to any available replica, which then loads the model on demand.
+
+You can configure this timeout using the `RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S` environment variable:
+
+```bash
+export RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S=2.0
+```
+
+**Default**: `1.0` second. To avoid thundering herd problems when many clients subscribe at the same time, the actual timeout is randomized between this value and `value * 2` (for example, 1.0–2.0 seconds by default).
+
+Increase this timeout if your models take a long time to load and you prefer to wait for a replica that already has the model loaded. Decrease it if you prefer faster fallback to any available replica.
+
 ## Using model multiplexing with batching
 
 You can combine model multiplexing with the `@serve.batch` decorator for efficient batched inference. When you use both features together, Ray Serve automatically splits batches by model ID to ensure each batch contains only requests for the same model. This prevents issues where a single batch would contain requests targeting different models.
