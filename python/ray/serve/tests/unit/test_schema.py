@@ -22,11 +22,13 @@ from ray.serve.config import (
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
+    HTTPOptionsSchema,
     LoggingConfig,
     RayActorOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    gRPCOptionsSchema,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -185,9 +187,10 @@ class TestRayActorOptionsSchema:
         # Schema should be createable with valid fields
         RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
-        # Schema should NOT raise error when extra field is included
+        # Schema should raise error when extra field is included
         ray_actor_options_schema["extra_field"] = None
-        RayActorOptionsSchema.model_validate(ray_actor_options_schema)
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
@@ -369,9 +372,10 @@ class TestDeploymentSchema:
         # Schema should be createable with valid fields
         DeploymentSchema.model_validate(deployment_schema)
 
-        # Schema should NOT raise error when extra field is included
+        # Schema should raise error when extra field is included
         deployment_schema["extra_field"] = None
-        DeploymentSchema.model_validate(deployment_schema)
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_user_config_nullable(self):
         deployment_options = {"name": "test", "user_config": None}
@@ -640,8 +644,9 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         ServeApplicationSchema.model_validate(serve_application_schema)
 
-    def test_extra_fields_invalid_serve_application_schema(self):
-        # Undefined fields should be forbidden in the schema
+    def test_extra_fields_allowed_serve_application_schema(self):
+        # ServeApplicationSchema allows extra fields for forward-compatibility
+        # since it is nested inside ServeDeploySchema.
 
         serve_application_schema = self.get_valid_serve_application_schema()
 
@@ -649,6 +654,7 @@ class TestServeApplicationSchema:
         ServeApplicationSchema.model_validate(serve_application_schema)
 
         # Schema should NOT raise error when extra field is included
+        # (forward-compatible: older versions accept configs from newer versions)
         serve_application_schema["extra_field"] = None
         ServeApplicationSchema.model_validate(serve_application_schema)
 
@@ -1402,6 +1408,40 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+class TestStrictConfigValidation:
+    """Tests that config schemas reject unknown fields (extra='forbid')."""
+
+    def test_grpc_options_schema_rejects_extra_fields(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            gRPCOptionsSchema(port=9000, unknown_field="value")
+
+    def test_deployment_schema_autoscaling_dict_extra_fields_rejected(self):
+        """The exact scenario from issue #61439: max_ongoing_requests
+        mistakenly placed inside autoscaling_config dict."""
+        with pytest.raises(ValidationError):
+            DeploymentSchema(
+                name="test",
+                autoscaling_config={
+                    "min_replicas": 1,
+                    "max_replicas": 10,
+                    "max_ongoing_requests": 100,
+                },
+            )
+
+    def test_http_options_schema_allows_extra_fields(self):
+        """HTTPOptionsSchema must remain forward-compatible."""
+        HTTPOptionsSchema(host="0.0.0.0", some_future_field="value")
+
+    def test_serve_deploy_schema_allows_extra_fields(self):
+        """ServeDeploySchema must remain forward-compatible."""
+        ServeDeploySchema(applications=[], some_future_field="value")
+
+    def test_serve_application_schema_allows_extra_fields(self):
+        """ServeApplicationSchema must remain forward-compatible
+        since it is nested inside ServeDeploySchema."""
+        ServeApplicationSchema(import_path="module:app", some_future_field="value")
 
 
 if __name__ == "__main__":
