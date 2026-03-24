@@ -760,8 +760,6 @@ class PartitionActor:
         if not uris:
             return []
 
-        # Get the filesystem from the URIs (assumes all URIs use same filesystem for sampling)
-        # This is for sampling the file sizes which doesn't require a full resolution of the paths.
         try:
             paths, fs = _resolve_paths_and_filesystem(uris, filesystem=self._filesystem)
             fs = RetryingPyFileSystem.wrap(
@@ -769,10 +767,20 @@ class PartitionActor:
             )
         except Exception as e:
             logger.warning(f"Failed to resolve URIs for size sampling: {e}")
-            # Return zeros for all URIs if resolution fails
             return [0] * len(uris)
 
-        # Use ThreadPoolExecutor for concurrent size fetching
+        # _resolve_paths_and_filesystem silently drops URIs that fail.
+        # Fall back to zeros (triggers HEAD in the download path) rather than risk
+        # a length mismatch with the input block.
+        if len(paths) != len(uris):
+            logger.debug(
+                "Path resolution dropped %d of %d URIs; returning size=0 "
+                "for all so the download path can issue HEAD requests.",
+                len(uris) - len(paths),
+                len(uris),
+            )
+            return [0] * len(uris)
+
         file_sizes = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
