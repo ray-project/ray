@@ -60,6 +60,7 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
+    _is_cudf_dataframe,
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
@@ -143,10 +144,10 @@ def plan_project_op(
 
     # Create init_fn to initialize all callable class UDFs at actor startup
     from ray.data.util.expression_utils import (
-        create_callable_class_udf_init_fn,
+        _create_callable_class_udf_init_fn,
     )
 
-    init_fn = create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
 
     def _project_block(block: Block) -> Block:
         try:
@@ -194,14 +195,18 @@ def plan_streaming_repartition_op(
     )
     map_transformer = MapTransformer([transform_fn])
 
-    # Disable fusion for streaming repartition with the downstream op.
+    if op.strict:
+        ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
+    else:
+        ref_bundler = None
+
     operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
+        ref_bundler=ref_bundler,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
     )
@@ -480,7 +485,7 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
 
 
 def _validate_batch_output(batch: Block) -> None:
-    if not isinstance(
+    allowed = isinstance(
         batch,
         (
             list,
@@ -490,12 +495,14 @@ def _validate_batch_output(batch: Block) -> None:
             pd.core.frame.DataFrame,
             dict,
         ),
-    ):
+    ) or _is_cudf_dataframe(batch)
+    if not allowed:
         raise ValueError(
             "The `fn` you passed to `map_batches` returned a value of type "
             f"{type(batch)}. This isn't allowed -- `map_batches` expects "
             "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
-            "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+            "`cudf.DataFrame`, `numpy.ndarray`, `list`, or "
+            "`dict[str, numpy.ndarray]`."
         )
 
     if isinstance(batch, list):
@@ -506,6 +513,11 @@ def _validate_batch_output(batch: Block) -> None:
             "wrap them in a named dict field, e.g., "
             "return `{'results': objects}` instead of just `objects`."
         )
+
+    # Handle cudf.DataFrame before the Mapping check, since cudf.DataFrame
+    # implements the Mapping protocol. Mirrors the order in batch_to_block.
+    if _is_cudf_dataframe(batch):
+        return
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
@@ -557,6 +569,7 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
 
             if (
                 not isinstance(input_batch, collections.abc.Mapping)
+                and not _is_cudf_dataframe(input_batch)
                 and BlockAccessor.for_block(input_batch).num_rows() == 0
             ):
                 # For empty input blocks, we directly output them without

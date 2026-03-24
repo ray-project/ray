@@ -217,7 +217,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void RecordMetrics();
 
   /// Report worker OOM kill stats
-  void ReportWorkerOOMKillStats();
+  void ReportWorkerOomKillStats();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
@@ -757,21 +757,37 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();
 
-  /// Creates the callback used in the memory monitor.
+  /**
+   * @brief Creates the callback used by the memory monitor
+   * to select workers to kill via the set killing policy and kill them.
+   */
   KillWorkersCallback CreateKillWorkersCallback();
 
-  /// Creates the detail message for the worker that is killed due to memory running low.
+  /**
+   * @param workers_to_kill The workers to print the kill details for.
+   * @param node_id The ID of the node.
+   * @param system_memory_snapshot The snapshot of the system memory.
+   * @param process_memory_snapshot The snapshot of the process memory.
+   * @param usage_threshold The memory limit.
+   * @return The detail message for the workers that are killed due to memory running low.
+   */
   std::string CreateOomKillMessageDetails(
-      const std::shared_ptr<WorkerInterface> &worker,
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill,
       const NodeID &node_id,
       const SystemMemorySnapshot &system_memory_snapshot,
+      const std::string &object_store_memory_usage,
       const ProcessesMemorySnapshot &process_memory_snapshot,
       float usage_threshold) const;
 
-  /// Creates the suggestion message for the worker that is killed due to memory running
-  /// low.
+  /**
+   * @param workers_to_kill The workers to print the kill suggestions for.
+   * @return The suggestion message for the workers that are killed due to memory running
+   * low.
+   */
   std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -899,9 +915,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Throttler for global gc
   Throttler global_gc_throttler_;
-
-  /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> worker_being_killed_;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 

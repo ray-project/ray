@@ -1,5 +1,6 @@
 import math
 import time
+from dataclasses import replace
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray._common.utils import env_float
@@ -100,6 +101,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
 
+    def num_output_splits(self) -> int:
+        return len(self._num_output)
+
     def start(self, options: ExecutionOptions) -> None:
         if options.preserve_order:
             # If preserve_order is set, we need to ignore locality hints to ensure determinism.
@@ -139,7 +143,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.add(bundle)
-        self._metrics.on_input_queued(bundle)
+        self._metrics.on_input_queued(bundle, input_index=0)
         # Try dispatch buffered bundles
         self._try_dispatch_bundles()
 
@@ -179,7 +183,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.output_split_idx = i
+                b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
         self._buffer.clear()
@@ -200,7 +204,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         """Clear internal input queue."""
         while self._buffer:
             bundle = self._buffer.get_next()
-            self._metrics.on_input_dequeued(bundle)
+            self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -256,9 +260,9 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
             # Pop preferred bundle from the buffer
             self._buffer.remove(target_bundle)
-            self._metrics.on_input_dequeued(target_bundle)
+            self._metrics.on_input_dequeued(target_bundle, input_index=0)
 
-            target_bundle.output_split_idx = target_output_index
+            target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
             self._num_output[target_output_index] += target_bundle.num_rows()
             self._output_queue.add(target_bundle)
@@ -313,7 +317,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         acc = 0
         while acc < nrow:
             b = self._buffer.get_next()
-            self._metrics.on_input_dequeued(b)
+            self._metrics.on_input_dequeued(b, input_index=0)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
@@ -322,7 +326,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
-                self._metrics.on_input_queued(right)
+                self._metrics.on_input_queued(right, input_index=0)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
