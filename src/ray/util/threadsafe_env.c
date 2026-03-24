@@ -75,18 +75,22 @@ static void init_real_funcs(void) {
    during early dynamic linker init). No locking needed. */
 static char *getenv_fallback(const char *name) {
     extern char **environ;
-    if (!environ) return NULL;
+    if (!environ) {
+        return NULL;
+    }
     size_t len = strlen(name);
     for (char **ep = environ; *ep; ep++) {
-        if (strncmp(*ep, name, len) == 0 && (*ep)[len] == '=')
+        if (strncmp(*ep, name, len) == 0 && (*ep)[len] == '=') {
             return *ep + len + 1;
+        }
     }
     return NULL;
 }
 
 char *getenv(const char *name) {
-    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE))
+    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE)) {
         return getenv_fallback(name);
+    }
 
     pthread_rwlock_rdlock(&env_rwlock);
     char *val = real_getenv(name);
@@ -108,8 +112,9 @@ char *getenv(const char *name) {
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
-    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE))
+    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE)) {
         init_real_funcs();
+    }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_setenv(name, value, overwrite);
     pthread_rwlock_unlock(&env_rwlock);
@@ -117,8 +122,9 @@ int setenv(const char *name, const char *value, int overwrite) {
 }
 
 int unsetenv(const char *name) {
-    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE))
+    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE)) {
         init_real_funcs();
+    }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_unsetenv(name);
     pthread_rwlock_unlock(&env_rwlock);
@@ -126,8 +132,9 @@ int unsetenv(const char *name) {
 }
 
 int putenv(char *string) {
-    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE))
+    if (!__atomic_load_n(&init_done, __ATOMIC_ACQUIRE)) {
         init_real_funcs();
+    }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_putenv(string);
     pthread_rwlock_unlock(&env_rwlock);
