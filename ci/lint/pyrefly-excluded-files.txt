@@ -50,7 +50,6 @@ python/ray/data/_internal/execution/bundle_queue/fifo.py
 python/ray/data/_internal/execution/bundle_queue/hash_link.py
 python/ray/data/_internal/execution/bundle_queue/reordering.py
 python/ray/data/_internal/execution/callbacks/insert_issue_detectors.py
-python/ray/data/_internal/execution/dataset_state.py
 python/ray/data/_internal/execution/interfaces/common.py
 python/ray/data/_internal/execution/interfaces/execution_options.py
 python/ray/data/_internal/execution/interfaces/op_runtime_metrics.py
