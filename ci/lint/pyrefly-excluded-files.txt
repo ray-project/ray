@@ -12,16 +12,13 @@ python/ray/data/_internal/dataset_repr.py
 python/ray/data/_internal/datasource/bigquery_datasource.py
 python/ray/data/_internal/datasource/binary_datasource.py
 python/ray/data/_internal/datasource/clickhouse_datasink.py
-python/ray/data/_internal/datasource/csv_datasink.py
 python/ray/data/_internal/datasource/csv_datasource.py
 python/ray/data/_internal/datasource/delta_sharing_datasource.py
 python/ray/data/_internal/datasource/hudi_datasource.py
 python/ray/data/_internal/datasource/huggingface_datasource.py
 python/ray/data/_internal/datasource/iceberg_datasink.py
 python/ray/data/_internal/datasource/iceberg_datasource.py
-python/ray/data/_internal/datasource/image_datasink.py
 python/ray/data/_internal/datasource/image_datasource.py
-python/ray/data/_internal/datasource/json_datasink.py
 python/ray/data/_internal/datasource/json_datasource.py
 python/ray/data/_internal/datasource/kafka_datasource.py
 python/ray/data/_internal/datasource/lance_datasink.py
@@ -32,9 +29,7 @@ python/ray/data/_internal/datasource/parquet_datasink.py
 python/ray/data/_internal/datasource/parquet_datasource.py
 python/ray/data/_internal/datasource/range_datasource.py
 python/ray/data/_internal/datasource/sql_datasource.py
-python/ray/data/_internal/datasource/tfrecords_datasink.py
 python/ray/data/_internal/datasource/tfrecords_datasource.py
-python/ray/data/_internal/datasource/torch_datasource.py
 python/ray/data/_internal/datasource/turbopuffer_datasink.py
 python/ray/data/_internal/datasource/video_datasource.py
 python/ray/data/_internal/datasource/webdataset_datasink.py
@@ -46,7 +41,6 @@ python/ray/data/_internal/equalize.py
 python/ray/data/_internal/execution/autoscaling_requester.py
 python/ray/data/_internal/execution/backpressure_policy/concurrency_cap_backpressure_policy.py
 python/ray/data/_internal/execution/backpressure_policy/downstream_capacity_backpressure_policy.py
-python/ray/data/_internal/execution/bundle_queue/fifo.py
 python/ray/data/_internal/execution/bundle_queue/hash_link.py
 python/ray/data/_internal/execution/bundle_queue/reordering.py
 python/ray/data/_internal/execution/callbacks/insert_issue_detectors.py
