@@ -294,8 +294,12 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   syncer::ResourceViewSyncMessage resources2;
   (*resources2.mutable_resources_total())["CPU"] = 1;
   (*resources2.mutable_resources_total())["GPU"] = 10;
-  (*resources2.mutable_resources_available())["CPU"] = 1;
-  (*resources2.mutable_resources_available())["GPU"] = 5;
+  rpc::syncer::ResourceInstances cpu_instances2;
+  cpu_instances2.add_values(1.0);
+  (*resources2.mutable_resources_available_instances())["CPU"] = cpu_instances2;
+  rpc::syncer::ResourceInstances gpu_instances2;
+  gpu_instances2.add_values(5.0);
+  (*resources2.mutable_resources_available_instances())["GPU"] = gpu_instances2;
   gcs_server_->UpdateGcsResourceManagerInTest(
       NodeID::FromBinary(node_table_data->node_id()), resources2);
 

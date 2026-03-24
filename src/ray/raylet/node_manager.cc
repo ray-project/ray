@@ -2039,8 +2039,6 @@ void NodeManager::HandleResizeLocalResourceInstances(
     }
   }
 
-  // Apply deltas directly. Don't use NodeResourceInstanceSet constructor
-  // because MakeInstances clamps negative values to zero, losing the delta.
   if (!delta_resource_map.empty()) {
     for (const auto &[resource_name, delta_value] : delta_resource_map) {
       cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
