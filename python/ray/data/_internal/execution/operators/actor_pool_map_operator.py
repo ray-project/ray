@@ -66,6 +66,10 @@ from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
+_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
+
 # Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
 LogicalActorId = str
 
@@ -185,7 +189,6 @@ class ActorPoolMapOperator(MapOperator):
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
 
     def _create_actor_pool_config(
@@ -392,16 +395,17 @@ class ActorPoolMapOperator(MapOperator):
             )
             actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
-            gen = actor.submit.options(
+
+            # Call _remote() directly instead of .options().remote() to
+            # avoid the FuncWrapper closure in ActorMethod.options(), which
+            # creates a reference cycle that prevents the ActorHandle from
+            # being collected by reference counting alone.
+            gen = actor.submit._remote(
+                args=[self.data_context, ctx, *input_blocks],
+                kwargs={"slices": bundle.slices, **self.get_map_task_kwargs()},
                 num_returns="streaming",
                 _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
                 **actor_task_args,
-            ).remote(
-                self.data_context,
-                ctx,
-                *input_blocks,
-                slices=bundle.slices,
-                **self.get_map_task_kwargs(),
             )
 
             def _task_done_callback(actor_to_return):
@@ -700,12 +704,19 @@ class _MapWorker:
         # This can happen during actor restarts or initialization failures.
         return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
-    def on_exit(self):
-        """Called when the actor is about to exist.
-        This enables performing cleanup operations via `UDF.__del__`.
+    def __ray_shutdown__(self):
+        """Called by Ray Core when the actor exits gracefully.
 
-        Note, this only ensures cleanup is performed when the job exists gracefully.
-        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        Triggered when all Python actor handles go out of scope and the handle
+        is collected by reference counting.
+
+        During graceful shutdown, ActorPoolMapOperator clears _data_tasks and
+        drops pool references so handles become collectible immediately.
+        Ray Core guarantees this is called after all pending tasks complete
+        and before the actor process exits.
+
+        Note: this is NOT called if the actor is forcefully killed (e.g. via
+        `ray.kill(actor)`) or crashes unexpectedly.
         """
         # `_map_actor_context` is a global variable that references the UDF object.
         # Delete it to trigger `UDF.__del__`.
@@ -738,7 +749,6 @@ class _ActorPool(AutoscalingActorPool):
     """
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
-    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
 
     def __init__(
         self,
@@ -746,7 +756,6 @@ class _ActorPool(AutoscalingActorPool):
         config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
-        _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
 
@@ -760,13 +769,10 @@ class _ActorPool(AutoscalingActorPool):
                 purposes.
             debounce_period_s: Debounce period for scaling down after scaling
                 up.
-            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
-                on exit hook.
         """
         super().__init__(config=config)
 
         self._create_actor_fn = create_actor_fn
-        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
         # Timestamp of the last scale up action
@@ -1008,16 +1014,14 @@ class _ActorPool(AutoscalingActorPool):
         """
         actor_state = actor._get_local_state()
         running_actor_state = self._running_actors[actor]
-        if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+        if actor_state in (None, _ACTOR_STATE_DEAD):
             # actor._get_local_state can return None if the state is Unknown
             # If actor_state is None or dead, there is nothing to do.
             return running_actor_state
-        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+        elif actor_state != _ACTOR_STATE_ALIVE:
             # The actors can be either ALIVE or RESTARTING here because they will
             # be restarted indefinitely until execution finishes.
-            assert (
-                actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-            ), actor_state
+            assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
             if not running_actor_state.is_restarting:
                 self._num_restarting_actors += 1
                 running_actor_state.is_restarting = True
@@ -1095,16 +1099,8 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = list(self._running_actors.keys())
 
-        on_exit_refs = []
-
-        # First release actors and collect their shutdown hook object-refs
         for actor in running:
-            ref = self._release_running_actor(actor)
-            if ref:
-                on_exit_refs.append(ref)
-
-        # Wait for all actors to shutdown gracefully before killing them
-        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+            self._release_running_actor(actor)
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -1112,18 +1108,15 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
-        """Remove the given actor from the pool and trigger its `on_exit` callback.
-
-        This method returns a ``ref`` to the result
-        """
+    def _release_running_actor(self, actor: ActorHandle):
+        """Remove the given actor from the pool by dropping all pool references."""
         # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
         #
         # Otherwise, actor cannot be reconstructed for the purposes of produced
         # object's lineage reconstruction.
         if actor not in self._running_actors:
-            return None
+            return
 
         # Update cached statistics before removing the actor
         actor_state = self._running_actors[actor]
@@ -1139,16 +1132,8 @@ class _ActorPool(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        if self._enable_actor_pool_on_exit_hook:
-            # Call `on_exit` to trigger `UDF.__del__` which may perform
-            # cleanup operations.
-            ref = actor.on_exit.remote()
-        else:
-            ref = None
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
-
-        return ref
 
     def _rank_actors(
         self,
@@ -1185,17 +1170,13 @@ class _ActorPool(AutoscalingActorPool):
 
         # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
         #       and rank[-1] is the lowest)
-        ranks = [
+        return [
             (
                 # Priority/rank of the location (based on the object size).
                 # Defaults to int32 max value (ie no rank)
-                locs_priorities.get(
-                    self._running_actors[actor].actor_location, INT32_MAX
-                ),
+                locs_priorities.get(state.actor_location, INT32_MAX),
                 # Number of tasks currently in flight at the given actor
-                self._running_actors[actor].num_tasks_in_flight,
+                state.num_tasks_in_flight,
             )
-            for actor in actors
+            for state in (self._running_actors[actor] for actor in actors)
         ]
-
-        return ranks
