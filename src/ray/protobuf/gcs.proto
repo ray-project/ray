@@ -687,7 +687,6 @@ message PlacementGroupTableData {
   map<string, string> label_domain_assignments = 17;
   // The node label key that identifies the label domain for this placement group
   // (e.g. "ray.io/gpu-domain"). Empty if the PG does not use label-domain scheduling.
-  // Set once at registration time and never changes.
   string label_domain_key = 18;
 }
 

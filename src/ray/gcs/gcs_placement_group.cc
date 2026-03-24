@@ -160,12 +160,13 @@ void GcsPlacementGroup::ComputeLabelDomainKey() {
   static const std::string kGB200 = "GB200";
   static const std::string kGB300 = "GB300";
 
-  const auto &bundles = GetBundles();
-  if (bundles.empty()) {
+  const auto &proto_bundles = placement_group_table_data_.bundles();
+  if (proto_bundles.empty()) {
     return;
   }
-  const auto &bundle = bundles[0];
-  const LabelSelector &label_selector = bundle->GetRequiredResources().GetLabelSelector();
+  BundleSpecification first_bundle(proto_bundles.Get(0));
+  const LabelSelector &label_selector =
+      first_bundle.GetRequiredResources().GetLabelSelector();
   for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
     if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
