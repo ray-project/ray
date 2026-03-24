@@ -48,6 +48,7 @@ def create_storage_options_provider(
     if not _has_namespace_params(namespace_impl, table_id):
         return None
 
+    assert table_id is not None
     namespace = get_or_create_namespace(namespace_impl, namespace_properties)
     if namespace is None:
         return None
