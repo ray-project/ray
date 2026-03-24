@@ -198,3 +198,17 @@ class TrainContextCallback(RayTrainCallback):
     @contextmanager
     def on_report(self):
         yield
+
+    @contextmanager
+    def on_checkpoint_sync(self):
+        """Called around the cross-rank barrier that synchronizes the checkpoint
+        directory name. This captures time spent waiting for all workers to reach
+        the synchronization point (cluster scheduling latency)."""
+        yield
+
+    @contextmanager
+    def on_checkpoint_transfer(self):
+        """Called around the file transfer that uploads checkpoint data to storage.
+        This captures the time spent copying checkpoint files to the destination
+        storage path."""
+        yield
