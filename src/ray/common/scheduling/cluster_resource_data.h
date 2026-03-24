@@ -311,7 +311,7 @@ class NodeResources {
   explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
-  NodeResourceSet available;
+  NodeResourceInstanceSet available;
   /// Only used by light resource report.
   ResourceSet load;
 
@@ -339,11 +339,9 @@ class NodeResources {
   /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsAvailable(const ResourceRequest &resource_request,
                    bool ignore_at_capacity = false) const;
   /// Returns true if the node's total resources are enough to run the task.
-  /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   // Returns true if the node's labels satisfy the label selector requirement.
   bool HasRequiredLabels(const LabelSelector &label_selector) const;

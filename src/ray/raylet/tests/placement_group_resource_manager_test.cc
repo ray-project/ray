@@ -110,7 +110,11 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     auto local_node_resource =
         cluster_resource_scheduler_->GetClusterResourceManager().GetNodeResources(
             scheduling::NodeID("local"));
-    ASSERT_TRUE(local_node_resource == node_resources);
+    // Compare total resources and available resources (aggregated) instead of
+    // per-instance comparison, since the instance-level distribution may differ.
+    ASSERT_TRUE(local_node_resource.total == node_resources.total);
+    ASSERT_TRUE(local_node_resource.available.ToNodeResourceSet() ==
+                node_resources.available.ToNodeResourceSet());
   }
 
   // TODO(@clay4444): Remove this once we did the batch rpc request refactor!

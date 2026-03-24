@@ -2039,16 +2039,12 @@ void NodeManager::HandleResizeLocalResourceInstances(
     }
   }
 
-  // Convert the delta resource map to NodeResourceInstanceSet and apply
+  // Apply deltas directly. Don't use NodeResourceInstanceSet constructor
+  // because MakeInstances clamps negative values to zero, losing the delta.
   if (!delta_resource_map.empty()) {
-    NodeResourceSet delta_resources(delta_resource_map);
-    NodeResourceInstanceSet delta_instances(delta_resources);
-
-    // Apply deltas for each resource
-    for (const auto &resource_id : delta_resources.ExplicitResourceIds()) {
-      const auto &instances = delta_instances.Get(resource_id);
+    for (const auto &[resource_name, delta_value] : delta_resource_map) {
       cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
-          resource_id, instances);
+          scheduling::ResourceID(resource_name), {FixedPoint(delta_value)});
     }
   }
 

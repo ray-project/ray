@@ -26,9 +26,10 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu);
+  resources.available.Set(ResourceID::CPU(), {FixedPoint(available_cpu)});
   resources.total.Set(ResourceID::CPU(), total_cpu);
-  resources.available.Set(scheduling::ResourceID("CUSTOM"), available_custom_resource);
+  resources.available.Set(scheduling::ResourceID("CUSTOM"),
+                          {FixedPoint(available_custom_resource)});
   resources.total.Set(scheduling::ResourceID("CUSTOM"), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;
   return resources;
@@ -53,6 +54,9 @@ struct ClusterResourceManagerTest : public ::testing::Test {
                                                  /*total_custom*/ 1,
                                                  /*object_pulls_queued*/ true));
   }
+  void AddNode(scheduling::NodeID node_id, const NodeResources &resources) {
+    manager->AddOrUpdateNode(node_id, resources);
+  }
   scheduling::NodeID node0 = scheduling::NodeID(0);
   scheduling::NodeID node1 = scheduling::NodeID(1);
   scheduling::NodeID node2 = scheduling::NodeID(2);
@@ -64,7 +68,9 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
   // Prepare a sync message with updated totals/available, labels and flags.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 5.0});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(5.0);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
   payload.mutable_labels()->insert({"zone", "us-east-1a"});
   payload.set_object_pulls_queued(true);
   payload.set_idle_duration_ms(42);
@@ -76,7 +82,7 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
 
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")), 10);
-  ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")), 5);
+  ASSERT_EQ(node_resources.available.Sum(scheduling::ResourceID("CPU")), 5);
   ASSERT_EQ(node_resources.labels.at("zone"), "us-east-1a");
   ASSERT_TRUE(node_resources.object_pulls_queued);
   ASSERT_EQ(node_resources.idle_resource_duration_ms, 42);
@@ -115,10 +121,13 @@ TEST_F(ClusterResourceManagerTest, HasFeasibleResourcesTest) {
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false)));
-  manager->SubtractNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(
+      manager
+          ->SubtractNodeAvailableResources(
+              node0,
+              ResourceMapToResourceRequest({{"CPU", 1}},
+                                           /*requires_object_store_memory=*/false))
+          .has_value());
   // node0 has no available CPU resource but it's still feasible.
   ASSERT_TRUE(manager->HasFeasibleResources(
       node0,
@@ -163,26 +172,63 @@ TEST_F(ClusterResourceManagerTest, HasAvailableResourcesTest) {
 
 TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+  ASSERT_EQ(node_resources.available.Sum(ResourceID::CPU()), 1);
 
-  manager->SubtractNodeAvailableResources(
+  auto allocation = manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
-  // Subtract again and make sure the available == 0.
-  manager->SubtractNodeAvailableResources(
+  ASSERT_TRUE(allocation.has_value());
+  ASSERT_EQ(node_resources.available.Sum(ResourceID::CPU()), 0);
+
+  auto allocation2 = manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 0);
+  ASSERT_FALSE(allocation2.has_value());
+  ASSERT_EQ(node_resources.available.Sum(ResourceID::CPU()), 0);
 
-  // Add resources back.
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
-  // Add again and make sure the available == 1 (<= total).
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 1);
+  manager->AddNodeAvailableResources(node0, allocation.value());
+  ASSERT_EQ(node_resources.available.Sum(ResourceID::CPU()), 1);
+}
+
+TEST_F(ClusterResourceManagerTest, GpuFragmentationBlocksScheduling) {
+  // Regression test for #52133/#54729: GPU fragmentation must block scheduling.
+  NodeResources gpu_node;
+  gpu_node.available.Set(ResourceID::GPU(), {FixedPoint(1.0), FixedPoint(1.0)});
+  gpu_node.total.Set(ResourceID::GPU(), 2.0);
+  scheduling::NodeID gpu_id = scheduling::NodeID(10);
+  AddNode(gpu_id, gpu_node);
+
+  auto a1 = manager->SubtractNodeAvailableResources(
+      gpu_id,
+      ResourceMapToResourceRequest({{"GPU", 0.6}},
+                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(a1.has_value());
+  auto a2 = manager->SubtractNodeAvailableResources(
+      gpu_id,
+      ResourceMapToResourceRequest({{"GPU", 0.6}},
+                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(a2.has_value());
+
+  // [0.4, 0.4]: no single GPU has 0.5, so scheduling must fail.
+  ASSERT_FALSE(manager->HasAvailableResources(
+      gpu_id,
+      ResourceMapToResourceRequest({{"GPU", 0.5}},
+                                   /*requires_object_store_memory=*/false),
+      /*ignore_object_store_memory_requirement=*/false));
+
+  ASSERT_TRUE(manager->HasAvailableResources(
+      gpu_id,
+      ResourceMapToResourceRequest({{"GPU", 0.4}},
+                                   /*requires_object_store_memory=*/false),
+      /*ignore_object_store_memory_requirement=*/false));
+
+  auto a3 = manager->SubtractNodeAvailableResources(
+      gpu_id,
+      ResourceMapToResourceRequest({{"GPU", 0.5}},
+                                   /*requires_object_store_memory=*/false));
+  ASSERT_FALSE(a3.has_value());
 }
 
 }  // namespace ray

@@ -82,7 +82,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     auto resource_id = scheduling::ResourceID(resource_name);
 
     ASSERT_TRUE(node_resources.available.Has(resource_id));
-    ASSERT_EQ(node_resources.available.Get(resource_id).Double(), resource_value);
+    ASSERT_EQ(node_resources.available.Sum(resource_id).Double(), resource_value);
   }
 
   void TestResourceLeaks(SchedulingOptions scheduling_options) {

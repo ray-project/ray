@@ -26,7 +26,7 @@ double LeastResourceScorer::Score(const ResourceRequest &required_resources,
   double node_score = 0.;
   for (auto &resource_id : required_resources.ResourceIds()) {
     const auto &request_resource = required_resources.Get(resource_id);
-    const auto &node_available_resource = node_resources.available.Get(resource_id);
+    auto node_available_resource = node_resources.available.Sum(resource_id);
     node_score += Calculate(request_resource, node_available_resource);
   }
   return node_score;

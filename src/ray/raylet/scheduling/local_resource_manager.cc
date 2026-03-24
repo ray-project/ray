@@ -44,7 +44,7 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  RAY_CHECK(node_resources.total == node_resources.available);
+  RAY_CHECK(node_resources.total == node_resources.available.ToNodeResourceSet());
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
@@ -317,7 +317,7 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
+  node_resources.available = local_resources_.available;
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = IsLocalNodeDraining();
@@ -374,14 +374,19 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
 
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
-    // Resource availability can be negative locally but treat it as 0
-    // when we broadcast to others since other parts of the
-    // system assume resource availability cannot be negative and
-    // there is no difference between negative and zero from other nodes
-    // and gcs's point of view.
-    (*resource_view_sync_message.mutable_resources_available())[resource_name] =
-        std::max(available, 0.0);
+  // Resource availability can be negative locally but treat it as 0
+  // when we broadcast to others since other parts of the
+  // system assume resource availability cannot be negative and
+  // there is no difference between negative and zero from other nodes
+  // and gcs's point of view.
+  for (const auto &[resource_id, instances] : resources.available.Resources()) {
+    rpc::syncer::ResourceInstances resource_instances;
+    for (const auto &value : instances) {
+      resource_instances.add_values(std::max(value.Double(), 0.0));
+    }
+    (*resource_view_sync_message
+          .mutable_resources_available_instances())[resource_id.Binary()] =
+        std::move(resource_instances);
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {

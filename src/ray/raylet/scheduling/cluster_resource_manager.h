@@ -70,14 +70,21 @@ class ClusterResourceManager {
   /// Get number of nodes in the cluster.
   int64_t NumNodes() const;
 
-  /// Update total capacity of a given resource of a given node.
-  ///
-  /// \param node_id: Node whose resource we want to update.
-  /// \param resource_id: Resource which we want to update.
-  /// \param resource_total: New capacity of the resource.
+  /// Update the total capacity of a resource on a node. Only sets total; for
+  /// resources that don't yet exist in available, initializes available = total.
+  /// Existing resources' available is untouched -- a scalar total change can't be
+  /// correctly distributed across per-instance available.
   void UpdateResourceCapacity(scheduling::NodeID node_id,
                               scheduling::ResourceID resource_id,
                               double resource_total);
+
+  /// Add per-instance capacity to a resource (both total and available).
+  /// Element-wise addition, matching the raylet's AddLocalResourceInstances.
+  /// Used by CommitBundleResources to create PG resources with the correct
+  /// per-instance distribution from AcquireBundleResources.
+  void AddResourceInstances(scheduling::NodeID node_id,
+                            scheduling::ResourceID resource_id,
+                            const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from a given node.
   ///
@@ -94,9 +101,9 @@ class ClusterResourceManager {
   const NodeResources &GetNodeResources(scheduling::NodeID node_id) const;
 
   /// Subtract available resource from a given node.
-  /// Return false if such node doesn't exist.
-  bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
-                                      const ResourceRequest &resource_request);
+  /// Return std::nullopt if such node doesn't exist or allocation fails.
+  std::optional<ResourceAllocation> SubtractNodeAvailableResources(
+      scheduling::NodeID node_id, const ResourceRequest &resource_request);
 
   /// Check if we have available resources to fullfill resource request for an given node.
   ///
@@ -111,10 +118,10 @@ class ClusterResourceManager {
   bool HasFeasibleResources(scheduling::NodeID node_id,
                             const ResourceRequest &resource_request) const;
 
-  /// Add available resource to a given node.
-  /// Return false if such node doesn't exist.
+  /// Restore previously subtracted resources using a precise per-instance allocation.
+  /// Returns false if the node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
-                                 const ResourceSet &resource_set);
+                                 const ResourceAllocation &allocation);
 
   /// Return if the node is tracked.
   bool HasNode(const scheduling::NodeID &node_id) const {

@@ -228,6 +228,13 @@ class LeaseStatusTracker {
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
 
+  /// Save the per-instance physical allocation for a bundle (from
+  /// AcquireBundleResources).
+  void SetBundleAllocation(const BundleID &bundle_id, ResourceAllocation allocation);
+
+  /// Retrieve the saved allocation. Returns nullptr if not found.
+  const ResourceAllocation *GetBundleAllocation(const BundleID &bundle_id) const;
+
  private:
   /// Method to update leasing states.
   ///
@@ -271,6 +278,12 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
+
+  /// Per-bundle physical resource allocations from AcquireBundleResources.
+  /// Used by CommitBundleResources to create PG resources with the correct
+  /// per-instance distribution, matching the raylet's allocation.
+  absl::flat_hash_map<BundleID, ResourceAllocation, pair_hash>
+      acquired_resource_allocations_;
 
   /// Location of bundles.
   std::shared_ptr<BundleLocations> bundle_locations_;
@@ -445,13 +458,18 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Acquire the bundle resources from the cluster resources.
-  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  void AcquireBundleResources(
+      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  void CommitBundleResources(
+      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Return the bundle resources to the cluster resources.
-  /// It will remove bundle resources AND also add original resources back.
+  /// Removes PG-specific resources (wildcard + indexed). Physical resources
+  /// are NOT added back here; syncer delivers the real state.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.

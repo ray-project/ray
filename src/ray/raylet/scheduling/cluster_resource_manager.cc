@@ -14,6 +14,8 @@
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
+#include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -82,16 +84,24 @@ bool ClusterResourceManager::UpdateNode(
 
   const auto resources_total =
       MapFromProtobuf(resource_view_sync_message.resources_total());
-  const auto resources_available =
-      MapFromProtobuf(resource_view_sync_message.resources_available());
   auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
+
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = std::move(node_resources.total);
-  local_view.available = std::move(node_resources.available);
+  local_view.total = NodeResourceSet(resources_total);
+
+  const auto &instances_map = resource_view_sync_message.resources_available_instances();
+  NodeResourceInstanceSet new_available;
+  for (const auto &[resource_name, resource_instances] : instances_map) {
+    std::vector<FixedPoint> instances;
+    for (const auto &value : resource_instances.values()) {
+      instances.push_back(FixedPoint(value));
+    }
+    new_available.Set(ResourceID(resource_name), std::move(instances));
+  }
+  local_view.available = std::move(new_available);
+
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
@@ -161,25 +171,32 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
                                                     double resource_total) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    NodeResources node_resources;
-    it = nodes_.emplace(node_id, node_resources).first;
+    it = nodes_.emplace(node_id, NodeResources{}).first;
   }
 
-  auto local_view = it->second.GetMutableLocalView();
-  FixedPoint resource_total_fp(resource_total);
-  auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
-  auto diff_capacity = resource_total_fp - local_total;
-  auto total = local_total + diff_capacity;
-  auto available = local_available + diff_capacity;
-  if (total < 0) {
-    total = 0;
+  auto *local_view = it->second.GetMutableLocalView();
+  FixedPoint new_total = std::max(FixedPoint(resource_total), FixedPoint(0));
+  local_view->total.Set(resource_id, new_total);
+
+  // Only init available for new resources. Existing resources' available can't be
+  // correctly adjusted from a scalar total (don't know which instances to update).
+  if (!local_view->available.Has(resource_id)) {
+    local_view->available.Set(
+        resource_id, NodeResourceInstanceSet::MakeInstances(resource_id, new_total));
   }
-  if (available < 0) {
-    available = 0;
-  }
-  local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
+}
+
+void ClusterResourceManager::AddResourceInstances(
+    scheduling::NodeID node_id,
+    scheduling::ResourceID resource_id,
+    const std::vector<FixedPoint> &instances) {
+  auto it = nodes_.find(node_id);
+  RAY_CHECK(it != nodes_.end()) << "Node " << node_id.ToInt() << " not found.";
+
+  auto *local_view = it->second.GetMutableLocalView();
+  auto total_add = FixedPoint::Sum(instances);
+  local_view->total.Set(resource_id, local_view->total.Get(resource_id) + total_add);
+  local_view->available.Add(resource_id, instances);
 }
 
 bool ClusterResourceManager::DeleteResources(
@@ -192,7 +209,7 @@ bool ClusterResourceManager::DeleteResources(
   auto local_view = it->second.GetMutableLocalView();
   for (const auto &resource_id : resource_ids) {
     local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
+    local_view->available.Remove(resource_id);
   }
   return true;
 }
@@ -208,23 +225,37 @@ const absl::flat_hash_map<scheduling::NodeID, Node>
   return nodes_;
 }
 
-bool ClusterResourceManager::SubtractNodeAvailableResources(
+std::optional<ResourceAllocation> ClusterResourceManager::SubtractNodeAvailableResources(
     scheduling::NodeID node_id, const ResourceRequest &resource_request) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    return false;
+    return std::nullopt;
   }
 
   NodeResources *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  // Use single-resource TryAllocate (not the multi-resource variant) because the
+  // multi-resource version has PG cross-bundle logic that only applies to local
+  // allocation, not speculative remote deduction.
+  ResourceAllocation allocation;
+  for (const auto &[resource_id, demand] :
+       resource_request.GetResourceSet().Resources()) {
+    auto alloc = resources->available.TryAllocate(resource_id, demand);
+    if (!alloc.has_value()) {
+      // Rollback already applied allocations.
+      for (const auto &[rid, instances] : allocation) {
+        resources->available.Free(rid, instances);
+      }
+      return std::nullopt;
+    }
+    allocation[resource_id] = std::move(*alloc);
+  }
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
   // performance regressions in spillback.
 
-  return true;
+  return allocation;
 }
 
 bool ClusterResourceManager::HasFeasibleResources(
@@ -250,24 +281,19 @@ bool ClusterResourceManager::HasAvailableResources(
                                                ignore_object_store_memory_requirement);
 }
 
-bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
-                                                       const ResourceSet &resource_set) {
+bool ClusterResourceManager::AddNodeAvailableResources(
+    scheduling::NodeID node_id, const ResourceAllocation &allocation) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
   }
 
   auto node_resources = it->second.GetMutableLocalView();
-  for (auto &resource_id : resource_set.ResourceIds()) {
-    if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
-      auto total = node_resources->total.Get(resource_id);
-      auto new_available = available + resource_set.Get(resource_id);
-      if (new_available > total) {
-        new_available = total;
-      }
-      node_resources->available.Set(resource_id, new_available);
-    }
+  for (const auto &[resource_id, instances] : allocation) {
+    node_resources->available.Free(resource_id, instances);
+    // Cap at total to match master behavior. Only cap the freed resource,
+    // not the entire node (avoids O(all_resources) on every rollback).
+    node_resources->available.CapResourceAtTotal(resource_id, node_resources->total);
   }
   return true;
 }

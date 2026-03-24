@@ -54,7 +54,8 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
   node_resources.total = NodeResourceSet(resource_map_total);
-  node_resources.available = NodeResourceSet(resource_map_available);
+  node_resources.available =
+      NodeResourceInstanceSet(NodeResourceSet(resource_map_available));
   node_resources.labels = node_labels;
   return node_resources;
 }
@@ -66,7 +67,7 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
     if (cur_total == 0) {
       continue;
     }
-    auto cur_available = this->available.Get(ResourceID(i)).Double();
+    auto cur_available = this->available.Sum(ResourceID(i)).Double();
     float utilization = 1 - (cur_available / cur_total.Double());
     if (utilization > highest) {
       highest = utilization;
@@ -88,7 +89,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
-  return this->available >= resource_request.GetResourceSet();
+  return this->available.CanAllocate(resource_request.GetResourceSet());
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {

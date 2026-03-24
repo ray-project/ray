@@ -14,6 +14,7 @@
 
 #include "ray/common/scheduling/resource_instance_set.h"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -26,19 +27,32 @@
 
 namespace ray {
 
+/*static*/ std::vector<FixedPoint> NodeResourceInstanceSet::MakeInstances(
+    ResourceID resource_id, FixedPoint total) {
+  std::vector<FixedPoint> instances;
+  if (total <= 0) {
+    // Zero or negative total: return single zero-element to satisfy Set()'s
+    // non-empty invariant. The resource will effectively be unavailable.
+    instances.push_back(FixedPoint(0));
+  } else if (resource_id.IsUnitInstanceResource()) {
+    size_t num = static_cast<size_t>(total.Double());
+    for (size_t i = 0; i < num; i++) {
+      instances.push_back(FixedPoint(1.0));
+    }
+    // Fractional remainder (e.g., total=2.5 → [1.0, 1.0, 0.5]).
+    FixedPoint remainder = total - FixedPoint(static_cast<double>(num));
+    if (remainder > 0) {
+      instances.push_back(remainder);
+    }
+  } else {
+    instances.push_back(total);
+  }
+  return instances;
+}
+
 NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   for (auto &resource_id : total.ExplicitResourceIds()) {
-    std::vector<FixedPoint> instances;
-    auto value = total.Get(resource_id);
-    if (resource_id.IsUnitInstanceResource()) {
-      size_t num_instances = static_cast<size_t>(value.Double());
-      for (size_t i = 0; i < num_instances; i++) {
-        instances.push_back(1.0);
-      };
-    } else {
-      instances.push_back(value);
-    }
-    Set(resource_id, instances);
+    Set(resource_id, MakeInstances(resource_id, total.Get(resource_id)));
   }
 }
 
@@ -134,6 +148,71 @@ FixedPoint NodeResourceInstanceSet::Sum(ResourceID resource_id) const {
 
 bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) const {
   return this->resources_ == other.resources_;
+}
+
+/*static*/ std::optional<std::vector<FixedPoint>>
+NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &available,
+                                           FixedPoint demand) {
+  if (available.empty()) {
+    return std::nullopt;
+  }
+
+  if (available.size() == 1) {
+    if (available[0] >= demand) {
+      return std::vector<FixedPoint>{demand};
+    }
+    return std::nullopt;
+  }
+
+  std::vector<FixedPoint> allocation(available.size(), FixedPoint(0));
+  std::vector<FixedPoint> remaining_available = available;
+  FixedPoint remaining_demand = demand;
+
+  if (remaining_demand >= 1.) {
+    for (size_t i = 0; i < remaining_available.size(); i++) {
+      if (remaining_available[i] == 1.) {
+        allocation[i] = 1.;
+        remaining_available[i] = 0;
+        remaining_demand -= 1.;
+      }
+      if (remaining_demand < 1.) {
+        break;
+      }
+    }
+  }
+
+  if (remaining_demand >= 1.) {
+    return std::nullopt;
+  }
+
+  if (remaining_demand > 0.) {
+    int64_t idx_best_fit = -1;
+    FixedPoint remaining_best_fit = 1.;
+    for (size_t i = 0; i < remaining_available.size(); i++) {
+      if (remaining_available[i] >= remaining_demand) {
+        if (idx_best_fit == -1 ||
+            (remaining_available[i] - remaining_demand < remaining_best_fit)) {
+          remaining_best_fit = remaining_available[i] - remaining_demand;
+          idx_best_fit = static_cast<int64_t>(i);
+        }
+      }
+    }
+    if (idx_best_fit == -1) {
+      return std::nullopt;
+    }
+    allocation[idx_best_fit] = remaining_demand;
+  }
+
+  return allocation;
+}
+
+bool NodeResourceInstanceSet::CanAllocate(const ResourceSet &resource_demands) const {
+  for (const auto &[resource_id, demand] : resource_demands.Resources()) {
+    if (!ComputeAllocation(Get(resource_id), demand).has_value()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
@@ -295,75 +374,16 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     ResourceID resource_id, FixedPoint demand) {
   std::vector<FixedPoint> available = Get(resource_id);
-  if (available.empty()) {
+  auto allocation = ComputeAllocation(available, demand);
+  if (!allocation) {
     return std::nullopt;
   }
 
-  std::vector<FixedPoint> allocation(available.size());
-  FixedPoint remaining_demand = demand;
-
-  if (available.size() == 1) {
-    // This resource has just one instance.
-    if (available[0] >= remaining_demand) {
-      available[0] -= remaining_demand;
-      allocation[0] = remaining_demand;
-      Set(resource_id, std::move(available));
-      return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
-    } else {
-      // Not enough capacity.
-      return std::nullopt;
-    }
+  for (size_t i = 0; i < available.size(); i++) {
+    available[i] -= (*allocation)[i];
   }
-
-  // If resources has multiple instances, each instance has total capacity of 1.
-  //
-  // As long as remaining_demand is greater than 1.,
-  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
-  // Then try to find the best fit for the fractional remaining_resources. Best fit means
-  // allocating the resource instance with the smallest available capacity greater than
-  // remaining_demand
-  if (remaining_demand >= 1.) {
-    for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] == 1.) {
-        // Allocate a full unit-capacity instance.
-        allocation[i] = 1.;
-        available[i] = 0;
-        remaining_demand -= 1.;
-      }
-      if (remaining_demand < 1.) {
-        break;
-      }
-    }
-  }
-
-  if (remaining_demand >= 1.) {
-    // Cannot satisfy a demand greater than one if no unit capacity resource is available.
-    return std::nullopt;
-  }
-
-  // Remaining demand is fractional. Find the best fit, if exists.
-  if (remaining_demand > 0.) {
-    int64_t idx_best_fit = -1;
-    FixedPoint available_best_fit = 1.;
-    for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] >= remaining_demand) {
-        if (idx_best_fit == -1 ||
-            (available[i] - remaining_demand < available_best_fit)) {
-          available_best_fit = available[i] - remaining_demand;
-          idx_best_fit = static_cast<int64_t>(i);
-        }
-      }
-    }
-    if (idx_best_fit == -1) {
-      return std::nullopt;
-    } else {
-      allocation[idx_best_fit] = remaining_demand;
-      available[idx_best_fit] -= remaining_demand;
-    }
-  }
-
   Set(resource_id, std::move(available));
-  return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
+  return allocation;
 }
 
 void NodeResourceInstanceSet::AllocateWithReference(
@@ -397,6 +417,26 @@ void NodeResourceInstanceSet::Free(ResourceID resource_id,
   }
 
   Set(resource_id, std::move(available));
+}
+
+void NodeResourceInstanceSet::CapResourceAtTotal(ResourceID resource_id,
+                                                 const NodeResourceSet &total) {
+  auto it = resources_.find(resource_id);
+  if (it == resources_.end()) {
+    return;
+  }
+  auto &instances = it->second;
+  if (resource_id.IsUnitInstanceResource()) {
+    for (auto &val : instances) {
+      val = std::min(val, FixedPoint(1.0));
+    }
+  } else if (instances.size() == 1) {
+    instances[0] = std::min(instances[0], total.Get(resource_id));
+  } else {
+    RAY_LOG(DEBUG) << "CapResourceAtTotal: non-unit resource " << resource_id.Binary()
+                   << " has " << instances.size()
+                   << " instances; skipping cap (syncer will correct).";
+  }
 }
 
 void NodeResourceInstanceSet::Add(ResourceID resource_id,

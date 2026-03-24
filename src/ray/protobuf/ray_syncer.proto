@@ -25,9 +25,11 @@ message CommandsSyncMessage {
   bool should_global_gc = 1;
 }
 
+message ResourceInstances {
+  repeated double values = 1;
+}
+
 message ResourceViewSyncMessage {
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 1;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 2;
   // Whether this node has object pulls queued. This can happen if
@@ -45,6 +47,7 @@ message ResourceViewSyncMessage {
   repeated string node_activity = 7;
   // The key-value labels of this node.
   map<string, string> labels = 8;
+  map<string, ResourceInstances> resources_available_instances = 9;
 }
 
 message RaySyncMessage {

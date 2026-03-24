@@ -90,9 +90,10 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
+    auto available_set = node_resources.available.ToNodeResourceSet();
+    for (const auto &resource_id : available_set.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
-      const auto &resource_value = node_resources.available.Get(resource_id);
+      const auto &resource_value = available_set.Get(resource_id);
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
     }
@@ -223,8 +224,15 @@ void GcsResourceManager::UpdateNodeResourceUsage(
         resource_view_sync_message.resources_total();
   }
 
-  (*iter->second.mutable_resources_available()) =
-      resource_view_sync_message.resources_available();
+  iter->second.mutable_resources_available()->clear();
+  for (const auto &[name, instances] :
+       resource_view_sync_message.resources_available_instances()) {
+    double sum = 0;
+    for (double v : instances.values()) {
+      sum += v;
+    }
+    (*iter->second.mutable_resources_available())[name] = sum;
+  }
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
