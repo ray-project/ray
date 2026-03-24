@@ -115,7 +115,7 @@ class VLLMEngineConfig(BaseModelExtended):
     @model_validator(mode="after")
     def validate_topology_requirements(self):
         """Ensures that if a topology is requested, the necessary hardware hints are provided."""
-        requested_topology = self.topology or self.engine_kwargs.get("topology")
+        requested_topology = self.topology
 
         if requested_topology:
             if not self.accelerator_type:
@@ -429,7 +429,7 @@ class VLLMEngineConfig(BaseModelExtended):
         if not self.use_tpu:
             return None
 
-        return self.topology or self.engine_kwargs.get("topology")
+        return self.topology
 
     def _create_tpu_placement_group(self, name: str, topology: str) -> PlacementGroup:
         """Provisions a multi-host TPU Slice Placement Group.
