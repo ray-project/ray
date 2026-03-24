@@ -31,7 +31,7 @@ class Result(ResultV1):
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
-    return_values: Optional[List[Any]] = None
+    return_values: Optional[Any] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(

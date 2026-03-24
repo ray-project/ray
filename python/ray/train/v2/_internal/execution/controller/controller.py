@@ -186,7 +186,7 @@ class TrainController:
 
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
-        self._return_values: Optional[List[Any]] = None
+        self._return_values: Optional[Any] = None
 
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
@@ -549,10 +549,9 @@ class TrainController:
                 )
 
             if worker_group_status.finished and not worker_group_status.errors:
-                self._return_values = [
-                    worker_status.return_value
-                    for worker_status in worker_group_status.worker_statuses
-                ]
+                self._return_values = worker_group_status.worker_statuses[
+                    0
+                ].return_value
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,

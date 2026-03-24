@@ -379,11 +379,7 @@ def test_report_validation_fn_with_trainer_train_fn_return():
             scaling_config=ScalingConfig(num_workers=2),
         )
         validation_results = validation_trainer.fit()
-        return {
-            "validation": [
-                val["validation"] for val in validation_results.return_values
-            ]
-        }
+        return validation_results.return_values
 
     def train_fn(config: dict):
         with create_dict_checkpoint({}) as cp:
@@ -399,8 +395,8 @@ def test_report_validation_fn_with_trainer_train_fn_return():
     )
     results = trainer.fit()
     assert results.error is None
-    assert results.metrics == {"training": 0, "validation": [0, 1]}
-    assert results.return_values == [None]
+    assert results.metrics == {"training": 0, "validation": 0}
+    assert results.return_values is None
 
 
 def test_report_validation_fn_overrides_default_kwargs(tmp_path):
