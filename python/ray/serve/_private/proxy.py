@@ -1639,19 +1639,20 @@ class ProxyActor(ProxyActorInterface):
         )
 
         try:
+            tracing_kwargs = {}
+            if self._tracing_config is not None:
+                tracing_kwargs["tracing_exporter_import_path"] = (
+                    self._tracing_config.exporter_import_path
+                    if self._tracing_config.enabled
+                    else ""
+                )
+                tracing_kwargs["tracing_sampling_ratio"] = (
+                    self._tracing_config.sampling_ratio
+                )
             is_tracing_setup_successful = setup_tracing(
                 component_name="proxy",
                 component_id=node_ip_address,
-                tracing_exporter_import_path=(
-                    self._tracing_config.exporter_import_path
-                    if self._tracing_config and self._tracing_config.enabled
-                    else ""
-                ),
-                tracing_sampling_ratio=(
-                    self._tracing_config.sampling_ratio
-                    if self._tracing_config
-                    else RAY_SERVE_TRACING_SAMPLING_RATIO
-                ),
+                **tracing_kwargs,
             )
             if is_tracing_setup_successful:
                 logger.info("Successfully set up tracing for proxy")
