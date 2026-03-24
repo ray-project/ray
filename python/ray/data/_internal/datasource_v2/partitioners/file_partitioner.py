@@ -14,11 +14,11 @@ class FilePartitioner(ABC):
     """
 
     @abstractmethod
-    def add_input(self, manifest: FileManifest):
+    def add_input(self, input_manifest: FileManifest):
         """Add a file manifest to be partitioned.
 
         Args:
-            manifest: A ``FileManifest`` containing paths and metadata to partition.
+            input_manifest: A ``FileManifest`` containing paths and metadata to partition.
         """
         ...
 
