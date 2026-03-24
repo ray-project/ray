@@ -115,8 +115,7 @@ void RayEventRecorder::StopExportingEvents() {
     absl::MutexLock lock(&grpc_completion_mutex_);
     while (grpc_in_progress_) {
       if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
-        RAY_LOG(WARNING)
-            << "RayEventRecorder shutdown timed out waiting for final gRPC.";
+        RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out waiting for final gRPC.";
         return;
       }
     }
