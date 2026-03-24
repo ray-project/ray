@@ -6,6 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.common import (
     RuntimeMetricsHistogram,
@@ -625,7 +626,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.num_task_outputs_generated / self.block_generation_time
 
     @metric_property(
-        description="Average task's completion time in seconds (including throttling).",
+        description="Average task's completion time in seconds (inclusive of output throttling).",
         metrics_group=MetricsGroup.TASKS,
     )
     def average_total_task_completion_time_s(self) -> Optional[float]:
@@ -641,10 +642,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     def average_task_scheduling_time_s(self) -> Optional[float]:
         """Average task's completion time in seconds (inclusive of output back-pressure)"""
-        if self.num_tasks_finished == 0:
+        if self.num_tasks_have_outputs == 0:
             return None
 
-        return self.task_scheduling_time_s / self.num_tasks_finished
+        # NOTE: For correct calculation, we must use `num_tasks_have_outputs`, since
+        #       scheduling time is incremented upon receiving of the first output
+        return self.task_scheduling_time_s / self.num_tasks_have_outputs
 
     @metric_property(
         description="Average task's time spent in output back-pressure (in seconds).",
@@ -960,15 +963,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 self.block_size_rows.observe(block.num_rows)
 
         task_info = self._running_tasks[task_index]
-        if task_info.num_outputs == 0:
-            self.num_tasks_have_outputs += 1
 
         # Check if first task's outputs;
-        # Checkpoint time to first block
-        is_first_block: bool = task_info.num_outputs == 0
-        time_to_first_output_s = (
-            time.perf_counter() - task_info.start_time if is_first_block else None
-        )
+        if task_info.num_outputs == 0:
+            self.num_tasks_have_outputs += 1
+            # Checkpoint time to first block
+            time_to_first_output_s = time.perf_counter() - task_info.start_time
+        else:
+            time_to_first_output_s = None
 
         task_info.num_outputs += num_outputs
         task_info.bytes_output += output_bytes
@@ -1006,7 +1008,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         #
         # NOTE: We're only tracking task scheduling time when `TaskExecStats`
         #       are reported (ie when task completes successfully)
-        if is_first_block:
+        if time_to_first_output_s is not None:
             self.task_scheduling_time_s += time_to_first_output_s - (
                 task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
             )
@@ -1055,11 +1057,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_wall_time_s)
 
-        self.task_output_backpressure_time_s += (
+        task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
             if task_exec_driver_stats
             else 0
         )
+
+        self.task_output_backpressure_time_s += task_output_backpressure_s
+
 
         assert task_info.cum_block_gen_time_s is not None
 
