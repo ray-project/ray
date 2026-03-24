@@ -67,11 +67,6 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-HAPROXY_BALANCE_ALGORITHM_PATTERN = re.compile(
-    r"^(leastconn|roundrobin|random(\(\d+\))?)$"
-)
-
-
 @dataclass
 class ServerStats:
     """Server statistics from HAProxy."""
