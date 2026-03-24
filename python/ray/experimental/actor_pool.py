@@ -148,17 +148,10 @@ class ActorPool:
         self._static_labels = static_labels or {}
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
 
-        # Handle both already-decorated and non-decorated classes
         if isinstance(actor_cls, ActorClass):
-            # Class is already decorated with @ray.remote
-            if actor_options:
-                # Apply additional options via .options()
-                self._remote_cls = actor_cls.options(**actor_options)
-            else:
-                self._remote_cls = actor_cls
+            self._remote_cls = actor_cls
         else:
-            # Class is not decorated, apply @ray.remote with options
-            self._remote_cls = ray.remote(**actor_options)(actor_cls)
+            self._remote_cls = ray.remote(actor_cls)
 
         # Get the core worker
         self._core_worker = ray._private.worker.global_worker.core_worker
@@ -212,21 +205,20 @@ class ActorPool:
         if logical_id and self._logical_id_kwarg_name:
             actor_kwargs[self._logical_id_kwarg_name] = logical_id
 
-        # Create actor with labels (if any).
+        # Merge user-provided actor_options with per-actor options in one call.
         # max_restarts=-1 makes actors restartable so that when an actor dies,
         # GCS marks it RESTARTING instead of permanently DEAD.  This avoids the
         # DisconnectActor(dead=true) path which calls MarkTaskNoRetry and
         # interferes with in-flight task reference counting.  Cross-actor retry
         # (via InternalHeartbeat) redirects the task to a healthy pool actor,
         # so the restarted actor is not actually needed for task completion.
+        options = dict(self._actor_options)
+        options["max_restarts"] = -1
         if labels:
-            actor = self._remote_cls.options(_labels=labels, max_restarts=-1).remote(
-                *self._actor_args, **actor_kwargs
-            )
-        else:
-            actor = self._remote_cls.options(max_restarts=-1).remote(
-                *self._actor_args, **actor_kwargs
-            )
+            options["_labels"] = labels
+        actor = self._remote_cls.options(**options).remote(
+            *self._actor_args, **actor_kwargs
+        )
 
         self._actor_handles.append(actor)
 
