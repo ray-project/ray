@@ -310,7 +310,9 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
-        # Explicit use_cpu setting takes precedence over all other configurations
+        # Previously, any non-True value for `use_cpu` defaulted to `use_gpu=True`.
+        # With the addition of support for more accelerators, we now only return
+        # early if `use_cpu` is explicitly True.
         if isinstance(self.use_cpu, bool) and self.use_cpu:
             return False
 
