@@ -1,5 +1,6 @@
 import sys
 
+import httpx
 import pytest
 from openai import OpenAI
 
@@ -131,6 +132,44 @@ def test_sglang_streaming_completions(sglang_client):
     assert finish_reason is not None, "Final chunk must have a finish_reason"
 
 
+def test_sglang_tokenize(sglang_client):
+    """Verify tokenize endpoint works."""
+    resp = httpx.post(
+        "http://localhost:8000/tokenize",
+        json={"model": RAY_MODEL_ID, "prompt": "Hello world"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "tokens" in data
+    assert "count" in data
+    assert "max_model_len" in data
+    assert isinstance(data["tokens"], list)
+    assert len(data["tokens"]) > 0
+    assert data["count"] == len(data["tokens"])
+    assert data["max_model_len"] > 0
+
+
+def test_sglang_detokenize(sglang_client):
+    """Verify detokenize endpoint works and round-trips with tokenize."""
+    # First tokenize
+    tok_resp = httpx.post(
+        "http://localhost:8000/tokenize",
+        json={"model": RAY_MODEL_ID, "prompt": "Hello world"},
+    )
+    assert tok_resp.status_code == 200
+    tokens = tok_resp.json()["tokens"]
+
+    # Then detokenize
+    detok_resp = httpx.post(
+        "http://localhost:8000/detokenize",
+        json={"model": RAY_MODEL_ID, "tokens": tokens},
+    )
+    assert detok_resp.status_code == 200
+    data = detok_resp.json()
+    assert "text" in data
+    assert "Hello world" in data["text"]
+
+
 @pytest.fixture(scope="module")
 def sglang_embedding_client():
     """Start an SGLang server with is_embedding enabled for embedding tests."""
@@ -164,6 +203,29 @@ def sglang_embedding_client():
     serve.shutdown()
 
 
+def test_sglang_batched_completions(sglang_client):
+    """Verify that batched completions (multiple prompts) return one choice per prompt."""
+    prompts = [
+        "The capital of France is",
+        "The capital of Germany is",
+        "The capital of Japan is",
+    ]
+    batch_resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt=prompts,
+        max_tokens=16,
+        temperature=0.0,
+    )
+
+    assert len(batch_resp.choices) == len(prompts)
+
+    for i, choice in enumerate(batch_resp.choices):
+        assert choice.index == i
+        assert choice.text.strip()
+
+    assert batch_resp.usage.total_tokens > 0
+
+
 def test_sglang_embeddings(sglang_embedding_client):
     """Verify embeddings endpoint works with single and batch inputs."""
     # Single input
@@ -185,6 +247,43 @@ def test_sglang_embeddings(sglang_embedding_client):
     assert len(emb_batch_resp.data) == 2
     assert emb_batch_resp.data[0].embedding
     assert emb_batch_resp.data[1].embedding
+
+
+# ---------------------------------------------------------------------------
+# Protocol decoupling tests — verify modules are importable without vLLM
+# and that SGLang protocol models are wired correctly.
+# ---------------------------------------------------------------------------
+
+
+class TestSGLangProtocolDecoupling:
+    """Verify modules are importable without vLLM and SGLang models are wired."""
+
+    def test_modules_importable_without_vllm(self):
+        """openai_api_models, ingress, llm_server, and ray.serve.llm should
+        all import without vLLM installed."""
+        from ray.llm._internal.serve.core.configs import openai_api_models  # noqa: F401
+        from ray.llm._internal.serve.core.ingress import ingress  # noqa: F401
+        from ray.llm._internal.serve.core.server.llm_server import LLMServer
+        import ray.serve.llm  # noqa: F401
+
+        assert LLMServer._default_engine_cls is None
+
+    def test_error_response_round_trip(self):
+        from ray.llm._internal.serve.core.configs.openai_api_models import (
+            ErrorInfo,
+            ErrorResponse,
+        )
+
+        resp = ErrorResponse(error=ErrorInfo(message="bad", code=400, type="Invalid"))
+        assert resp.error.message == "bad"
+        assert resp.error.code == 400
+        assert resp.model_dump()["error"]["message"] == "bad"
+
+    def test_score_request_is_sglang_scoring_request(self):
+        from sglang.srt.entrypoints.openai.protocol import ScoringRequest
+        from ray.llm._internal.serve.core.configs.openai_api_models import ScoreRequest
+
+        assert issubclass(ScoreRequest, ScoringRequest)
 
 
 if __name__ == "__main__":

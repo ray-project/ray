@@ -11,7 +11,6 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
-from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
@@ -355,7 +354,7 @@ class ExecutionPlan:
         """Get the estimated number of blocks from the logical plan
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""
-        return self._logical_plan.dag.estimated_num_outputs()
+        return self._logical_plan.initial_num_blocks()
 
     def schema(
         self, fetch_if_missing: bool = False
@@ -395,10 +394,6 @@ class ExecutionPlan:
         if schema is not None:
             self._cache.set_schema(self._logical_plan.dag, schema)
         return schema
-
-    def input_files(self) -> Optional[List[str]]:
-        """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -588,7 +583,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return all(isinstance(op, Read) for op in self._logical_plan.sources())
+        return self._logical_plan.has_lazy_input()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
@@ -598,9 +593,4 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators import Zip
-
-        for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, Zip):
-                return True
-        return False
+        return self._logical_plan.require_preserve_order()
