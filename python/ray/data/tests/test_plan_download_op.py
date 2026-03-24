@@ -649,7 +649,8 @@ class TestObstoreRangeSplitDownload:
             finally:
                 del obs.__wrapped_get_range
 
-        assert results == [None]
+        # Ranged failed, but simple GET fallback should succeed.
+        assert results == [content]
 
     def test_invalid_max_concurrency_disables_range_split(self, tmp_path):
         # max_conc <= 0 with range splitting enabled is a misconfiguration.

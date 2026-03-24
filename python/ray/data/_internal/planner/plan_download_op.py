@@ -392,7 +392,11 @@ async def _download_uris_with_obstore(
             return None
 
     async def _download_one_ranged(uri: str, size: int) -> Optional[bytes]:
-        """Download a single large file using parallel range requests."""
+        """Download a single large file using parallel range requests.
+
+        Falls back to a simple GET if any range chunk fails, so the
+        pipeline never loses a file due to a transient range error.
+        """
         try:
             store_url, path = _split_uri(uri)
             store = _get_store(store_url)
@@ -401,6 +405,12 @@ async def _download_uris_with_obstore(
             async def _fetch_range(start: int, end: int) -> None:
                 async with sem:
                     chunk = await obs.get_range_async(store, path, start=start, end=end)
+                    expected = end - start
+                    if len(chunk) != expected:
+                        raise IOError(
+                            f"Range request for '{uri}' returned {len(chunk)} "
+                            f"bytes, expected {expected}"
+                        )
                     result[start:end] = chunk
 
             ranges = [
@@ -409,17 +419,12 @@ async def _download_uris_with_obstore(
             ]
             await asyncio.gather(*[_fetch_range(s, e) for s, e in ranges])
             return bytes(result)
-        except OSError as e:
-            logger.debug(
-                f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
-            )
-            return None
         except Exception as e:
-            logger.warning(
-                f"Unexpected error reading uri '{uri}' for column "
-                f"'{uri_column_name}': {e}"
+            logger.debug(
+                f"Ranged download failed for '{uri}', falling back to "
+                f"simple GET: {e}"
             )
-            return None
+            return await _download_one_simple(uri)
 
     if range_threshold <= 0:
         tasks = [_download_one_simple(uri) for uri in uris]
