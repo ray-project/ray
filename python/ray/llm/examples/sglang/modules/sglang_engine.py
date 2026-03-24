@@ -519,7 +519,7 @@ class SGLangServer:
             )
         prompt = tokenizer.decode(request.tokens)
 
-        yield DetokenizeResponse(prompt=prompt)
+        yield DetokenizeResponse(text=prompt)
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config

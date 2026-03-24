@@ -28,7 +28,6 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
-from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -126,7 +125,7 @@ class LLMServer(LLMServerProtocol):
         deployment = serve.deployment(LLMServer).bind(llm_config)
     """
 
-    _default_engine_cls = VLLMEngine
+    _default_engine_cls = None
 
     async def __init__(
         self,
@@ -229,12 +228,17 @@ class LLMServer(LLMServerProtocol):
     def _get_default_engine_class(self) -> Type[LLMEngine]:
         """Helper to load the engine class from the environment variable.
         This is used for testing or escape-hatch for patching purposes.
-        If env variable is not set, it will fallback to the default engine class.
+        If env variable is not set, it will fallback to the default engine class
+        (VLLMEngine, imported lazily to avoid a hard module-level dependency).
         """
         engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
         if engine_cls_path:
             return import_attr(engine_cls_path)
-        return self._default_engine_cls
+        if self._default_engine_cls is not None:
+            return self._default_engine_cls
+        from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+
+        return VLLMEngine
 
     async def _start_engine(self):
         if self.engine is None:
