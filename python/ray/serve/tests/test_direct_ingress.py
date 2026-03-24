@@ -4,8 +4,8 @@ import os
 import socket
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from typing import Iterable, Optional, Tuple
 from uuid import UUID
 
 import grpc
@@ -267,6 +267,15 @@ def _can_bind_to_port(port):
     except OSError:
         sock.close()
         return False
+
+
+# Wait until all ports can be bound (not just until nothing is listening).
+# This ensures the ports are fully released from TIME_WAIT state.
+def all_ports_can_be_bound(ports: Iterable[int]) -> bool:
+    for port in ports:
+        if not _can_bind_to_port(port):
+            return False
+    return True
 
 
 def test_basic(_skip_if_ff_not_enabled, serve_instance):
@@ -688,12 +697,23 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas release ports on shutdown."""
+
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
+
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     assert len(http_ports) == 4
     assert len(grpc_ports) == 4
@@ -720,6 +740,7 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         assert stub.Method1(serve_pb2.UserDefinedMessage()).greeting == "Hello world!"
         channel.close()
+
     # Shutdown the replica
     serve.delete("default", _blocking=True)
 
@@ -728,27 +749,14 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
         assert not _is_port_in_use(http_port)
     for grpc_port in grpc_ports:
         assert not _is_port_in_use(grpc_port)
-
-    # Wait until all ports can be bound (not just until nothing is listening).
-    # After graceful shutdown, server sockets may be in TIME_WAIT state, which
-    # prevents immediate port reuse. Redeploying too soon causes bind failures
-    # and port allocation to skip to the next available port.
-    def all_ports_can_be_bound():
-        for port in http_ports + grpc_ports:
-            if not _can_bind_to_port(port):
-                return False
-        return True
-
-    # TIME_WAIT can last up to 60s on Linux
-    wait_for_condition(all_ports_can_be_bound, timeout=120)
-
+        
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     assert len(http_ports) == 4
     assert len(grpc_ports) == 4
@@ -829,12 +837,23 @@ def test_crashed_replica_port_is_released_and_reused(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that crashed replica port is released and reused."""
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # Wait until all ports can be bound (not just until nothing is listening).
+    # This ensures the ports are fully released from TIME_WAIT state.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
+
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
-    assert set(http_ports) == {30000, 30001, 30002, 30003}
-    assert set(grpc_ports) == {40000, 40001, 40002, 40003}
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     # delete the application
     serve.delete("default", _blocking=True)
@@ -924,6 +943,16 @@ def test_crashed_replica_port_is_released_and_reused(
 def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_instance):
     """Test that multiple applications, such that each app has a ingress deployment"""
 
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
+
     @serve.deployment(num_replicas=2)
     def deployment_1():
         return "deployment-1"
@@ -971,6 +1000,15 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     that ports are occupied by all deployments in the app but only the ingress
     deployment is used for the target groups"""
 
+    expected_http_ports = {30000, 30001}
+    expected_grpc_ports = {40000, 40001}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
     @serve.deployment(num_replicas=3)
     class ChildDeployment:
         def __call__(self):
@@ -1002,8 +1040,8 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
     # difficult to say which ports are used for the target groups
-    assert len(set(http_ports) & {30000, 30001, 30002, 30003, 30004}) == 2
-    assert len(set(grpc_ports) & {40000, 40001, 40002, 40003, 40004}) == 2
+    assert set(http_ports) == expected_http_ports
+    assert set(grpc_ports) == expected_grpc_ports
 
     http_urls = get_application_urls("HTTP", app_name="app-1")
     grpc_urls = get_application_urls("gRPC", app_name="app-1", from_proxy_manager=True)
@@ -1047,6 +1085,16 @@ def test_only_running_apps_are_used_for_target_groups(
     """Test that only running apps are used for target groups"""
 
     signal_actor = SignalActor.remote()
+
+    expected_http_ports = {30000, 30001, 30002, 30003}
+    expected_grpc_ports = {40000, 40001, 40002, 40003}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
 
     @serve.deployment(num_replicas=2)
     def deployment_1():
@@ -1135,6 +1183,15 @@ def test_only_running_apps_are_used_for_target_groups(
 
 
 def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
+    expected_http_ports = {30000, 30001}
+    expected_grpc_ports = {40000, 40001}
+
+    # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=expected_http_ports + expected_grpc_ports,
+        timeout=120,
+    )
     signal_actor = Semaphore.remote(2)
 
     @serve.deployment(num_replicas=4)
@@ -1155,8 +1212,8 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
     def _func():
         http_ports = get_http_ports("/app-1", first_only=False)
         grpc_ports = get_grpc_ports("/app-1", first_only=False)
-        assert set(http_ports) == {30000, 30001}
-        assert set(grpc_ports) == {40000, 40001}
+        assert set(http_ports) == expected_http_ports
+        assert set(grpc_ports) == expected_grpc_ports
         return True
 
     wait_for_condition(_func, timeout=10)
@@ -1636,23 +1693,30 @@ class TestDirectIngressBackpressure:
                 wait_for_condition(
                     lambda: ray.get(signal.cur_num_waiters.remote()) == 1
                 )
-                futures.extend(
-                    [tpe.submit(do_request, url) for _ in range(num_requests - 1)]
+
+                futures.append(tpe.submit(do_request, url))
+                done, _ = wait(
+                    futures, timeout=0.1, return_when=FIRST_COMPLETED
                 )
+                assert len(done) == 0
 
-                def _func():
-                    rejected = sum(
-                        [f.done() and f.result(timeout=0) is False for f in futures]
-                    )
-                    assert rejected == num_requests - 3
-                    return True
+                futures.append(tpe.submit(do_request, url))
+                done, _ = wait(
+                    futures, timeout=0.1, return_when=FIRST_COMPLETED
+                )
+                assert len(done) == 0
 
-                wait_for_condition(_func, timeout=5)
+                for _ in range(num_requests - 3):
+                    rejected_fut = tpe.submit(do_request, url)
+                    status_code, text = rejected_fut.result()
+                    assert status_code == 503
+                    assert text.startswith("Request dropped due to backpressure")
 
                 ray.get(signal.send.remote())
-
-                successful = sum(1 for f in futures if f.result() is True)
-                assert successful == 3
+                for future in futures:
+                    status_code, text = future.result()
+                    assert status_code == 200
+                    assert text == "composite-deployment"
 
             ray.get(signal.send.remote(clear=True))
 
@@ -2540,16 +2604,12 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
                 # Expected - request failed due to force-kill
                 pass
 
-    # Wait until all ports can be bound (not just until nothing is listening).
-    # This ensures the ports are fully released from TIME_WAIT state.
-    def all_ports_can_be_bound():
-        for port in http_ports + grpc_ports:
-            if not _can_bind_to_port(port):
-                return False
-        return True
-
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
-    wait_for_condition(all_ports_can_be_bound, timeout=120)
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=http_ports + grpc_ports,
+        timeout=120,
+    )
 
 
 if __name__ == "__main__":
