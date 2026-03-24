@@ -17,7 +17,6 @@ from ray.serve._private.metrics_utils import (
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
-    _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
@@ -516,7 +515,12 @@ class TestReplicaQueueLengthPolicy:
             downscale_to_zero_delay_s=downscale_to_zero_delay_s,
         )
 
-        overload_requests = 100
+        # Use overload_requests that naturally produce the desired upscale_target
+        # without depending on bounds clamping (bounds are applied at a higher
+        # level in get_decision_num_replicas, not in the policy wrapper).
+        # desired = start_replicas * (overload_requests / target_ongoing_requests)
+        #         = 1 * (2 / 1) = 2
+        overload_requests = 2
 
         ctx = AutoscalingContext(
             config=config,
@@ -862,16 +866,6 @@ class TestAutoscalingConfigParameters:
         )
         # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The logic then adjusts it to 9.
         assert result == 9
-
-    def test_apply_bounds(self):
-        num_replicas = 5
-        capacity_adjusted_min_replicas = 1
-        capacity_adjusted_max_replicas = 10
-        result = _apply_bounds(
-            num_replicas, capacity_adjusted_min_replicas, capacity_adjusted_max_replicas
-        )
-        # Expected: max(1, min(10, 5)) = 5
-        assert result == 5
 
     def test_apply_delay_logic_upscale(self):
         """Test upscale delay requires consecutive periods."""
