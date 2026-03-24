@@ -98,7 +98,7 @@ class DataDownloader:
                 trust_repo=True,
                 force_reload=False,
             )
-            with open(success_file, "w") as f:
+            with open(success_file, "w") as _:
                 pass
             print("Download complete.")
 
