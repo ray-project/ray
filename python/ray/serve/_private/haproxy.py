@@ -391,13 +391,7 @@ class HAProxyConfig:
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
-    @property
-    def balance_algorithm(self) -> str:
-        lb_algo = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
-        if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(lb_algo):
-            lb_algo = "leastconn"
-
-        return lb_algo
+    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
 
     @property
     def frontend_host(self) -> str:
@@ -726,13 +720,6 @@ class HAProxyApi(ProxyApi):
                 # Set initial reload ID if header injection is enabled and ID is not set
                 if self.cfg.inject_process_id_header and self.cfg.reload_id is None:
                     self.cfg.reload_id = f"initial-{int(time.time() * 1000)}"
-
-                if not HAPROXY_BALANCE_ALGORITHM_PATTERN.match(
-                    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM.lower()
-                ):
-                    logger.warning(
-                        f"'{RAY_SERVE_HAPROXY_BALANCE_ALGORITHM}' isn't a valid balancing algorithm. HAProxy will use leastconn instead. Valid algorithms match: leastconn, roundrobin, random, random(<draws>)"
-                    )
 
                 self._generate_config_file_internal()
                 logger.info("Successfully generated HAProxy config file.")

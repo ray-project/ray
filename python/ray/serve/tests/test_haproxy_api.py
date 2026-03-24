@@ -252,6 +252,8 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 config_file_path=config_file_path,
             )
 
+            api.cfg.balance_algorithm = "random(2)"
+
             try:
                 api._generate_config_file_internal()
 
@@ -290,7 +292,7 @@ defaults
     errorfile 502 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
-    balance leastconn
+    balance random(2)
 frontend prometheus
     bind :9101
     mode http
@@ -1659,32 +1661,6 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
             ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
 
         await api.stop()
-
-
-@pytest.mark.parametrize(
-    "env_value,expected",
-    [
-        ("leastconn", "leastconn"),
-        ("roundrobin", "roundrobin"),
-        ("random", "random"),
-        ("random(2)", "random(2)"),
-        ("random(10)", "random(10)"),
-        ("LEASTCONN", "leastconn"),
-        ("Random(3)", "random(3)"),
-        ("rando", "leastconn"),
-        ("random(abc)", "leastconn"),
-        ("test", "leastconn"),
-        ("", "leastconn"),
-    ],
-)
-def test_balance_algorithm_validation(env_value, expected):
-    """Test that HAProxyConfig.balance_algorithm returns the env var value
-    when valid, and falls back to leastconn when invalid."""
-    with mock.patch(
-        "ray.serve._private.haproxy.RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", env_value
-    ):
-        config = HAProxyConfig()
-        assert config.balance_algorithm == expected
 
 
 if __name__ == "__main__":
