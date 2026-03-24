@@ -103,8 +103,8 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
     Target,
-    TracingConfig,
     TargetGroup,
+    TracingConfig,
     gRPCOptionsSchema,
 )
 from ray.util import metrics
