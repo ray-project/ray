@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import time
 import torch
 from packaging import version
 from PIL import Image
@@ -11,6 +10,7 @@ from ray.data.expressions import download
 import numpy as np
 import uuid
 import ray
+from benchmark import Benchmark
 
 
 NUM_GPU_NODES = 8
@@ -75,46 +75,46 @@ class ResNetActor:
             return batch
 
 
-start_time = time.time()
+def run_pipeline():
+    # You can use `download` on Ray 2.50+.
+    if version.parse(ray.__version__) > version.parse("2.49.2"):
+        ds = (
+            ray.data.read_parquet(INPUT_PATH)
+            # NOTE: Limit to the 803,580 images Daft uses in their benchmark.
+            .limit(803_580)
+            .with_column("bytes", download("image_url"))
+            .map(fn=deserialize_image)
+            .map(fn=transform_image)
+            .map_batches(
+                fn=ResNetActor,
+                batch_size=BATCH_SIZE,
+                num_gpus=1.0,
+                concurrency=NUM_GPU_NODES,
+            )
+            .select_columns(["image_url", "label"])
+        )
+        ds.write_parquet(OUTPUT_PATH)
 
-
-# You can use `download` on Ray 2.50+.
-if version.parse(ray.__version__) > version.parse("2.49.2"):
-    ds = (
-        ray.data.read_parquet(INPUT_PATH)
+    else:
         # NOTE: Limit to the 803,580 images Daft uses in their benchmark.
-        .limit(803_580)
-        .with_column("bytes", download("image_url"))
-        .map(fn=deserialize_image)
-        .map(fn=transform_image)
-        .map_batches(
-            fn=ResNetActor,
-            batch_size=BATCH_SIZE,
-            num_gpus=1.0,
-            concurrency=NUM_GPU_NODES,
+        paths = ray.data.read_parquet(INPUT_PATH).limit(803_580).take_all()
+        paths = [row["image_url"] for row in paths]
+        ds = (
+            ray.data.read_images(
+                paths, include_paths=True, ignore_missing_paths=True, mode="RGB"
+            )
+            .map(fn=transform_image)
+            .map_batches(
+                fn=ResNetActor,
+                batch_size=BATCH_SIZE,
+                num_gpus=1.0,
+                concurrency=NUM_GPU_NODES,
+            )
+            .select_columns(["path", "label"])
         )
-        .select_columns(["image_url", "label"])
-    )
-    ds.write_parquet(OUTPUT_PATH)
-
-else:
-    # NOTE: Limit to the 803,580 images Daft uses in their benchmark.
-    paths = ray.data.read_parquet(INPUT_PATH).limit(803_580).take_all()
-    paths = [row["image_url"] for row in paths]
-    ds = (
-        ray.data.read_images(
-            paths, include_paths=True, ignore_missing_paths=True, mode="RGB"
-        )
-        .map(fn=transform_image)
-        .map_batches(
-            fn=ResNetActor,
-            batch_size=BATCH_SIZE,
-            num_gpus=1.0,
-            concurrency=NUM_GPU_NODES,
-        )
-        .select_columns(["path", "label"])
-    )
-    ds.write_parquet(OUTPUT_PATH)
+        ds.write_parquet(OUTPUT_PATH)
 
 
-print("Runtime:", time.time() - start_time)
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()
