@@ -1,6 +1,7 @@
 """
 Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink API.
 """
+
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union

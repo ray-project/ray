@@ -327,6 +327,29 @@ def _generate_non_atomic_write_checkpoint_transform(
     """
 
     def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        per_block_write_returns = ctx.kwargs.get("_datasink_write_return_per_block")
+        if per_block_write_returns is not None:
+            block_list = list(blocks)
+            if len(per_block_write_returns) != len(block_list):
+                raise ValueError(
+                    "Per-block write returns length mismatch: "
+                    f"expected {len(block_list)} but got {len(per_block_write_returns)}"
+                )
+
+            id_column = data_context.checkpoint_config.id_column
+            for i, block in enumerate(block_list):
+                ba = BlockAccessor.for_block(block)
+                if ba.num_rows() == 0:
+                    continue
+
+                _validate_id_column_exists(id_column, block)
+                checkpoint_writer.write_block_checkpoint(
+                    ba,
+                    write_result=per_block_write_returns[i],
+                )
+
+            return iter(block_list)
+
         # Combine all blocks
         block_list, combined_block = _combine_blocks(blocks)
         ba = BlockAccessor.for_block(combined_block)
