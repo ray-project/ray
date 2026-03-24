@@ -190,6 +190,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._requester_id = f"data-{execution_id}"
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
+        self._autoscaling_enabled = is_autoscaling_enabled()
 
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
@@ -248,9 +249,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         )
 
         if resource_request != active_bundles:
-            self._log_resource_request(
-                util, active_bundles, resource_request, is_autoscaling_enabled()
-            )
+            self._log_resource_request(util, active_bundles, resource_request)
 
         self._send_resource_request(resource_request)
 
@@ -259,7 +258,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         current_utilization: ExecutionResources,
         active_bundles: List[Dict[str, float]],
         resource_request: List[Dict[str, float]],
-        autoscaling_enabled: bool = True,
     ) -> None:
         message = (
             "The utilization of one or more logical resource is higher than the "
@@ -280,7 +278,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
-        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not autoscaling_enabled:
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not self._autoscaling_enabled:
             level = logging.DEBUG
         else:
             level = logging.INFO
