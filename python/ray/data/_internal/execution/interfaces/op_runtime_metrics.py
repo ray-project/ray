@@ -6,7 +6,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
-
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces.common import (
     RuntimeMetricsHistogram,
@@ -1064,7 +1063,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         )
 
         self.task_output_backpressure_time_s += task_output_backpressure_s
-
 
         assert task_info.cum_block_gen_time_s is not None
 
