@@ -76,13 +76,13 @@ class RoundRobinPartitioner(FilePartitioner):
         self._current_bucket_index = 0
         self._output_queue: collections.deque[FileManifest] = collections.deque()
 
-    def add_input(self, input: FileManifest):
+    def add_input(self, manifest: FileManifest):
         in_memory_size_estimates = (
-            self._in_memory_size_estimator.estimate_in_memory_sizes(input)
+            self._in_memory_size_estimator.estimate_in_memory_sizes(manifest)
         )
         for (file_path, file_size, in_memory_size_estimate,) in zip(
-            input.paths,
-            input.file_sizes,
+            manifest.paths,
+            manifest.file_sizes,
             in_memory_size_estimates,
         ):
             current_bucket = self._buckets[self._current_bucket_index]
