@@ -95,6 +95,16 @@ class ArrowRow(Mapping):
         self._batch = batch
         self._row_idx = row_idx
 
+    def _select_columns(self, keys: List[str]) -> List[Any]:
+        items = []
+        for col_name in keys:
+            col_idx = self._batch.schema.get_field_index(col_name)
+            if col_idx == -1:
+                raise KeyError(col_name)
+            col = self._batch.column(col_idx)
+            items.append(col[self._row_idx])
+        return items
+
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import get_arrow_extension_tensor_types
 
@@ -113,16 +123,7 @@ class ArrowRow(Mapping):
                     ]
                 )
 
-            # Pyarrow select internally creates a new table by slicing which is expensive.
-            # Instead, access the columns directly at row_idx.
-            items = []
-            for col_name in keys:
-                col_idx = schema.get_field_index(col_name)
-                if col_idx == -1:
-                    raise KeyError(col_name)
-                col = self._batch.column(col_idx)
-                items.append(col[self._row_idx])
-
+            items = self._select_columns(keys)
             try:
                 # Try to interpret this as a pyarrow.Scalar value.
                 return tuple([item.as_py() for item in items])
