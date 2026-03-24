@@ -181,6 +181,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
 
     total_gen_ser = 0
+    cumulative_scheduling_time_s = 0.0
     clock = 0.0
     for i, tc in enumerate(test_cases):
         (
@@ -205,6 +206,16 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         mock_perf_counter.return_value = clock
         metrics.on_task_output_generated(
             i, create_output_bundle(gen_time_s, ser_time_s)
+        )
+
+        # Verify that average_task_scheduling_time_s is correct *before* the
+        # task finishes.  The numerator (task_scheduling_time_s) is incremented
+        # on first output, so the denominator must be num_tasks_have_outputs
+        # (not num_tasks_finished) for the average to be accurate mid-flight.
+        cumulative_scheduling_time_s += scheduling_time_s
+        num_tasks_with_output = i + 1
+        assert metrics.average_task_scheduling_time_s == pytest.approx(
+            cumulative_scheduling_time_s / num_tasks_with_output
         )
 
         # Generate remaining outputs (won't affect scheduling time)
@@ -256,7 +267,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         total_driver_wall_time_s / num_tasks
     )
     assert metrics.average_task_scheduling_time_s == pytest.approx(
-        total_scheduling_time_s / num_tasks
+        total_scheduling_time_s / num_tasks  # all tasks produced output
     )
     assert metrics.average_task_output_backpressure_time_s == pytest.approx(
         total_output_bp_time_s / num_tasks
