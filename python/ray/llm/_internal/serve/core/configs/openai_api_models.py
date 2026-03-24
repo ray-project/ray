@@ -1,104 +1,173 @@
-"""This module contains the wrapper classes for vLLM's OpenAI implementation.
+"""This module contains wrapper classes for OpenAI-compatible protocol models.
 
-If there are any major differences in the interface, the expectation is that
-they will be upstreamed to vLLM.
+Supports both vLLM and SGLang as the underlying engine. vLLM is tried first;
+on ImportError, SGLang models are imported as a fallback. If neither is
+installed, an ImportError is raised at import time.
 """
 
+import uuid
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
-from vllm.entrypoints.openai.chat_completion.protocol import (
-    ChatCompletionRequest as vLLMChatCompletionRequest,
-    ChatCompletionResponse as vLLMChatCompletionResponse,
-    ChatCompletionStreamResponse as vLLMChatCompletionStreamResponse,
-)
-from vllm.entrypoints.openai.completion.protocol import (
-    CompletionRequest as vLLMCompletionRequest,
-    CompletionResponse as vLLMCompletionResponse,
-    CompletionStreamResponse as vLLMCompletionStreamResponse,
-)
-from vllm.entrypoints.openai.engine.protocol import (
-    ErrorInfo as vLLMErrorInfo,
-    ErrorResponse as vLLMErrorResponse,
-)
-from vllm.entrypoints.openai.speech_to_text.protocol import (
-    TranscriptionRequest as vLLMTranscriptionRequest,
-    TranscriptionResponse as vLLMTranscriptionResponse,
-    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
-)
-from vllm.entrypoints.pooling.embed.protocol import (
-    EmbeddingChatRequest as vLLMEmbeddingChatRequest,
-    EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
-    EmbeddingResponse as vLLMEmbeddingResponse,
-)
-from vllm.entrypoints.pooling.score.protocol import (
-    ScoreResponse as vLLMScoreResponse,
-    ScoreTextRequest as vLLMScoreTextRequest,
-)
-from vllm.entrypoints.serve.tokenize.protocol import (
-    DetokenizeRequest as vLLMDetokenizeRequest,
-    DetokenizeResponse as vLLMDetokenizeResponse,
-    TokenizeChatRequest as vLLMTokenizeChatRequest,
-    TokenizeCompletionRequest as vLLMTokenizeCompletionRequest,
-    TokenizeResponse as vLLMTokenizeResponse,
-)
-from vllm.utils import random_uuid
+
+try:
+    from vllm.entrypoints.openai.chat_completion.protocol import (
+        ChatCompletionRequest as _ChatCompletionRequest,
+        ChatCompletionResponse as _ChatCompletionResponse,
+        ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
+    )
+    from vllm.entrypoints.openai.completion.protocol import (
+        CompletionRequest as _CompletionRequest,
+        CompletionResponse as _CompletionResponse,
+        CompletionStreamResponse as _CompletionStreamResponse,
+    )
+    from vllm.entrypoints.openai.engine.protocol import (
+        ErrorInfo as _ErrorInfo,
+        ErrorResponse as _ErrorResponse,
+    )
+    from vllm.entrypoints.openai.speech_to_text.protocol import (
+        TranscriptionRequest as _TranscriptionRequest,
+        TranscriptionResponse as _TranscriptionResponse,
+        TranscriptionStreamResponse as _TranscriptionStreamResponse,
+    )
+    from vllm.entrypoints.pooling.embed.protocol import (
+        EmbeddingChatRequest as _EmbeddingChatRequest,
+        EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
+        EmbeddingResponse as _EmbeddingResponse,
+    )
+    from vllm.entrypoints.pooling.score.protocol import (
+        ScoreResponse as _ScoreResponse,
+        ScoreTextRequest as _ScoreTextRequest,
+    )
+    from vllm.entrypoints.serve.tokenize.protocol import (
+        DetokenizeRequest as _DetokenizeRequest,
+        DetokenizeResponse as _DetokenizeResponse,
+        TokenizeChatRequest as _TokenizeChatRequest,
+        TokenizeCompletionRequest as _TokenizeCompletionRequest,
+        TokenizeResponse as _TokenizeResponse,
+    )
+
+except ImportError:
+    try:
+        from sglang.srt.entrypoints.openai.protocol import (
+            ChatCompletionRequest as _ChatCompletionRequest,
+            ChatCompletionResponse as _ChatCompletionResponse,
+            ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
+            CompletionRequest as _CompletionRequest,
+            CompletionResponse as _CompletionResponse,
+            CompletionStreamResponse as _CompletionStreamResponse,
+            DetokenizeRequest as _DetokenizeRequest,
+            DetokenizeResponse as _DetokenizeResponse,
+            EmbeddingRequest as _EmbeddingCompletionRequest,
+            EmbeddingResponse as _EmbeddingResponse,
+            ScoringRequest as _ScoreTextRequest,
+            ScoringResponse as _ScoreResponse,
+            TokenizeRequest as _TokenizeCompletionRequest,
+            TokenizeResponse as _TokenizeResponse,
+        )
+    except ImportError:
+        raise ImportError(
+            "Neither vLLM nor SGLang is installed. At least one is required "
+            "for Ray Serve LLM protocol models. Install with: "
+            "`pip install ray[llm]` or `pip install sglang[all]`"
+        )
+
+    def _unsupported_model(name: str, feature: str = ""):
+        """Create a BaseModel stub that raises NotImplementedError on instantiation."""
+        msg = f"{name} is not supported with the current backend." + (
+            f" {feature}" if feature else ""
+        )
+
+        class _Stub(BaseModel):
+            model_config = ConfigDict(arbitrary_types_allowed=True)
+
+            def __init__(self, **kwargs):
+                raise NotImplementedError(msg)
+
+        _Stub.__name__ = _Stub.__qualname__ = name
+        return _Stub
+
+    # SGLang does not provide transcription protocol models.
+    _vllm_hint = "Install vLLM to use transcription endpoints."
+    _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _vllm_hint)
+    _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _vllm_hint)
+    _TranscriptionStreamResponse = _unsupported_model(
+        "TranscriptionStreamResponse", _vllm_hint
+    )
+
+    # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
+    # pattern, so we define our own.
+
+    class _ErrorInfo(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+        message: str
+        type: str
+        param: Optional[str] = None
+        code: int
+
+    class _ErrorResponse(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+        error: _ErrorInfo
+
+    _EmbeddingChatRequest = _EmbeddingCompletionRequest
+    _TokenizeChatRequest = _TokenizeCompletionRequest
+
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
-class ChatCompletionRequest(vLLMChatCompletionRequest):
+class ChatCompletionRequest(_ChatCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ChatCompletionResponse(vLLMChatCompletionResponse):
+class ChatCompletionResponse(_ChatCompletionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ChatCompletionStreamResponse(vLLMChatCompletionStreamResponse):
+class ChatCompletionStreamResponse(_ChatCompletionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ErrorInfo(vLLMErrorInfo):
+class ErrorInfo(_ErrorInfo):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ErrorResponse(vLLMErrorResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-# TODO (Kourosh): Upstream
-class CompletionRequest(vLLMCompletionRequest):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class CompletionResponse(vLLMCompletionResponse):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-
-class CompletionStreamResponse(vLLMCompletionStreamResponse):
+class ErrorResponse(_ErrorResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # TODO (Kourosh): Upstream
-class EmbeddingCompletionRequest(vLLMEmbeddingCompletionRequest):
+class CompletionRequest(_CompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class EmbeddingChatRequest(vLLMEmbeddingChatRequest):
+class CompletionResponse(_CompletionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class EmbeddingResponse(vLLMEmbeddingResponse):
+class CompletionStreamResponse(_CompletionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class TranscriptionRequest(vLLMTranscriptionRequest):
+# TODO (Kourosh): Upstream
+class EmbeddingCompletionRequest(_EmbeddingCompletionRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class EmbeddingChatRequest(_EmbeddingChatRequest):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class EmbeddingResponse(_EmbeddingResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class TranscriptionRequest(_TranscriptionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     request_id: str = Field(
-        default_factory=lambda: f"{random_uuid()}",
+        default_factory=lambda: str(uuid.uuid4()),
         description=(
             "The request_id related to this request. If the caller does "
             "not set it, a random_uuid will be generated. This id is used "
@@ -107,39 +176,39 @@ class TranscriptionRequest(vLLMTranscriptionRequest):
     )
 
 
-class TranscriptionResponse(vLLMTranscriptionResponse):
+class TranscriptionResponse(_TranscriptionResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class TranscriptionStreamResponse(vLLMTranscriptionStreamResponse):
+class TranscriptionStreamResponse(_TranscriptionStreamResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ScoreRequest(vLLMScoreTextRequest):
+class ScoreRequest(_ScoreTextRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class ScoreResponse(vLLMScoreResponse):
+class ScoreResponse(_ScoreResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class TokenizeCompletionRequest(vLLMTokenizeCompletionRequest):
+class TokenizeCompletionRequest(_TokenizeCompletionRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class TokenizeChatRequest(vLLMTokenizeChatRequest):
+class TokenizeChatRequest(_TokenizeChatRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class TokenizeResponse(vLLMTokenizeResponse):
+class TokenizeResponse(_TokenizeResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class DetokenizeRequest(vLLMDetokenizeRequest):
+class DetokenizeRequest(_DetokenizeRequest):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
-class DetokenizeResponse(vLLMDetokenizeResponse):
+class DetokenizeResponse(_DetokenizeResponse):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
