@@ -733,3 +733,20 @@ class LLMServer(LLMServerProtocol):
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
+
+    def __del__(self):
+        """Cleanup logic to ensure engine config and PGs are cleaned up during garbage collection."""
+        if hasattr(self, "_llm_config") and self._llm_config:
+            try:
+                engine_config = self._llm_config.get_engine_config()
+                tpu_pg = getattr(engine_config, "_tpu_slice_pg_wrapper", None)
+
+                if tpu_pg is not None:
+                    logger.info(
+                        "Shutting down slice placement group for server replica."
+                    )
+                    tpu_pg.shutdown()
+            except Exception as e:
+                logger.warning(
+                    f"Failed to clean up slice placement group during LLMServer teardown: {e}"
+                )
