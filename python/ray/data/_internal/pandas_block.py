@@ -76,15 +76,13 @@ class PandasRow(Mapping):
         def get_item(keys: List[str]) -> Any:
             items = []
             for col_name in keys:
-                if col_name not in self._batch.columns:
-                    return None
                 val = self._batch[col_name].iloc[self._row_idx]
                 if isinstance(val, TensorArrayElement):
                     # Getting an item in a Pandas tensor column may return
                     # a TensorArrayElement, which we have to convert to an ndarray.
                     val = val.to_numpy()
                 items.append(val)
-                
+
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             try:

@@ -119,8 +119,7 @@ class ArrowRow(Mapping):
             for col_name in keys:
                 col_idx = schema.get_field_index(col_name)
                 if col_idx == -1:
-                    # key not found
-                    return None
+                    raise KeyError(col_name)
                 col = self._batch.column(col_idx)
                 items.append(col[self._row_idx])
 
