@@ -809,6 +809,7 @@ izulu==0.50.0 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   taskiq
 jinja2==3.1.6 ; sys_platform != 'win32' \
+    --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
@@ -1274,18 +1275,18 @@ opencensus-context==0.1.3 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   opencensus
-opentelemetry-api==1.34.1 \
-    --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
-    --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
+opentelemetry-api==1.39.0 \
+    --hash=sha256:3c3b3ca5c5687b1b5b37e5c5027ff68eacea8675241b29f13110a8ffbb8f0459 \
+    --hash=sha256:6130644268c5ac6bdffaf660ce878f10906b3e789f7e2daa5e169b047a2933b9
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.55b1 \
-    --hash=sha256:d13ec0b22bf394113ff1ada5da98133a4b051779b803dae183188e26c4bd9ee0 \
-    --hash=sha256:f364fbbff9e5de37a112ff104d1185fb1d7e2046c5ab5911e5afebc7ab3ddf0e
+opentelemetry-exporter-prometheus==0.60b0 \
+    --hash=sha256:4f616397040257fae4c5e5272b57b47c13372e3b7f0f2db2427fd4dbe69c60b5 \
+    --hash=sha256:c6ae33e52cdd1dbfed1f7436935df94eb03c725b57322026d04e6fbc37108e6e
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
@@ -1295,16 +1296,16 @@ opentelemetry-proto==1.39.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
-opentelemetry-sdk==1.34.1 \
-    --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
-    --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
+opentelemetry-sdk==1.39.0 \
+    --hash=sha256:90cfb07600dfc0d2de26120cebc0c8f27e69bf77cd80ef96645232372709a514 \
+    --hash=sha256:c22204f12a0529e07aa4d985f1bca9d6b0e7b29fe7f03e923548ae52e0e15dde
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.55b1 \
-    --hash=sha256:5da81dfdf7d52e3d37f8fe88d5e771e191de924cfff5f550ab0b8f7b2409baed \
-    --hash=sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3
+opentelemetry-semantic-conventions==0.60b0 \
+    --hash=sha256:069530852691136018087b52688857d97bba61cd641d0f8628d2d92788c4f78a \
+    --hash=sha256:227d7aa73cbb8a2e418029d6b6465553aa01cf7e78ec9d0bc3255c7b3ac5bf8f
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   opentelemetry-sdk
@@ -1535,18 +1536,18 @@ proto-plus==1.26.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   google-api-core
-protobuf==5.29.5 \
-    --hash=sha256:3f1c6468a2cfd102ff4703976138844f78ebd1fb45f49011afc5139e9e283079 \
-    --hash=sha256:3f76e3a3675b4a4d867b52e4a5f5b78a2ef9565549d4037e06cf7b0942b1d3fc \
-    --hash=sha256:470f3af547ef17847a28e1f47200a1cbf0ba3ff57b7de50d22776607cd2ea353 \
-    --hash=sha256:63848923da3325e1bf7e9003d680ce6e14b07e55d0473253a690c3a8b8fd6e61 \
-    --hash=sha256:6cf42630262c59b2d8de33954443d94b746c952b01434fc58a417fdbd2e84bd5 \
-    --hash=sha256:6f642dc9a61782fa72b90878af134c5afe1917c89a568cd3476d758d3c3a0736 \
-    --hash=sha256:7318608d56b6402d2ea7704ff1e1e4597bee46d760e7e4dd42a3d45e24b87f2e \
-    --hash=sha256:bc1463bafd4b0929216c35f437a8e28731a2b7fe3d98bb77a600efced5a15c84 \
-    --hash=sha256:e38c5add5a311f2a6eb0340716ef9b039c1dfa428b28f25a7838ac329204a671 \
-    --hash=sha256:ef91363ad4faba7b25d844ef1ada59ff1604184c0bcd8b39b8a6bef15e1af238 \
-    --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
+protobuf==5.29.6 \
+    --hash=sha256:36ade6ff88212e91aef4e687a971a11d7d24d6948a66751abc1b3238648f5d05 \
+    --hash=sha256:62e8a3114992c7c647bce37dcc93647575fc52d50e48de30c6fcb28a6a291eb1 \
+    --hash=sha256:6b9edb641441b2da9fa8f428760fc136a49cf97a52076010cf22a2ff73438a86 \
+    --hash=sha256:76e07e6567f8baf827137e8d5b8204b6c7b6488bbbff1bf0a72b383f77999c18 \
+    --hash=sha256:7e6ad413275be172f67fdee0f43484b6de5a904cc1c3ea9804cb6fe2ff366eda \
+    --hash=sha256:831e2da16b6cc9d8f1654c041dd594eda43391affd3c03a91bea7f7f6da106d6 \
+    --hash=sha256:a8866b2cff111f0f863c1b3b9e7572dc7eaea23a7fae27f6fc613304046483e6 \
+    --hash=sha256:b5a169e664b4057183a34bdc424540e86eea47560f3c123a0d64de4e137f9269 \
+    --hash=sha256:cb4c86de9cd8a7f3a256b9744220d87b847371c6b2f10bde87768918ef33ba49 \
+    --hash=sha256:da9ee6a5424b6b30fd5e45c5ea663aef540ca95f9ad99d1e887e819cdf9b8723 \
+    --hash=sha256:e3387f44798ac1106af0233c04fb8abf543772ff241169946f698b3a9a3d3ab9
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
@@ -2106,6 +2107,7 @@ typer==0.15.1 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
 typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
@@ -2366,6 +2368,7 @@ yarl==1.18.3 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   aiohttp
 zipp==3.19.2 \
+    --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock

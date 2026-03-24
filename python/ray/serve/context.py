@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
+from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
@@ -30,24 +31,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
-
-
-@DeveloperAPI
-@dataclass
-class GangContext:
-    """Context information for a replica that is part of a gang."""
-
-    gang_id: str
-    """Unique identifier for this gang."""
-
-    rank: int
-    """This replica's rank within the gang (0-indexed)."""
-
-    world_size: int
-    """Total number of replicas in this gang."""
-
-    member_replica_ids: List[str]
-    """List of replica IDs in this gang, ordered by rank."""
 
 
 @DeveloperAPI
@@ -63,6 +46,7 @@ class ReplicaContext:
         - rank: the rank of the replica.
         - world_size: the number of replicas in the deployment.
         - gang_context: context information for the gang the replica is part of.
+        - code_version: code version of the deployment (for get_deployment_actor).
     """
 
     replica_id: ReplicaID
@@ -72,6 +56,7 @@ class ReplicaContext:
     world_size: int
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
+    code_version: Optional[str] = None
 
     @property
     def app_name(self) -> str:
@@ -138,6 +123,7 @@ def _set_internal_replica_context(
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
     gang_context: Optional[GangContext] = None,
+    code_version: Optional[str] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -148,6 +134,7 @@ def _set_internal_replica_context(
         world_size=world_size,
         _handle_registration_callback=handle_registration_callback,
         gang_context=gang_context,
+        code_version=code_version,
     )
 
 
@@ -215,6 +202,8 @@ class _RequestContext:
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False
+    # The client address in "host:port" format, if available.
+    _client: str = ""
     # Ray tracing context for this request (if tracing is enabled)
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems

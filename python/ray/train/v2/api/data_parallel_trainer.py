@@ -103,7 +103,6 @@ class DataParallelTrainer:
             train_loop_config=self.train_loop_config,
             scaling_config=self.scaling_config,
             backend_config=self.backend_config,
-            datasets=self.datasets,
             dataset_config=self.data_config,
         )
 
@@ -117,6 +116,10 @@ class DataParallelTrainer:
 
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+        if self.scaling_config.elasticity_enabled:
+            usage_lib.record_extra_usage_tag(
+                usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED, "1"
+            )
 
     def _validate_configs(self):
         if not is_v2_enabled():
@@ -206,7 +209,10 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
+        datasets_callback = DatasetsCallback(
+            train_run_context=self.train_run_context,
+            datasets=self.datasets,
+        )
         placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
@@ -302,7 +308,7 @@ class DataParallelTrainer:
             if sigint_count <= 1:
                 try:
                     ray.get(controller.abort.remote())
-                except ray.exceptions.ActorDiedError:
+                except ray.exceptions.RayActorError:
                     # We catch the error and exit 0 to indicate graceful termination.
                     # However, for some reason the process still exits with 1.
                     sys.exit(0)
