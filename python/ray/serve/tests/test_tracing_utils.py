@@ -1225,12 +1225,12 @@ def test_tracing_config_disabled(serve_and_ray_shutdown):
     if os.path.exists(spans_dir):
         files = os.listdir(spans_dir)
         for file in files:
-            assert "replica" not in file, (
-                f"Found replica span file {file} when tracing was disabled"
-            )
-            assert "proxy" not in file, (
-                f"Found proxy span file {file} when tracing was disabled"
-            )
+            assert (
+                "replica" not in file
+            ), f"Found replica span file {file} when tracing was disabled"
+            assert (
+                "proxy" not in file
+            ), f"Found proxy span file {file} when tracing was disabled"
 
 
 def test_tracing_config_custom_sampling_ratio(serve_and_ray_shutdown):

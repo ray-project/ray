@@ -153,7 +153,13 @@ async def serve_start_async(
     controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, grpc_options, global_logging_config, global_tracing_config, **kwargs)
+        .remote(
+            http_options,
+            grpc_options,
+            global_logging_config,
+            global_tracing_config,
+            **kwargs,
+        )
     )
 
     client = ServeControllerClient(
@@ -226,7 +232,11 @@ def serve_start(
         pass
 
     controller = _start_controller(
-        http_options, grpc_options, global_logging_config, global_tracing_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        global_tracing_config,
+        **kwargs,
     )
 
     client = ServeControllerClient(
