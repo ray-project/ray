@@ -104,6 +104,23 @@ void RayEventRecorder::StopExportingEvents() {
 
     ExportEvents();
   }
+
+  // Stop the periodic runner so no new ExportEvents() calls start.
+  periodical_runner_.reset();
+
+  // Final wait: a concurrent periodic ExportEvents() could have drained the buffer
+  // and started a gRPC between our grpc_in_progress_ check and buffer_.empty() check.
+  // Wait for it to complete so the gRPC callback doesn't fire after destruction.
+  {
+    absl::MutexLock lock(&grpc_completion_mutex_);
+    while (grpc_in_progress_) {
+      if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
+        RAY_LOG(WARNING)
+            << "RayEventRecorder shutdown timed out waiting for final gRPC.";
+        return;
+      }
+    }
+  }
 }
 
 void RayEventRecorder::ExportEvents() {
@@ -133,7 +150,10 @@ void RayEventRecorder::ExportEvents() {
 
   size_t num_raw_events = 0;
   size_t estimated_batch_size = 0;
-  for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++num_raw_events) {
+  for (boost::circular_buffer<std::unique_ptr<RayEventInterface>>::iterator it =
+           buffer_.begin();
+       it != buffer_.end();
+       ++it, ++num_raw_events) {
     std::unique_ptr<RayEventInterface> &event = *it;
     RayEventKey key = std::make_pair(event->GetEntityId(), event->GetEventType());
     auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
@@ -146,7 +166,7 @@ void RayEventRecorder::ExportEvents() {
         break;
       }
       grouped_events.push_back(std::move(event));
-      event_key_to_iterator[key] = std::prev(grouped_events.end());
+      map_it->second = std::prev(grouped_events.end());
       estimated_batch_size += estimated_size;
     } else {
       // Merge into existing event, update estimated batch size

@@ -83,6 +83,11 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     callback(Status::OK(), rpc::events::AddEventsReply{});
   }
 
+  void WaitForServerReady(
+      std::function<void(const Status &)> init_exporter_fn) override {
+    init_exporter_fn(Status::OK());
+  }
+
   void ReleaseCallbacksWithError() {
     rpc::ClientCallback<rpc::events::AddEventsReply> callback;
     {
@@ -441,6 +446,16 @@ TEST_F(RayEventRecorderTest, TestStopFlushesAllBatches) {
 "ray_event_recorder_send_batch_size_bytes": 1
 }
 )");
+  // Reconstruct recorder so it picks up the new batch size config
+  // (the fixture constructor runs before RayConfig::initialize).
+  recorder_ = std::make_unique<RayEventRecorder>(*fake_client_,
+                                                  io_service_,
+                                                  max_buffer_size_,
+                                                  "gcs",
+                                                  *fake_dropped_events_counter_,
+                                                  *fake_events_sent_counter_,
+                                                  *fake_events_failed_to_send_counter_,
+                                                  test_node_id_);
   recorder_->StartExportingEvents();
 
   // Add 3 events with different entity IDs so they can't be merged and will
