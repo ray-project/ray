@@ -24,7 +24,7 @@ def test_map(shutdown_only, restore_data_context):
     ctx.target_min_block_size = 10_000 * 8
     ctx.target_max_block_size = 10_000 * 8
     num_blocks_expected = 10
-    extra_blocks = 2 # map_transformer_ref + data_context_ref
+    extra_blocks = 2  # map_transformer_ref + data_context_ref
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     # Test read.
