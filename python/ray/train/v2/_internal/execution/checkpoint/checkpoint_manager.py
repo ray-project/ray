@@ -209,6 +209,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
             self._pending_training_results.pop(checkpoint)
+
             status = (checkpoint_to_status or {}).get(
                 checkpoint, ReportedCheckpointStatus.VALIDATED
             )
@@ -260,6 +261,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ]
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
+                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
 
                 if checkpoint_result.checkpoint in self._validated_checkpoints:
                     self._validated_checkpoints.discard(checkpoint_result.checkpoint)
