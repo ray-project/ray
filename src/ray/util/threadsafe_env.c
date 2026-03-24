@@ -37,10 +37,16 @@ static int (*real_putenv)(char *);
 
 static pthread_once_t real_funcs_init_once = PTHREAD_ONCE_INIT;
 
-/* Thread-local buffer for getenv return values.
+/* Thread-local ring buffer for getenv return values.
    We must copy the result before releasing the read lock, because a
-   concurrent setenv could invalidate the pointer. */
-static __thread char tls_buf[8192];
+   concurrent setenv could invalidate the pointer. A ring of 8 slots
+   ensures consecutive getenv calls (e.g., getenv("HOME") then
+   getenv("PATH")) don't clobber each other, matching glibc behavior
+   where returned pointers remain valid until the next setenv. */
+#define NUM_TLS_SLOTS 8
+#define TLS_SLOT_SIZE 8192
+static __thread char tls_ring[NUM_TLS_SLOTS][TLS_SLOT_SIZE];
+static __thread int tls_ring_idx;
 
 static void init_real_funcs(void) {
     real_getenv = (char *(*)(const char *))dlsym(RTLD_NEXT, "getenv");
@@ -62,9 +68,10 @@ char *getenv(const char *name) {
 
     if (val) {
         size_t vlen = strlen(val);
-        if (vlen < sizeof(tls_buf)) {
-            memcpy(tls_buf, val, vlen + 1);
-            val = tls_buf;
+        if (vlen < TLS_SLOT_SIZE) {
+            char *slot = tls_ring[tls_ring_idx++ % NUM_TLS_SLOTS];
+            memcpy(slot, val, vlen + 1);
+            val = slot;
         } else {
             /* Value too large for TLS buffer — return the original pointer.
                This is technically still racy, but values > 8KB are extremely
