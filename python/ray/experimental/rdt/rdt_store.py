@@ -89,14 +89,14 @@ def __ray_recv__(
         if target_buffers:
             # Currently only torch tensors are supported as target buffers. We could make this
             # more generic in the future by adding a pluggable buffer validation function.
-            validate_tensor_buffers(target_buffers, tensor_meta, device)
+            validate_tensor_buffers(target_buffers, tensor_transport_meta.tensor_meta, tensor_transport_meta.tensor_device)
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
             target_buffers,
         )
-        assert len(tensors) == len(tensor_meta)
+        assert len(tensors) == len(tensor_transport_meta.tensor_meta)
         rdt_store.add_object(obj_id, tensors)
     except Exception as e:
         # Store the error as an RDT object if the recv fails, so waiters will raise the error.

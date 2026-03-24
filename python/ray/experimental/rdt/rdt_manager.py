@@ -847,8 +847,8 @@ class RDTManager:
         # Wait for all in-flight fetches to complete.
         while fetch_requests:
             object_id, fetch_request = fetch_requests.popitem()
-            timeout = deadline - time.time()
-            if timeout < 0:
+            remaining = deadline - time.time()
+            if remaining < 0:
                 if user_timeout_is_smaller:
                     raise GetTimeoutError(
                         f"ray.get timed out after {timeout}s."
@@ -860,7 +860,7 @@ class RDTManager:
                         call_site="",
                     )
             result[object_id] = self._wait_fetch(
-                object_id, fetch_request, timeout=timeout
+                object_id, fetch_request, timeout=remaining
             )
         return result
 

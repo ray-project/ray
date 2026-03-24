@@ -25,6 +25,14 @@ class _TestCommMeta(CommunicatorMetadata):
     pass
 
 
+@dataclass
+class _TrackedFetchRequest(FetchRequest):
+    """FetchRequest subclass that records when it is deleted."""
+
+    def __del__(self):
+        _PipelineCheckingTransport.deleted_requests.add(self.obj_id)
+
+
 class _PipelineCheckingTransport(TensorTransportManager):
     """Fake one-sided transport that records the order of fetch/wait calls.
 
@@ -39,6 +47,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
     call_log: List = []
     fail_on_wait: set = set()
     wait_delay: float = 0
+    deleted_requests: set = set()
 
     def tensor_transport_backend(self) -> str:
         return _BACKEND_NAME
@@ -68,7 +77,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
         target_buffers=None,
     ) -> FetchRequest:
         self.__class__.call_log.append(("fetch", obj_id))
-        return FetchRequest(obj_id=obj_id, tensors=[f"val:{obj_id}"])
+        return _TrackedFetchRequest(obj_id=obj_id, tensors=[f"val:{obj_id}"])
 
     def wait_fetch_complete(
         self, fetch_request: FetchRequest, timeout: float = -1
@@ -157,6 +166,7 @@ def clear_call_log():
     _PipelineCheckingTransport.call_log.clear()
     _PipelineCheckingTransport.fail_on_wait.clear()
     _PipelineCheckingTransport.wait_delay = 0
+    _PipelineCheckingTransport.deleted_requests.clear()
 
 
 def _build_manager(object_ids: List[str], backend: str = _BACKEND_NAME) -> RDTManager:
@@ -265,8 +275,10 @@ def test_two_sided_transport_raises_on_fetch_and_get_rdt_objects():
         manager.fetch_and_get_rdt_objects([obj_id], use_object_store=False)
 
 
-def test_wait_fetch_called_for_all_requests_on_exception():
-    """If _wait_fetch raises for one object, remaining fetches must still be waited on."""
+def test_fetch_requests_deleted_on_exception():
+    """If _wait_fetch raises, all FetchRequests are deleted (cleaning up resources via __del__)."""
+    import gc
+
     object_ids = ["obj1", "obj2", "obj3"]
     manager = _build_manager(object_ids)
     _PipelineCheckingTransport.fail_on_wait.add("obj1")
@@ -274,10 +286,10 @@ def test_wait_fetch_called_for_all_requests_on_exception():
     with pytest.raises(RuntimeError, match="wait failed for obj1"):
         manager.fetch_and_get_rdt_objects(object_ids)
 
-    call_log = _PipelineCheckingTransport.call_log
-    waited = [oid for kind, oid in call_log if kind == "wait"]
-    assert set(waited) == set(object_ids), (
-        f"All fetched objects must be waited on even if one fails; waited={waited}"
+    gc.collect()
+    assert _PipelineCheckingTransport.deleted_requests == set(object_ids), (
+        f"All FetchRequests must be GCed even if one fails; "
+        f"deleted={_PipelineCheckingTransport.deleted_requests}"
     )
 
 
@@ -302,10 +314,8 @@ def test_object_fetch_timed_out_error():
             rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = original
 
 
-def test_object_fetch_timed_out_error():
-    """fetch_and_get_rdt_objects raises ObjectFetchTimedOutError when RDT timeout is hit."""
-    from ray.exceptions import ObjectFetchTimedOutError
-
+def test_get_timed_out_error():
+    """fetch_and_get_rdt_objects raises GetTimeoutError when user timeout is hit."""
     object_ids = ["obj1", "obj2"]
     manager = _build_manager(object_ids)
     # Make wait_fetch_complete slow enough to exceed a very short timeout.
