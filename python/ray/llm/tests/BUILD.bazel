@@ -97,7 +97,6 @@ py_test_module_list(
     files = glob(["serve/tpu/**/test_*.py"]),
     tags = [
         "exclusive",
-        "gpu",
         "team:llm",
     ],
     deps = [
