@@ -812,26 +812,6 @@ class _ActorMethodMetadata:
         )
 
 
-class _ActorMethodOptionsWrapper:
-    """Wraps an ActorMethod with pre-set options, exposing .remote() and .bind().
-
-    Defined at module scope to avoid the reference cycle that occurs when a class
-    is defined inside a closure (CPython's implicit ``__class__`` cell keeps the
-    closure alive, which keeps the ActorMethod and its ActorHandle alive).
-    """
-
-    def __init__(self, actor_method, options):
-        self._actor_method = actor_method
-        self._options = options
-
-    def remote(self, *args, **kwargs):
-        return self._actor_method._remote(args=args, kwargs=kwargs, **self._options)
-
-    @DeveloperAPI
-    def bind(self, *args, **kwargs):
-        return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
-
-
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
 @PublicAPI
@@ -1161,6 +1141,27 @@ class ActorMethod:
             state["decorator"],
             state["_tensor_transport"],
         )
+
+
+class _ActorMethodOptionsWrapper:
+    """Wraps an ActorMethod with pre-set options for .remote() and .bind().
+
+    Defined at module scope to avoid the reference cycle that occurs when a
+    class is defined inside a closure (CPython's implicit __class__ cell keeps
+    the closure alive, which keeps the ActorMethod and its ActorHandle alive).
+    See https://github.com/ray-project/ray/issues/61922.
+    """
+
+    def __init__(self, actor_method, options):
+        self._actor_method = actor_method
+        self._options = options
+
+    def remote(self, *args, **kwargs):
+        return self._actor_method._remote(args=args, kwargs=kwargs, **self._options)
+
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
 
 
 class _ActorClassMethodMetadata(object):
