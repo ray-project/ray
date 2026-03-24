@@ -471,20 +471,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 
-  /**
-   * @brief Determines whether a placement group requires label-domain-aware
-   * scheduling. Currently only supports GB200 and GB300 accelerator types
-   * for GPU-domain scheduling.
-   * TODO(#61777): Remove once label-domain scheduling is part of the pg public API
-   * as an option.
-   *
-   * @param pg The placement group to inspect.
-   * @return The node label key to use for domain grouping, or std::nullopt if
-   *   the placement group does not require label-domain scheduling.
-   */
-  std::optional<std::string> IsLabelDomainPlacementGroup(
-      const GcsPlacementGroup &pg) const;
-
   /// Help function to check if the resource_name has the pattern
   /// {original_resource_name}_group_{placement_group_id}, which means
   /// wildcard resource.

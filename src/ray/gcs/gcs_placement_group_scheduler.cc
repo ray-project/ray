@@ -57,7 +57,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
-  std::optional<std::string> label_domain = IsLabelDomainPlacementGroup(*placement_group);
+  std::optional<std::string> label_domain = placement_group->GetLabelDomainKey();
 
   // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
   // domain assignment so a new domain can be selected. If only some bundles are
@@ -697,29 +697,6 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
     node_bundle_resources_map[node_id] += bundle_resource_request;
   }
   return node_bundle_resources_map;
-}
-
-std::optional<std::string> GcsPlacementGroupScheduler::IsLabelDomainPlacementGroup(
-    const GcsPlacementGroup &pg) const {
-  static const std::string kAcceleratorTypeLabelKey = "ray.io/accelerator-type";
-  static const std::string kGpuDomainLabelKey = "ray.io/gpu-domain";
-  static const std::string kGB200 = "GB200";
-  static const std::string kGB300 = "GB300";
-
-  const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
-      pg.GetBundles();
-  RAY_CHECK(!all_bundles.empty());
-  const std::shared_ptr<const BundleSpecification> &bundle = all_bundles[0];
-  const LabelSelector &label_selector = bundle->GetRequiredResources().GetLabelSelector();
-  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
-        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        (constraint.GetLabelValues().contains(kGB300) ||
-         constraint.GetLabelValues().contains(kGB200))) {
-      return kGpuDomainLabelKey;
-    }
-  }
-  return std::nullopt;
 }
 
 bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(

@@ -126,7 +126,7 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   }
 
   if (all_infeasible) {
-    RAY_LOG(DEBUG) << "No label domain has sufficiental total resources; infeasible.";
+    RAY_LOG(DEBUG) << "No label domain has sufficient total resources; infeasible.";
     return SchedulingResult::Infeasible();
   } else {
     RAY_LOG(DEBUG) << "No label domain has sufficient available resources; failed";

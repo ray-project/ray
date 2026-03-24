@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/scheduling/label_selector.h"
+
 namespace ray {
 namespace gcs {
 
@@ -142,6 +144,37 @@ const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
 
 rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
+}
+
+std::optional<std::string> GcsPlacementGroup::GetLabelDomainKey() const {
+  const std::string &key = placement_group_table_data_.label_domain_key();
+  if (key.empty()) {
+    return std::nullopt;
+  }
+  return key;
+}
+
+void GcsPlacementGroup::ComputeLabelDomainKey() {
+  static const std::string kAcceleratorTypeLabelKey = "ray.io/accelerator-type";
+  static const std::string kGpuDomainLabelKey = "ray.io/gpu-domain";
+  static const std::string kGB200 = "GB200";
+  static const std::string kGB300 = "GB300";
+
+  const auto &bundles = GetBundles();
+  if (bundles.empty()) {
+    return;
+  }
+  const auto &bundle = bundles[0];
+  const LabelSelector &label_selector = bundle->GetRequiredResources().GetLabelSelector();
+  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
+    if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
+        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
+        (constraint.GetLabelValues().contains(kGB300) ||
+         constraint.GetLabelValues().contains(kGB200))) {
+      placement_group_table_data_.set_label_domain_key(kGpuDomainLabelKey);
+      return;
+    }
+  }
 }
 
 std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
