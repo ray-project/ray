@@ -714,28 +714,20 @@ def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
 def test_parquet_write_error_save_mode_multiple_blocks(
     ray_start_regular_shared, local_path
 ):
-    """Test that mode='error' works with multiple blocks (parallel writes).
-
-    Regression test: previously, mode='error' would pass existing_data_behavior='error'
-    to each individual PyArrow write task, causing a race condition where the first
-    task's output would cause subsequent tasks to fail with ArrowInvalid.
-    """
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir_multi_block")
 
-    # Create a dataset with multiple blocks to trigger parallel writes
+    # multiple blocks to trigger parallel writes
     ds = ray.data.range(100, override_num_blocks=4)
 
-    # Should succeed writing to a non-existent directory
-    ds.write_parquet(path, mode="error")
+    # should write
+    ds.write_parquet(path, filesystem=None, mode="error")
+    on_disk_table = pq.read_table(path)
+    assert on_disk_table.num_rows == 100
 
-    # Verify data was written correctly
-    result = ray.data.read_parquet(path)
-    assert result.count() == 100
-
-    # Should fail writing to an existing directory
+    # should error since dir already exists
     with pytest.raises(ValueError):
-        ds.write_parquet(path, mode="error")
+        ds.write_parquet(path, filesystem=None, mode="error")
 
 
 def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
