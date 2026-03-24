@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
+    """The output of a Ray Train run."""
+
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None

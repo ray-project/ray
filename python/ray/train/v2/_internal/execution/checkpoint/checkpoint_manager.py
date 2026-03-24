@@ -28,7 +28,10 @@ from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2._internal.util import wait_with_logging
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
-from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
+from ray.train.v2.api.reported_checkpoint import (
+    ReportedCheckpoint,
+    ReportedCheckpointStatus,
+)
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,7 @@ class _CheckpointManagerState(BaseModel):
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
+    validated_checkpoint_dir_names: List[str]
 
 
 def _get_training_result_from_state(
@@ -103,6 +107,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._pending_training_results: Dict[
             Checkpoint, Tuple[_TrainingResult, Union[bool, ValidationTaskConfig]]
         ] = {}
+
+        # Set of checkpoints that have completed validation.
+        self._validated_checkpoints: set = set()
 
         # Map from checkpoint to report index. Used to order checkpoints.
         self._checkpoint_to_report_index = {}
@@ -193,6 +200,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 checkpoint_to_report_index=self._checkpoint_to_report_index,
             )
             self._pending_training_results.pop(checkpoint)
+            self._validated_checkpoints.add(checkpoint)
+
         self._save_state_and_delete_old_checkpoints()
         self._notify()
 
@@ -234,6 +243,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ]
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
+                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
 
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.
@@ -281,6 +291,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             v for _, v in self._pending_training_results.values()
         ]
 
+        validated_checkpoint_dir_names = [
+            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            for checkpoint in self._validated_checkpoints
+        ]
+
         manager_snapshot = _CheckpointManagerState(
             checkpoint_results=checkpoint_results,
             checkpoint_report_indices=checkpoint_report_indices,
@@ -288,6 +303,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             pending_training_results=pending_training_results,
             pending_validation_specs=pending_validation_specs,
             current_report_index=self._current_report_index,
+            validated_checkpoint_dir_names=validated_checkpoint_dir_names,
         )
         return manager_snapshot.json()
 
@@ -363,6 +379,13 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 training_result,
                 validation_spec,
             )
+
+        # Restore validated checkpoints. Only checkpoints still in _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
+        for dir_name in manager_snapshot.validated_checkpoint_dir_names:
+            if dir_name in checkpoint_dir_name_to_checkpoint_result:
+                self._validated_checkpoints.add(
+                    checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                )
 
         self._current_report_index = manager_snapshot.current_report_index
 
@@ -469,6 +492,17 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # Get all reported checkpoints API
     # --------------------------------
 
+    def _get_checkpoint_status(
+        self, checkpoint: Checkpoint
+    ) -> ReportedCheckpointStatus:
+        """Get ReportedCheckpoint's status."""
+        if checkpoint in self._pending_training_results:
+            return ReportedCheckpointStatus.PENDING_VALIDATION
+        elif checkpoint in self._validated_checkpoints:
+            return ReportedCheckpointStatus.VALIDATED
+        else:
+            return ReportedCheckpointStatus.COMMITTED
+
     def _generate_get_all_reported_checkpoints_periodic_warning(
         self, start_time: float, consistency_mode: CheckpointConsistencyMode
     ) -> str:
@@ -531,6 +565,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ReportedCheckpoint(
                 checkpoint=tr.checkpoint,
                 metrics=tr.metrics,
+                status=self._get_checkpoint_status(tr.checkpoint),
             )
             for tr in self._checkpoint_results
         ]
