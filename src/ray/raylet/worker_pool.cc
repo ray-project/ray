@@ -463,12 +463,20 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   // reallocs the environ array during getenv() iteration, SIGSEGV occurs.
   auto threadsafe_env_lib = std::getenv("RAY_THREADSAFE_ENV_LIB_PATH");
   if (threadsafe_env_lib != nullptr && strlen(threadsafe_env_lib) > 0) {
+    std::string preload_val(threadsafe_env_lib);
+    // Merge with any LD_PRELOAD already in the worker env map.
     auto it = env.find("LD_PRELOAD");
     if (it != env.end()) {
-      it->second = std::string(threadsafe_env_lib) + ":" + it->second;
-    } else {
-      env.emplace("LD_PRELOAD", threadsafe_env_lib);
+      preload_val = preload_val + ":" + it->second;
     }
+    // Also preserve inherited LD_PRELOAD from the parent process (e.g.,
+    // jemalloc), since process.cc overwrites the parent environ value
+    // with the worker env map entry.
+    auto parent_preload = std::getenv("LD_PRELOAD");
+    if (parent_preload != nullptr && strlen(parent_preload) > 0) {
+      preload_val = preload_val + ":" + parent_preload;
+    }
+    env["LD_PRELOAD"] = preload_val;
   }
 #endif
 

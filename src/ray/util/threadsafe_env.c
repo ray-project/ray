@@ -21,6 +21,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,18 +29,19 @@
    setenv/unsetenv/putenv (writers) get exclusive access. */
 static pthread_rwlock_t env_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
-/* Real libc function pointers, resolved once at library load time. */
+/* Real libc function pointers, resolved exactly once via pthread_once. */
 static char *(*real_getenv)(const char *);
 static int (*real_setenv)(const char *, const char *, int);
 static int (*real_unsetenv)(const char *);
 static int (*real_putenv)(char *);
+
+static pthread_once_t real_funcs_init_once = PTHREAD_ONCE_INIT;
 
 /* Thread-local buffer for getenv return values.
    We must copy the result before releasing the read lock, because a
    concurrent setenv could invalidate the pointer. */
 static __thread char tls_buf[8192];
 
-__attribute__((constructor))
 static void init_real_funcs(void) {
     real_getenv = (char *(*)(const char *))dlsym(RTLD_NEXT, "getenv");
     real_setenv = (int (*)(const char *, const char *, int))dlsym(RTLD_NEXT, "setenv");
@@ -48,20 +50,11 @@ static void init_real_funcs(void) {
 }
 
 char *getenv(const char *name) {
-    /* If real_getenv hasn't been resolved yet (e.g., called during very early
-       dynamic linker init before our constructor runs), fall back directly. */
+    pthread_once(&real_funcs_init_once, init_real_funcs);
     if (!real_getenv) {
-        /* Cannot safely call dlsym here; just skip locking. This only happens
-           during the earliest stages of process startup before threads exist. */
-        extern char **environ;
-        if (!environ || !name) return NULL;
-        size_t len = strlen(name);
-        for (char **ep = environ; *ep; ep++) {
-            if (strncmp(*ep, name, len) == 0 && (*ep)[len] == '=') {
-                return *ep + len + 1;
-            }
-        }
-        return NULL;
+        fprintf(stderr,
+                "libray_threadsafe_env: dlsym for getenv failed\n");
+        abort();
     }
 
     pthread_rwlock_rdlock(&env_rwlock);
@@ -84,8 +77,11 @@ char *getenv(const char *name) {
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
+    pthread_once(&real_funcs_init_once, init_real_funcs);
     if (!real_setenv) {
-        init_real_funcs();
+        fprintf(stderr,
+                "libray_threadsafe_env: dlsym for setenv failed\n");
+        abort();
     }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_setenv(name, value, overwrite);
@@ -94,8 +90,11 @@ int setenv(const char *name, const char *value, int overwrite) {
 }
 
 int unsetenv(const char *name) {
+    pthread_once(&real_funcs_init_once, init_real_funcs);
     if (!real_unsetenv) {
-        init_real_funcs();
+        fprintf(stderr,
+                "libray_threadsafe_env: dlsym for unsetenv failed\n");
+        abort();
     }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_unsetenv(name);
@@ -104,8 +103,11 @@ int unsetenv(const char *name) {
 }
 
 int putenv(char *string) {
+    pthread_once(&real_funcs_init_once, init_real_funcs);
     if (!real_putenv) {
-        init_real_funcs();
+        fprintf(stderr,
+                "libray_threadsafe_env: dlsym for putenv failed\n");
+        abort();
     }
     pthread_rwlock_wrlock(&env_rwlock);
     int ret = real_putenv(string);
