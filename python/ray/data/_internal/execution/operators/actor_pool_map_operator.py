@@ -221,7 +221,9 @@ class ActorPoolMapOperator(MapOperator):
                 },
                 actor_options=self._ray_remote_args,
                 operator_id=self.id,
-                _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+                _enable_actor_pool_on_exit_hook=getattr(
+                    self.data_context, "_enable_actor_pool_on_exit_hook", False
+                ),
             )
             logger.debug(
                 f"Using CoreActorPoolAdapter for operator {self.name} "

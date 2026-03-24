@@ -27,6 +27,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -466,6 +467,23 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             state = self._running_actors[actor]
             if state.num_tasks_in_flight > 0:
                 state.num_tasks_in_flight -= 1
+
+    def select_actors(
+        self,
+        bundle: Optional[RefBundle] = None,
+        actor_locality_enabled: bool = False,
+    ) -> Optional[ActorHandle]:
+        if self.num_free_task_slots() <= 0:
+            return None
+        for actor, state in self._running_actors.items():
+            if not state.is_restarting:
+                return actor
+        return None
+
+    def get_actor_location(self, actor: ActorHandle) -> str:
+        if actor in self._running_actors:
+            return self._running_actors[actor].actor_location
+        return ""
 
     def refresh_actor_state(self):
         """Refresh actor states from GCS (alive vs restarting)."""
