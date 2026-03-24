@@ -689,6 +689,13 @@ def method(*args, **kwargs):
 
     def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
+            # Validate num_returns using centralized validation logic
+            is_generator_callable = inspect.isgeneratorfunction(
+                method
+            ) or inspect.isasyncgenfunction(method)
+            ray_option_utils.validate_num_returns(
+                is_generator_callable, kwargs["num_returns"]
+            )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
             method.__ray_max_task_retries__ = kwargs["max_task_retries"]
