@@ -287,7 +287,6 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
         train_loop_config={},
         scaling_config=ScalingConfig(num_workers=1),
         backend_config=BackendConfig(),
-        datasets={},
         dataset_config=DataConfig(),
     )
     config.update(kwargs)
