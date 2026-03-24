@@ -17,10 +17,8 @@ This document provides a guide for deploying and interacting with the custom **S
 What is NOT supported in this implementation:
 
 - Support for engine replicas
-- SGLangServer implements chat, completions, and embeddings methods but no tokenize, detokenize, transcriptions, and score methods
-- DP (Data Parallelism): Requires a separate coordinator pattern and is not supported in this example.
 - SGLangServer implements chat, completions, embeddings, tokenize, and detokenize methods but no transcriptions and score methods
-- Support for TP/PP/DP
+- DP (Data Parallelism): Requires a separate coordinator pattern and is not supported in this example.
 
 **Note on Multi-GPU support:** TP (tensor parallelism) and PP (pipeline parallelism) are supported on a single node. Set `tp_size` and/or `pp_size` in `engine_kwargs` to distribute model execution across multiple GPUs.
 

@@ -325,6 +325,8 @@ def test_sglang_serve_e2e_pipeline_parallel():
         assert comp_resp.choices[0].text.strip()
     finally:
         serve.shutdown()
+
+
 def test_sglang_batched_completions(sglang_client):
     """Verify that batched completions (multiple prompts) return one choice per prompt."""
     prompts = [
