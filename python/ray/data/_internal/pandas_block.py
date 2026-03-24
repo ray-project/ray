@@ -112,7 +112,7 @@ class PandasRow(Mapping):
     def as_pydict(self) -> Dict[str, Any]:
         pydict: Dict[str, Any] = {}
         for key in self:
-            value = self._batch[key].iloc[self._row_idx]
+            value = self[key]
             # Convert NA to None for consistency across block formats. `pd.isna`
             # returns True for both NA and NaN, but since we want to preserve NaN
             # values, we check for identity instead.
