@@ -83,7 +83,7 @@ class TrainFnUtils(ABC):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: int = -1,
+        timeout_s: float = -1,
     ) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
 
@@ -188,7 +188,7 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: int = -1,
+        timeout_s: float = -1,
     ) -> List["ReportedCheckpoint"]:
         return get_internal_train_context().get_all_reported_checkpoints(
             consistency_mode=consistency_mode, timeout_s=timeout_s
@@ -265,7 +265,7 @@ class LocalTrainFnUtils(TrainFnUtils):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: int = -1,
+        timeout_s: float = -1,
     ) -> List["ReportedCheckpoint"]:
         return []
 

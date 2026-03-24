@@ -196,7 +196,7 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 @requires_train_worker()
 def get_all_reported_checkpoints(
     consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-    timeout_s: int = -1,
+    timeout_s: float = -1,
 ) -> List["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
