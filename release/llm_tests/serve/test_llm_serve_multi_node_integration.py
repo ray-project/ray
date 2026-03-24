@@ -170,7 +170,7 @@ def test_llm_serve_data_parallelism_autoscaling():
         ),
         deployment_config=deployment_config,
         engine_kwargs=dict(
-            tensor_parallel_size=2,
+            tensor_parallel_size=1,
             pipeline_parallel_size=1,
             data_parallel_size=dp_size,
             distributed_executor_backend="ray",
@@ -213,6 +213,8 @@ def test_llm_serve_data_parallelism_autoscaling():
     request = CompletionRequest(
         model="microsoft/Phi-tiny-MoE-instruct",
         prompt="Write a very long detailed story about",
+        # max_tokens must be less than max_model_len; otherwise vLLM rejects
+        # the request with a BadRequestError
         max_tokens=512,
     )
     # Send enough concurrent requests to trigger upscaling
@@ -224,10 +226,13 @@ def test_llm_serve_data_parallelism_autoscaling():
     total = get_total_replicas()
     assert total % dp_size == 0
 
-    # Drain requests by consuming streaming responses
+    # Drain requests by consuming streaming responses and check for errors
+    errors = []
     for res in results:
-        for _ in res:
-            pass
+        for chunk in res:
+            if hasattr(chunk, "error"):
+                errors.append(chunk.error)
+    assert len(errors) == 0
 
     # After requests drain, verify scale-down back to min_replicas
     wait_for_condition(check_num_replicas_eq, target=2, timeout=120)

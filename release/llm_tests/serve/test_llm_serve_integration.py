@@ -1,3 +1,4 @@
+import openai
 import pytest
 import sys
 
@@ -178,6 +179,46 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_embedding_model(model_name):
+    """
+    Test that embedding models can be loaded and serve embedding requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    client = openai.OpenAI(
+        base_url="http://localhost:8000/v1",
+        api_key="fake-key",
+    )
+    response = client.embeddings.create(
+        model=model_name,
+        input="Hello, world!",
+    )
+
+    assert response.data is not None
+    assert len(response.data) > 0
+    embedding = response.data[0].embedding
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
     serve.shutdown()
     time.sleep(1)
 

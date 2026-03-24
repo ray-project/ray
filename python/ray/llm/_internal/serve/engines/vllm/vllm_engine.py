@@ -10,6 +10,7 @@ from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 from vllm.entrypoints.openai.engine.protocol import ErrorResponse as VLLMErrorResponse
+from vllm.exceptions import VLLMValidationError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
@@ -513,8 +514,11 @@ class VLLMEngine(LLMEngine):
         """Convert an exception to an ErrorResponse and map exception types to
         the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
         """
-        vllm_error = serving.create_error_response(exc)
-        return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
+        try:
+            vllm_error = serving.create_error_response(exc)
+            return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
+        except Exception:
+            raise exc  # re-raise the original so it surfaces as a 500
 
     async def chat(
         self,
@@ -533,7 +537,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_chat, e)
             return
 
@@ -567,7 +571,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_completion, e)
             return
 
@@ -603,7 +607,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
@@ -635,7 +639,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_transcription, e)
             return
 
@@ -671,7 +675,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
@@ -697,7 +701,7 @@ class VLLMEngine(LLMEngine):
                 request,
                 raw_request=raw_request,
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
@@ -725,7 +729,7 @@ class VLLMEngine(LLMEngine):
                     raw_request=raw_request,
                 )
             )
-        except Exception as e:
+        except VLLMValidationError as e:
             yield self._make_error_response(self._oai_serving_tokenization, e)
             return
 
