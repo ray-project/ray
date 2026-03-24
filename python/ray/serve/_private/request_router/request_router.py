@@ -1196,14 +1196,14 @@ class RequestRouter(ABC):
                 ):
                     continue
 
+                # Only backoff after the first retry.
                 if not entered_backoff:
                     entered_backoff = True
+                else:
                     self.num_routing_tasks_in_backoff += 1
                     self.num_routing_tasks_in_backoff_gauge.set(
                         self.num_routing_tasks_in_backoff
                     )
-                else:
-                    # Only backoff after the first retry.
                     await self._backoff(attempt)
                     attempt += 1
         finally:
