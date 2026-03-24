@@ -19,12 +19,14 @@ What is NOT supported in this implementation:
 - Support for engine replicas
 - SGLangServer implements chat, completions, and embeddings methods but no tokenize, detokenize, transcriptions, and score methods
 - DP (Data Parallelism): Requires a separate coordinator pattern and is not supported in this example.
+- SGLangServer implements chat, completions, embeddings, tokenize, and detokenize methods but no transcriptions and score methods
+- Support for TP/PP/DP
 
 **Note on Multi-GPU support:** TP (tensor parallelism) and PP (pipeline parallelism) are supported on a single node. Set `tp_size` and/or `pp_size` in `engine_kwargs` to distribute model execution across multiple GPUs.
 
 ## Core Components
 Your custom deployment consists of two main components:
-1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions`, `chat_completions`, and `embeddings`).
+1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions`, `chat_completions`, `embeddings`, `tokenize`, and `detokenize`).
 2. enable ENV-VAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0` on CUDA device or `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0` on ROCm device
 ### Deploy an LLM model using SGLang Engine
 
