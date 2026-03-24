@@ -162,7 +162,7 @@ def model_internlm2_1_8b():
     Yields the S3 URI so that download_model_files exercises the cloud download
     path where the TOKENIZER_ONLY vs. EXCLUDE_SAFETENSORS filtering applies.
     """
-    yield "s3://air-example-data/rayllm-ossci/internlm2-1_8b/"
+    yield "s3://anonymous@air-example-data/rayllm-ossci/internlm2-1_8b/"
 
 
 @pytest.fixture(scope="session")
