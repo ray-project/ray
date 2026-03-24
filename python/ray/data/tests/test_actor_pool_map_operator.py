@@ -1172,10 +1172,16 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     assert actor_pool_map_op.has_completed()
 
 
-def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
+@pytest.mark.parametrize("use_core_actor_pool", [False, True])
+def test_actor_pool_fault_tolerance_e2e(
+    ray_start_cluster, restore_data_context, use_core_actor_pool
+):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
     ray.shutdown()
+
+    ctx = restore_data_context
+    ctx.use_core_actor_pool = use_core_actor_pool
 
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -1530,6 +1536,98 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
     # Also verify that when src_fn_name IS set, __repr__ returns it correctly
     worker.src_fn_name = "TestFunction"
     assert repr(worker) == "MapWorker(TestFunction)"
+
+
+# =============================================================================
+# Parity Tests for CoreActorPoolAdapter
+# =============================================================================
+# These tests verify that CoreActorPoolAdapter (via use_core_actor_pool flag)
+# works correctly through the full ActorPoolMapOperator integration.
+
+
+@pytest.mark.parametrize("use_core_actor_pool", [False, True])
+def test_actor_pool_map_operator_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
+    """Test that ActorPoolMapOperator works with both pool implementations."""
+    ctx = restore_data_context
+    ctx.use_core_actor_pool = use_core_actor_pool
+
+    class SimpleMapper:
+        def __call__(self, batch):
+            batch["value"] = batch["id"] * 2
+            return batch
+
+    ds = ray.data.range(100)
+    ds = ds.map_batches(
+        SimpleMapper,
+        batch_size=10,
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_cpus=0,
+    )
+    result = ds.take_all()
+
+    assert len(result) == 100
+    for row in result:
+        assert row["value"] == row["id"] * 2
+
+
+@pytest.mark.parametrize("use_core_actor_pool", [False, True])
+def test_actor_pool_scaling_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
+    """Test that scaling works with both pool implementations."""
+    ctx = restore_data_context
+    ctx.use_core_actor_pool = use_core_actor_pool
+
+    class SlowMapper:
+        def __call__(self, batch):
+            import time
+
+            time.sleep(0.01)
+            return batch
+
+    ds = ray.data.range(50)
+    ds = ds.map_batches(
+        SlowMapper,
+        batch_size=5,
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(min_size=1, max_size=1),
+        num_cpus=0,
+    )
+    result = ds.take_all()
+
+    assert len(result) == 50
+
+
+@pytest.mark.parametrize("use_core_actor_pool", [False, True])
+def test_actor_pool_stats_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
+    """Test that ActorPoolMapOperator reports correct stats with both implementations."""
+    ctx = restore_data_context
+    ctx.use_core_actor_pool = use_core_actor_pool
+
+    class CountingMapper:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, batch):
+            self.count += 1
+            return batch
+
+    ds = ray.data.range(20)
+    ds = ds.map_batches(
+        CountingMapper,
+        batch_size=2,
+        # Use num_cpus=0 to avoid resource contention with ReadRange tasks
+        compute=ray.data.ActorPoolStrategy(size=1),
+        num_cpus=0,
+    )
+    result = ds.take_all()
+
+    assert len(result) == 20
 
 
 if __name__ == "__main__":
