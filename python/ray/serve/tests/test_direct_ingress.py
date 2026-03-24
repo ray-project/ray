@@ -2435,6 +2435,8 @@ def test_get_serve_instance_details_json_serializable(
                                     "backoff_multiplier": 2.0,
                                     "max_backoff_s": 0.5,
                                 },
+                                "rolling_update_percentage": 0.2,
+                                "blocking_reconfigure": True,
                             },
                             "target_num_replicas": 1,
                             "required_resources": {"CPU": 1},
