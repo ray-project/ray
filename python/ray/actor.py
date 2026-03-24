@@ -1715,12 +1715,6 @@ class ActorClass(Generic[T]):
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
-            def options(self, **new_options):
-                """Chain additional options on top of the current ones."""
-                return actor_cls.options(
-                    **ray_option_utils.update_options(updated_options, new_options)
-                )
-
             @DeveloperAPI
             def bind(self, *args, **kwargs):
                 """
