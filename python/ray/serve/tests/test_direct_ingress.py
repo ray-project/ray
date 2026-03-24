@@ -704,7 +704,7 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
 
@@ -844,7 +844,7 @@ def test_crashed_replica_port_is_released_and_reused(
     # This ensures the ports are fully released from TIME_WAIT state.
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
 
@@ -949,7 +949,7 @@ def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_insta
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
 
@@ -1006,7 +1006,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
 
@@ -1093,7 +1093,7 @@ def test_only_running_apps_are_used_for_target_groups(
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
 
@@ -1190,7 +1190,7 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
         all_ports_can_be_bound,
-        ports=expected_http_ports + expected_grpc_ports,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
         timeout=120,
     )
     signal_actor = Semaphore.remote(2)
@@ -1705,15 +1705,11 @@ class TestDirectIngressBackpressure:
 
                 for _ in range(num_requests - 3):
                     rejected_fut = tpe.submit(do_request, url)
-                    status_code, text = rejected_fut.result()
-                    assert status_code == 503
-                    assert text.startswith("Request dropped due to backpressure")
+                    assert rejected_fut.result() is False
 
                 ray.get(signal.send.remote())
                 for future in futures:
-                    status_code, text = future.result()
-                    assert status_code == 200
-                    assert text == "composite-deployment"
+                    assert future.result() is True
 
             ray.get(signal.send.remote(clear=True))
 
