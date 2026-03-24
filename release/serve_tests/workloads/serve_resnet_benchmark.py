@@ -77,32 +77,36 @@ class ImageObjectioner:
 class DataDownloader:
     def __init__(self):
 
-        # For mutiple process scheduled in same node, torch.hub.load doesn't
-        # handle the multi process to dowloand module well. So this is to make sure
+        # For multiple process scheduled on the same node, torch.hub.load doesn't
+        # handle the multi process to download module well. So this is to make sure
         # there is only one replica to download the package
-        if os.path.exists("/home/ray/.cache/torch/") is False:
+        if not os.path.exists("/home/ray/.cache/torch/"):
             self.utils = torch.hub.load(
-                "NVIDIA/DeepLearningExamples:torchhub",
-                "nvidia_convnets_processing_utils",
+                repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
+                model="nvidia_convnets_processing_utils",
+                trust_repo=True,
+                force_reload=False,
             )
             with open("/home/ray/.cache/torch/success", "w") as _:
                 pass
 
         else:
-            counter = 3
+            counter = 10
             while counter:
                 print("waiting for torch hub NVIDIA package download...")
                 time.sleep(20)
                 if os.path.exists("/home/ray/.cache/torch/success"):
                     self.utils = torch.hub.load(
-                        "NVIDIA/DeepLearningExamples:torchhub",
-                        "nvidia_convnets_processing_utils",
+                        repo_or_dir="NVIDIA/DeepLearningExamples:torchhub",
+                        model="nvidia_convnets_processing_utils",
+                        trust_repo=True,
+                        force_reload=False,
                     )
                     break
                 counter -= 1
             if counter == 0:
                 raise Exception(
-                    "Failed to load module nvidia_convnets_processing_utils"
+                    "Failed to load module 'nvidia_convnets_processing_utils'"
                 )
 
     def __call__(self, uris: List[str]):
