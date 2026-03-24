@@ -95,7 +95,7 @@ You can configure this timeout using the `RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHIN
 export RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S=2.0
 ```
 
-**Default**: `1.0` second. To avoid thundering herd problems when many clients subscribe at the same time, the actual timeout is randomized between this value and `value * 2` (for example, 1.0–2.0 seconds by default).
+**Default**: `1.0` second. To avoid thundering herd problems when many requests for the same unloaded model arrive concurrently, the actual timeout is randomized between this value and `value * 2` (for example, 1.0–2.0 seconds by default).
 
 Increase this timeout if your models take a long time to load and you prefer to wait for a replica that already has the model loaded. Decrease it if you prefer faster fallback to any available replica.
 
