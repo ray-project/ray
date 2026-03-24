@@ -103,6 +103,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
     Target,
+    TracingConfig,
     TargetGroup,
     gRPCOptionsSchema,
 )
@@ -148,7 +149,7 @@ class ServeController:
         *,
         http_options: HTTPOptions,
         global_logging_config: LoggingConfig,
-        global_tracing_config: Optional["TracingConfig"] = None,
+        global_tracing_config: Optional[TracingConfig] = None,
         grpc_options: Optional[gRPCOptions] = None,
     ):
         self._controller_node_id = ray.get_runtime_context().get_node_id()
@@ -175,7 +176,6 @@ class ServeController:
 
         # Tracing config is static — no checkpoint, no long-poll.
         if global_tracing_config is None:
-            from ray.serve.schema import TracingConfig
             global_tracing_config = TracingConfig()
         self.global_tracing_config = global_tracing_config
 
