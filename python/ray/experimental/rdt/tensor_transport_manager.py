@@ -65,7 +65,7 @@ class TensorTransportManager(ABC):
 
         This affects how Ray orchestrates the transfer and handles failures. Two-sided transports
         have extra limitations described in :ref:`limitations <limitations>`. Ray will not call
-        `send_multiple_tensors` for one-sided transports. The transfer is expected to happen through
+        `send_multiple_tensors` for one-sided transports; the transfer is expected to happen through
         just `recv_multiple_tensors`.
 
         Returns:
@@ -114,7 +114,7 @@ class TensorTransportManager(ABC):
         Implement this to:
 
         1. Record tensor shapes, dtypes, and devices.
-        2. Perform any transport-specific registration such as registering memory for RDMA.
+        2. Perform any transport-specific tensor registration such as registering memory for RDMA.
         3. Store any handles or identifiers needed for the transfer.
 
         Args:
@@ -179,7 +179,7 @@ class TensorTransportManager(ABC):
         Sends tensors from the source actor to the destination actor. Ray calls this on the source actor
         during the transfer. Implement this to perform the actual data transfer using your transport's
         send mechanism. For one-sided transports, you can simply avoid implementing this method or even
-        raise a NotImplementedError to assure it's not being called.
+        raise a NotImplementedError to ensure it's not being called.
 
         Args:
             tensors: The tensors or jax arrays to send.
@@ -195,12 +195,12 @@ class TensorTransportManager(ABC):
         tensors: List[Any],
     ):
         """
-        Cleans up resources when Ray decides to free the RDT object. Ray calls this on the source actor
+        Clean up resources for an RDT object. Ray calls this on the source actor
         after Ray's distributed reference counting protocol determines the object is out of scope.
 
         Use this to release any resources your transport allocated, such as deregistering memory buffers.
-        Ray doesn't hold the tensor after returning it to the user on the recv side, so it can be
-        garbage collected whenever the user stops using it.
+        On the receiver side, no cleanup is needed — Ray does not hold onto the tensor after
+        returning it to the user, so it is garbage collected normally when the user releases it.
 
         Args:
             obj_id: The ID of the GPU object to garbage collect.

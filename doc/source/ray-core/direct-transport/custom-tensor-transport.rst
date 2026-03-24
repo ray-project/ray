@@ -32,22 +32,25 @@ The following diagram shows when each method is called during a tensor transfer:
    ============                    =============                 =================
         |                               |                               |
    1. Task returns tensor               |                               |
-        |                               |                               |
-   2. extract_tensor_transport_metadata |                               |
+      ``extract_tensor_transport_metadata``                             |
         |                               |                               |
         | ---- transport_metadata ----> |                               |
         |                               |                               |
-        |                     3. get_communicator_metadata              |
+        |                     2. Prepare communicator                   |
+        |                        ``get_communicator_metadata``          |
         |                               |                               |
         | <---- comm metadata --------- | ---- comm metadata -------->  |
         |                               |                               |
-   4. send_multiple_tensors             |          5. recv_multiple_tensors
+   3. ``send_multiple_tensors``         |          3. ``recv_multiple_tensors``
+                                        |                               |
         | ------------ tensors ---------------------------------------> |
         |                               |                               |
         |                         (transfer complete)                   |
         |                               |                               |
-   6. garbage_collect                   |                               |
-   (when ref goes out of scope)         |                               |
+        |                      5. Ref goes out of scope                 |
+        | <---------------------------- |                               |
+   5. Clean up resources                |                               |
+      ``garbage_collect``               |                               |
 
 
 Note that Ray will not call `send_multiple_tensors` for one-sided transports.
@@ -58,30 +61,28 @@ The following diagram shows where each method is called in the ray.put / ray.get
    Source Actor                                                  Destination Actor
    ============                                                  =================
         |                                                               |
-   1. User ray.put's tensor                                             |
+   1. User ``ray.put``'s tensor                                         |
+      ``extract_tensor_transport_metadata``                             |
         |                                                               |
-   2. extract_tensor_transport_metadata                                 |
         |                                                               |
-        |                                                               |
-   3. User passes ref to another actor                                  |
+   2. User passes ref to another actor                                  |
         | ---- transport_metadata ---------------------------------->   |
         |                                                               |
         |                                                               |
-        |                                                               |
-        |                                                               |
-        |                                          4. User ray.get's on object ref
-                                                         get_communicator_metadata
-        |                                                    recv_multiple_tensors
+        |                                          3. User ``ray.get``'s on object ref
+                                                      ``get_communicator_metadata``
+        |                                              ``recv_multiple_tensors``
         | ------------ tensors --------- -----------------------------> |
         |                                                               |
         |                         (transfer complete)                   |
         |                                                               |
-   5. garbage_collect                                                   |
+   4. Clean up resources                                                |
+      ``garbage_collect``                                               |
    (when ref goes out of scope)                                         |
 
 
-The API reference page for :class:`TensorTransportManager <ray.experimental.TensorTransportManager>` has more details what each method does how to implement them.
-Feel free to check out implementations of Ray's default transports (NCCL, NIXL, etc.) in the ``python/ray/experimental/rdt/`` directory.
+The API reference page for :class:`TensorTransportManager <ray.experimental.TensorTransportManager>` has more details on what each method does and how to implement them.
+See implementations of Ray's default transports (NCCL, NIXL, etc.) in the `python/ray/experimental/rdt/ <https://github.com/ray-project/ray/tree/master/python/ray/experimental/rdt>`_ directory.
 The following is an walk-through for implementing and using a custom tensor transport.
 
 Example: Shared memory tensor transport
@@ -96,7 +97,13 @@ Note that because shared memory is one-sided (the receiver directly reads the me
 Define metadata classes
 -----------------------
 
-Start by extending :class:`TensorTransportMetadata <ray.experimental.TensorTransportMetadata>` and :class:`CommunicatorMetadata <ray.experimental.CommunicatorMetadata>` to carry any transport-specific state.
+Your transport uses two metadata classes that flow through different stages of the transfer:
+
+- :class:`TensorTransportMetadata <ray.experimental.TensorTransportMetadata>` is created on the **source actor** during ``extract_tensor_transport_metadata``. It carries per-tensor information (shapes, dtypes, devices) plus any transport-specific identifiers (e.g., shared memory block names, RDMA keys) that the receiver needs to locate and read the data.
+
+- :class:`CommunicatorMetadata <ray.experimental.CommunicatorMetadata>` is created on the **owner/driver process** during ``get_communicator_metadata``. It carries any coordination information both actors need, such as ranks in a collective group. For one-sided transports (where the receiver can directly read the sender's memory), an empty metadata object is typically sufficient.
+
+Start by extending these classes to carry any transport-specific state.
 ``ShmTransportMetadata`` stores the shared memory block name and size so the receiver can locate and read the data.
 This transport doesn't need any communicator metadata, so ``ShmCommunicatorMetadata`` is empty.
 
@@ -174,7 +181,7 @@ so ``abort_transport`` is a no-op.
 Registering your transport
 ==========================
 
-After implementing your transport, register it with :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>` and use it in actor methods:
+After implementing your transport, the **driver process** must register it with :func:`ray.experimental.register_tensor_transport <ray.experimental.register_tensor_transport>` before creating any actors that use it:
 
 .. literalinclude:: ../doc_code/direct_transport_custom.py
    :language: python
@@ -197,4 +204,4 @@ Custom tensor transports have the following limitations:
 
 For general RDT limitations, see :ref:`limitations <limitations>`.
 
-Also feel free to reach out through GitHub issues or the OSS Ray Slack to ask any questions.
+Also feel free to reach out through `GitHub issues <https://github.com/ray-project/ray/issues>`_ or the `Ray Slack <https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform>`_ to ask any questions.
