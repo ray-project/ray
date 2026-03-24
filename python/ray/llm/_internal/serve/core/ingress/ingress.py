@@ -152,18 +152,15 @@ def _sanitize_chat_completion_request(
             request.messages[i] = message = message.model_dump()
 
         if message.get("role") == "assistant":
-            if (tool_calls_validator := message.get("tool_calls", None)) is not None:
+            tool_calls_val = message.get("tool_calls")
+            if tool_calls_val is not None:
                 try:
-                    validated_tool_calls = list(tool_calls_validator)
+                    request.messages[i]["tool_calls"] = list(tool_calls_val)
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "Validating messages' `tool_calls` raised an error. "
                         "Please ensure `tool_calls` are iterable of tool calls."
                     ) from e
-            else:
-                validated_tool_calls = []
-
-            request.messages[i]["tool_calls"] = validated_tool_calls
 
     return request
 

@@ -127,6 +127,12 @@ class TestSanitizeChatCompletionRequest:
 
         result = _sanitize_chat_completion_request(request)
         assert result is request
+        # Sanitizer must not inject tool_calls onto messages that never had them.
+        assistant_msg = result.messages[1]
+        if isinstance(assistant_msg, dict):
+            assert assistant_msg.get("tool_calls") is None
+        else:
+            assert getattr(assistant_msg, "tool_calls", None) is None
 
 
 class TestLLMServerLazyImport:
