@@ -24,7 +24,7 @@ EXISTING_DATA_BEHAVIOR_MAP = {
     SaveMode.APPEND: "overwrite_or_ignore",
     SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
     SaveMode.IGNORE: "overwrite_or_ignore",
-    SaveMode.ERROR: "error",
+    SaveMode.ERROR: "overwrite_or_ignore",  # on_write_start() already checks for existing dir.
 }
 
 FILE_FORMAT = "parquet"
