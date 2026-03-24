@@ -747,6 +747,7 @@ autodoc_mock_imports = [
     "async_timeout",
     "backoff",
     "cachetools",
+    "comet_ml",
     "composer",
     "cupy",
     "dask",
