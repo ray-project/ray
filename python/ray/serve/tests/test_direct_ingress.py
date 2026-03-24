@@ -749,7 +749,7 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
         assert not _is_port_in_use(http_port)
     for grpc_port in grpc_ports:
         assert not _is_port_in_use(grpc_port)
-        
+
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
@@ -1009,6 +1009,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
         ports=expected_http_ports + expected_grpc_ports,
         timeout=120,
     )
+
     @serve.deployment(num_replicas=3)
     class ChildDeployment:
         def __call__(self):
@@ -1695,15 +1696,11 @@ class TestDirectIngressBackpressure:
                 )
 
                 futures.append(tpe.submit(do_request, url))
-                done, _ = wait(
-                    futures, timeout=0.1, return_when=FIRST_COMPLETED
-                )
+                done, _ = wait(futures, timeout=0.1, return_when=FIRST_COMPLETED)
                 assert len(done) == 0
 
                 futures.append(tpe.submit(do_request, url))
-                done, _ = wait(
-                    futures, timeout=0.1, return_when=FIRST_COMPLETED
-                )
+                done, _ = wait(futures, timeout=0.1, return_when=FIRST_COMPLETED)
                 assert len(done) == 0
 
                 for _ in range(num_requests - 3):
