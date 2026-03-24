@@ -96,7 +96,6 @@ from ray.serve.schema import (
     HTTPOptionsSchema,
     LoggingConfig,
     ProxyDetails,
-    TracingConfig,
     ReplicaDetails,
     ReplicaRank,
     ServeActorDetails,
