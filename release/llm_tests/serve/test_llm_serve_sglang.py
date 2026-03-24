@@ -170,6 +170,29 @@ def test_sglang_detokenize(sglang_client):
     assert "Hello world" in data["text"]
 
 
+def test_sglang_batched_completions(sglang_client):
+    """Verify that batched completions (multiple prompts) return one choice per prompt."""
+    prompts = [
+        "The capital of France is",
+        "The capital of Germany is",
+        "The capital of Japan is",
+    ]
+    batch_resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt=prompts,
+        max_tokens=16,
+        temperature=0.0,
+    )
+
+    assert len(batch_resp.choices) == len(prompts)
+
+    for i, choice in enumerate(batch_resp.choices):
+        assert choice.index == i
+        assert choice.text.strip()
+
+    assert batch_resp.usage.total_tokens > 0
+
+
 @pytest.fixture(scope="module")
 def sglang_embedding_client():
     """Start an SGLang server with is_embedding enabled for embedding tests."""
@@ -201,6 +224,29 @@ def sglang_embedding_client():
     yield client
 
     serve.shutdown()
+
+
+def test_sglang_embeddings(sglang_embedding_client):
+    """Verify embeddings endpoint works with single and batch inputs."""
+    # Single input
+    emb_resp = sglang_embedding_client.embeddings.create(
+        model=RAY_MODEL_ID,
+        input="Hello world",
+    )
+    assert emb_resp.data
+    assert len(emb_resp.data) == 1
+    assert emb_resp.data[0].embedding
+    assert len(emb_resp.data[0].embedding) > 0
+    assert emb_resp.usage.prompt_tokens > 0
+
+    # Batch input
+    emb_batch_resp = sglang_embedding_client.embeddings.create(
+        model=RAY_MODEL_ID,
+        input=["Hello world", "How are you"],
+    )
+    assert len(emb_batch_resp.data) == 2
+    assert emb_batch_resp.data[0].embedding
+    assert emb_batch_resp.data[1].embedding
 
 
 def test_sglang_serve_e2e_multi_gpu():
@@ -325,52 +371,6 @@ def test_sglang_serve_e2e_pipeline_parallel():
         assert comp_resp.choices[0].text.strip()
     finally:
         serve.shutdown()
-
-
-def test_sglang_batched_completions(sglang_client):
-    """Verify that batched completions (multiple prompts) return one choice per prompt."""
-    prompts = [
-        "The capital of France is",
-        "The capital of Germany is",
-        "The capital of Japan is",
-    ]
-    batch_resp = sglang_client.completions.create(
-        model=RAY_MODEL_ID,
-        prompt=prompts,
-        max_tokens=16,
-        temperature=0.0,
-    )
-
-    assert len(batch_resp.choices) == len(prompts)
-
-    for i, choice in enumerate(batch_resp.choices):
-        assert choice.index == i
-        assert choice.text.strip()
-
-    assert batch_resp.usage.total_tokens > 0
-
-
-def test_sglang_embeddings(sglang_embedding_client):
-    """Verify embeddings endpoint works with single and batch inputs."""
-    # Single input
-    emb_resp = sglang_embedding_client.embeddings.create(
-        model=RAY_MODEL_ID,
-        input="Hello world",
-    )
-    assert emb_resp.data
-    assert len(emb_resp.data) == 1
-    assert emb_resp.data[0].embedding
-    assert len(emb_resp.data[0].embedding) > 0
-    assert emb_resp.usage.prompt_tokens > 0
-
-    # Batch input
-    emb_batch_resp = sglang_embedding_client.embeddings.create(
-        model=RAY_MODEL_ID,
-        input=["Hello world", "How are you"],
-    )
-    assert len(emb_batch_resp.data) == 2
-    assert emb_batch_resp.data[0].embedding
-    assert emb_batch_resp.data[1].embedding
 
 
 # ---------------------------------------------------------------------------
