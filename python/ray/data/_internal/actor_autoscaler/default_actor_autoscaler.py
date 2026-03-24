@@ -85,18 +85,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         util = actor_pool.get_pool_util()
 
         if util >= self._actor_pool_scaling_up_threshold:
-            # Skip scaling up if the current free task slots can handle all pending work.
-            if _estimate_expected_tasks(
-                op_state
-            ) <= _estimate_total_available_task_slots(actor_pool):
-                return ActorPoolScalingRequest.no_op(
-                    reason="enough free task slots to consume the existing inputs"
-                )
-
             # Do not scale up if either
             #   - Actor Pool is at max size already
             #   - Op is throttled (ie exceeding allocated resource quota)
-            elif actor_pool.current_size() >= actor_pool.max_size():
+            if actor_pool.current_size() >= actor_pool.max_size():
                 return ActorPoolScalingRequest.no_op(reason="reached max size")
             if not op_state._scheduling_status.under_resource_limits:
                 return ActorPoolScalingRequest.no_op(
@@ -250,18 +242,6 @@ def _estimate_total_available_task_slots(actor_pool: "AutoscalingActorPool") -> 
         actor_pool.max_tasks_in_flight_per_actor() * actor_pool.current_size()
         - actor_pool.num_tasks_in_flight()
     )
-
-
-def _estimate_expected_tasks(
-    op_state: OpState,
-) -> float:
-    # Each task consumes `average_num_inputs_per_task` input blocks on average,
-    # so the total expected number of tasks:
-    #
-    #   ceil(num enqueued blocks / avg_inputs_per_task)
-    #
-    avg_input_blocks_per_task = op_state.op.metrics.average_num_inputs_per_task or 1
-    return math.ceil(op_state.total_enqueued_input_blocks() / avg_input_blocks_per_task)
 
 
 def _get_max_scale_up(
