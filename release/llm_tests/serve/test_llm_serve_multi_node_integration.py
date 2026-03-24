@@ -170,7 +170,7 @@ def test_llm_serve_data_parallelism_autoscaling():
         ),
         deployment_config=deployment_config,
         engine_kwargs=dict(
-            tensor_parallel_size=1,
+            tensor_parallel_size=2,
             pipeline_parallel_size=1,
             data_parallel_size=dp_size,
             distributed_executor_backend="ray",
