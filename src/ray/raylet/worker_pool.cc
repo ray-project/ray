@@ -456,6 +456,22 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     env.insert({"RAY_start_python_gc_manager_thread", "0"});
   }
 
+#ifdef __linux__
+  // Preload thread-safe getenv/setenv wrapper to prevent SIGSEGV from
+  // glibc getenv/setenv race condition. gRPC/OpenTelemetry background
+  // threads call getenv() while user code calls setenv() — if setenv()
+  // reallocs the environ array during getenv() iteration, SIGSEGV occurs.
+  auto threadsafe_env_lib = std::getenv("RAY_THREADSAFE_ENV_LIB_PATH");
+  if (threadsafe_env_lib != nullptr && strlen(threadsafe_env_lib) > 0) {
+    auto it = env.find("LD_PRELOAD");
+    if (it != env.end()) {
+      it->second = std::string(threadsafe_env_lib) + ":" + it->second;
+    } else {
+      env.emplace("LD_PRELOAD", threadsafe_env_lib);
+    }
+  }
+#endif
+
   return {std::move(worker_command_args), std::move(env)};
 }
 

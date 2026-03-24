@@ -151,6 +151,7 @@ ray_files = [
 
 if sys.platform == "linux":
     ray_files.append("ray/core/libjemalloc.so")
+    ray_files.append("ray/core/libray_threadsafe_env.so")
 
 if BUILD_JAVA or os.path.exists(os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")

@@ -53,6 +53,11 @@ config_setting(
     flag_values = {":jemalloc_flag": "true"},
 )
 
+config_setting(
+    name = "linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
 alias(
     name = "uv_file",
     actual = select({
@@ -350,6 +355,14 @@ pkg_files(
     visibility = ["//visibility:private"],
 )
 
+pkg_files(
+    name = "threadsafe_env_files",
+    srcs = ["//src/ray/util:libray_threadsafe_env.so"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/",
+    visibility = ["//visibility:private"],
+)
+
 pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
@@ -358,6 +371,9 @@ pkg_zip(
         ":raylet_so_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
+        "//conditions:default": [],
+    }) + select({
+        ":linux": [":threadsafe_env_files"],
         "//conditions:default": [],
     }),
     out = "ray_pkg.zip",

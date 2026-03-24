@@ -67,6 +67,12 @@ JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
 
 JEMALLOC_SO = JEMALLOC_SO if os.path.exists(JEMALLOC_SO) else None
 
+# Thread-safe getenv/setenv LD_PRELOAD library. Prevents SIGSEGV from
+# glibc getenv/setenv race between gRPC/OpenTelemetry background threads
+# and user code calling setenv().
+THREADSAFE_ENV_SO = os.path.join(RAY_PATH, "core", "libray_threadsafe_env.so")
+THREADSAFE_ENV_SO = THREADSAFE_ENV_SO if os.path.exists(THREADSAFE_ENV_SO) else None
+
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp", "default_worker" + EXE_SUFFIX)
 
@@ -1002,6 +1008,12 @@ def start_ray_process(
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
 
     modified_env.update(jemalloc_env_vars)
+
+    # Thread-safe getenv/setenv wrapper: prevents SIGSEGV from glibc
+    # getenv/setenv race between gRPC/OpenTelemetry background threads
+    # and user code. Pass the lib path so raylet can preload it for workers.
+    if sys.platform == "linux" and THREADSAFE_ENV_SO:
+        modified_env["RAY_THREADSAFE_ENV_LIB_PATH"] = THREADSAFE_ENV_SO
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it

@@ -1,4 +1,21 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("//bazel:ray.bzl", "ray_cc_library")
+
+# Shared library for LD_PRELOAD that makes getenv/setenv thread-safe.
+# glibc's getenv() is not thread-safe with setenv(). In Ray workers,
+# gRPC/OpenTelemetry background threads call getenv() while user code
+# calls setenv() → SIGSEGV. This library wraps them with a pthread_rwlock.
+# Linux-only (glibc-specific issue).
+cc_binary(
+    name = "libray_threadsafe_env.so",
+    srcs = ["threadsafe_env.c"],
+    linkopts = [
+        "-ldl",
+        "-lpthread",
+    ],
+    linkshared = True,
+    visibility = ["//visibility:public"],
+)
 
 ray_cc_library(
     name = "visibility",
