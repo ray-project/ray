@@ -354,7 +354,7 @@ async def test_runtime_env_setup_logged_to_job_driver_logs(
     )
     with open(job_driver_log_path, "r") as f:
         logs = f.read()
-        assert "Runtime env is setting up." in logs
+        assert f"[{job_id}] Runtime env is setting up." in logs
         assert f"Running entrypoint for job {job_id}: {entrypoint}" in logs
 
 
@@ -1506,19 +1506,27 @@ async def test_monitor_job_pending(job_manager):
 async def test_job_timeout_lack_of_entrypoint_resources(
     call_ray_start, tmp_path, monkeypatch  # noqa: F811
 ):
-    """Test the timeout when there are not enough resources to schedule the supervisor actor)"""
+    """Test the warning and timeout when there are not enough resources to schedule the supervisor actor)"""
 
     monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
 
     ray.init(address=call_ray_start)
     gcs_client = ray._private.worker.global_worker.gcs_client
     job_manager = JobManager(gcs_client, tmp_path)
+    job_manager.PENDING_WARNING_THRESHOLD_S = 0.05
 
     # Submit a job with unsatisfied resource.
     job_id = await job_manager.submit_job(
         entrypoint="echo 'hello world'",
         entrypoint_num_cpus=2,
     )
+
+    # The warning should appear in the driver log before the job times out.
+    async def check_driver_log_has_resource_hint():
+        logs = job_manager.get_job_logs(job_id)
+        return "try checking `ray status`" in logs
+
+    await async_wait_for_condition(check_driver_log_has_resource_hint, timeout=10)
 
     # Wait for the job to timeout.
     await async_wait_for_condition(
@@ -1532,6 +1540,51 @@ async def test_job_timeout_lack_of_entrypoint_resources(
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
     assert "Job supervisor actor failed to start within" in job_info.message
+    assert (
+        "This may be because the job entrypoint's specified resources (entrypoint_num_cpus"
+        in job_info.message
+    )
+    assert "py_executable" not in job_info.message
+    assert job_info.driver_exit_code is None
+
+
+@pytest.mark.asyncio
+async def test_pending_timeout_with_py_executable(job_manager, monkeypatch):
+    """Test the warning and timeout for an invalid py_executable"""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+    job_manager.PENDING_WARNING_THRESHOLD_S = 0.05
+
+    start_signal_actor = SignalActor.remote()
+
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        runtime_env={"py_executable": "/nonexistent/python"},
+        _start_signal_actor=start_signal_actor,
+    )
+
+    await job_manager._recover_running_jobs()
+
+    # The warning should appear in the driver log before the job times out.
+    async def check_driver_log_has_raylet_hint():
+        logs = job_manager.get_job_logs(job_id)
+        return "try checking raylet.err" in logs
+
+    await async_wait_for_condition(check_driver_log_has_raylet_hint, timeout=10)
+
+    # Wait for the job to time out.
+    await async_wait_for_condition(
+        check_job_failed,
+        job_manager=job_manager,
+        job_id=job_id,
+        expected_error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_TIMEOUT,
+    )
+
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
+    assert "entrypoint_num_cpus" not in job_info.message
+    assert "py_executable is not valid" in job_info.message
     assert job_info.driver_exit_code is None
 
 
@@ -1566,6 +1619,8 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info.status == JobStatus.FAILED
     assert "Job supervisor actor failed to start within" in job_info.message
+    assert "entrypoint_num_cpus" not in job_info.message
+    assert "py_executable" not in job_info.message
     assert job_info.driver_exit_code is None
 
 

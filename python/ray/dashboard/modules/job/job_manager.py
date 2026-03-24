@@ -70,6 +70,7 @@ class JobManager:
     # available.
     LOG_TAIL_SLEEP_S = 1
     JOB_MONITOR_LOOP_PERIOD_S = 1
+    PENDING_WARNING_THRESHOLD_S = 30
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(
@@ -167,8 +168,32 @@ class JobManager:
         )
 
         job_status = None
-        job_info = None
+        job_info = await self._job_info_client.get_info(job_id, timeout=None)
+        has_py_executable = (
+            job_info.runtime_env is not None
+            and job_info.runtime_env.get("py_executable")
+        )
+        resources_specified = (
+            (
+                job_info.entrypoint_num_cpus is not None
+                and job_info.entrypoint_num_cpus > 0
+            )
+            or (
+                job_info.entrypoint_num_gpus is not None
+                and job_info.entrypoint_num_gpus > 0
+            )
+            or (
+                job_info.entrypoint_memory is not None
+                and job_info.entrypoint_memory > 0
+            )
+            or (
+                job_info.entrypoint_resources is not None
+                and len(job_info.entrypoint_resources) > 0
+            )
+        )
         ping_obj_ref = None
+        logged_pending_warning = False
+        driver_logger = self._get_job_driver_logger(job_id)
 
         while True:
             try:
@@ -185,38 +210,16 @@ class JobManager:
                     # Compare the current time with the job start time.
                     # If the job is still pending, we will set the status
                     # to FAILED.
-                    if job_info is None:
-                        job_info = await self._job_info_client.get_info(
-                            job_id, timeout=None
-                        )
-
-                    if (
+                    pending_duration = (
                         self._timeout_check_timer.time() - job_info.start_time / 1000
-                        > timeout
-                    ):
+                    )
+
+                    if pending_duration > timeout:
                         err_msg = (
                             "Job supervisor actor failed to start within "
                             f"{timeout} seconds. This timeout can be "
                             f"configured by setting the environment "
                             f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
-                        )
-                        resources_specified = (
-                            (
-                                job_info.entrypoint_num_cpus is not None
-                                and job_info.entrypoint_num_cpus > 0
-                            )
-                            or (
-                                job_info.entrypoint_num_gpus is not None
-                                and job_info.entrypoint_num_gpus > 0
-                            )
-                            or (
-                                job_info.entrypoint_memory is not None
-                                and job_info.entrypoint_memory > 0
-                            )
-                            or (
-                                job_info.entrypoint_resources is not None
-                                and len(job_info.entrypoint_resources) > 0
-                            )
                         )
                         if resources_specified:
                             err_msg += (
@@ -228,6 +231,12 @@ class JobManager:
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
+                        if has_py_executable:
+                            err_msg += (
+                                " This may be because the runtime_env's py_executable "
+                                "is not valid. "
+                                "Try checking raylet.err for details."
+                            )
                         await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
@@ -237,6 +246,28 @@ class JobManager:
                         )
                         logger.error(err_msg)
                         break
+
+                    if (
+                        not logged_pending_warning
+                        and pending_duration >= self.PENDING_WARNING_THRESHOLD_S
+                        and (has_py_executable or resources_specified)
+                    ):
+                        hints = []
+                        if resources_specified:
+                            hints.append(
+                                "Hint: The cluster may not have sufficient resources"
+                                " for the job entrypoint - try checking `ray status`."
+                            )
+                        if has_py_executable:
+                            hints.append(
+                                "Hint: The runtime_env's py_executable may not be"
+                                " valid - try checking raylet.err."
+                            )
+                        driver_logger.warning(
+                            f"Job {job_id} has been pending for"
+                            f" {int(pending_duration)}s.\n" + "\n".join(hints)
+                        )
+                        logged_pending_warning = True
 
                 if job_supervisor is None:
                     job_supervisor = self._get_actor_for_job(job_id)
@@ -584,7 +615,7 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
-            driver_logger.info("Runtime env is setting up.")
+            driver_logger.info(f"[{submission_id}] Runtime env is setting up.")
             supervisor_options = dict(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
