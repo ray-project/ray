@@ -1,5 +1,5 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("//bazel:ray.bzl", "ray_cc_library")
+load("//bazel:ray.bzl", "COPTS", "ray_cc_library")
 
 # Shared library for LD_PRELOAD that makes getenv/setenv thread-safe.
 # glibc's getenv() is not thread-safe with setenv(). In Ray workers,
@@ -9,6 +9,7 @@ load("//bazel:ray.bzl", "ray_cc_library")
 cc_binary(
     name = "libray_threadsafe_env.so",
     srcs = ["threadsafe_env.c"],
+    copts = COPTS,
     linkopts = [
         "-ldl",
         "-lpthread",
