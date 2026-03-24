@@ -23,7 +23,6 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
-from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -547,10 +546,7 @@ class BlockAccessor:
             return batch.to_arrow()
 
         elif isinstance(batch, pandas.DataFrame):
-            if (block_type == BlockType.ARROW) or (
-                block_type is None
-                and DataContext.get_current().batch_to_block_arrow_format
-            ):
+            if (block_type == BlockType.ARROW) or (block_type is None):
                 return cls.for_block(batch).to_arrow()
             return batch
 
