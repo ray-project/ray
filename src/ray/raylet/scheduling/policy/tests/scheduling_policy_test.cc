@@ -577,6 +577,27 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
 }
 
+TEST_F(SchedulingPolicyTest, StrictPackFractionalUnitResourceTest) {
+  NodeResources fragmented;
+  fragmented.available.Set(ResourceID::CPU(), {FixedPoint(10)});
+  fragmented.available.Set(ResourceID::GPU(), {FixedPoint(0.7), FixedPoint(0.3)});
+  fragmented.total.Set(ResourceID::CPU(), 10);
+  fragmented.total.Set(ResourceID::GPU(), 2.0);
+  nodes.emplace(local_node, fragmented);
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 0.5}}, false);
+  std::vector<const ResourceRequest *> two_bundles(2, &req);
+
+  auto op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(two_bundles, op);
+  // bundle1 takes 0.5 from the 0.7 instance -> [0.2, 0.3].
+  // bundle2 needs 0.5 but max available is 0.3 -> rejected.
+  ASSERT_FALSE(result.status.IsSuccess());
+}
+
 TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {
   nodes.emplace(local_node, CreateNodeResourcesWithLabels(10, 10, {{"zone", "us-east"}}));
   nodes.emplace(remote_node,

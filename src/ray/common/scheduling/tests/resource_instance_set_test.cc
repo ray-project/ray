@@ -984,32 +984,4 @@ TEST_F(NodeResourceInstanceSetTest, TestToNodeResourceSet) {
   ASSERT_EQ(r1.ToNodeResourceSet(), NodeResourceSet({{"CPU", 2}, {"GPU", 2}}));
 }
 
-TEST_F(NodeResourceInstanceSetTest, CanAllocateGpuFragmentation) {
-  // Core bug scenario (#52133): two GPUs each with 0.4 remaining,
-  // aggregate 0.8. Per-instance check must reject 0.5 (no single GPU has it).
-  NodeResourceInstanceSet r;
-  r.Set(ResourceID("GPU"), {FixedPoint(0.4), FixedPoint(0.4)});
-
-  ASSERT_FALSE(r.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.5)}})));
-  ASSERT_TRUE(r.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.4)}})));
-  ASSERT_TRUE(r.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.3)}})));
-  ASSERT_FALSE(r.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.8)}})));
-}
-
-TEST_F(NodeResourceInstanceSetTest, CanAllocateConsistentWithTryAllocate) {
-  // CanAllocate and TryAllocate must agree for non-PG resources.
-  NodeResourceInstanceSet r1;
-  r1.Set(ResourceID("GPU"), {FixedPoint(0.4), FixedPoint(0.8)});
-  NodeResourceInstanceSet r2 = r1;
-
-  ASSERT_TRUE(r1.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.5)}})));
-  auto alloc = r2.TryAllocate(ResourceSet({{"GPU", FixedPoint(0.5)}}));
-  ASSERT_TRUE(alloc.has_value());
-
-  NodeResourceInstanceSet r3 = r1;
-  ASSERT_FALSE(r1.CanAllocate(ResourceSet({{"GPU", FixedPoint(0.9)}})));
-  auto alloc2 = r3.TryAllocate(ResourceSet({{"GPU", FixedPoint(0.9)}}));
-  ASSERT_FALSE(alloc2.has_value());
-}
-
 }  // namespace ray

@@ -151,9 +151,13 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       (*msg.mutable_resources_total())[name] = value;
       rpc::syncer::ResourceInstances instances;
       auto resource_id = scheduling::ResourceID(name);
-      for (const auto &v :
-           NodeResourceInstanceSet::MakeInstances(resource_id, FixedPoint(value))) {
-        instances.add_values(v.Double());
+      if (resource_id.IsUnitInstanceResource()) {
+        size_t num = static_cast<size_t>(value);
+        for (size_t i = 0; i < num; i++) {
+          instances.add_values(1.0);
+        }
+      } else {
+        instances.add_values(value);
       }
       (*msg.mutable_resources_available_instances())[name] = instances;
     }

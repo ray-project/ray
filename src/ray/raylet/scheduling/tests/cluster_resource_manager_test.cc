@@ -192,8 +192,7 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   ASSERT_EQ(node_resources.available.Sum(ResourceID::CPU()), 1);
 }
 
-TEST_F(ClusterResourceManagerTest, GpuFragmentationBlocksScheduling) {
-  // Regression test for #52133/#54729: GPU fragmentation must block scheduling.
+TEST_F(ClusterResourceManagerTest, FractionalUnitResourceRejectsFragmentedNode) {
   NodeResources gpu_node;
   gpu_node.available.Set(ResourceID::GPU(), {FixedPoint(1.0), FixedPoint(1.0)});
   gpu_node.total.Set(ResourceID::GPU(), 2.0);
@@ -211,7 +210,6 @@ TEST_F(ClusterResourceManagerTest, GpuFragmentationBlocksScheduling) {
                                    /*requires_object_store_memory=*/false));
   ASSERT_TRUE(a2.has_value());
 
-  // [0.4, 0.4]: no single GPU has 0.5, so scheduling must fail.
   ASSERT_FALSE(manager->HasAvailableResources(
       gpu_id,
       ResourceMapToResourceRequest({{"GPU", 0.5}},

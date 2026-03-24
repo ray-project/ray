@@ -27,32 +27,19 @@
 
 namespace ray {
 
-/*static*/ std::vector<FixedPoint> NodeResourceInstanceSet::MakeInstances(
-    ResourceID resource_id, FixedPoint total) {
-  std::vector<FixedPoint> instances;
-  if (total <= 0) {
-    // Zero or negative total: return single zero-element to satisfy Set()'s
-    // non-empty invariant. The resource will effectively be unavailable.
-    instances.push_back(FixedPoint(0));
-  } else if (resource_id.IsUnitInstanceResource()) {
-    size_t num = static_cast<size_t>(total.Double());
-    for (size_t i = 0; i < num; i++) {
-      instances.push_back(FixedPoint(1.0));
-    }
-    // Fractional remainder (e.g., total=2.5 → [1.0, 1.0, 0.5]).
-    FixedPoint remainder = total - FixedPoint(static_cast<double>(num));
-    if (remainder > 0) {
-      instances.push_back(remainder);
-    }
-  } else {
-    instances.push_back(total);
-  }
-  return instances;
-}
-
 NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   for (auto &resource_id : total.ExplicitResourceIds()) {
-    Set(resource_id, MakeInstances(resource_id, total.Get(resource_id)));
+    std::vector<FixedPoint> instances;
+    auto value = total.Get(resource_id);
+    if (resource_id.IsUnitInstanceResource()) {
+      size_t num_instances = static_cast<size_t>(value.Double());
+      for (size_t i = 0; i < num_instances; i++) {
+        instances.push_back(1.0);
+      };
+    } else {
+      instances.push_back(value);
+    }
+    Set(resource_id, instances);
   }
 }
 
@@ -63,24 +50,26 @@ bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
 void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
   resources_.erase(resource_id);
 
-  // Remove from the pg_indexed_resources_ as well
-  auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                       /*for_wildcard_resource=*/false,
-                                       /*for_indexed_resource=*/true);
-  if (data) {
-    ResourceID original_resource_id(data->original_resource);
+  if (track_pg_index_) {
+    // Remove from the pg_indexed_resources_ as well
+    auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                         /*for_wildcard_resource=*/false,
+                                         /*for_indexed_resource=*/true);
+    if (data) {
+      ResourceID original_resource_id(data->original_resource);
 
-    auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
-    if (pg_resource_map_it != pg_indexed_resources_.end()) {
-      auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
+      auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
+      if (pg_resource_map_it != pg_indexed_resources_.end()) {
+        auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
 
-      if (resource_set_it != pg_resource_map_it->second.end()) {
-        resource_set_it->second.erase(resource_id);
-        if (resource_set_it->second.empty()) {
-          pg_resource_map_it->second.erase(data->group_id);
-        }
-        if (pg_resource_map_it->second.empty()) {
-          pg_indexed_resources_.erase(original_resource_id);
+        if (resource_set_it != pg_resource_map_it->second.end()) {
+          resource_set_it->second.erase(resource_id);
+          if (resource_set_it->second.empty()) {
+            pg_resource_map_it->second.erase(data->group_id);
+          }
+          if (pg_resource_map_it->second.empty()) {
+            pg_indexed_resources_.erase(original_resource_id);
+          }
         }
       }
     }
@@ -112,22 +101,24 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
   } else {
     resources_[resource_id] = std::move(instances);
 
-    // Popluate the pg_indexed_resources_map_
-    // TODO(myan): The parsing of the resource_id String can be costly and impact the
-    // task creation throughput if the parting is required every time we allocate
-    // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the future, ideas of improvement are:
-    // (1) to add the placement group id as well as the bundle index inside the
-    // ResourceID class. And instead of parse the String, leveraging the fields in the
-    // ResourceID class directly; (2) to update the pg resource id format to start with
-    // a special prefix so that we can do "startwith" instead of regex match which is
-    // less costly
-    auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                         /*for_wildcard_resource=*/false,
-                                         /*for_indexed_resource=*/true);
-    if (data) {
-      pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id].emplace(
-          resource_id);
+    if (track_pg_index_) {
+      // Popluate the pg_indexed_resources_map_
+      // TODO(myan): The parsing of the resource_id String can be costly and impact the
+      // task creation throughput if the parting is required every time we allocate
+      // resources for a task and updating the available resources. The current benchmark
+      // shows no observable impact for now. But in the future, ideas of improvement are:
+      // (1) to add the placement group id as well as the bundle index inside the
+      // ResourceID class. And instead of parse the String, leveraging the fields in the
+      // ResourceID class directly; (2) to update the pg resource id format to start with
+      // a special prefix so that we can do "startwith" instead of regex match which is
+      // less costly
+      auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/false,
+                                           /*for_indexed_resource=*/true);
+      if (data) {
+        pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id]
+            .emplace(resource_id);
+      }
     }
   }
   return *this;
@@ -164,6 +155,10 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
     return std::nullopt;
   }
 
+  // Multiple instances, each with total capacity of 1.
+  // Allocate full unit-capacity instances first until the remaining demand becomes
+  // fractional, then best-fit the fractional part: pick the instance whose available
+  // capacity is >= remaining demand and leaves the smallest leftover.
   std::vector<FixedPoint> allocation(available.size(), FixedPoint(0));
   std::vector<FixedPoint> remaining_available = available;
   FixedPoint remaining_demand = demand;
@@ -182,9 +177,11 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
   }
 
   if (remaining_demand >= 1.) {
+    // Not enough full-capacity instances to cover the integer part.
     return std::nullopt;
   }
 
+  // Remaining demand is fractional. Find the best fit, if one exists.
   if (remaining_demand > 0.) {
     int64_t idx_best_fit = -1;
     FixedPoint remaining_best_fit = 1.;

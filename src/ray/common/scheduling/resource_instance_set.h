@@ -25,15 +25,18 @@
 
 namespace ray {
 
-/// Per-instance allocation result: maps each resource to its per-instance allocation
-/// vector. Used by SubtractNodeAvailableResources and AddNodeAvailableResources for
-/// precise speculative deduction and rollback.
+/// Maps each resource to the per-instance amounts that were allocated (or should
+/// be freed). Enables precise speculative deduction and rollback at the cluster
+/// level, and carries allocation details through the PG Acquire->Commit flow.
 using ResourceAllocation = absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>;
 
 /// Represents a node resource set that contains the per-instance resource values.
 class NodeResourceInstanceSet {
  public:
-  NodeResourceInstanceSet(){};
+  /// \param track_pg_index If true, maintain the pg_indexed_resources_ index
+  /// for PG cross-bundle allocation. The raylet needs this; the GCS does not.
+  explicit NodeResourceInstanceSet(bool track_pg_index = true)
+      : track_pg_index_(track_pg_index){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
   explicit NodeResourceInstanceSet(const NodeResourceSet &total);
@@ -60,10 +63,6 @@ class NodeResourceInstanceSet {
   bool operator==(const NodeResourceInstanceSet &other) const;
 
   std::string DebugString() const;
-
-  /// Create per-instance vector for a resource from a scalar total. Unit-instance
-  /// resources (GPU etc.) get N x 1.0 instances; others get a single-element vector.
-  static std::vector<FixedPoint> MakeInstances(ResourceID resource_id, FixedPoint total);
 
   /// Compute the per-instance allocation for a single resource without modifying state.
   ///
@@ -117,6 +116,8 @@ class NodeResourceInstanceSet {
   /// For non-unit single-instance resources, cap is the aggregate total.
   void CapResourceAtTotal(ResourceID resource_id, const NodeResourceSet &total);
 
+  /// Access the underlying resource map. Used by the syncer to serialize
+  /// per-instance state and by UpdateNode to rebuild available from proto.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
     return resources_;
   }
@@ -145,6 +146,8 @@ class NodeResourceInstanceSet {
   void AllocateWithReference(const std::vector<FixedPoint> &ref_allocation,
                              ResourceID resource_id);
 
+  bool track_pg_index_ = true;
+
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 
@@ -153,6 +156,7 @@ class NodeResourceInstanceSet {
   /// pd id. The key of the map is the original resource id. The value is a map of pg id
   /// to the corresponding placement group indexed resource ids. This map should always
   /// be consistent with the resources_ map.
+  /// Only populated when track_pg_index_ is true.
   absl::flat_hash_map<ResourceID,
                       absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
       pg_indexed_resources_;

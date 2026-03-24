@@ -25,6 +25,8 @@ message CommandsSyncMessage {
   bool should_global_gc = 1;
 }
 
+// Per-instance available values for a single resource (e.g., [0.4, 0.6] for
+// a 2-GPU node where GPU 0 has 0.4 free and GPU 1 has 0.6 free).
 message ResourceInstances {
   repeated double values = 1;
 }
@@ -47,6 +49,10 @@ message ResourceViewSyncMessage {
   repeated string node_activity = 7;
   // The key-value labels of this node.
   map<string, string> labels = 8;
+  // Per-instance available resources for this node. For unit-instance resources
+  // like GPU, each element corresponds to one instance (e.g., one GPU card).
+  // For non-unit resources like CPU, the vector has a single element with the
+  // aggregate value. Replaces the old scalar resources_available (field 1).
   map<string, ResourceInstances> resources_available_instances = 9;
 }
 

@@ -78,9 +78,9 @@ class ClusterResourceManager {
                               scheduling::ResourceID resource_id,
                               double resource_total);
 
-  /// Add per-instance capacity to a resource (both total and available).
-  /// Element-wise addition, matching the raylet's AddLocalResourceInstances.
-  /// Used by CommitBundleResources to create PG resources with the correct
+  /// Add per-instance capacity to a resource. Updates both total (scalar sum
+  /// of instances added) and available (element-wise addition). Used by
+  /// CommitBundleResources to create PG-formatted resources with the correct
   /// per-instance distribution from AcquireBundleResources.
   void AddResourceInstances(scheduling::NodeID node_id,
                             scheduling::ResourceID resource_id,

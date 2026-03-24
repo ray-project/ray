@@ -2039,10 +2039,16 @@ void NodeManager::HandleResizeLocalResourceInstances(
     }
   }
 
+  // Convert the delta resource map to NodeResourceInstanceSet and apply
   if (!delta_resource_map.empty()) {
-    for (const auto &[resource_name, delta_value] : delta_resource_map) {
+    NodeResourceSet delta_resources(delta_resource_map);
+    NodeResourceInstanceSet delta_instances(delta_resources);
+
+    // Apply deltas for each resource
+    for (const auto &resource_id : delta_resources.ExplicitResourceIds()) {
+      const auto &instances = delta_instances.Get(resource_id);
       cluster_resource_scheduler_.GetLocalResourceManager().AddLocalResourceInstances(
-          scheduling::ResourceID(resource_name), {FixedPoint(delta_value)});
+          resource_id, instances);
     }
   }
 

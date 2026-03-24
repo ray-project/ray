@@ -92,7 +92,7 @@ bool ClusterResourceManager::UpdateNode(
   local_view.total = NodeResourceSet(resources_total);
 
   const auto &instances_map = resource_view_sync_message.resources_available_instances();
-  NodeResourceInstanceSet new_available;
+  NodeResourceInstanceSet new_available(/*track_pg_index=*/false);
   for (const auto &[resource_name, resource_instances] : instances_map) {
     std::vector<FixedPoint> instances;
     for (const auto &value : resource_instances.values()) {
@@ -181,8 +181,20 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   // Only init available for new resources. Existing resources' available can't be
   // correctly adjusted from a scalar total (don't know which instances to update).
   if (!local_view->available.Has(resource_id)) {
-    local_view->available.Set(
-        resource_id, NodeResourceInstanceSet::MakeInstances(resource_id, new_total));
+    // Build per-instance vector: unit-instance resources get N x 1.0, others
+    // get a single element.
+    std::vector<FixedPoint> instances;
+    if (resource_id.IsUnitInstanceResource()) {
+      size_t num = static_cast<size_t>(std::max(new_total.Double(), 0.0));
+      for (size_t i = 0; i < num; i++) {
+        instances.push_back(FixedPoint(1.0));
+      }
+    } else {
+      instances.push_back(std::max(new_total, FixedPoint(0)));
+    }
+    if (!instances.empty()) {
+      local_view->available.Set(resource_id, std::move(instances));
+    }
   }
 }
 

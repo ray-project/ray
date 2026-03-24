@@ -228,7 +228,7 @@ class LeaseStatusTracker {
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
 
-  /// Save the per-instance physical allocation for a bundle (from
+  /// Save the per-instance allocation for a bundle (from
   /// AcquireBundleResources).
   void SetBundleAllocation(const BundleID &bundle_id, ResourceAllocation allocation);
 
@@ -279,9 +279,9 @@ class LeaseStatusTracker {
   /// Bundles to schedule.
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
 
-  /// Per-bundle physical resource allocations from AcquireBundleResources.
-  /// Used by CommitBundleResources to create PG resources with the correct
-  /// per-instance distribution, matching the raylet's allocation.
+  /// Per-bundle resource allocations (original resources, not PG-formatted)
+  /// from AcquireBundleResources. Used by CommitBundleResources to create
+  /// PG-formatted resources with the correct per-instance distribution.
   absl::flat_hash_map<BundleID, ResourceAllocation, pair_hash>
       acquired_resource_allocations_;
 
@@ -468,7 +468,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Return the bundle resources to the cluster resources.
-  /// Removes PG-specific resources (wildcard + indexed). Physical resources
+  /// Removes PG-formatted resources (wildcard + indexed). Original resources
   /// are NOT added back here; syncer delivers the real state.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 

@@ -652,7 +652,6 @@ const ResourceAllocation *LeaseStatusTracker::GetBundleAllocation(
 void GcsPlacementGroupScheduler::AcquireBundleResources(
     const std::shared_ptr<BundleLocations> &bundle_locations,
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
-  // Acquire bundle resources from gcs resources manager.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   for (auto &bundle : *bundle_locations) {
@@ -714,16 +713,18 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
       auto original_name = GetOriginalResourceName(resource_name);
 
       // Use the per-instance allocation from AcquireBundleResources if available
-      // (GPU, CPU, etc.). Synthetic resources like bundle_group won't be in the
-      // allocation and fall through to the single-element path.
+      // for this original resource. Synthetic resources like bundle_group won't
+      // be in the allocation and fall through to the single-element path.
       if (bundle_alloc != nullptr) {
-        auto phys_it = bundle_alloc->find(scheduling::ResourceID(original_name));
-        if (phys_it != bundle_alloc->end()) {
+        auto alloc_it = bundle_alloc->find(scheduling::ResourceID(original_name));
+        if (alloc_it != bundle_alloc->end()) {
           cluster_resource_manager.AddResourceInstances(
-              node_id, resource_id, phys_it->second);
+              node_id, resource_id, alloc_it->second);
           continue;
         }
       }
+      // No saved allocation (e.g. GCS restart recovery). Single-element vector
+      // may not match actual per-instance layout; syncer corrects within ~100ms.
       cluster_resource_manager.AddResourceInstances(
           node_id, resource_id, {FixedPoint(capacity)});
     }
