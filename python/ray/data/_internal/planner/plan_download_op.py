@@ -281,6 +281,35 @@ def _extract_credentials_from_filesystem(
     return kwargs
 
 
+class StoreRegistry:
+    """Cache of store_url -> ObjectStore instances.
+
+    Ensures one store is created per unique (scheme, authority) combination
+    and reuses it for all subsequent requests to the same host.
+    """
+
+    def __init__(
+        self,
+        retry_config: Optional[Dict[str, Any]] = None,
+        **filesystem_kwargs: Any,
+    ):
+        from obstore.store import from_url
+
+        self._from_url = from_url
+        self._retry_config = retry_config or {}
+        self._filesystem_kwargs = filesystem_kwargs
+        self._cache: Dict[str, Any] = {}
+
+    def get(self, store_url: str) -> Any:
+        if store_url not in self._cache:
+            self._cache[store_url] = self._from_url(
+                store_url,
+                retry_config=self._retry_config,
+                **self._filesystem_kwargs,
+            )
+        return self._cache[store_url]
+
+
 def _is_obstore_supported_url(path: str) -> bool:
     """Check if *path* is a URL that obstore can handle.
 
@@ -331,10 +360,7 @@ async def _download_uris_with_obstore(
         indicate failed downloads.
     """
     import obstore as obs
-    from obstore.store import from_url
 
-    store_cache: dict = {}
-    retry_config = {"max_retries": 10}
     fs_kwargs = _extract_credentials_from_filesystem(filesystem)
 
     range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
@@ -362,17 +388,12 @@ async def _download_uris_with_obstore(
             "Downloading over unencrypted HTTP. " "Consider using https:// instead."
         )
 
-    def _get_store(store_url: str):
-        if store_url not in store_cache:
-            store_cache[store_url] = from_url(
-                store_url, retry_config=retry_config, **fs_kwargs
-            )
-        return store_cache[store_url]
+    registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
     async def _download_one_simple(uri: str) -> Optional[bytes]:
         try:
             store_url, path = _split_uri(uri)
-            store = _get_store(store_url)
+            store = registry.get(store_url)
             if sem is not None:
                 async with sem:
                     result = await obs.get_async(store, path)
@@ -402,7 +423,7 @@ async def _download_uris_with_obstore(
         """
         try:
             store_url, path = _split_uri(uri)
-            store = _get_store(store_url)
+            store = registry.get(store_url)
             result = bytearray(size)
 
             async def _fetch_range(start: int, end: int) -> None:
@@ -453,7 +474,7 @@ async def _download_uris_with_obstore(
         async def _head(idx: int):
             try:
                 store_url, path = _split_uri(uris[idx])
-                store = _get_store(store_url)
+                store = registry.get(store_url)
                 if sem is not None:
                     async with sem:
                         meta = await obs.head_async(store, path)
