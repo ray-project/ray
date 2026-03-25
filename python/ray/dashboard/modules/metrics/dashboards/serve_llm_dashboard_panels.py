@@ -12,7 +12,10 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 # ---------------------------------------------------------------------------
 # Reusable PromQL fragments
 # ---------------------------------------------------------------------------
-# WorkerId join: attaches deployment + replica labels to vLLM-only metrics
+# WorkerId join: attaches deployment + replica labels to vLLM-only metrics.
+# The `* 0 + 1` trick turns the counter into a constant-1 lookup table keyed
+# by WorkerId so the join resolves deployment + replica labels without
+# affecting the numeric value of the left-hand side.
 _WORKER_JOIN = (
     "\n* on(WorkerId) group_left(deployment, replica)"
     "\nmax by(WorkerId, deployment, replica) ("
@@ -22,8 +25,9 @@ _WORKER_JOIN = (
 # Standard vLLM metric filter
 _VLLM_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}'
 
-# Deployment-scoped filter (for ray_serve metrics)
-_SERVE_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"'
+# vLLM filter scoped to a specific deployment (used for ray_serve_* metrics
+# that also carry model_name / WorkerId labels).
+_VLLM_DEPLOYMENT_FILTER = 'model_name=~"$vllm_model_name", WorkerId=~"$workerid", {global_filters}, deployment=~"$deployment"'
 
 # Legend used by most per-worker panels
 _DEP_REPLICA = "{{deployment}}: {{replica}}"
@@ -104,13 +108,15 @@ def _ratio_with_join_and_guard(
 
 
 # ---------------------------------------------------------------------------
-# Latency helper: generates Mean / P50 / P90 panels for a given metric
+# Histogram helper: generates Mean / P50 / P90 panels for a given metric
 # ---------------------------------------------------------------------------
-def _latency_panels(
+def _histogram_panels(
     metric_base: str,
     label: str,
     ids: tuple,
     y: int,
+    unit: str = "s",
+    linewidth: int = 2,
     description: str = "",
 ) -> list:
     """Return [Mean, P50, P90] panels for a histogram metric."""
@@ -119,10 +125,10 @@ def _latency_panels(
             id=ids[0],
             title=f"{label} -- Mean",
             description=description,
-            unit="s",
+            unit=unit,
             targets=[Target(expr=_mean_with_join(metric_base), legend=_DEP_REPLICA)],
             fill=1,
-            linewidth=2,
+            linewidth=linewidth,
             stack=False,
             grid_pos=GridPos(0, y, 8, 8),
         ),
@@ -130,14 +136,14 @@ def _latency_panels(
             id=ids[1],
             title=f"{label} -- P50",
             description=description,
-            unit="s",
+            unit=unit,
             targets=[
                 Target(
                     expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA
                 )
             ],
             fill=1,
-            linewidth=2,
+            linewidth=linewidth,
             stack=False,
             grid_pos=GridPos(8, y, 8, 8),
         ),
@@ -145,69 +151,14 @@ def _latency_panels(
             id=ids[2],
             title=f"{label} -- P90",
             description=description,
-            unit="s",
+            unit=unit,
             targets=[
                 Target(
                     expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA
                 )
             ],
             fill=1,
-            linewidth=2,
-            stack=False,
-            grid_pos=GridPos(16, y, 8, 8),
-        ),
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Request Length helper: Mean / P50 / P90 for token-count histograms
-# ---------------------------------------------------------------------------
-def _length_panels(
-    metric_base: str,
-    label: str,
-    ids: tuple,
-    y: int,
-) -> list:
-    """Return [Mean, P50, P90] panels for a token-count histogram metric."""
-    return [
-        Panel(
-            id=ids[0],
-            title=f"{label} -- Mean",
-            description="",
-            unit="short",
-            targets=[Target(expr=_mean_with_join(metric_base), legend=_DEP_REPLICA)],
-            fill=1,
-            linewidth=1,
-            stack=False,
-            grid_pos=GridPos(0, y, 8, 8),
-        ),
-        Panel(
-            id=ids[1],
-            title=f"{label} -- P50",
-            description="",
-            unit="short",
-            targets=[
-                Target(
-                    expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA
-                )
-            ],
-            fill=1,
-            linewidth=1,
-            stack=False,
-            grid_pos=GridPos(8, y, 8, 8),
-        ),
-        Panel(
-            id=ids[2],
-            title=f"{label} -- P90",
-            description="",
-            unit="short",
-            targets=[
-                Target(
-                    expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA
-                )
-            ],
-            fill=1,
-            linewidth=1,
+            linewidth=linewidth,
             stack=False,
             grid_pos=GridPos(16, y, 8, 8),
         ),
@@ -225,11 +176,11 @@ _throughput_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f"sum by (deployment, replica) (rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))",
+                expr=f"sum by (deployment, replica) (rate(ray_serve_deployment_request_counter_total{{{{{_VLLM_DEPLOYMENT_FILTER}}}}}[$interval]))",
                 legend=_DEP_REPLICA,
             ),
             Target(
-                expr=f"sum(rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))",
+                expr=f"sum(rate(ray_serve_deployment_request_counter_total{{{{{_VLLM_DEPLOYMENT_FILTER}}}}}[$interval]))",
                 legend="Total QPS",
             ),
         ],
@@ -284,11 +235,13 @@ _throughput_panels = [
 # Row 2: Latency (3x3 grid)
 # ===================================================================
 _latency_panels_list = [
-    *_latency_panels(
+    *_histogram_panels(
         "ray_vllm_request_time_per_output_token_seconds", "TPOT", (6, 7, 8), 10
     ),
-    *_latency_panels("ray_vllm_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18),
-    *_latency_panels(
+    *_histogram_panels(
+        "ray_vllm_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18
+    ),
+    *_histogram_panels(
         "ray_vllm_e2e_request_latency_seconds",
         "Request Latency",
         (12, 13, 14),
@@ -334,20 +287,6 @@ _cache_panels = [
                 ),
                 legend=_DEP_REPLICA,
             ),
-            Target(
-                expr=(
-                    f"max(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) "
-                    f"/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))"
-                ),
-                legend="Max Hit Rate",
-            ),
-            Target(
-                expr=(
-                    f"min(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) "
-                    f"/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))"
-                ),
-                legend="Min Hit Rate",
-            ),
         ],
         fill=1,
         linewidth=1,
@@ -360,11 +299,21 @@ _cache_panels = [
 # Row 4: Request Length
 # ===================================================================
 _request_length_panels = [
-    *_length_panels(
-        "ray_vllm_request_prompt_tokens", "Prompt Length", (19, 20, 21), 44
+    *_histogram_panels(
+        "ray_vllm_request_prompt_tokens",
+        "Prompt Length",
+        (19, 20, 21),
+        44,
+        unit="short",
+        linewidth=1,
     ),
-    *_length_panels(
-        "ray_vllm_request_generation_tokens", "Generation Length", (22, 23, 24), 52
+    *_histogram_panels(
+        "ray_vllm_request_generation_tokens",
+        "Generation Length",
+        (22, 23, 24),
+        52,
+        unit="short",
+        linewidth=1,
     ),
 ]
 
@@ -524,7 +473,6 @@ _nixl_panels = [
                     "ray_vllm_nixl_bytes_transferred_sum",
                     "ray_vllm_nixl_xfer_time_seconds_sum",
                     scale="/ 1024 / 1024 / 1024",
-                    guard_metric="ray_vllm_nixl_xfer_time_seconds_sum",
                 ),
                 legend=_DEP_REPLICA,
             ),
@@ -573,7 +521,7 @@ _nixl_panels = [
     Panel(
         id=38,
         title="NIXL: KV Transfer Failures",
-        description="Number of failed NIXL KV cache transfers.",
+        description="Number of failed NIXL KV cache transfers. Any non-zero value is concerning and indicates RDMA transfer errors.",
         unit="short",
         targets=[
             Target(
@@ -591,7 +539,7 @@ _nixl_panels = [
     Panel(
         id=39,
         title="NIXL: KV Expired Requests",
-        description="Number of requests whose KV blocks expired before decode consumed them.",
+        description="Number of requests whose KV blocks expired before decode consumed them. Spikes indicate prefill is outrunning decode or the timeout is too short.",
         unit="short",
         targets=[
             Target(
@@ -642,11 +590,11 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f"delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])",
+                expr=f"sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h]))",
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr=f"delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])",
+                expr=f"sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h]))",
                 legend="Generated: {{model_name}}",
             ),
         ],
@@ -856,6 +804,5 @@ serve_llm_dashboard_config = DashboardConfig(
     default_uid="rayServeLlmDashboard",
     standard_global_filters=[],
     base_json_file_name="serve_llm_grafana_dashboard_base.json",
-    panels=[],
     rows=_ALL_ROWS,
 )
