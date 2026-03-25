@@ -946,9 +946,7 @@ TEST_F(TaskManagerLineageTest, TestPoolTaskRetargetMovesActorDependency) {
   mutable_actor_spec->set_actor_creation_dummy_object_id(
       new_actor_creation_dummy_object_id.Binary());
   ASSERT_TRUE(manager_.MovePoolTaskActorDependency(
-      spec.TaskId(),
-      actor_creation_dummy_object_id,
-      new_actor_creation_dummy_object_id));
+      spec.TaskId(), actor_creation_dummy_object_id, new_actor_creation_dummy_object_id));
   ASSERT_EQ(spec.ActorId(), new_actor_id);
   ASSERT_EQ(spec.ActorCreationDummyObjectId(), new_actor_creation_dummy_object_id);
   ASSERT_FALSE(reference_counter_->HasReference(actor_creation_dummy_object_id));
