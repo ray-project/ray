@@ -548,10 +548,6 @@ class SGLangServer:
 
         ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        # Testing for now
-        if "num_gpus" not in ray_actor_options:
-            ray_actor_options["num_gpus"] = 1  # ← add this
-
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
         pp_size = llm_config.engine_kwargs.get("pp_size", 1)
         num_devices = tp_size * pp_size
@@ -569,9 +565,6 @@ class SGLangServer:
                 "CPU": ray_actor_options.get("num_cpus", 1),
             }
 
-            if ray_actor_options.get("num_gpus"):
-                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
-
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
@@ -581,7 +574,6 @@ class SGLangServer:
                 child_actor_bundles=child_bundles,
                 replica_actor_bundle=replica_bundle,
             )
-
             pg_strategy = "PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
@@ -604,6 +596,11 @@ class SGLangServer:
 
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)
+
+        # Set num_gpus AFTER bundle construction — only affects CUDA_VISIBLE_DEVICES,
+        # not the placement group GPU counts
+        if "num_gpus" not in ray_actor_options:
+            ray_actor_options["num_gpus"] = 1
 
         deployment_options["ray_actor_options"] = ray_actor_options
 
