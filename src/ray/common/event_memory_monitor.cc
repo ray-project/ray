@@ -152,7 +152,7 @@ void EventMemoryMonitor::MonitoringThreadMain() {
       // only return on next new event.
       while (read(inotify_fd_, inotify_buffer, sizeof(inotify_buffer)) > 0) {
       }
-      if (errno != EAGAIN) {
+      if (errno != EAGAIN || errno != EINTR) {
         RAY_LOG(ERROR) << absl::StrFormat(
             "Failed to drain inotify buffer while monitoring memory events. "
             "Event monitoring thread is stoppping, errno: %d, error: %s",
@@ -170,8 +170,14 @@ void EventMemoryMonitor::MonitoringThreadMain() {
           std::vector<std::string> tokens;
           boost::split(tokens, line, boost::is_any_of(" "));
 
+          // Expected format:
+          // low 0
+          // high 231226
+          // max 1695
+          // oom 26620
+          // oom_kill 20
           if (line.find("high") != std::string::npos) {
-            int64_t high_count = std::stoi(tokens[1]);
+            int64_t high_count = std::stoll(tokens[1]);
             if (high_count > prev_memory_events_high_) {
               prev_memory_events_high_ = high_count;
               high_modified = true;
