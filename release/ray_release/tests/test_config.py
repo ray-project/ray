@@ -5,7 +5,9 @@ import pytest
 import yaml
 
 from ray_release.config import (
+    CLOUD_ID_TO_NAME,
     _substitute_variable,
+    get_test_cloud_name,
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
@@ -422,6 +424,41 @@ def test_compute_config_invalid_ebs():
     ][0]["Ebs"]["DeleteOnTermination"] = True
 
     assert not validate_cluster_compute(compute_config)
+
+
+def test_get_test_cloud_name_from_cluster_cloud():
+    """get_test_cloud_name() returns cluster.cloud when set."""
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud": "my_cloud"},
+        }
+    )
+    assert get_test_cloud_name(test) == "my_cloud"
+
+
+def test_get_test_cloud_name_from_cloud_id_mapping():
+    """get_test_cloud_name() falls back to CLOUD_ID_TO_NAME mapping."""
+    for cloud_id, expected_name in CLOUD_ID_TO_NAME.items():
+        test = Test(
+            {
+                "name": "test",
+                "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": cloud_id},
+            }
+        )
+        assert get_test_cloud_name(test) == expected_name
+
+
+def test_get_test_cloud_name_unknown_cloud_id():
+    """get_test_cloud_name() raises ReleaseTestConfigError for unknown cloud_id."""
+    test = Test(
+        {
+            "name": "test",
+            "cluster": {"cluster_compute": "tpl.yaml", "cloud_id": "cld_unknown"},
+        }
+    )
+    with pytest.raises(ReleaseTestConfigError):
+        get_test_cloud_name(test)
 
 
 def test_load_and_validate_test_collection_file():

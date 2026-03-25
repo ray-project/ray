@@ -29,6 +29,10 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
     "cld_kvedZWag2qA8i5BjxUevf5i7",  # anyscale_v2_default_cloud
 )
+DEFAULT_CLOUD_NAME = DeferredEnvVar(
+    "RELEASE_DEFAULT_CLOUD_NAME",
+    "anyscale_v2_default_cloud",
+)
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_6rfevmf12tbsbd6g3al5f6zssh",
@@ -45,6 +49,44 @@ RELEASE_TEST_CONFIG_FILES = [
 ]
 
 ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu128", "llm-cu130"]
+
+NEW_COMPUTE_CONFIG_KEYS = {
+    "cloud",
+    "head_node",
+    "worker_nodes",
+    "advanced_instance_config",
+}
+# All fields accepted by the anyscale.compute_config.models.ComputeConfig
+# dataclass. Used to filter the cluster compute dict before constructing the
+# model (to strip keys like idle_termination_minutes that are not part of it).
+COMPUTE_CONFIG_MODEL_FIELDS = NEW_COMPUTE_CONFIG_KEYS | {
+    "cloud_resource",
+    "min_resources",
+    "max_resources",
+    "zones",
+    "enable_cross_zone_scaling",
+    "flags",
+    "auto_select_worker_config",
+}
+LEGACY_COMPUTE_CONFIG_KEYS = {
+    "aws",
+    "cloud_id",
+    "head_node_type",
+    "worker_node_types",
+    "aws_advanced_configurations",
+    "advanced_configurations_json",
+    "gcp_advanced_configurations_json",
+}
+
+CLOUD_ID_TO_NAME = {
+    "cld_kvedZWag2qA8i5BjxUevf5i7": "anyscale_v2_default_cloud",
+    "cld_wy5a6nhazplvu32526ams61d98": "serve_release_tests_cloud",
+    "cld_HSrCZdMCYDe1NmMCJhYRgQ4p": "aioa_aws_735219725452_us_west_2_0000",
+    "cld_5nnv7pt2jn2312x2e5v72z53n2": "anyscale_aks_public_default_cloud_us_west_2",
+    "cld_vy7xqacrvddvbuy95auinvuqmt": "oss_release_tests_gce",
+    "cld_k8WcxPgjUtSE8RVmfZpTLuKM": "anyscale_k8s_gcp_cloud",
+    "cld_tPsS3nQz8p5cautbyWgEdr4y": "anyscale_gce_cloud",
+}
 
 
 def read_and_validate_release_test_collection(
@@ -351,6 +393,19 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 def get_test_cloud_id(test: Test) -> str:
     return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
+
+
+def get_test_cloud_name(test: Test) -> str:
+    cloud_name = test.get("cluster", {}).get("cloud")
+    if cloud_name:
+        return cloud_name
+    cloud_id = get_test_cloud_id(test)
+    name = CLOUD_ID_TO_NAME.get(cloud_id)
+    if name is None:
+        raise ReleaseTestConfigError(
+            f"Cloud ID '{cloud_id}' not found in CLOUD_ID_TO_NAME mapping."
+        )
+    return name
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:
