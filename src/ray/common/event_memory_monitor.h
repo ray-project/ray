@@ -60,6 +60,8 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
   bool IsEnabled() override;
 
  private:
+  enum class DrainResult { kDrained, kInterrupted, kError };
+
   /**
    * @param cgroup_path the path to the cgroup whose memory events will be monitored.
    * @param memory_events_path the path to the memory.events file within the cgroup.
@@ -78,6 +80,15 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
    * monitoring it for events where the memory usage exceeds memory.high.
    */
   void MonitoringThreadMain();
+
+  /**
+   * @brief Drains the inotify buffer to process all pending events.
+   * @param inotify_fd the inotify file descriptor to drain.
+   * @return kDrained if all events were consumed, kInterrupted if a signal
+   *         interrupted the read (caller should re-poll), or kError on a
+   *         fatal read failure (caller should stop the thread).
+   */
+  DrainResult DrainInotifyBuffer(int inotify_fd);
 
   /// The path to the cgroup whose memory events will be monitored.
   std::string cgroup_path_;

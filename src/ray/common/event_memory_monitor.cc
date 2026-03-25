@@ -126,7 +126,6 @@ void EventMemoryMonitor::MonitoringThreadMain() {
   fds[0].events = POLLIN;
   fds[1].fd = shutdown_eventfd_;
   fds[1].events = POLLIN;
-  char inotify_buffer[1024] __attribute__((aligned(__alignof__(struct inotify_event))));
 
   while (true) {
     int ret = poll(fds, 2, -1);
@@ -140,29 +139,32 @@ void EventMemoryMonitor::MonitoringThreadMain() {
           "Event monitoring thread stoppping.",
           errno,
           strerror(errno));
-      break;
+      return;
     }
 
     if (fds[1].revents & POLLIN) {
-      break;
+      return;
     }
 
     if (fds[0].revents & POLLIN) {
       // Drain all pending inotify events to ensure poll will
       // only return on next new event.
-      while (read(inotify_fd_, inotify_buffer, sizeof(inotify_buffer)) > 0) {
+      DrainResult drain_result = DrainInotifyBuffer(inotify_fd_);
+      if (drain_result == DrainResult::kInterrupted) {
+        // Re-enter poll loop if interrupt was signaled in case a terminate
+        // signal was received.
+        continue;
       }
-      if (errno != EAGAIN || errno != EINTR) {
+      if (drain_result == DrainResult::kError) {
         RAY_LOG(ERROR) << absl::StrFormat(
             "Failed to drain inotify buffer while monitoring memory events. "
             "Event monitoring thread is stoppping, errno: %d, error: %s",
             errno,
             strerror(errno));
-        break;
+        return;
       }
 
       bool high_modified = false;
-
       std::ifstream mem_events_file(memory_events_path_);
       if (mem_events_file) {
         std::string line;
@@ -170,7 +172,7 @@ void EventMemoryMonitor::MonitoringThreadMain() {
           std::vector<std::string> tokens;
           boost::split(tokens, line, boost::is_any_of(" "));
 
-          // Expected format:
+          // Expected memory.events format:
           // low 0
           // high 231226
           // max 1695
@@ -189,7 +191,7 @@ void EventMemoryMonitor::MonitoringThreadMain() {
             "Failed read memory.events file: %s when checking "
             "for memory events. Event monitoring thread is stoppping.",
             memory_events_path_);
-        break;
+        return;
       }
 
       if (high_modified && IsEnabled()) {
@@ -199,8 +201,23 @@ void EventMemoryMonitor::MonitoringThreadMain() {
       }
     }
   }
+}
 
-  RAY_LOG(INFO) << "EventMemoryMonitor monitoring thread stopping";
+EventMemoryMonitor::DrainResult EventMemoryMonitor::DrainInotifyBuffer(int inotify_fd) {
+  char inotify_buffer[256];
+  while (true) {
+    int read_bytes = read(inotify_fd, inotify_buffer, sizeof(inotify_buffer));
+    if (read_bytes > 0) {
+      continue;
+    }
+    if (read_bytes == 0 || errno == EAGAIN) {
+      return DrainResult::kDrained;
+    }
+    if (errno == EINTR) {
+      return DrainResult::kInterrupted;
+    }
+    return DrainResult::kError;
+  }
 }
 
 }  // namespace ray
