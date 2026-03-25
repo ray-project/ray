@@ -327,6 +327,43 @@ def _is_obstore_supported_url(path: str) -> bool:
         return False
 
 
+async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
+    """Download a single URI as a whole-file GET and return raw bytes."""
+    import obstore as obs
+
+    store_url, path = _split_uri(uri)
+    result = await obs.get_async(registry.get(store_url), path)
+    return bytes(await result.bytes_async())
+
+
+async def _fetch_whole(
+    uri: str,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: Optional[asyncio.Semaphore] = None,
+) -> Optional[bytes]:
+    """Download a single URI, returning ``None`` on failure."""
+    try:
+        if semaphore is not None:
+            async with semaphore:
+                return await _fetch(uri, registry)
+        # No semaphore, indicate we not using range splitting.
+        # Number of concurrent connections controlled by PartitionActor.
+        return await _fetch(uri, registry)
+    except OSError as e:
+        logger.debug(
+            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
+        )
+    except Exception as e:
+        logger.warning(
+            "Unexpected error reading uri %r for column %r: %s",
+            uri,
+            uri_column_name,
+            e,
+        )
+    return None
+
+
 async def _download_uris_with_obstore(
     uris: List[str],
     uri_column_name: str,
@@ -390,31 +427,6 @@ async def _download_uris_with_obstore(
 
     registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
-    async def _download_one_simple(uri: str) -> Optional[bytes]:
-        try:
-            store_url, path = _split_uri(uri)
-            store = registry.get(store_url)
-            if sem is not None:
-                async with sem:
-                    result = await obs.get_async(store, path)
-                    return bytes(await result.bytes_async())
-            else:
-                # No semaphore, indicate we not using range splitting.
-                # Number of concurrent connections controlled by PartitionActor.
-                result = await obs.get_async(store, path)
-                return bytes(await result.bytes_async())
-        except OSError as e:
-            logger.debug(
-                f"OSError reading uri '{uri}' for column '{uri_column_name}': {e}"
-            )
-            return None
-        except Exception as e:
-            logger.warning(
-                f"Unexpected error reading uri '{uri}' for column "
-                f"'{uri_column_name}': {e}"
-            )
-            return None
-
     async def _download_one_ranged(uri: str, size: int) -> Optional[bytes]:
         """Download a single large file using parallel range requests.
 
@@ -456,10 +468,10 @@ async def _download_uris_with_obstore(
                 f"Ranged download failed for '{uri}', falling back to "
                 f"simple GET: {e}"
             )
-            return await _download_one_simple(uri)
+            return await _fetch_whole(uri, registry, uri_column_name, sem)
 
     if range_threshold <= 0:
-        tasks = [_download_one_simple(uri) for uri in uris]
+        tasks = [_fetch_whole(uri, registry, uri_column_name, sem) for uri in uris]
         return list(await asyncio.gather(*tasks))
 
     # --- Range-split path ---
@@ -491,7 +503,7 @@ async def _download_uris_with_obstore(
         if size and size > range_threshold:
             tasks.append(_download_one_ranged(uri, size))
         else:
-            tasks.append(_download_one_simple(uri))
+            tasks.append(_fetch_whole(uri, registry, uri_column_name, sem))
     return list(await asyncio.gather(*tasks))
 
 
