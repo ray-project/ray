@@ -258,7 +258,9 @@ class SplitCoordinator:
                     if self._cur_epoch < target_epoch:
                         elapsed = time.time() - start_time
                         if elapsed >= BLOCKED_CLIENT_WARN_TIMEOUT:
-                            if log_once(f"stream_split_blocked_{split_idx}"):
+                            if log_once(
+                                f"stream_split_blocked_{split_idx}_{target_epoch}"
+                            ):
                                 logger.warning(
                                     f"StreamSplitDataIterator(split={split_idx}) "
                                     f"blocked waiting on other clients for more "
