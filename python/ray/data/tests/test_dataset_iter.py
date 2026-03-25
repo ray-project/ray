@@ -560,6 +560,8 @@ def test_iter_jax_batches(ray_start_regular_shared):
     except ImportError:
         pytest.skip("JAX not installed")
 
+    from ray.data.util.jax_util import reshard_jax_batch
+
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
     )
@@ -576,7 +578,8 @@ def test_iter_jax_batches(ray_start_regular_shared):
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=3):
+        for batch in ds.iter_jax_batches(batch_size=3):
+            batch = reshard_jax_batch(batch, named_sharding)
             iterations.append(
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
@@ -610,6 +613,8 @@ def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
     except ImportError:
         pytest.skip("JAX not installed")
 
+    from ray.data.util.jax_util import reshard_jax_batch
+
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
     arr = np.concatenate((arr1, arr2))
@@ -621,7 +626,8 @@ def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=2):
+        for batch in ds.iter_jax_batches(batch_size=2):
+            batch = reshard_jax_batch(batch, named_sharding)
             iterations.append(batch["data"])
 
         combined_iterations = np.concatenate(iterations)

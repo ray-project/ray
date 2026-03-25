@@ -621,7 +621,6 @@ class DataIterator(abc.ABC):
     def iter_jax_batches(
         self,
         *,
-        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         drop_last: bool = False,
@@ -635,14 +634,16 @@ class DataIterator(abc.ABC):
         loads them directly onto JAX-addressable devices using Global SPMD
         sharding. Data types are inferred from the underlying NumPy arrays.
 
+        Each yielded batch uses a default 1-D sharding along the batch
+        dimension across all devices.  To reshard into a custom
+        ``NamedSharding`` layout (e.g. 2-D data + model parallelism), apply
+        :func:`ray.data.util.jax_util.reshard_jax_batch` to each batch.
+
         This iterable will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
         column-tensors.
 
         Args:
-            named_sharding: The JAX NamedSharding object defining the global
-                mesh and partition layout. Default is ``None``, in which case
-                the array will be sharded along the batch dimension across all devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
@@ -668,7 +669,6 @@ class DataIterator(abc.ABC):
                 f"({num_local_devices}) on this host."
             )
 
-        # Directly Fetch the underlying blocks as NumPy arrays.
         batch_iterable = self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -680,11 +680,9 @@ class DataIterator(abc.ABC):
 
         from ray.data.util.jax_util import jax_sync_generator
 
-        # Use prefetch_batches as the lookahead size for synchronization.
         return jax_sync_generator(
             batch_iterable,
             drop_last,
-            named_sharding,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),
         )

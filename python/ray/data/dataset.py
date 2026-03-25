@@ -5964,7 +5964,6 @@ class Dataset:
     def iter_jax_batches(
         self,
         *,
-        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         drop_last: bool = False,
@@ -5975,6 +5974,10 @@ class Dataset:
         """Return an iterable over batches of data represented as JAX arrays.
 
         This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
+        Each batch uses a default 1-D sharding along the batch dimension.
+        To reshard into a custom ``NamedSharding`` layout, use
+        :func:`ray.data.util.jax_util.reshard_jax_batch` on each batch.
+
         Data types are inferred from the underlying NumPy arrays.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to JAX arrays.
@@ -5998,9 +6001,6 @@ class Dataset:
                 [5.1 4.9] [0 0]
 
         Args:
-            named_sharding: The JAX NamedSharding object defining the global
-                mesh and partition layout. Default is ``None``, in which case
-                the data is sharded along the batch dimension across all devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
@@ -6021,7 +6021,6 @@ class Dataset:
 
         """  # noqa: E501
         return self.iterator().iter_jax_batches(
-            named_sharding=named_sharding,
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             drop_last=drop_last,

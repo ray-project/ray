@@ -553,6 +553,7 @@ def train_func_with_data_single_host(config):
     from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
     from ray import train
+    from ray.data.util.jax_util import reshard_jax_batch
 
     devices = jax.devices()
     local_devices = jax.local_devices()
@@ -569,10 +570,8 @@ def train_func_with_data_single_host(config):
 
     batches = []
     drop_last = config.get("drop_last", False) if config else False
-    # Local batch size must be evenly divisible by 8 (num_local_devices)
-    for batch in ds_shard.iter_jax_batches(
-        named_sharding=named_sharding, batch_size=16, drop_last=drop_last
-    ):
+    for batch in ds_shard.iter_jax_batches(batch_size=16, drop_last=drop_last):
+        batch = reshard_jax_batch(batch, named_sharding)
         arr = batch["features"]
         assert arr.sharding == named_sharding
         batches.append(arr.shape)
