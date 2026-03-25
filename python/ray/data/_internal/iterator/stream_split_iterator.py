@@ -13,6 +13,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -257,12 +258,14 @@ class SplitCoordinator:
                     if self._cur_epoch < target_epoch:
                         elapsed = time.time() - start_time
                         if elapsed >= BLOCKED_CLIENT_WARN_TIMEOUT:
-                            logger.warning(
-                                f"StreamSplitDataIterator(split={split_idx}) "
-                                f"blocked waiting on other clients for more "
-                                f"than {elapsed:.0f}s. All clients must read "
-                                "from the DataIterator splits at the same time."
-                            )
+                            if log_once(f"stream_split_blocked_{split_idx}"):
+                                logger.warning(
+                                    f"StreamSplitDataIterator(split={split_idx}) "
+                                    f"blocked waiting on other clients for more "
+                                    f"than {elapsed:.0f}s. All clients must read "
+                                    "from the DataIterator splits at the same "
+                                    "time."
+                                )
 
         if self._gen_epoch_error is not None:
             # If there was an error when advancing to the next epoch,
@@ -356,7 +359,7 @@ class SplitCoordinator:
                 if not returned_normally:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-            self._coordinator_overhead_s += time.perf_counter() - start_time
+                self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
