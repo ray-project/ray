@@ -78,7 +78,6 @@ def plan_read_op_with_checkpoint_filter(
         compute_strategy=ActorPoolStrategy(
             min_size=data_context.checkpoint_actor_pool_min_size,
             max_size=data_context.checkpoint_actor_pool_max_size,
-            max_tasks_in_flight_per_actor=data_context.checkpoint_actor_max_tasks_in_flight_per_actor,
         ),
         ray_remote_args={
             "memory": max(

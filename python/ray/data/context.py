@@ -318,10 +318,6 @@ DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES: int = env_integer(
     "RAY_DATA_CHECKPOINT_ACTOR_MEMORY_BYTES", 1 * 1024**3
 )
 
-DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR: int = env_integer(
-    "RAY_DATA_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR", 10
-)
-
 
 @DeveloperAPI
 @dataclass
@@ -654,9 +650,6 @@ class DataContext:
             filter the input.
         checkpoint_actor_memory_bytes: The amount of memory (in bytes) for each
             checkpoint-actor. This value is used by ray_remote_args when creating the actor.
-        checkpoint_actor_max_tasks_in_flight_per_actor: The length of the task queue for
-            each checkpoint actor. When the task queues of every actor are full, the actor
-            pool will scale up.
     """
 
     # `None` means the block size is infinite.
@@ -831,10 +824,6 @@ class DataContext:
     checkpoint_actor_pool_max_size: int = DEFAULT_CHECKPOINT_ACTOR_POOL_MAX_SIZE
 
     checkpoint_actor_memory_bytes: int = DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES
-
-    checkpoint_actor_max_tasks_in_flight_per_actor: int = (
-        DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR
-    )
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
