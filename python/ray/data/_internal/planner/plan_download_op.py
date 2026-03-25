@@ -51,11 +51,9 @@ def plan_download_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    upstream_op_is_download = False
-    if len(input_physical_dag._logical_operators) == 1 and isinstance(
-        input_physical_dag._logical_operators[0], Download
-    ):
-        upstream_op_is_download = True
+    upstream_op_is_download = len(
+        input_physical_dag._logical_operators
+    ) == 1 and isinstance(input_physical_dag._logical_operators[0], Download)
 
     uri_column_names = op.uri_column_names
     uri_column_names_str = ", ".join(uri_column_names)
@@ -293,7 +291,7 @@ def download_bytes_threaded(
     ):
         uris = output_block.column(uri_column_name).to_pylist()
 
-        if len(uris) == 0:
+        if not uris:
             continue
 
         # Read pre-computed file sizes from the PartitionActor if available.
@@ -337,10 +335,8 @@ def download_bytes_threaded(
             )
 
         # Add the new column to the PyArrow table
-        output_block = output_block.add_column(
-            len(output_block.column_names),
-            output_bytes_column_name,
-            pa.array(uri_bytes),
+        output_block = output_block.append_column(
+            output_bytes_column_name, pa.array(uri_bytes)
         )
 
     # Drop internal file-size columns before yielding output.
@@ -397,7 +393,11 @@ class PartitionActor:
             self._batch_size_estimate = self._estimate_nrows_per_partition(block)
 
         if OBSTORE_AVAILABLE and RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
-            block = self._attach_file_sizes(block)
+            # This inner branch is only taken if the first URI is supported by obstore
+            # for async downloads.
+            first_uri = block.column(self._uri_column_names[0])[0].as_py()
+            if _is_obstore_supported_url(first_uri):
+                block = self._attach_file_sizes(block)
 
         yield from _arrow_batcher(block, self._batch_size_estimate)
 
@@ -413,11 +413,8 @@ class PartitionActor:
         # If we sample HTTP URIs, or if an error occurs during sampling, then the file
         # sizes might be `None`. In these cases, we replace the `file_size` with 0.
         sampled_file_sizes_by_column = {
-            uri_column_name: [
-                file_size if file_size is not None else 0
-                for file_size in sampled_file_sizes
-            ]
-            for uri_column_name, sampled_file_sizes in sampled_file_sizes_by_column.items()
+            col: [size or 0 for size in sizes]
+            for col, sizes in sampled_file_sizes_by_column.items()
         }
 
         # This is some fancy Python code to compute the file size of each row.

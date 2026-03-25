@@ -4,6 +4,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import pyarrow as pa
+import pyarrow.fs
 
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.datasource.path_util import _split_uri
@@ -67,34 +68,22 @@ def _extract_credentials_from_filesystem(
 
     kwargs: Dict[str, Any] = {}
 
-    # Import filesystem types for isinstance checks
-    try:
-        from pyarrow.fs import S3FileSystem
-    except ImportError:
-        S3FileSystem = None
-
-    try:
-        from pyarrow.fs import GcsFileSystem
-    except ImportError:
-        GcsFileSystem = None
-
-    try:
-        from pyarrow.fs import AzureFileSystem
-    except ImportError:
-        AzureFileSystem = None
+    S3FileSystem = getattr(pyarrow.fs, "S3FileSystem", None)
+    GcsFileSystem = getattr(pyarrow.fs, "GcsFileSystem", None)
+    AzureFileSystem = getattr(pyarrow.fs, "AzureFileSystem", None)
 
     if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
-        if hasattr(filesystem, "region") and filesystem.region:
-            kwargs["region"] = filesystem.region
-        if hasattr(filesystem, "access_key") and filesystem.access_key:
-            kwargs["access_key_id"] = filesystem.access_key
-        if hasattr(filesystem, "secret_key") and filesystem.secret_key:
-            kwargs["secret_access_key"] = filesystem.secret_key
-        if hasattr(filesystem, "session_token") and filesystem.session_token:
-            kwargs["session_token"] = filesystem.session_token
-        if hasattr(filesystem, "endpoint_override") and filesystem.endpoint_override:
-            kwargs["endpoint"] = filesystem.endpoint_override
-        if hasattr(filesystem, "anonymous") and filesystem.anonymous:
+        for pa_attr, ob_key in [
+            ("region", "region"),
+            ("access_key", "access_key_id"),
+            ("secret_key", "secret_access_key"),
+            ("session_token", "session_token"),
+            ("endpoint_override", "endpoint"),
+        ]:
+            val = getattr(filesystem, pa_attr, None)
+            if val:
+                kwargs[ob_key] = val
+        if getattr(filesystem, "anonymous", False):
             kwargs["skip_signature"] = True
 
     elif GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
@@ -103,14 +92,14 @@ def _extract_credentials_from_filesystem(
         # to obstore's `skip_signature`. All other credentials (service account,
         # application default credentials) are resolved by obstore from the
         # environment automatically.
-        if hasattr(filesystem, "anonymous") and filesystem.anonymous:
+        if getattr(filesystem, "anonymous", False):
             kwargs["skip_signature"] = True
 
     elif AzureFileSystem is not None and isinstance(filesystem, AzureFileSystem):
-        if hasattr(filesystem, "account_name") and filesystem.account_name:
-            kwargs["account_name"] = filesystem.account_name
-        if hasattr(filesystem, "account_key") and filesystem.account_key:
-            kwargs["account_key"] = filesystem.account_key
+        for attr in ("account_name", "account_key"):
+            val = getattr(filesystem, attr, None)
+            if val:
+                kwargs[attr] = val
 
     return kwargs
 
@@ -154,6 +143,8 @@ def _is_obstore_supported_url(path: str) -> bool:
     Returns ``False`` for relative paths or unsupported schemes.
     This function should only be called when obstore is known to be available.
     """
+    if obstore_parse_scheme is None:
+        return False
     try:
         obstore_parse_scheme(path)
         return True
@@ -341,7 +332,7 @@ async def _download_uris_with_obstore(
     if any(uri.startswith("http://") for uri in uris):
         fs_kwargs["client_options"] = {"allow_http": True}
         logger.warning(
-            "Downloading over unencrypted HTTP. " "Consider using https:// instead."
+            "Downloading over unencrypted HTTP. Consider using https:// instead."
         )
 
     registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
@@ -351,6 +342,7 @@ async def _download_uris_with_obstore(
         return list(await asyncio.gather(*tasks))
 
     # --- Range-split path ---
+    assert sem is not None
     sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
 
     # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
