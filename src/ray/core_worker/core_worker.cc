@@ -2787,6 +2787,12 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
+  // Modify the worker's per-function counters. This should be done before updating any
+  // substates (running_in_ray_get, running_in_ray_wait, getting_and_pinning_args) since
+  // the metric callback subtracts substate counts from running_total. Incrementing
+  // substates before kRunning could result in wrong values of RUNNING metric.
+  task_counter_.MovePendingToRunning(func_name, is_retry);
+
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
@@ -2809,9 +2815,6 @@ Status CoreWorker::ExecuteTask(
 
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
-
-  // Modify the worker's per-function counters.
-  task_counter_.MovePendingToRunning(func_name, is_retry);
 
   worker::TaskStatusEvent::TaskStateUpdate update;
   {
