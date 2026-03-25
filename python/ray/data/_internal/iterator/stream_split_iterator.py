@@ -197,17 +197,16 @@ class SplitCoordinator:
         # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
 
-        self._lock = threading.Lock()
-        # Guarded by self._lock.
+        # Guarded by self._cond.
         self._next_bundle: Dict[SplitIdx, RefBundle] = {}
 
         # Consumers currently inside get(). Used to detect duplicate readers
         # on the same split, which would corrupt data.
-        # Guarded by self._lock.
+        # Guarded by self._cond.
         self._active_consumers: Set[SplitIdx] = set()
 
         # Track prefetched bytes reported by each client (from BatchIterator).
-        # Guarded by self._lock.
+        # Guarded by self._cond.
         self._client_prefetched_bytes: Dict[int, int] = {}
 
         # Add a new stats field to track coordinator overhead
@@ -257,11 +256,12 @@ class SplitCoordinator:
             if len(self._ready_consumers) == self._num_splits:
                 # Last consumer to arrive — start the next epoch.
                 self._ready_consumers.clear()
-                # NOTE: Do NOT clear _active_consumers here. Legitimate
-                # consumers clean up their own entry in get()'s finally
-                # block before reaching signal_epoch_done(). If a stale
-                # entry remains, it means a duplicate reader is still
-                # inside get() — keeping it lets us detect the conflict.
+                # NOTE: Do NOT clear _active_consumers here. Each
+                # consumer that successfully entered get() removes its
+                # own entry in the finally block before reaching
+                # signal_epoch_done(). If a stale entry remains, it
+                # means a duplicate reader is still inside get() —
+                # keeping it lets us detect the conflict.
                 self._cur_epoch += 1
                 self._start_executor()
                 self._cond.notify_all()
@@ -290,9 +290,8 @@ class SplitCoordinator:
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
-        with self._lock:
-            executor = self._current_executor
-            coordinator_overhead_s = self._coordinator_overhead_s
+        executor = self._current_executor
+        coordinator_overhead_s = self._coordinator_overhead_s
         if executor:
             stats = executor.get_stats()
         else:
@@ -320,8 +319,9 @@ class SplitCoordinator:
         """
         start_time = time.perf_counter()
         returned_normally = False
+        added_to_active = False
         try:
-            with self._lock:
+            with self._cond:
                 # Reject concurrent readers on the same split.
                 if output_split_idx in self._active_consumers:
                     raise ValueError(
@@ -329,11 +329,12 @@ class SplitCoordinator:
                         "Each split must have exactly one reader at a time."
                     )
                 self._active_consumers.add(output_split_idx)
+                added_to_active = True
 
             if self._gen_epoch_error is not None:
                 raise self._gen_epoch_error
             # Check for cached leftover blocks from a previous get().
-            with self._lock:
+            with self._cond:
                 next_bundle = self._next_bundle.get(output_split_idx)
 
             # Fetch next bundle if needed.
@@ -352,7 +353,7 @@ class SplitCoordinator:
             )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
-            with self._lock:
+            with self._cond:
                 self._next_bundle[output_split_idx] = remainder
                 if not remainder.blocks:
                     del self._next_bundle[output_split_idx]
@@ -369,8 +370,9 @@ class SplitCoordinator:
             return None
 
         finally:
-            with self._lock:
-                self._active_consumers.discard(output_split_idx)
+            with self._cond:
+                if added_to_active:
+                    self._active_consumers.discard(output_split_idx)
                 # Clear prefetched bytes on any exit (StopIteration or other
                 # exceptions) to avoid stale backpressure data.
                 if not returned_normally:
@@ -382,7 +384,7 @@ class SplitCoordinator:
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
 
-        Must be called while holding self._lock.
+        Must be called while holding self._cond.
         """
         # Bytes buffered in the coordinator.
         total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
@@ -393,7 +395,7 @@ class SplitCoordinator:
     def _report_prefetched_bytes_to_executor(self) -> None:
         """Report total prefetched bytes to the executor's resource manager.
 
-        Must be called while holding self._lock.
+        Must be called while holding self._cond.
         """
         if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
@@ -406,12 +408,12 @@ class SplitCoordinator:
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
-        with self._lock:
+        with self._cond:
             return dict(self._client_prefetched_bytes)
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""
-        with self._lock:
+        with self._cond:
             # Call shutdown on the executor
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
