@@ -100,7 +100,6 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
-        self._base_dataset._plan._run_index += 1
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, False, None
@@ -129,7 +128,8 @@ class StreamSplitDataIterator(DataIterator):
         return self._world_size
 
     def _get_dataset_tag(self):
-        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
+        dataset_id = ray.get(self._coord_actor.get_dataset_id.remote())
+        return f"{dataset_id}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
@@ -231,6 +231,9 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = self._n
         self._next_bundle.clear()
         self._gen_epoch_error = None
+
+    def get_dataset_id(self) -> str:
+        return self._base_dataset.get_dataset_id()
 
     def get(
         self,
