@@ -597,11 +597,6 @@ class SGLangServer:
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)
 
-        # Set num_gpus AFTER bundle construction — only affects CUDA_VISIBLE_DEVICES,
-        # not the placement group GPU counts
-        if "num_gpus" not in ray_actor_options:
-            ray_actor_options["num_gpus"] = 1
-
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
