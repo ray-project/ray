@@ -231,3 +231,11 @@ Reference audit:
 | GCS-6 | GCS Server | `test_gcs_server_shutdown_flushes_actor_events` | integration | added | GCS-6 R14: live server stop() flushes buffered events to output file |
 | GCS-6 | GCS Server | `test_gcs_server_shutdown_rejects_new_actor_events_after_shutdown_boundary` | integration | added | GCS-6 R14: events rejected after live server stop() |
 | GCS-6 | GCS Server | `test_actor_event_output_channel_matches_claimed_full_parity_contract` | integration | added | GCS-6 R14: live server output round-trips to AddEventsRequest proto with correct fields |
+| GCS-6 | GCS Server | `test_gcs_server_stop_stops_periodic_actor_event_export_loop` | integration | added | GCS-6 R15: periodic flush handle stored and aborted on stop() |
+| GCS-6 | GCS Server | `test_gcs_server_stop_cancels_or_quiesces_periodic_flush_task` | integration | added | GCS-6 R15: exporter rejects events after stop — task cancelled |
+| GCS-6 | GCS Server | `test_actor_event_output_channel_matches_full_parity_claim_without_transport_gap` | integration | added | GCS-6 R15: comprehensive live-server output verification with definition+lifecycle events |
+| GCS-6 | GCS Server | `test_actor_ray_event_path_uses_real_aggregator_service_client` | integration | added | GCS-6 R16: gRPC EventAggregatorService client sends events, no file output |
+| GCS-6 | GCS Server | `test_live_gcs_server_actor_events_flow_through_service_path` | integration | added | GCS-6 R16: end-to-end proto verification at mock service |
+| GCS-6 | GCS Server | `test_actor_ray_event_path_no_longer_relies_on_file_output_for_full_parity` | integration | added | GCS-6 R17: no file fallback — no sink when no port (C++ parity) |
+| GCS-6 | GCS Server | `test_enable_ray_event_with_unavailable_aggregator_does_not_fallback_to_file` | integration | added | GCS-6 R17: gRPC failure → no file fallback, no export |
+| GCS-6 | GCS Server | `test_enable_ray_event_without_metrics_agent_port_does_not_claim_full_parity_path` | integration | added | GCS-6 R17: no port → no sink, no export, no file |

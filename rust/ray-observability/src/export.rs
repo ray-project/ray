@@ -247,7 +247,9 @@ impl EventAggregatorSink {
     /// The actor_manager emits separate events for definition and lifecycle
     /// (matching C++ which creates separate RayEvent protos). The `event_kind`
     /// custom_field distinguishes them: "definition" or "lifecycle".
-    fn convert_to_proto_event(
+    ///
+    /// Public for reuse by `GrpcEventAggregatorSink`.
+    pub fn convert_to_proto_event(
         &self,
         event: &RayEvent,
     ) -> ray_proto::ray::rpc::events::RayEvent {
@@ -520,6 +522,116 @@ impl EventSink for EventAggregatorSink {
     }
 }
 
+/// gRPC event aggregator sink matching C++ `EventAggregatorClient::AddEvents()`.
+///
+/// C++ sends `AddEventsRequest` to `EventAggregatorService::AddEvents` over gRPC
+/// at `127.0.0.1:<metrics_agent_port>`. This sink provides the exact same output
+/// channel: a gRPC client calling `AddEvents` on the event aggregator service.
+///
+/// This is the FULL-parity output channel for the `enable_ray_event` path.
+/// There is no file fallback — if gRPC is unavailable, events are not exported.
+pub struct GrpcEventAggregatorSink {
+    /// gRPC client for EventAggregatorService.
+    client: Mutex<
+        ray_proto::ray::rpc::events::event_aggregator_service_client::EventAggregatorServiceClient<
+            tonic::transport::Channel,
+        >,
+    >,
+    /// Node ID for the `node_id` field on each `RayEvent` proto.
+    node_id: Vec<u8>,
+    /// Session name for the `session_name` field.
+    session_name: String,
+    /// Tokio runtime handle for executing async gRPC calls from sync context.
+    runtime_handle: tokio::runtime::Handle,
+}
+
+impl GrpcEventAggregatorSink {
+    /// Create a new gRPC event aggregator sink.
+    ///
+    /// Connects to `EventAggregatorService` at `127.0.0.1:<port>`.
+    /// C++ parity: `EventAggregatorClientImpl::Connect(port)`.
+    pub async fn connect(
+        port: u16,
+        node_id: Vec<u8>,
+        session_name: String,
+    ) -> Result<Self, tonic::transport::Error> {
+        let endpoint = format!("http://127.0.0.1:{}", port);
+        let client = ray_proto::ray::rpc::events::event_aggregator_service_client::EventAggregatorServiceClient::connect(endpoint).await?;
+        Ok(Self {
+            client: Mutex::new(client),
+            node_id,
+            session_name,
+            runtime_handle: tokio::runtime::Handle::current(),
+        })
+    }
+
+    /// Create from an existing channel (for testing).
+    pub fn from_channel(
+        channel: tonic::transport::Channel,
+        node_id: Vec<u8>,
+        session_name: String,
+    ) -> Self {
+        let client = ray_proto::ray::rpc::events::event_aggregator_service_client::EventAggregatorServiceClient::new(channel);
+        Self {
+            client: Mutex::new(client),
+            node_id,
+            session_name,
+            runtime_handle: tokio::runtime::Handle::current(),
+        }
+    }
+}
+
+impl EventSink for GrpcEventAggregatorSink {
+    fn flush(&self, events: &[RayEvent]) -> usize {
+        if events.is_empty() {
+            return 0;
+        }
+
+        // Reuse EventAggregatorSink's proto conversion logic.
+        // Build the AddEventsRequest the same way.
+        let converter = EventAggregatorSink {
+            file_path: PathBuf::new(), // unused — only convert_to_proto_event is called
+            node_id: self.node_id.clone(),
+            session_name: self.session_name.clone(),
+        };
+
+        let proto_events: Vec<ray_proto::ray::rpc::events::RayEvent> =
+            events.iter().map(|e| converter.convert_to_proto_event(e)).collect();
+
+        let request = ray_proto::ray::rpc::events::AddEventsRequest {
+            events_data: Some(ray_proto::ray::rpc::events::RayEventsData {
+                events: proto_events,
+                task_events_metadata: None,
+            }),
+        };
+
+        // Send via gRPC. C++ uses async call with callback.
+        // We use a dedicated thread to run the async gRPC call, avoiding
+        // deadlock on single-threaded tokio runtimes.
+        let mut client = self.client.lock().clone();
+        let handle = self.runtime_handle.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let result = handle.block_on(async move {
+                client.add_events(request).await
+            });
+            let _ = tx.send(result);
+        });
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap_or(Err(tonic::Status::deadline_exceeded("gRPC send timeout")));
+
+        match result {
+            Ok(_reply) => events.len(),
+            Err(e) => {
+                // C++ parity: errors only logged, no retry (best effort)
+                tracing::error!("Failed to send actor events via gRPC: {}", e);
+                0
+            }
+        }
+    }
+}
+
 /// Buffered event exporter.
 ///
 /// Accumulates events and periodically flushes them to a configured sink.
@@ -625,7 +737,23 @@ impl EventExporter {
     }
 
     /// Inner flush logic — called with flush_in_progress already set.
+    ///
+    /// C++ parity: events are only drained from the buffer when a sink is
+    /// available to receive them. If no sink is attached (e.g., before the
+    /// metrics exporter is initialized), the buffer is preserved so events
+    /// can be exported once a sink is attached later.
     fn flush_inner(&self) -> usize {
+        // Check sink availability BEFORE draining the buffer.
+        // C++ only calls ExportEvents() after StartExportingEvents() succeeds,
+        // so events are never drained into a void. We match that by preserving
+        // the buffer when no sink is present.
+        {
+            let sink = self.sink.lock();
+            if sink.is_none() {
+                return 0;
+            }
+        }
+
         let events: Vec<RayEvent> = {
             let mut buffer = self.buffer.lock();
             std::mem::take(&mut *buffer)
@@ -636,8 +764,6 @@ impl EventExporter {
         }
 
         // C++ parity: group events by (entity_id, event_type) preserving insertion order.
-        // C++ uses (GetEntityId(), GetEventType()) as the key and merges same-key events.
-        // For actor events: entity_id = actor_id, event_type = event_kind (definition/lifecycle).
         let grouped = Self::group_and_merge_events(events);
 
         let flushed = {
@@ -645,7 +771,7 @@ impl EventExporter {
             match &*sink {
                 Some(s) => s.flush(&grouped),
                 None => {
-                    // No sink configured — events are lost.
+                    // Sink removed between check and use (should not happen in practice).
                     0
                 }
             }
@@ -872,8 +998,9 @@ mod tests {
         exporter.add_event(make_event("e1"));
         let flushed = exporter.flush();
         assert_eq!(flushed, 0);
-        // Buffer was drained even though events weren't delivered
-        assert_eq!(exporter.buffer_len(), 0);
+        // C++ parity: buffer must be PRESERVED when no sink is present.
+        // Events remain available for export once a sink is attached later.
+        assert_eq!(exporter.buffer_len(), 1);
     }
 
     #[test]

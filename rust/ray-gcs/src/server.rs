@@ -65,6 +65,12 @@ pub struct GcsServerConfig {
     pub ray_config: RayConfig,
     /// Cluster auth token. When set, all gRPC requests must include a matching Bearer token.
     pub auth_token: Option<String>,
+    /// Metrics agent port for event aggregator gRPC connection.
+    /// C++ parity: `EventAggregatorClient::Connect(metrics_agent_port)`.
+    /// When `Some(port)`, actor events are sent via gRPC to `127.0.0.1:<port>`.
+    /// When `None`, exporter defers to late-init via head-node registration.
+    /// No file fallback — events are simply not exported if no port is available.
+    pub metrics_agent_port: Option<u16>,
 }
 
 impl Default for GcsServerConfig {
@@ -83,6 +89,7 @@ impl Default for GcsServerConfig {
             raylet_config_list: None,
             ray_config: RayConfig::default(),
             auth_token: None,
+            metrics_agent_port: None,
         }
     }
 }
@@ -107,6 +114,20 @@ pub struct GcsServer {
     pubsub_handler: Option<Arc<InternalPubSubHandler>>,
     worker_client: Option<Arc<dyn crate::actor_scheduler::CoreWorkerClient>>,
     raylet_client: Option<Arc<dyn crate::actor_scheduler::RayletClient>>,
+    /// Handle to the periodic actor-event export task.
+    /// C++ parity: the recorder has explicit start/stop lifecycle;
+    /// this handle allows `stop()` to abort the periodic loop.
+    ///
+    /// Shared via Arc<Mutex<>> so the late-init callback can store the handle.
+    /// C++ parity: StartExportingEvents() is called only after exporter readiness
+    /// succeeds — the loop must NOT run before a sink is attached.
+    periodic_flush_handle: Arc<parking_lot::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    /// C++ parity: `metrics_exporter_initialized_` — atomic flag ensuring
+    /// `InitMetricsExporter` runs exactly once (startup OR late head-node path).
+    metrics_exporter_initialized: Arc<std::sync::atomic::AtomicBool>,
+    /// Flush interval for the periodic export loop (milliseconds).
+    /// Stored at init time so the late-init callback can use the same value.
+    flush_interval_ms: u64,
 }
 
 impl GcsServer {
@@ -116,6 +137,7 @@ impl GcsServer {
         } else {
             StorageType::InMemory
         };
+        let flush_interval_ms = config.ray_config.ray_events_report_interval_ms;
 
         Self {
             config,
@@ -134,6 +156,9 @@ impl GcsServer {
             pubsub_handler: None,
             worker_client: None,
             raylet_client: None,
+            periodic_flush_handle: Arc::new(parking_lot::Mutex::new(None)),
+            metrics_exporter_initialized: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            flush_interval_ms,
         }
     }
 
@@ -213,12 +238,12 @@ impl GcsServer {
         );
 
         // Wire live runtime sink and periodic flush for actor events.
-        // C++ parity: gcs_server.cc calls ray_event_recorder_->StartExportingEvents()
-        // during startup, and the recorder has a real EventAggregatorClient sink.
         //
-        // C++ sends AddEventsRequest (with RayEvent/ActorLifecycleEvent protos) to
-        // EventAggregatorService via gRPC. Our Rust sink builds the same proto shape
-        // and writes structured JSON to {log_dir}/ray_events/actor_events.jsonl.
+        // C++ parity (gcs_server.cc InitMetricsExporter):
+        // - If metrics_agent_port known at startup → connect immediately
+        // - If not known → defer to head-node registration callback
+        // - Atomic flag prevents double-init from both paths
+        // - On failure, log error, events NOT exported — no file fallback
         if self.config.ray_config.enable_ray_event {
             let node_id = self
                 .config
@@ -232,56 +257,57 @@ impl GcsServer {
                 .clone()
                 .unwrap_or_default();
 
-            if let Some(ref log_dir) = self.config.log_dir {
-                match ray_observability::export::EventAggregatorSink::new(
-                    std::path::Path::new(log_dir),
-                    node_id,
-                    session_name,
+            // C++ parity: if port known at startup, initialize exporter now.
+            if let Some(port) = self.config.metrics_agent_port {
+                // C++ parity: atomic exchange(true) — first caller wins.
+                if !self.metrics_exporter_initialized.swap(
+                    true,
+                    std::sync::atomic::Ordering::AcqRel,
                 ) {
-                    Ok(sink) => {
-                        actor_manager_inner
-                            .event_exporter()
-                            .set_sink(Box::new(sink));
-                    }
-                    Err(e) => {
-                        // Do NOT fall back to LoggingEventSink — that produces
-                        // plain text logs, not structured proto events. Without
-                        // a structured sink, events will be buffered but not
-                        // delivered, making the gap observable.
-                        tracing::warn!(
-                            "Failed to create EventAggregatorSink: {}. \
-                             Actor events will be buffered but NOT delivered to \
-                             a structured output. This is NOT full parity with C++.",
-                            e
-                        );
+                    match ray_observability::export::GrpcEventAggregatorSink::connect(
+                        port,
+                        node_id,
+                        session_name,
+                    )
+                    .await
+                    {
+                        Ok(sink) => {
+                            actor_manager_inner
+                                .event_exporter()
+                                .set_sink(Box::new(sink));
+                            // C++ parity: StartExportingEvents() only after
+                            // readiness succeeds — start periodic loop now.
+                            Self::start_periodic_flush_loop(
+                                actor_manager_inner.event_exporter(),
+                                self.flush_interval_ms,
+                                &self.periodic_flush_handle,
+                            );
+                            tracing::info!(
+                                port,
+                                "Actor event gRPC sink connected to EventAggregatorService"
+                            );
+                        }
+                        Err(e) => {
+                            // C++ parity: on failure, log error, events not exported.
+                            // No file fallback. No periodic loop started.
+                            tracing::error!(
+                                "Failed to connect to event aggregator service at port {}: {}. \
+                                 Events and metrics will not be exported.",
+                                port,
+                                e
+                            );
+                        }
                     }
                 }
             } else {
-                // No log_dir configured — cannot create EventAggregatorSink.
-                // Events will be buffered but not delivered.
-                tracing::warn!(
-                    "enable_ray_event=true but no log_dir configured. \
-                     Actor events will be buffered but NOT delivered to a \
-                     structured output. Set log_dir to enable full parity."
+                // C++ parity: port not known at startup. Will be initialized
+                // later when the head node registers and reports its
+                // metrics_agent_port (see node_added_listener below).
+                tracing::info!(
+                    "enable_ray_event=true but no metrics_agent_port at startup. \
+                     Exporter will initialize when head node registers."
                 );
             }
-
-            // Start periodic flush loop (C++ parity: RayEventRecorder::StartExportingEvents)
-            let exporter = Arc::clone(actor_manager_inner.event_exporter());
-            let flush_interval_ms = self.config.ray_config.ray_events_report_interval_ms;
-            tokio::spawn(async move {
-                let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
-                    flush_interval_ms,
-                ));
-                loop {
-                    ticker.tick().await;
-                    exporter.flush();
-                }
-            });
-            tracing::info!(
-                interval_ms = flush_interval_ms,
-                "Actor event aggregator-path started (enable_ray_event=true, structured proto output)"
-            );
         }
 
         let actor_manager = Arc::new(actor_manager_inner);
@@ -340,6 +366,94 @@ impl GcsServer {
                 );
                 resource_mgr.on_node_add(&node_id);
             }));
+
+            // C++ parity (gcs_server.cc lines 822-832): late-init metrics exporter
+            // when the head node registers and reports its metrics_agent_port.
+            // Only runs when enable_ray_event=true and exporter not yet initialized.
+            if self.config.ray_config.enable_ray_event {
+                let init_flag = Arc::clone(&self.metrics_exporter_initialized);
+                let exporter = Arc::clone(actor_manager.event_exporter());
+                let flush_handle = Arc::clone(&self.periodic_flush_handle);
+                let interval_ms = self.flush_interval_ms;
+                let node_id_bytes = self
+                    .config
+                    .node_id
+                    .as_deref()
+                    .and_then(|h| hex::decode(h).ok())
+                    .unwrap_or_default();
+                let sess_name = self
+                    .config
+                    .session_name
+                    .clone()
+                    .unwrap_or_default();
+                node_manager.add_node_added_listener(Box::new(move |node_info| {
+                    // C++ parity (gcs_server.cc:822-827): check preconditions
+                    // in order BEFORE consuming the one-shot init flag.
+                    // 1. Only head node triggers init
+                    if !node_info.is_head_node {
+                        return;
+                    }
+                    // 2. Already initialized? (read-only check, optimization)
+                    if init_flag.load(std::sync::atomic::Ordering::Acquire) {
+                        return;
+                    }
+                    // 3. Port must be > 0. If zero, do NOT consume the flag —
+                    //    a later registration with a valid port must still work.
+                    //    C++ (gcs_server.cc:826): logs info and returns without
+                    //    calling InitMetricsExporter, so exchange(true) never fires.
+                    let port = node_info.metrics_agent_port;
+                    if port <= 0 {
+                        tracing::info!(
+                            "Head node registered but metrics_agent_port={}. \
+                             Metrics agent not available. To enable metrics, install \
+                             Ray with dashboard support: `pip install 'ray[default]'`.",
+                            port
+                        );
+                        return;
+                    }
+                    // 4. All preconditions met — now claim the one-shot slot.
+                    //    C++ (gcs_server.cc:941): exchange(true) inside InitMetricsExporter.
+                    if init_flag.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                        // Another thread/call won the race
+                        return;
+                    }
+                    // Spawn async task to connect gRPC sink and start periodic flush.
+                    // C++ parity: StartExportingEvents() only after readiness succeeds.
+                    let exporter = Arc::clone(&exporter);
+                    let flush_handle = Arc::clone(&flush_handle);
+                    let nid = node_id_bytes.clone();
+                    let sn = sess_name.clone();
+                    tokio::spawn(async move {
+                        match ray_observability::export::GrpcEventAggregatorSink::connect(
+                            port as u16, nid, sn,
+                        )
+                        .await
+                        {
+                            Ok(sink) => {
+                                exporter.set_sink(Box::new(sink));
+                                // Start periodic flush only after sink is attached.
+                                Self::start_periodic_flush_loop(
+                                    &exporter,
+                                    interval_ms,
+                                    &flush_handle,
+                                );
+                                tracing::info!(
+                                    port,
+                                    "Late-init: actor event gRPC sink connected via head-node registration"
+                                );
+                            }
+                            Err(e) => {
+                                // No sink, no periodic loop. Events stay buffered.
+                                tracing::error!(
+                                    "Late-init: failed to connect to event aggregator at port {}: {}. \
+                                     Events will not be exported.",
+                                    port, e
+                                );
+                            }
+                        }
+                    });
+                }));
+            }
         }
 
         // 4e. Wire worker death → actor death cascade
@@ -572,17 +686,57 @@ impl GcsServer {
         Ok(())
     }
 
+    /// Start the periodic actor-event flush loop.
+    ///
+    /// C++ parity: `StartExportingEvents()` is called only after exporter
+    /// readiness succeeds (gcs_server.cc:958). This method must only be
+    /// called after a sink is successfully attached. The shared handle slot
+    /// prevents starting multiple loops.
+    fn start_periodic_flush_loop(
+        exporter: &Arc<ray_observability::export::EventExporter>,
+        flush_interval_ms: u64,
+        handle_slot: &Arc<parking_lot::Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    ) {
+        let mut slot = handle_slot.lock();
+        if slot.is_some() {
+            // Loop already running — do not start a second one.
+            return;
+        }
+        let exp = Arc::clone(exporter);
+        let handle = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
+                flush_interval_ms,
+            ));
+            loop {
+                ticker.tick().await;
+                exp.flush();
+            }
+        });
+        *slot = Some(handle);
+        tracing::info!(
+            interval_ms = flush_interval_ms,
+            "Periodic actor-event flush loop started"
+        );
+    }
+
     /// Stop the GCS server — flush remaining events and clean up.
     ///
     /// C++ parity: `GcsServer::Stop()` in `gcs_server.cc` (lines 324–331).
     /// Calls `ray_event_recorder_->StopExportingEvents()` for graceful shutdown
     /// with final flush before stopping IO contexts.
-    pub fn stop(&self) {
+    pub fn stop(&mut self) {
         tracing::info!("GCS server stopping — flushing actor event exporter");
 
         // C++ parity: StopExportingEvents() — disable new events + final flush
         if let Some(ref actor_manager) = self.actor_manager {
             actor_manager.event_exporter().shutdown();
+        }
+
+        // C++ parity: the recorder lifecycle includes stopping the periodic export loop.
+        // Abort the background tokio task so it no longer wakes up after shutdown.
+        if let Some(handle) = self.periodic_flush_handle.lock().take() {
+            handle.abort();
+            tracing::info!("Periodic actor-event flush task aborted");
         }
 
         tracing::info!("GCS server stop complete");
@@ -632,6 +786,18 @@ impl GcsServer {
 
     pub fn autoscaler_state_manager(&self) -> Option<&Arc<GcsAutoscalerStateManager>> {
         self.autoscaler_state_manager.as_ref()
+    }
+
+    /// Whether the metrics exporter has been initialized (startup or late head-node path).
+    /// C++ parity: `metrics_exporter_initialized_` atomic flag.
+    pub fn metrics_exporter_initialized(&self) -> bool {
+        self.metrics_exporter_initialized
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Whether the periodic flush loop is currently running.
+    pub fn periodic_flush_running(&self) -> bool {
+        self.periodic_flush_handle.lock().is_some()
     }
 
     pub fn storage_type(&self) -> StorageType {
@@ -1111,32 +1277,73 @@ mod tests {
 
     // === Round 14: Live runtime recorder lifecycle parity tests ===
 
+    /// Helper: start a mock EventAggregatorService and return (port, received_count, server_handle).
+    async fn start_mock_aggregator() -> (
+        u16,
+        Arc<std::sync::atomic::AtomicUsize>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use std::sync::atomic::AtomicUsize;
+        use ray_proto::ray::rpc::events::{
+            event_aggregator_service_server::{EventAggregatorService, EventAggregatorServiceServer},
+            AddEventsRequest, AddEventsReply,
+        };
+
+        let received = Arc::new(AtomicUsize::new(0));
+        let rc = received.clone();
+
+        struct MockAgg(Arc<AtomicUsize>);
+
+        #[tonic::async_trait]
+        impl EventAggregatorService for MockAgg {
+            async fn add_events(
+                &self,
+                request: tonic::Request<AddEventsRequest>,
+            ) -> Result<tonic::Response<AddEventsReply>, tonic::Status> {
+                if let Some(ref data) = request.into_inner().events_data {
+                    self.0.fetch_add(data.events.len(), std::sync::atomic::Ordering::Relaxed);
+                }
+                Ok(tonic::Response::new(AddEventsReply { status: None }))
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let svc = tonic::transport::Server::builder()
+            .add_service(EventAggregatorServiceServer::new(MockAgg(rc)));
+        let handle = tokio::spawn(async move {
+            svc.serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .unwrap();
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        (port, received, handle)
+    }
+
     #[tokio::test]
     async fn test_gcs_server_shutdown_flushes_actor_events() {
         // C++ GcsServer::Stop() calls ray_event_recorder_->StopExportingEvents()
-        // which performs a final flush of remaining buffered events.
-        //
-        // This test proves the live Rust server shutdown path flushes actor events
-        // through the real server.stop() method — not by calling exporter helpers directly.
+        // which performs a final flush of remaining buffered events via gRPC.
 
-        let tmp = tempfile::tempdir().unwrap();
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
         let config = GcsServerConfig {
             port: 0,
             ray_config: RayConfig {
                 enable_ray_event: true,
-                ray_events_report_interval_ms: 60_000, // Very long — events should NOT auto-flush
+                ray_events_report_interval_ms: 60_000,
                 ..Default::default()
             },
-            log_dir: Some(tmp.path().to_string_lossy().to_string()),
             session_name: Some("test_shutdown_flush".to_string()),
             node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
             ..Default::default()
         };
         let mut server = GcsServer::new(config);
         server.initialize().await.unwrap();
 
-        // Register an actor → buffers events in the exporter
-        let actor_mgr = server.actor_manager().unwrap();
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
         let task_spec = rpc::TaskSpec {
             job_id: vec![0, 0, 0, 1],
             caller_address: Some(rpc::Address::default()),
@@ -1150,33 +1357,25 @@ mod tests {
         };
         actor_mgr.handle_register_actor(task_spec).await.unwrap();
 
-        // Events should be buffered (not yet flushed because interval is very long)
         assert!(
             actor_mgr.event_exporter().buffer_len() > 0,
             "events must be buffered before shutdown"
         );
 
-        // Call the live server stop path — this must flush remaining events
         server.stop();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // After stop(), buffer must be empty (events were flushed)
         assert_eq!(
             actor_mgr.event_exporter().buffer_len(),
             0,
-            "live server stop() must flush all remaining buffered actor events (C++ StopExportingEvents parity)"
+            "live server stop() must flush all remaining buffered actor events"
+        );
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "mock aggregator must have received events via gRPC after shutdown flush"
         );
 
-        // Verify events were actually written to the output file
-        let output_file = tmp.path().join("ray_events/actor_events.jsonl");
-        assert!(
-            output_file.exists(),
-            "output file must exist after shutdown flush"
-        );
-        let content = std::fs::read_to_string(&output_file).unwrap();
-        assert!(
-            !content.trim().is_empty(),
-            "output file must contain flushed events"
-        );
+        server_handle.abort();
     }
 
     #[tokio::test]
@@ -1203,7 +1402,7 @@ mod tests {
         let mut server = GcsServer::new(config);
         server.initialize().await.unwrap();
 
-        let actor_mgr = server.actor_manager().unwrap();
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
 
         // Stop the server
         server.stop();
@@ -1228,21 +1427,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_actor_event_output_channel_matches_claimed_full_parity_contract() {
-        // C++ sends AddEventsRequest via gRPC to EventAggregatorService.
-        // Rust writes AddEventsRequest JSON to file.
-        //
-        // This test proves the live server output channel:
-        // 1. Produces a parseable AddEventsRequest at the file path
-        // 2. The proto round-trips correctly
-        // 3. Contains the expected event structure from a real actor registration
-        //
-        // The file-based output is the Rust-equivalent contract because:
-        // - The Rust backend does not have a dashboard agent process
-        // - The data shape is identical to what a gRPC client would send
-        // - The file can be consumed by any AddEventsRequest reader
-        // - Replacing the sink with a gRPC client requires zero data changes
+        // Round 17: updated to use gRPC path (no file fallback).
+        // This test verifies events are delivered via gRPC to the aggregator service.
 
-        let tmp = tempfile::tempdir().unwrap();
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
         let config = GcsServerConfig {
             port: 0,
             ray_config: RayConfig {
@@ -1250,24 +1439,18 @@ mod tests {
                 ray_events_report_interval_ms: 60_000,
                 ..Default::default()
             },
-            log_dir: Some(tmp.path().to_string_lossy().to_string()),
             session_name: Some("test_output_channel".to_string()),
             node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
             ..Default::default()
         };
         let mut server = GcsServer::new(config);
         server.initialize().await.unwrap();
 
-        // Register an actor through the live server
-        let actor_mgr = server.actor_manager().unwrap();
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
         let task_spec = rpc::TaskSpec {
             job_id: vec![0, 0, 0, 2],
             caller_address: Some(rpc::Address::default()),
-            required_resources: {
-                let mut m = std::collections::HashMap::new();
-                m.insert("CPU".to_string(), 1.0);
-                m
-            },
             actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
                 actor_id: vec![2u8; 16],
                 name: "output_channel_actor".to_string(),
@@ -1278,44 +1461,1476 @@ mod tests {
         };
         actor_mgr.handle_register_actor(task_spec).await.unwrap();
 
-        // Flush via server stop (the live path)
+        server.stop();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "mock aggregator must have received events via gRPC"
+        );
+
+        server_handle.abort();
+    }
+
+    // === Round 15: Periodic loop lifecycle + output-channel parity tests ===
+
+    #[tokio::test]
+    async fn test_gcs_server_stop_stops_periodic_actor_event_export_loop() {
+        // C++ recorder has explicit start/stop lifecycle — StopExportingEvents()
+        // stops the periodic export loop. The Rust server must stop the periodic
+        // flush task in stop(), not leave it running until runtime teardown.
+        //
+        // The periodic loop only starts after successful sink attach (C++ parity:
+        // StartExportingEvents only after readiness). So we need a mock aggregator.
+
+        let (port, _received, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_stop_loop".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        // The periodic flush handle must exist after successful sink attach
+        assert!(
+            server.periodic_flush_running(),
+            "periodic flush task must be running after successful sink attach"
+        );
+
+        // Stop the server
         server.stop();
 
-        // Read and parse the output
-        let output_file = tmp.path().join("ray_events/actor_events.jsonl");
-        assert!(output_file.exists(), "output file must exist");
+        // After stop(), the periodic flush handle must be taken/aborted
+        assert!(
+            !server.periodic_flush_running(),
+            "periodic flush task handle must be consumed by stop() (task aborted)"
+        );
 
-        let content = std::fs::read_to_string(&output_file).unwrap();
-        assert!(!content.trim().is_empty(), "output must not be empty");
+        server_handle.abort();
+    }
 
-        // Each line must parse as AddEventsRequest
-        for line in content.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            let request: ray_proto::ray::rpc::events::AddEventsRequest =
-                serde_json::from_str(line).expect(
-                    "output must be valid AddEventsRequest JSON (round-trip proof)"
-                );
-            assert!(request.events_data.is_some());
-            let events_data = request.events_data.unwrap();
-            assert!(
-                !events_data.events.is_empty(),
-                "events_data.events must not be empty"
-            );
+    #[tokio::test]
+    async fn test_gcs_server_stop_cancels_or_quiesces_periodic_flush_task() {
+        // After stop(), the periodic flush task must no longer execute.
+        // Verify by checking that the task's JoinHandle is finished (aborted)
+        // and that the exporter rejects new events.
 
-            for event in &events_data.events {
-                // Each event must have valid source_type and event_type
-                assert_eq!(event.source_type, 2, "source_type must be GCS (2)");
-                assert!(
-                    event.event_type == 9 || event.event_type == 10,
-                    "event_type must be ACTOR_DEFINITION_EVENT (9) or ACTOR_LIFECYCLE_EVENT (10)"
-                );
-                assert!(
-                    !event.session_name.is_empty(),
-                    "session_name must be set"
-                );
+        let (port, _received, agg_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 10, // Very short interval
+                ..Default::default()
+            },
+            session_name: Some("test_cancel_task".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        assert!(
+            server.periodic_flush_running(),
+            "periodic flush must be running after successful sink attach"
+        );
+
+        // Let the periodic task run a few times to prove it's active
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Stop the server — this must abort the task
+        server.stop();
+
+        // Give the tokio runtime a moment to process the abort
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        assert!(
+            !server.periodic_flush_running(),
+            "periodic flush must be stopped after stop()"
+        );
+
+        // The exporter should be shut down (enabled=false)
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        actor_mgr.event_exporter().add_event(
+            ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                "POST_STOP",
+                "rejected",
+            )
+            .with_field("actor_id", "dead")
+            .with_field("event_kind", "lifecycle"),
+        );
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            0,
+            "exporter must reject events after stop — periodic task is cancelled, exporter is shut down"
+        );
+
+        agg_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_actor_event_output_channel_matches_full_parity_claim_without_transport_gap() {
+        // Round 17: updated — gRPC is now the only path for enable_ray_event.
+        // This test verifies events flow through gRPC to mock aggregator with sink attached.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_full_parity_channel".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        assert!(actor_mgr.event_exporter().has_sink(), "gRPC sink must be attached");
+
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 3],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![3u8; 16],
+                name: "full_parity_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+
+        server.stop();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "mock aggregator must have received events via gRPC"
+        );
+
+        server_handle.abort();
+    }
+
+    // === Round 16: gRPC output-channel parity tests ===
+
+    #[tokio::test]
+    async fn test_actor_ray_event_path_uses_real_aggregator_service_client() {
+        // C++ uses EventAggregatorClient to send AddEventsRequest over gRPC.
+        // Rust must use GrpcEventAggregatorSink when metrics_agent_port is set.
+        //
+        // This test starts a mock EventAggregatorService server, configures
+        // the GCS server with that port, and verifies events are delivered
+        // via gRPC (not file).
+
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use ray_proto::ray::rpc::events::{
+            event_aggregator_service_server::{EventAggregatorService, EventAggregatorServiceServer},
+            AddEventsRequest, AddEventsReply,
+        };
+
+        // Mock EventAggregatorService that counts received events
+        let received_count = Arc::new(AtomicUsize::new(0));
+        let rc = received_count.clone();
+
+        struct MockAggregator(Arc<AtomicUsize>);
+
+        #[tonic::async_trait]
+        impl EventAggregatorService for MockAggregator {
+            async fn add_events(
+                &self,
+                request: tonic::Request<AddEventsRequest>,
+            ) -> Result<tonic::Response<AddEventsReply>, tonic::Status> {
+                let req = request.into_inner();
+                if let Some(ref data) = req.events_data {
+                    self.0.fetch_add(data.events.len(), Ordering::Relaxed);
+                }
+                Ok(tonic::Response::new(AddEventsReply { status: None }))
             }
         }
+
+        // Start mock server on a random port
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mock_server = tonic::transport::Server::builder()
+            .add_service(EventAggregatorServiceServer::new(MockAggregator(rc)));
+
+        let server_handle = tokio::spawn(async move {
+            mock_server
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .unwrap();
+        });
+
+        // Give the server a moment to start
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Configure GCS server with metrics_agent_port → should use gRPC sink
+        let tmp = tempfile::tempdir().unwrap();
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_grpc_sink".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        // Register an actor through the live pipeline
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 10],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![10u8; 16],
+                name: "grpc_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+
+        // Stop → final flush sends events via gRPC
+        server.stop();
+
+        // Give gRPC a moment to deliver
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Mock server must have received events
+        let count = received_count.load(Ordering::Relaxed);
+        assert!(
+            count > 0,
+            "mock EventAggregatorService must have received events via gRPC, got {}",
+            count
+        );
+
+        // The file-based output should NOT have been used (gRPC path is primary)
+        let file_output = tmp.path().join("ray_events/actor_events.jsonl");
+        assert!(
+            !file_output.exists(),
+            "file output must NOT exist when gRPC sink is used — events go through service path"
+        );
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_live_gcs_server_actor_events_flow_through_service_path() {
+        // Verify the full end-to-end flow: GCS server → gRPC → mock service.
+        // The mock server verifies the proto structure of received events.
+
+        use std::sync::Mutex as StdMutex;
+        use ray_proto::ray::rpc::events::{
+            event_aggregator_service_server::{EventAggregatorService, EventAggregatorServiceServer},
+            AddEventsRequest, AddEventsReply,
+        };
+
+        // Mock server that captures the full request
+        let captured: Arc<StdMutex<Vec<AddEventsRequest>>> = Arc::new(StdMutex::new(Vec::new()));
+        let cap = captured.clone();
+
+        struct CapturingAggregator(Arc<StdMutex<Vec<AddEventsRequest>>>);
+
+        #[tonic::async_trait]
+        impl EventAggregatorService for CapturingAggregator {
+            async fn add_events(
+                &self,
+                request: tonic::Request<AddEventsRequest>,
+            ) -> Result<tonic::Response<AddEventsReply>, tonic::Status> {
+                self.0.lock().unwrap().push(request.into_inner());
+                Ok(tonic::Response::new(AddEventsReply { status: None }))
+            }
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mock_server = tonic::transport::Server::builder()
+            .add_service(EventAggregatorServiceServer::new(CapturingAggregator(cap)));
+
+        let server_handle = tokio::spawn(async move {
+            mock_server
+                .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+                .await
+                .unwrap();
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_service_flow".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 11],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![11u8; 16],
+                name: "service_flow_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+
+        server.stop();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Verify the captured request structure
+        let requests = captured.lock().unwrap();
+        assert!(
+            !requests.is_empty(),
+            "mock service must have received at least one AddEventsRequest"
+        );
+
+        let request = &requests[0];
+        let events_data = request.events_data.as_ref().expect("must have events_data");
+        assert!(
+            !events_data.events.is_empty(),
+            "events_data.events must not be empty"
+        );
+
+        for event in &events_data.events {
+            assert_eq!(event.source_type, 2, "source_type must be GCS (2)");
+            assert!(
+                event.event_type == 9 || event.event_type == 10,
+                "event_type must be definition (9) or lifecycle (10)"
+            );
+            assert!(!event.session_name.is_empty(), "session_name must be set");
+        }
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_actor_ray_event_path_no_longer_relies_on_file_output_for_full_parity() {
+        // C++ parity: when metrics_agent_port is not available, enable_ray_event
+        // does NOT fall back to file output. Events are simply not exported.
+        // This matches C++ where StartExportingEvents() is never called if the
+        // metrics agent connection fails.
+
+        let tmp = tempfile::tempdir().unwrap();
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_no_file_fallback".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None, // No gRPC port → no export (C++ parity)
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+
+        // No sink should be attached — no file fallback
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink must be attached when metrics_agent_port is None (C++ parity: no file fallback)"
+        );
+
+        // Events are buffered but not delivered
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 12],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![12u8; 16],
+                name: "no_fallback_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        server.stop();
+
+        // File output must NOT exist — no file fallback for enable_ray_event
+        let file_output = tmp.path().join("ray_events/actor_events.jsonl");
+        assert!(
+            !file_output.exists(),
+            "file output must NOT exist when metrics_agent_port is None \
+             (C++ parity: no file fallback for enable_ray_event)"
+        );
+    }
+
+    // === Round 17: Fallback semantics parity tests ===
+
+    #[tokio::test]
+    async fn test_enable_ray_event_with_unavailable_aggregator_does_not_fallback_to_file() {
+        // C++ behavior: if the event aggregator connection fails,
+        // StartExportingEvents() is never called. Events are not exported.
+        // C++ does NOT fall back to file output for enable_ray_event.
+        //
+        // This test configures a port that has no server listening, verifying
+        // the Rust path does not fall back to file output.
+
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Use a port with no server → connection will fail
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_no_fallback_on_failure".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(19999), // Port with no server
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+
+        // Register an actor — events buffered
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 13],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![13u8; 16],
+                name: "no_fallback_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        server.stop();
+
+        // File output must NOT exist — no file fallback on gRPC failure
+        let file_output = tmp.path().join("ray_events/actor_events.jsonl");
+        assert!(
+            !file_output.exists(),
+            "file output must NOT exist when gRPC connection fails \
+             (C++ parity: no file fallback for enable_ray_event)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_enable_ray_event_without_metrics_agent_port_does_not_claim_full_parity_path() {
+        // C++ behavior: without a metrics agent port, InitMetricsExporter is
+        // never called and StartExportingEvents() is never called.
+        // Events are simply not exported.
+        //
+        // Rust must match: no sink, no export, no file fallback.
+
+        let tmp = tempfile::tempdir().unwrap();
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_no_port_no_export".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+
+        // No sink → events buffered but not delivered
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink when metrics_agent_port is None"
+        );
+
+        // Flush returns 0 (no sink)
+        actor_mgr.event_exporter().add_event(
+            ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                "TEST",
+                "test",
+            )
+            .with_field("actor_id", "aabb")
+            .with_field("event_kind", "lifecycle"),
+        );
+        let flushed = actor_mgr.event_exporter().flush();
+        assert_eq!(flushed, 0, "flush must return 0 when no sink (no export)");
+
+        server.stop();
+
+        // No file output
+        let file_output = tmp.path().join("ray_events/actor_events.jsonl");
+        assert!(
+            !file_output.exists(),
+            "no file output when no metrics_agent_port"
+        );
+
+        // No ray_events directory at all
+        let events_dir = tmp.path().join("ray_events");
+        assert!(
+            !events_dir.exists(),
+            "no ray_events directory when no metrics_agent_port"
+        );
+    }
+
+    // ===== TESTS: Late-init exporter path (C++ parity: dynamic head-node port) =====
+
+    #[tokio::test]
+    async fn test_late_init_head_node_with_port_initializes_exporter() {
+        // C++ parity: when startup has no metrics_agent_port, exporter initializes
+        // later when the head node registers with a valid port.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_late_init".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None, // No port at startup — triggers late-init path
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        // Before head node registers: no sink, not initialized
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink before head node registers"
+        );
+        assert!(
+            !server.metrics_exporter_initialized(),
+            "exporter not initialized before head node registers"
+        );
+
+        // Register head node with metrics_agent_port
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+        let mut head_node_id = vec![0u8; 28];
+        head_node_id[0] = 0x10;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_node_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Wait for the async init task to complete
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // After head node registers: sink attached, flag set
+        assert!(
+            server.metrics_exporter_initialized(),
+            "exporter must be initialized after head node registers with port"
+        );
+        assert!(
+            actor_mgr.event_exporter().has_sink(),
+            "gRPC sink must be attached after late-init"
+        );
+
+        // Verify events actually flow through gRPC
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 1],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![2u8; 16],
+                name: "late_init_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        actor_mgr.event_exporter().flush();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "mock aggregator must receive events via gRPC after late-init"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_late_init_non_head_node_does_not_initialize() {
+        // C++ parity: only head node registration triggers late init.
+        // Non-head nodes are ignored.
+
+        let (port, _received, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_non_head".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // Register non-head node with a valid port
+        let mut worker_node_id = vec![0u8; 28];
+        worker_node_id[0] = 0x20;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: worker_node_id,
+                state: 0,
+                is_head_node: false,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Non-head node must NOT trigger initialization
+        assert!(
+            !server.metrics_exporter_initialized(),
+            "exporter must NOT initialize for non-head node"
+        );
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink after non-head node registers"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_late_init_head_node_with_zero_port_does_not_initialize() {
+        // C++ parity: head node with port=0 means metrics agent not available.
+        // Exporter does NOT initialize.
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_head_zero_port".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // Register head node with port 0
+        let mut head_node_id = vec![0u8; 28];
+        head_node_id[0] = 0x30;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_node_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // C++ parity: head node with port=0 does NOT consume the init flag.
+        // C++ (gcs_server.cc:826) logs info and returns without calling
+        // InitMetricsExporter, so exchange(true) never fires.
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink when head node has port=0"
+        );
+        assert!(
+            !server.metrics_exporter_initialized(),
+            "init flag must NOT be consumed by head node with port=0"
+        );
+        assert!(
+            !server.periodic_flush_running(),
+            "no periodic loop when no sink attached"
+        );
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_late_init_no_double_initialization() {
+        // C++ parity: metrics_exporter_initialized_ atomic flag prevents
+        // double initialization. Second head-node registration must not
+        // replace the sink.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_no_double_init".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // First head-node registration → initializes exporter
+        let mut head1 = vec![0u8; 28];
+        head1[0] = 0x40;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head1,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        assert!(
+            server.metrics_exporter_initialized(),
+            "initialized after first head node"
+        );
+        assert!(actor_mgr.event_exporter().has_sink(), "sink attached");
+
+        // Send an event, verify it goes through
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 2],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![3u8; 16],
+                name: "first_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        actor_mgr.event_exporter().flush();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let count_after_first = received_count.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(count_after_first > 0, "events received after first init");
+
+        // Second head-node registration → must NOT re-initialize
+        let mut head2 = vec![0u8; 28];
+        head2[0] = 0x41;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head2,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Sink still works (original sink, not replaced)
+        let task_spec2 = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 3],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![4u8; 16],
+                name: "second_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec2).await.unwrap();
+        actor_mgr.event_exporter().flush();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let count_after_second = received_count.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            count_after_second > count_after_first,
+            "events still flow through original sink after second head-node registration"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_late_init_unreachable_port_no_sink_no_file_fallback() {
+        // C++ parity: late-discovered unreachable port → no sink, no file fallback.
+
+        let tmp = tempfile::tempdir().unwrap();
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_late_unreachable".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // Register head node with unreachable port
+        let mut head_id = vec![0u8; 28];
+        head_id[0] = 0x50;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: 19999, // No server here
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // No sink despite head node registration (connection failed)
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink when late-init port is unreachable"
+        );
+
+        // No file fallback
+        let file_output = tmp.path().join("ray_events/actor_events.jsonl");
+        assert!(
+            !file_output.exists(),
+            "no file fallback on late-init connection failure"
+        );
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_startup_known_port_sets_initialized_flag() {
+        // C++ parity: when port is known at startup, metrics_exporter_initialized_
+        // is set immediately, preventing late-init from running.
+
+        let (port, _received, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_startup_flag".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(port),
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        // Flag set immediately after startup init
+        assert!(
+            server.metrics_exporter_initialized(),
+            "flag must be set after startup with known port"
+        );
+
+        // Sink attached
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        assert!(
+            actor_mgr.event_exporter().has_sink(),
+            "sink must be attached after startup with known port"
+        );
+
+        // Late head-node registration must NOT re-init (flag already set)
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+        let mut head_id = vec![0u8; 28];
+        head_id[0] = 0x60;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Still has sink (same one, not replaced)
+        assert!(
+            actor_mgr.event_exporter().has_sink(),
+            "sink still attached after redundant head-node registration"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    // ===== Round 19: Tests proving Bug 1 (flag ordering) and Bug 2 (premature flush) are fixed =====
+
+    #[tokio::test]
+    async fn test_zero_port_does_not_consume_future_valid_init() {
+        // Bug 1 regression test: head node with port=0 must NOT consume the
+        // one-shot init flag. A later head-node registration with a valid port
+        // must still initialize the exporter.
+        //
+        // Old code: swap(true) happened BEFORE checking port > 0, so port=0
+        // permanently burned the flag. This test would FAIL on the old code.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_zero_then_valid".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // Step 1: Register head node with port=0
+        let mut head1 = vec![0u8; 28];
+        head1[0] = 0x70;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head1,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Flag must NOT be consumed
+        assert!(
+            !server.metrics_exporter_initialized(),
+            "init flag must NOT be consumed by port=0 head node"
+        );
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink after port=0 head node"
+        );
+
+        // Step 2: Register another head node with valid port
+        let mut head2 = vec![0u8; 28];
+        head2[0] = 0x71;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head2,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Now the exporter must be initialized
+        assert!(
+            server.metrics_exporter_initialized(),
+            "init flag must be set after valid port head node"
+        );
+        assert!(
+            actor_mgr.event_exporter().has_sink(),
+            "sink must be attached after valid port head node"
+        );
+
+        // Verify events flow through gRPC
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 5],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![7u8; 16],
+                name: "after_zero_port_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        actor_mgr.event_exporter().flush();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "events must flow through gRPC after zero-port then valid-port sequence"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_pre_attach_events_survive_flush_intervals_and_export_after_late_attach() {
+        // Bug 2 regression test: events generated before sink attach must NOT
+        // be lost by premature periodic flushing.
+        //
+        // Uses a VERY short flush interval (10ms) to provoke the race.
+        // Old code: periodic loop started immediately, flush_inner() drained
+        // buffer into void when no sink was present. This test would FAIL.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 10, // Very short — provokes the race
+                ..Default::default()
+            },
+            session_name: Some("test_pre_attach_survive".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None, // No port at startup → late-init path
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // No periodic loop should be running yet
+        assert!(
+            !server.periodic_flush_running(),
+            "periodic loop must NOT run before sink attach"
+        );
+
+        // Emit events BEFORE any sink is attached
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 6],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![8u8; 16],
+                name: "pre_attach_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+
+        // Wait LONG ENOUGH for many flush intervals to fire (if the loop were running)
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Events must still be buffered — not drained into void
+        assert!(
+            actor_mgr.event_exporter().buffer_len() > 0,
+            "pre-attach events must survive multiple flush intervals without a sink"
+        );
+
+        // Now attach via late head-node registration
+        let mut head_id = vec![0u8; 28];
+        head_id[0] = 0x80;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Wait for async chain: spawn → gRPC connect → set_sink → periodic flush → gRPC send
+        // The chain involves multiple async hops and a spawned OS thread for the gRPC call.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // If the periodic loop hasn't flushed yet, do a manual flush to be deterministic
+        if received_count.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+            actor_mgr.event_exporter().flush();
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+
+        // Events must have been exported
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "pre-attach events must be exported after late sink attach"
+        );
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_no_periodic_draining_without_sink() {
+        // Bug 2 defense-in-depth: even if flush() is called manually when no
+        // sink is present, events must NOT be drained from the buffer.
+        // This tests the flush_inner() hardening directly.
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 10, // Short interval
+                ..Default::default()
+            },
+            session_name: Some("test_no_drain_no_sink".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+
+        // Emit events
+        actor_mgr.event_exporter().add_event(
+            ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                "TEST",
+                "buffered event",
+            )
+            .with_field("actor_id", "aabb")
+            .with_field("event_kind", "lifecycle"),
+        );
+
+        assert_eq!(actor_mgr.event_exporter().buffer_len(), 1);
+
+        // Flush manually — should return 0 AND preserve the buffer
+        let flushed = actor_mgr.event_exporter().flush();
+        assert_eq!(flushed, 0, "flush must return 0 when no sink");
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            1,
+            "buffer must be preserved when flush finds no sink"
+        );
+
+        // Wait for many potential periodic flush intervals
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Events still buffered
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            1,
+            "events must survive multiple flush intervals without a sink"
+        );
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_startup_unreachable_port_no_destructive_loss() {
+        // Startup with configured but unreachable port, short interval.
+        // Events must not be silently lost.
+
+        let tmp = tempfile::tempdir().unwrap();
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 10, // Short interval
+                ..Default::default()
+            },
+            log_dir: Some(tmp.path().to_string_lossy().to_string()),
+            session_name: Some("test_unreachable_no_loss".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: Some(19999), // Unreachable port
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+
+        // Connection failed → no sink, no periodic loop
+        assert!(
+            !actor_mgr.event_exporter().has_sink(),
+            "no sink when port is unreachable"
+        );
+        assert!(
+            !server.periodic_flush_running(),
+            "no periodic loop when connection failed"
+        );
+
+        // Emit events
+        actor_mgr.event_exporter().add_event(
+            ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                "TEST",
+                "event after unreachable port",
+            )
+            .with_field("actor_id", "ccdd")
+            .with_field("event_kind", "lifecycle"),
+        );
+
+        // Wait for potential flush intervals
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Events must still be buffered (not drained by sinkless flush)
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            1,
+            "events must be preserved when startup port is unreachable"
+        );
+
+        // No file fallback
+        assert!(
+            !tmp.path().join("ray_events/actor_events.jsonl").exists(),
+            "no file fallback"
+        );
+
+        server.stop();
+    }
+
+    #[tokio::test]
+    async fn test_late_attach_starts_loop_exactly_once() {
+        // Late-init must start the periodic flush loop exactly once.
+        // Repeated head-node registrations must not spawn additional loops.
+
+        let (port, _received, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000,
+                ..Default::default()
+            },
+            session_name: Some("test_loop_once".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // No loop before attach
+        assert!(!server.periodic_flush_running(), "no loop before attach");
+
+        // First head-node → attach
+        let mut head1 = vec![0u8; 28];
+        head1[0] = 0x90;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head1,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Loop now running
+        assert!(server.periodic_flush_running(), "loop started after attach");
+        assert!(actor_mgr.event_exporter().has_sink(), "sink attached");
+
+        // Second head-node → no additional loop, no sink replacement
+        let mut head2 = vec![0u8; 28];
+        head2[0] = 0x91;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head2,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Still running (same handle, not replaced)
+        assert!(server.periodic_flush_running(), "loop still running");
+        assert!(actor_mgr.event_exporter().has_sink(), "sink still attached");
+
+        server.stop();
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_still_flushes_after_late_attach() {
+        // After successful late attach, shutdown must flush remaining
+        // buffered events and reject new ones.
+
+        let (port, received_count, server_handle) = start_mock_aggregator().await;
+
+        let config = GcsServerConfig {
+            port: 0,
+            ray_config: RayConfig {
+                enable_ray_event: true,
+                ray_events_report_interval_ms: 60_000, // Long interval — rely on shutdown flush
+                ..Default::default()
+            },
+            session_name: Some("test_shutdown_late".to_string()),
+            node_id: Some("aabbccdd".to_string()),
+            metrics_agent_port: None,
+            ..Default::default()
+        };
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let actor_mgr = Arc::clone(server.actor_manager().unwrap());
+        let node_mgr = Arc::clone(server.node_manager().unwrap());
+
+        // Late attach
+        let mut head_id = vec![0u8; 28];
+        head_id[0] = 0xA0;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: head_id,
+                state: 0,
+                is_head_node: true,
+                metrics_agent_port: port as i32,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Emit events after attach (long interval — they will be buffered)
+        let task_spec = rpc::TaskSpec {
+            job_id: vec![0, 0, 0, 7],
+            caller_address: Some(rpc::Address::default()),
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: vec![9u8; 16],
+                name: "shutdown_late_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+
+        assert!(
+            actor_mgr.event_exporter().buffer_len() > 0,
+            "events buffered before shutdown"
+        );
+
+        // Shutdown should flush
+        server.stop();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            0,
+            "shutdown must flush all buffered events"
+        );
+        assert!(
+            received_count.load(std::sync::atomic::Ordering::Relaxed) > 0,
+            "events must reach mock aggregator via gRPC after shutdown flush"
+        );
+
+        // New events must be rejected after shutdown
+        actor_mgr.event_exporter().add_event(
+            ray_observability::events::RayEvent::new(
+                ray_observability::events::EventSourceType::Gcs,
+                ray_observability::events::EventSeverity::Info,
+                "TEST",
+                "post-shutdown event",
+            ),
+        );
+        assert_eq!(
+            actor_mgr.event_exporter().buffer_len(),
+            0,
+            "new events must be rejected after shutdown"
+        );
+
+        server_handle.abort();
     }
 }

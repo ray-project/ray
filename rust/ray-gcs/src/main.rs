@@ -62,7 +62,9 @@ struct Args {
     #[arg(long, alias = "session_dir")]
     session_dir: Option<String>,
 
-    /// Metrics agent port (accepted for compatibility, not used)
+    /// Metrics agent port for event aggregator gRPC connection.
+    /// C++ parity: passed to GcsServerConfig, used by InitMetricsExporter.
+    /// 0 means port not yet known (will be discovered via head-node registration).
     #[arg(long, alias = "metrics_agent_port", default_value_t = 0)]
     metrics_agent_port: u16,
 
@@ -87,9 +89,8 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Suppress unused variable warnings for compatibility flags
+    // Suppress unused variable warnings for compatibility-only flags
     let _ = (
-        args.metrics_agent_port,
         &args.ray_commit,
         &args.stdout_filepath,
         &args.stderr_filepath,
@@ -117,6 +118,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::from_utf8(bytes).expect("config_list is not valid UTF-8")
     });
 
+    // C++ parity: 0 means "port not yet known" — will be discovered later
+    // via head-node registration (dynamic port assignment).
+    let metrics_agent_port = if args.metrics_agent_port > 0 {
+        Some(args.metrics_agent_port)
+    } else {
+        None
+    };
+
     let config = GcsServerConfig {
         port: args.gcs_server_port,
         redis_address: args.redis_address,
@@ -131,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         raylet_config_list: decoded_config_list,
         ray_config,
         auth_token: None,
+        metrics_agent_port,
     };
 
     let mut server = GcsServer::new(config);

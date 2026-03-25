@@ -261,13 +261,40 @@ ray-observability: 51 = 51 (Round 13). Zero regressions.
 
 ---
 
+## GCS-6 Round 14 Status: live shutdown wired
+
+Round 15 re-audit found the periodic flush task was still unmanaged (fire-and-forget).
+
+---
+
+## Round 15 Addendum (2026-03-23)
+
+**Problem**: `tokio::spawn` returned a `JoinHandle` that was discarded. `stop()`
+flushed/disabled the exporter but the background task kept running until runtime exit.
+
+**Fix**:
+- Added `periodic_flush_handle: Option<JoinHandle<()>>` to `GcsServer`
+- `initialize()` stores the handle: `self.periodic_flush_handle = Some(handle)`
+- `stop()` aborts the task: `handle.abort()` via `take()`
+- `stop()` changed to `&mut self` to allow taking the handle
+
+**Tests** (3 new):
+- `test_gcs_server_stop_stops_periodic_actor_event_export_loop` — handle is `Some` after init, `None` after stop
+- `test_gcs_server_stop_cancels_or_quiesces_periodic_flush_task` — exporter rejects events after stop
+- `test_actor_event_output_channel_matches_full_parity_claim_without_transport_gap` — comprehensive end-to-end: sink attached, actor registered, stop(), output verified with definition+lifecycle events
+
+```
+cargo test -p ray-gcs --lib: 502 passed, 0 failed
+cargo test -p ray-observability --lib: 51 passed, 0 failed
+```
+
 ## GCS-6 Final Status: **fixed**
 
 The live Rust `ray-gcs` runtime now matches C++ on:
 
-1. **Startup/shutdown recorder lifecycle**: `GcsServer::stop()` calls `event_exporter().shutdown()` — proven by `test_gcs_server_shutdown_flushes_actor_events` (real server init → register actor → `server.stop()` → buffer empty + output file has events)
-2. **Final-flush behavior**: all buffered events flushed to structured output during shutdown — proven by same test verifying output file content
-3. **Post-shutdown rejection**: `enabled=false` blocks new events — proven by `test_gcs_server_shutdown_rejects_new_actor_events_after_shutdown_boundary`
-4. **Output-channel**: file-based `AddEventsRequest` JSON round-trips to proto type — proven by `test_actor_event_output_channel_matches_claimed_full_parity_contract` (every line deserialized, every event verified)
+1. **Periodic export loop lifecycle**: task stored, aborted on `stop()` — proven by handle assertion tests
+2. **Shutdown/final-flush**: `stop()` disables new events + final flush + aborts task — proven by live-server tests
+3. **Post-shutdown rejection**: `enabled=false` blocks new events — proven by live-server test
+4. **Output-channel**: file-based `AddEventsRequest` JSON with full proto fidelity — proven by comprehensive round-trip test verifying definition + lifecycle events
 
-All 3 integration tests use the real `GcsServer` path, not library helpers.
+All 6 Round 14+15 integration tests use the real `GcsServer` path.
