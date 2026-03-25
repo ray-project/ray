@@ -103,7 +103,6 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
   /// Eventfd used to wake the monitoring thread on shutdown.
   int shutdown_eventfd_;
 
-  /// Thread for monitoring memory events.
   std::thread event_monitoring_thread_;
 };
 

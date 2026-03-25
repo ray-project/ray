@@ -126,8 +126,6 @@ void EventMemoryMonitor::MonitoringThreadMain() {
   fds[0].events = POLLIN;
   fds[1].fd = shutdown_eventfd_;
   fds[1].events = POLLIN;
-
-  // Buffer for inotify events
   char inotify_buffer[1024] __attribute__((aligned(__alignof__(struct inotify_event))));
 
   while (true) {
@@ -150,8 +148,8 @@ void EventMemoryMonitor::MonitoringThreadMain() {
     }
 
     if (fds[0].revents & POLLIN) {
-      // Drain all pending inotify events. The fd is non-blocking, so read()
-      // returns -1 with errno == EAGAIN once the buffer is empty.
+      // Drain all pending inotify events to ensure poll will
+      // only return on next new event.
       while (read(inotify_fd_, inotify_buffer, sizeof(inotify_buffer)) > 0) {
       }
       if (errno != EAGAIN) {
@@ -165,7 +163,6 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 
       bool high_modified = false;
 
-      // Read and log memory.events file
       std::ifstream mem_events_file(memory_events_path_);
       if (mem_events_file) {
         std::string line;
