@@ -117,7 +117,7 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         """Implements DataIterator."""
         return ray.get(self._coord_actor.get_schema.remote())
 
@@ -233,7 +233,7 @@ class SplitCoordinator:
         self._next_bundle.clear()
         self._gen_epoch_error = None
 
-    def get_schema(self) -> "Schema":
+    def get_schema(self) -> Optional["Schema"]:
         return self._base_dataset.schema()
 
     def get_dataset_id(self) -> str:
