@@ -88,19 +88,6 @@
     timeout: 5400
     script: python read_from_uris_benchmark.py
 
-- name: read_images_comparison_microbenchmark_single_node
-  python: "3.10"
-  frequency: manual
-
-  cluster:
-    byod:
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: bash run_image_loader_microbenchmark.sh
-
 ###############
 # Writing tests
 ###############
