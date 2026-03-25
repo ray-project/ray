@@ -4,7 +4,6 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data import Schema
 from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     RefBundle,
@@ -19,8 +18,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
-
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +117,7 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> Schema:
+    def schema(self) -> "Schema":
         """Implements DataIterator."""
         return ray.get(self._coord_actor.get_schema.remote())
 
@@ -235,7 +233,7 @@ class SplitCoordinator:
         self._next_bundle.clear()
         self._gen_epoch_error = None
 
-    def get_schema(self) -> Schema:
+    def get_schema(self) -> "Schema":
         return self._base_dataset.schema()
 
     def get_dataset_id(self) -> str:
