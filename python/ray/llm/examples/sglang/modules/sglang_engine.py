@@ -565,6 +565,9 @@ class SGLangServer:
                 "CPU": ray_actor_options.get("num_cpus", 1),
             }
 
+            if ray_actor_options.get("num_gpus"):
+                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
