@@ -812,7 +812,7 @@ def test_streaming_exec_schedule_s(ray_start_regular_shared):
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks_on_success(ray_start_regular_shared):
+def test_execution_callbacks_on_success(ray_start_regular_shared, restore_data_context):
     before_execution_starts_called = False
     after_execution_succeeds_called = False
     on_execution_step_called = False
@@ -846,7 +846,7 @@ def test_execution_callbacks_on_success(ray_start_regular_shared):
     assert execution_error is None
 
 
-def test_execution_callbacks_on_error(ray_start_regular_shared):
+def test_execution_callbacks_on_error(ray_start_regular_shared, restore_data_context):
     before_execution_starts_called = False
     after_execution_succeeds_called = False
     on_execution_step_called = False
@@ -885,7 +885,7 @@ def test_execution_callbacks_on_error(ray_start_regular_shared):
     assert isinstance(execution_error, ValueError), execution_error
 
 
-def test_execution_callbacks_on_cancel(ray_start_regular_shared):
+def test_execution_callbacks_on_cancel(ray_start_regular_shared, restore_data_context):
     execution_error = None
 
     class CustomExecutionCallback(ExecutionCallback):
