@@ -2805,7 +2805,8 @@ Status CoreWorker::ExecuteTask(
     ++num_failed_get_pin_args_;
     // If this has happened, it's because we are unable to talk to our local raylet.
     // This very likely means that the raylet has shutdown before this worker
-    // unexpectedly. In whic case we'll trigger shut down.
+    // unexpectedly. In which case we'll mark the task finished and trigger shut down.
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
                       pin_args_request_status.message()),
