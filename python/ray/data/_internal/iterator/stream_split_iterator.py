@@ -239,7 +239,11 @@ class SplitCoordinator:
             if len(self._ready_consumers) == self._num_splits:
                 # Last consumer to arrive — start the next epoch.
                 self._ready_consumers.clear()
-                self._active_consumers.clear()
+                # NOTE: Do NOT clear _active_consumers here. Legitimate
+                # consumers clean up their own entry in get()'s finally
+                # block before reaching signal_epoch_done(). If a stale
+                # entry remains, it means a duplicate reader is still
+                # inside get() — keeping it lets us detect the conflict.
                 self._cur_epoch += 1
                 self._start_executor()
                 self._cond.notify_all()
@@ -344,24 +348,14 @@ class SplitCoordinator:
             return RefBundle([block], schema=schema, owns_blocks=remainder.owns_blocks)
 
         except StopIteration:
-            with self._cond:
-                self._active_consumers.discard(output_split_idx)
-                self._client_prefetched_bytes[output_split_idx] = 0
-                self._report_prefetched_bytes_to_executor()
             return None
 
         finally:
-            # Clear prefetched bytes on any exit (StopIteration or other
-            # exceptions) to avoid stale backpressure data.
-            if not returned_normally:
-                with self._cond:
-                    self._active_consumers.discard(output_split_idx)
+            with self._cond:
+                self._active_consumers.discard(output_split_idx)
+                if not returned_normally:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-            else:
-                with self._cond:
-                    self._active_consumers.discard(output_split_idx)
-            # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
