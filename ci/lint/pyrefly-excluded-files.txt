@@ -131,7 +131,6 @@ python/ray/data/_internal/planner/random_shuffle.py
 python/ray/data/_internal/planner/randomize_blocks.py
 python/ray/data/_internal/planner/repartition.py
 python/ray/data/_internal/planner/sort.py
-python/ray/data/_internal/progress/__init__.py
 python/ray/data/_internal/progress/base_progress.py
 python/ray/data/_internal/progress/rich_progress.py
 python/ray/data/_internal/remote_fn.py
