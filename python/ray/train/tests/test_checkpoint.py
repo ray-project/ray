@@ -16,7 +16,8 @@ from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
 
 _CHECKPOINT_CONTENT_FILE = "dummy.txt"
-_CHECKPOINT_CONTENT_FILE_2 = "foo.txt"
+_CHECKPOINT_NESTED_FOLDER = "bar"
+_CHECKPOINT_NEST_FILE = "foo.txt"
 
 
 @pytest.fixture(params=["local", "mock", "custom_fs"])
@@ -27,7 +28,9 @@ def checkpoint(request, tmp_path):
     checkpoint_path = tmp_path / "ckpt_dir"
     checkpoint_path.mkdir(exist_ok=True)
     (checkpoint_path / _CHECKPOINT_CONTENT_FILE).write_text("dummy")
-    (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).write_text("foo")
+    nested_checkpoint_path = checkpoint_path / _CHECKPOINT_NESTED_FOLDER
+    nested_checkpoint_path.mkdir(exist_ok=True)
+    (nested_checkpoint_path / _CHECKPOINT_NEST_FILE).write_text("foo")
 
     if checkpoint_fs_type == "local":
         yield Checkpoint.from_directory(str(checkpoint_path))
@@ -76,14 +79,33 @@ def test_to_directory_with_include(checkpoint: Checkpoint):
     checkpoint_path = Path(checkpoint.to_directory(include=[_CHECKPOINT_CONTENT_FILE]))
 
     assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
-    assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
+    assert not (
+        checkpoint_path / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE
+    ).exists()
 
 
 def test_to_directory_with_include_glob_pattern(checkpoint: Checkpoint):
     checkpoint_path = Path(checkpoint.to_directory(include=["*.txt"]))
 
     assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
-    assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
+    assert (
+        checkpoint_path / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE
+    ).exists()
+
+
+def test_multiple_to_directory_with_include(checkpoint: Checkpoint):
+    p1 = Path(checkpoint.to_directory(include=[_CHECKPOINT_CONTENT_FILE]))
+    p2 = Path(
+        checkpoint.to_directory(
+            include=[os.path.join(_CHECKPOINT_NESTED_FOLDER, _CHECKPOINT_NEST_FILE)]
+        )
+    )
+
+    assert (p1 / _CHECKPOINT_CONTENT_FILE).exists()
+    assert (p1 / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE).exists()
+
+    assert (p2 / _CHECKPOINT_CONTENT_FILE).exists()
+    assert (p2 / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE).exists()
 
 
 def test_to_directory_with_include_no_match(checkpoint: Checkpoint):
@@ -135,14 +157,34 @@ def test_as_directory(checkpoint: Checkpoint):
 def test_as_directory_with_include(checkpoint: Checkpoint):
     if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
         pytest.skip(
-            "Local filesystem checkpoints don't download to a temp dir, so include filtering doesn't apply."
+            "Include doesn't work for local filesystems as all files are already downloaded."
         )
 
     with checkpoint.as_directory(include=[_CHECKPOINT_CONTENT_FILE]) as checkpoint_path:
         checkpoint_path = Path(checkpoint_path)
 
         assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
-        assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE_2).exists()
+        assert not (
+            checkpoint_path / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE
+        ).exists()
+
+    with checkpoint.as_directory(
+        include=[f"*/{_CHECKPOINT_NEST_FILE}"]
+    ) as checkpoint_dir:
+        checkpoint_path = Path(checkpoint_dir)
+        assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+        assert (
+            checkpoint_path / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE
+        ).exists()
+
+    with checkpoint.as_directory(
+        include=[os.path.join(_CHECKPOINT_NESTED_FOLDER, _CHECKPOINT_NEST_FILE)]
+    ) as checkpoint_dir:
+        checkpoint_path = Path(checkpoint_dir)
+        assert not (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+        assert (
+            checkpoint_path / _CHECKPOINT_NESTED_FOLDER / _CHECKPOINT_NEST_FILE
+        ).exists()
 
 
 def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):

@@ -202,11 +202,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         Args:
             path: Target directory to download data to. If not specified,
                 this method will use a temporary directory.
-            include: An optional list of filename patterns (fnmatch-style) to include.
-                Only files whose names match at least one pattern are downloaded.
-                If None, all files are downloaded. Example: ["model.pt", "*.json"]
-                to download model.pt and all JSON files. Only applies when
-                `fs_path` points to a directory.
+            include: An optional list of relative path patterns (fnmatch-style) to include.
+                Only files whose path relative to the checkpoint root matches at least
+                one pattern are downloaded. If None, all files are downloaded.
+                Example: ["model.pt", "*.json"] downloads model.pt and all JSON files
+                in the checkpoint root. To match files in subdirectories, include the
+                subdirectory in the pattern, e.g. ["subdir/model.pt", "subdir/*.json"].
 
         Returns:
             str: Directory containing checkpoint data.
@@ -292,11 +293,12 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             # been deleted.
 
         Args:
-            include: An optional list of filename patterns (fnmatch-style) to include.
-                Only files whose names match at least one pattern are downloaded.
-                If None, all files are downloaded.
-                Ex: ["model.pt", "*.json"] to download model.pt and all JSON files.
-                Only applies when fs_path points to a directory.
+            include: An optional list of relative path patterns (fnmatch-style) to include.
+                Only files whose path relative to the checkpoint root matches at least
+                one pattern are downloaded. If None, all files are downloaded.
+                Example: ["model.pt", "*.json"] downloads model.pt and all JSON files
+                in the checkpoint root. To match files in subdirectories, include the
+                subdirectory in the pattern, e.g. ["subdir/model.pt", "subdir/*.json"].
         """
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path

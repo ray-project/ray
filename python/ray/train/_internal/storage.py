@@ -201,9 +201,14 @@ def _download_from_fs_path(
                 downloaded_count += 1
 
         if downloaded_count == 0:
+            possible_files = [
+                os.path.relpath(file_info.path, fs_path)
+                for file_info in file_infos
+                if file_info.type == pyarrow.fs.FileType.File
+            ]
+
             raise FileNotFoundError(
-                f"No files matched the `include` patterns {include} "
-                f"in checkpoint at {fs_path!r}."
+                f"No files matched the `include` patterns {include}, available files are {possible_files}"
             )
 
     try:
