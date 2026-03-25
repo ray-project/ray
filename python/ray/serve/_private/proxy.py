@@ -1645,9 +1645,9 @@ class ProxyActor(ProxyActorInterface):
                     if self._tracing_config.enabled
                     else ""
                 )
-                tracing_kwargs["tracing_sampling_ratio"] = (
-                    self._tracing_config.sampling_ratio
-                )
+                tracing_kwargs[
+                    "tracing_sampling_ratio"
+                ] = self._tracing_config.sampling_ratio
             is_tracing_setup_successful = setup_tracing(
                 component_name="proxy",
                 component_id=node_ip_address,
