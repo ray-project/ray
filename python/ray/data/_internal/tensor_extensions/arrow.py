@@ -2,6 +2,7 @@ import abc
 import functools
 import json
 import logging
+import os
 import sys
 import threading
 import warnings
@@ -64,8 +65,12 @@ class _SerializationFormat(Enum):
 # Set the default serialization format for Arrow extension types.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
     _SerializationFormat.JSON  # default
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 1) == 1
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
     else _SerializationFormat.CLOUDPICKLE
+)
+
+_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
+    os.environ.get("RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", "0") == "1"
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
@@ -125,21 +130,22 @@ def _extension_array_concat_supported() -> bool:
 
 
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
-    """Deserialize extension type metadata, using JSON only by default.
-
-    cloudpickle deserialization is gated behind
-    RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT=0 because
-    it allows arbitrary code execution from untrusted Parquet files.
+    """Deserialize extension type metadata from Parquet field metadata.
+    Uses JSON only by default. cloudpickle deserialization is available as an
+    opt-in for files written by Ray 2.49-2.54, but MUST NOT be used with
+    untrusted Parquet files.
     """
     try:
         return json.loads(serialized)
     except (json.JSONDecodeError, ValueError):
-        if ARROW_EXTENSION_SERIALIZATION_FORMAT == _SerializationFormat.CLOUDPICKLE:
+        if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
+            # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
+            # WARNING: Do not enable this for files from untrusted sources.
             return cloudpickle.loads(serialized)
         raise ValueError(
-            f"Unable to deserialize {field_name}. Set "
-            f"RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT=0 "
-            f"to enable cloudpickle deserialization (trusted sources only)."
+            f"Unable to deserialize {field_name}. If this file was written by "
+            f"Ray 2.49-2.54, set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1 "
+            f"(trusted sources only)."
         )
 
 
