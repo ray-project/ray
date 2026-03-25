@@ -101,7 +101,7 @@ class ExecutionPlan:
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
 
-        convert_fns = [lambda x: x] + get_plan_conversion_fns()
+        convert_fns = [lambda x: x] + list(get_plan_conversion_fns())
         titles: List[str] = [
             "Logical Plan",
             "Logical Plan (Optimized)",
@@ -117,6 +117,12 @@ class ExecutionPlan:
 
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
+            # TODO: This loop mixes two kinds of functions: optimizers (return a Plan) and
+            # the planner (returns a (PhysicalPlan, callbacks) tuple). The isinstance check
+            # below is a workaround for that mismatch. Fix this by pulling the planner step
+            # out of the loop so each function has a uniform return type.
+            if isinstance(plan, tuple):
+                plan = plan[0]
 
             # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
@@ -436,7 +442,7 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -514,7 +520,6 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
-                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()
