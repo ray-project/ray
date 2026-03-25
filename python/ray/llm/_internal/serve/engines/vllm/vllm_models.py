@@ -280,8 +280,11 @@ class VLLMEngineConfig(BaseModelExtended):
             self._accelerator_backend = CPUAccelerator(self)
         elif self.use_tpu:
             self._accelerator_backend = TPUAccelerator(self)
-        else:
+        elif self.use_gpu:
             self._accelerator_backend = GPUAccelerator(self)
+        else:
+            # Unrecognized accelerators fall back to CPU backend.
+            self._accelerator_backend = CPUAccelerator(self)
 
         return self
 
