@@ -477,11 +477,11 @@ class TestObstoreRangeSplitDownload:
             ) as mock_logger:
                 results = asyncio.run(_download_uris_with_obstore([http_uri], "uri"))
 
-            assert results == [content], (
-                "http:// download should succeed when allow_http is " "auto-enabled"
-            )
+            assert results == [
+                content
+            ], "http:// download should succeed when allow_http is auto-enabled"
             mock_logger.warning.assert_any_call(
-                "Downloading over unencrypted HTTP. " "Consider using https:// instead."
+                "Downloading over unencrypted HTTP. Consider using https:// instead."
             )
         finally:
             server.shutdown()

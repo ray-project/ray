@@ -3,7 +3,6 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-import pyarrow as pa
 import pyarrow.fs
 
 from ray.data._internal.util import RetryingPyFileSystem
@@ -40,7 +39,7 @@ except ImportError:
 
 
 def _extract_credentials_from_filesystem(
-    filesystem: Optional["pa.fs.FileSystem"],
+    filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> Dict[str, Any]:
     """Extract credentials from a PyArrow filesystem for use with obstore.
 
@@ -279,7 +278,7 @@ async def _resolve_size(
 async def _download_uris_with_obstore(
     uris: List[str],
     uri_column_name: str,
-    filesystem: Optional["pa.fs.FileSystem"] = None,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     file_sizes: Optional[List[Optional[int]]] = None,
 ) -> List[Optional[bytes]]:
     """Download URIs concurrently using obstore's async API.

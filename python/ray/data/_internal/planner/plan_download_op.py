@@ -389,17 +389,19 @@ class PartitionActor:
                     "exist. Is the specified download column correct?"
                 )
 
-        if self._batch_size_estimate is None:
+        if self._batch_size_estimate is None and block.num_rows > 0:
             self._batch_size_estimate = self._estimate_nrows_per_partition(block)
 
-        if OBSTORE_AVAILABLE and RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0:
-            # This inner branch is only taken if the first URI is supported by obstore
-            # for async downloads.
+        if (
+            block.num_rows > 0
+            and OBSTORE_AVAILABLE
+            and RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0
+        ):
             first_uri = block.column(self._uri_column_names[0])[0].as_py()
             if _is_obstore_supported_url(first_uri):
                 block = self._attach_file_sizes(block)
 
-        yield from _arrow_batcher(block, self._batch_size_estimate)
+        yield from _arrow_batcher(block, self._batch_size_estimate or 1)
 
     def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
         sampled_file_sizes_by_column = {}
