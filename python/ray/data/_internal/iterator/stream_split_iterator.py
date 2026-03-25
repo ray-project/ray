@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -17,7 +17,9 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    from ray.data.dataset import Dataset, Schema
+    import pyarrow
+
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -47,18 +49,18 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(base_dataset, n, locality_hints)
 
-        context = base_dataset.context
-
-        return [StreamSplitDataIterator(context, coord_actor, i, n) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+        ]
 
     def __init__(
         self,
-        context: "DataContext",
+        base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
     ):
-        self._context = context
+        self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
@@ -98,6 +100,7 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
+        self._base_dataset._plan._run_index += 1
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, False, None
@@ -114,20 +117,19 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> Optional["Schema"]:
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
-        return ray.get(self._coord_actor.get_schema.remote())
+        return self._base_dataset.schema()
 
     def get_context(self) -> DataContext:
-        return self._context
+        return self._base_dataset.context
 
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        dataset_id = ray.get(self._coord_actor.get_dataset_id.remote())
-        return f"{dataset_id}_split_{self._output_split_idx}"
+        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
@@ -229,12 +231,6 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = self._n
         self._next_bundle.clear()
         self._gen_epoch_error = None
-
-    def get_schema(self) -> Optional["Schema"]:
-        return self._base_dataset.schema()
-
-    def get_dataset_id(self) -> str:
-        return self._base_dataset.get_dataset_id()
 
     def get(
         self,
