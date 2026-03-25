@@ -279,7 +279,6 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
 # Environment variable for custom execution callbacks
 EXECUTION_CALLBACKS_ENV_VAR = "RAY_DATA_EXECUTION_CALLBACKS"
 
-
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
     1.75,
@@ -476,6 +475,8 @@ class DataContext:
     Args:
         target_max_block_size: The max target block size in bytes for reads and
             transformations. If `None`, this means the block size is infinite.
+        target_max_block_rows: The max target block size in rows for reads and
+            transformations. If `None`, this means the block size is infinite.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -636,6 +637,7 @@ class DataContext:
 
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    target_max_block_rows: Optional[int] = None
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK

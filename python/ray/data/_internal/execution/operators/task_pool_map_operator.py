@@ -30,6 +30,7 @@ class TaskPoolMapOperator(MapOperator):
         data_context: DataContext,
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
         ref_bundler: Optional[BaseRefBundler] = None,
         max_concurrency: Optional[int] = None,
@@ -46,6 +47,7 @@ class TaskPoolMapOperator(MapOperator):
             input_op: Operator generating input data for this op.
             name: The name of this operator.
             target_max_block_size_override: Override for target max-block-size.
+            target_num_rows_per_block_override: Override for target num-rows-per-block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -79,6 +81,7 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            target_num_rows_per_block_override,
         )
 
         if max_concurrency is not None and max_concurrency <= 0:
