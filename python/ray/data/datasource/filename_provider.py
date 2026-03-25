@@ -76,6 +76,7 @@ class FilenameProvider:
         block_index: int,
         row_index: int,
     ) -> str:
+
         """Generate a filename for a row.
 
         .. note::
