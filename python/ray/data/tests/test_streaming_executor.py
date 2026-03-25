@@ -911,7 +911,7 @@ def test_execution_callbacks_on_cancel(ray_start_regular_shared, restore_data_co
 
 @patch("importlib.import_module")
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "my.module.TestCallback"})
-def test_env_callbacks_loaded(mock_import):
+def test_env_callbacks_loaded(mock_import, restore_data_context):
     """Test loading execution callbacks from environment variable."""
 
     class TestCallback(ExecutionCallback):
@@ -932,7 +932,7 @@ def test_env_callbacks_loaded(mock_import):
 @patch.dict(
     os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "module1.Callback1,module2.Callback2"}
 )
-def test_multiple_env_callbacks(mock_import):
+def test_multiple_env_callbacks(mock_import, restore_data_context):
     """Test loading multiple callbacks from environment variable."""
 
     class Callback1(ExecutionCallback):
