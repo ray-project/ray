@@ -238,8 +238,8 @@ def get_all_reported_checkpoints(
         consistency_mode: Read semantics for checkpoint retrieval during an ongoing run.
             Defaults to CheckpointConsistencyMode.VALIDATED.
             See :class:`~ray.train.CheckpointConsistencyMode` for more details.
-        timeout_s: Timeout in seconds when using ``CheckpointConsistencyMode.VALIDATED``
-            and the validation function is slow. Defaults to -1 to wait indefinitely.
+        timeout_s: Timeout in seconds to collecting checkpoint and validation information.
+            Defaults to -1 to wait indefinitely.
 
     Returns:
         List of ReportedCheckpoint objects that represent the checkpoints and
