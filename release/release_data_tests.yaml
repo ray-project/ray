@@ -565,6 +565,22 @@
 # Batch inference tests
 #######################
 
+# Tests memory management on a cluster with mixed node types:
+# CPU nodes (small memory) produce data faster than GPU nodes (large memory)
+# can consume it. The global object store threshold is the sum of all nodes,
+# so CPU stages may not trigger backpressure even when CPU nodes are full.
+- name: heterogeneous_memory_batch_inference
+  python: "3.10"
+  frequency: nightly
+  group: data-batch-inference
+
+  cluster:
+    cluster_compute: heterogeneous_memory_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python heterogeneous_memory_batch_inference.py
+
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
