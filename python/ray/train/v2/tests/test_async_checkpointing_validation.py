@@ -328,7 +328,7 @@ def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
 
 
 def test_report_validation_fn_with_trainer_train_fn_report():
-    """Test implementing the validation_fn with train_fn that report's metrics."""
+    """Test implementing the validation_fn with train_fn that reports metrics."""
 
     def eval_only_train_fn(config_dict):
         ray.train.report(
