@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -384,6 +385,8 @@ class HAProxyConfig:
     http_options: HTTPOptions = field(default_factory=HTTPOptions)
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
+
+    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
     @property
     def frontend_host(self) -> str:

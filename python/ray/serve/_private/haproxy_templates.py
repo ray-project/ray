@@ -60,6 +60,7 @@ defaults
     {%- if config.enable_hap_optimization %}
     load-server-state-from-file global
     {%- endif %}
+    balance {{ config.balance_algorithm }}
 frontend prometheus
     bind :{{ config.metrics_port }}
     mode http
@@ -90,7 +91,6 @@ backend default_backend
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
