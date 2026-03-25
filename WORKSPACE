@@ -136,6 +136,10 @@ filegroup(
     urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-aarch64-apple-darwin.tar.gz"],
 )
 
+load("//bazel:wanda.bzl", "wanda_setup")
+
+wanda_setup()
+
 http_archive(
     name = "com_github_storypku_bazel_iwyu",
     sha256 = "aa78c331a2cb139f73f7d74eeb4d5ab29794af82023ef5d6d5194f76b7d37449",

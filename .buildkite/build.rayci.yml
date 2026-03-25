@@ -22,6 +22,49 @@ steps:
       - oss
       - skip-on-premerge
 
+  # TODO(andrewpollack): Temporary step to verify wanda digest output matches
+  # the cache tag used by ray-core-build. Remove after verification.
+  - label: ":mag: verify: ray-core wanda digest py{{matrix}} (x86_64)"
+    key: ray_core_digest_verify
+    instance_type: small
+    commands:
+      - echo "--- rayci mode (should match ray-core-build cache tag)"
+      - PYTHON_VERSION="{{matrix}}" ARCH_SUFFIX="" HOSTTYPE="x86_64"
+        RAYCI_WANDA_FILE=ci/docker/ray-core.wanda.yaml
+        RAYCI_ENV_FILE=rayci.env
+        bazel run //ci/build:wanda -- digest -rayci
+      - echo "--- epoch=0 (stable digest for cache lookup)"
+      - PYTHON_VERSION="{{matrix}}" ARCH_SUFFIX="" HOSTTYPE="x86_64"
+        bazel run //ci/build:wanda -- digest -epoch 0 -env_file rayci.env ci/docker/ray-core.wanda.yaml
+    matrix:
+      - "3.12"
+    depends_on:
+      - ray-core-build
+      - forge
+    tags:
+      - release_wheels
+      - always
+
+  # TODO(andrewpollack): Enable after verifying digest output above.
+  # - label: ":arrow_up: publish: ray-core image py{{matrix}} (x86_64)"
+  #   key: ray_core_digest_publish
+  #   instance_type: small
+  #   commands:
+  #     - PYTHON_VERSION="{{matrix}}" ARCH_SUFFIX="" HOSTTYPE="x86_64"
+  #       bazel run //ci/build:publish_core_digest
+  #   matrix:
+  #     - "3.10"
+  #     - "3.11"
+  #     - "3.12"
+  #     - "3.13"
+  #     - "3.14"
+  #   depends_on:
+  #     - ray-core-build
+  #     - forge
+  #   tags:
+  #     - release_wheels
+  #     - skip-on-premerge
+
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
