@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
@@ -459,7 +460,7 @@ class TestObstoreRangeSplitDownload:
                 self.end_headers()
                 self.wfile.write(content)
 
-            def log_message(self, *args):
+            def log_message(self, format: str, *args):
                 pass
 
         server = HTTPServer(("127.0.0.1", 0), _Handler)
@@ -554,7 +555,7 @@ class TestObstoreRangeSplitDownload:
             f"file://{tmp_path}/small.bin",
             f"file://{tmp_path}/unknown.bin",
         ]
-        file_sizes = [len(large_content), len(small_content), 0]
+        file_sizes: list[Optional[int]] = [len(large_content), len(small_content), 0]
 
         with patch(
             "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
