@@ -1508,7 +1508,7 @@ async def test_job_timeout_lack_of_entrypoint_resources(
 ):
     """Test the warning and timeout when there are not enough resources to schedule the supervisor actor)"""
 
-    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "2")
 
     ray.init(address=call_ray_start)
     gcs_client = ray._private.worker.global_worker.gcs_client
@@ -1552,7 +1552,7 @@ async def test_job_timeout_lack_of_entrypoint_resources(
 async def test_pending_timeout_with_py_executable(job_manager, monkeypatch):
     """Test the warning and timeout for an invalid py_executable"""
 
-    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "1")
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "2")
     job_manager.PENDING_WARNING_THRESHOLD_S = 0.05
 
     start_signal_actor = SignalActor.remote()
