@@ -1,6 +1,7 @@
 import copy
 import dataclasses
 import os
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
@@ -15,7 +16,7 @@ from ray.llm._internal.serve.constants import (
     ENV_VARS_TO_PROPAGATE,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
-    GPUType,
+    AcceleratorType,
     LLMConfig,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -30,6 +31,10 @@ from ray.util.placement_group import (
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+# Executor backend constants
+EXECUTOR_BACKEND_RAY = "ray"
+EXECUTOR_BACKEND_MP = "mp"
 
 
 class BundleConfig(BaseModelExtended):
@@ -62,6 +67,125 @@ class PlacementGroupConfig(BaseModelExtended):
         return values
 
 
+class AcceleratorBackend(ABC):
+    """Abstract base class for hardware-specific configuration strategies."""
+
+    def __init__(self, config: "VLLMEngineConfig"):
+        self.config = config
+
+    @abstractmethod
+    def get_executor_backend(self) -> str:
+        """Returns the vLLM distributed executor backend."""
+        pass
+
+    @abstractmethod
+    def get_placement_bundles(self) -> List[Dict[str, float]]:
+        """Generates the default placement group bundles for the hardware."""
+        pass
+
+    @abstractmethod
+    def create_placement_group(self, name: str) -> PlacementGroup:
+        """Creates the appropriate Ray placement group."""
+        pass
+
+
+class CPUAccelerator(AcceleratorBackend):
+    def get_executor_backend(self) -> str:
+        return EXECUTOR_BACKEND_MP
+
+    def get_placement_bundles(self) -> List[Dict[str, float]]:
+        bundle = {"CPU": 1}
+        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+
+    def create_placement_group(self, name: str) -> PlacementGroup:
+        # Use placement_bundles and placement_strategy properties which handle
+        # both custom and default placement group configurations.
+        return placement_group(
+            bundles=self.config.placement_bundles,
+            strategy=self.config.placement_strategy,
+            name=name,
+        )
+
+
+class GPUAccelerator(AcceleratorBackend):
+    def get_executor_backend(self) -> str:
+        return EXECUTOR_BACKEND_RAY
+
+    def get_placement_bundles(self) -> List[Dict[str, float]]:
+        bundle = {"GPU": 1}
+        if self.config.accelerator_type:
+            bundle[self.config.ray_accelerator_type()] = 0.001
+        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+
+    def create_placement_group(self, name: str) -> PlacementGroup:
+        return placement_group(
+            bundles=self.config.placement_bundles,
+            strategy=self.config.placement_strategy,
+            name=name,
+        )
+
+
+class TPUAccelerator(AcceleratorBackend):
+    def get_executor_backend(self) -> str:
+        return EXECUTOR_BACKEND_RAY
+
+    def get_placement_bundles(self) -> List[Dict[str, float]]:
+        bundle = {"TPU": 1}
+        if self.config.accelerator_type:
+            bundle[self.config.ray_accelerator_type()] = 0.001
+        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+
+    def create_placement_group(self, name: str) -> PlacementGroup:
+        """Provisions a TPU Slice Placement Group.
+
+        This enables atomic scheduling on TPUs for SPMD workloads by ensuring
+        the requested topology is spread across the physical hosts in a slice.
+        """
+        if not self.config.topology:
+            # Single-host workloads may not request a topology. Fallback to
+            # regular placement group scheduling logic.
+            return placement_group(
+                bundles=self.config.placement_bundles,
+                strategy=self.config.placement_strategy,
+                name=name,
+            )
+
+        from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
+
+        accel_str = (
+            self.config.accelerator_type.value
+            if hasattr(self.config.accelerator_type, "value")
+            else str(self.config.accelerator_type)
+        )
+        version = get_tpu_version_from_type(accel_str)
+        topology = self.config.topology
+
+        logger.info(
+            f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
+        )
+
+        # If the user specified placement_bundles for TPU, we assume resources are identical
+        # for each TPU bundle (i.e. to specify host-level resources) Otherwise, default to 1
+        # TPU chip per bundle to support tensor parallelism.
+        worker_bundle = (
+            self.config.placement_bundles[-1]
+            if self.config.placement_bundles
+            else {"TPU": 1}
+        )
+
+        # Create a PG for the multi-host configuration.
+        slice_pg_wrapper = slice_placement_group(
+            topology=topology,
+            accelerator_version=version,
+            resources_per_bundle=worker_bundle,
+            strategy=self.config.placement_strategy,
+            name=name,
+        )
+
+        self.config._tpu_slice_pg_wrapper = slice_pg_wrapper
+        return slice_pg_wrapper.placement_group
+
+
 class VLLMEngineConfig(BaseModelExtended):
     model_config = ConfigDict(
         use_enum_values=True,
@@ -77,7 +201,7 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="Configuration for cloud storage mirror. This is for where the weights are downloaded from.",
     )
-    accelerator_type: Optional[GPUType] = Field(
+    accelerator_type: Optional[AcceleratorType] = Field(
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
@@ -112,11 +236,17 @@ class VLLMEngineConfig(BaseModelExtended):
         validated = PlacementGroupConfig(**value)
         return validated.model_dump()
 
-    @model_validator(mode="after")
-    def validate_topology_requirements(self):
-        """Ensures that if a topology is requested, the necessary hardware hints are provided."""
-        requested_topology = self.topology
+    runtime_env: Optional[Dict[str, Any]] = None
+    engine_kwargs: Dict[str, Any] = {}
+    frontend_kwargs: Dict[str, Any] = {}
 
+    _tpu_slice_pg_wrapper: Any = PrivateAttr(default=None)
+    _accelerator_backend: Any = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _resolve_accelerator_backend(self):
+        """Validates topology requirements and sets up the accelerator backend."""
+        requested_topology = self.topology
         if requested_topology:
             if not self.accelerator_type:
                 raise ValueError(
@@ -132,13 +262,14 @@ class VLLMEngineConfig(BaseModelExtended):
                     f"Received accelerator_type: '{self.accelerator_type}'"
                 )
 
+        if isinstance(self.use_cpu, bool) and self.use_cpu:
+            self._accelerator_backend = CPUAccelerator(self)
+        elif self.use_tpu:
+            self._accelerator_backend = TPUAccelerator(self)
+        else:
+            self._accelerator_backend = GPUAccelerator(self)
+
         return self
-
-    runtime_env: Optional[Dict[str, Any]] = None
-    engine_kwargs: Dict[str, Any] = {}
-    frontend_kwargs: Dict[str, Any] = {}
-
-    _tpu_slice_pg_wrapper: Any = PrivateAttr(default=None)
 
     @property
     def actual_hf_model_id(self) -> str:
@@ -164,20 +295,18 @@ class VLLMEngineConfig(BaseModelExtended):
         engine_kwargs["served_model_name"] = [self.model_id]
 
         # Handle distributed_executor_backend based on GPU/TPU/CPU mode
-        if not self.use_gpu and not self.use_tpu:
-            # For CPU mode, always use "mp" backend
-            engine_kwargs["distributed_executor_backend"] = "mp"
-        elif (
+        executor_backend = self._accelerator_backend.get_executor_backend()
+
+        if (
             "distributed_executor_backend" in engine_kwargs
-            and engine_kwargs["distributed_executor_backend"] != "ray"
+            and engine_kwargs["distributed_executor_backend"] != executor_backend
+            and executor_backend == EXECUTOR_BACKEND_RAY
         ):
-            # For GPU and TPU modes, only "ray" backend is allowed
             raise ValueError(
                 "distributed_executor_backend != 'ray' is not allowed in engine_kwargs when using Ray Serve LLM Configs."
             )
-        else:
-            # For GPU and TPU modes, use "ray" backend (default)
-            engine_kwargs["distributed_executor_backend"] = "ray"
+
+        engine_kwargs["distributed_executor_backend"] = executor_backend
 
         if "enable_log_requests" not in engine_kwargs:
             engine_kwargs["enable_log_requests"] = False
@@ -288,24 +417,8 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles.append(bundle)
             return bundles
 
-        # Default bundles: Generate based on TPU/GPU/CPU mode
-        if self.use_tpu:
-            # TPU mode
-            bundle = {"TPU": 1}
-            if self.accelerator_type:
-                bundle[self.ray_accelerator_type()] = 0.001
-        elif self.use_gpu:
-            # GPU mode: replica actor contributes CPU to first bundle via merge
-            bundle = {"GPU": 1}
-            if self.accelerator_type:
-                bundle[self.ray_accelerator_type()] = 0.001
-        else:
-            # CPU-only mode
-            bundle = {"CPU": 1}
-
-        bundles = [copy.deepcopy(bundle) for _ in range(self.num_devices)]
-
-        return bundles
+        # Default bundles: generated based on accelerator backend.
+        return self._accelerator_backend.get_placement_bundles()
 
     @property
     def use_gpu(self) -> bool:
@@ -329,20 +442,20 @@ class VLLMEngineConfig(BaseModelExtended):
             return True
 
         return self.accelerator_type in (
-            GPUType.NVIDIA_TESLA_V100.value,
-            GPUType.NVIDIA_TESLA_P100.value,
-            GPUType.NVIDIA_TESLA_T4.value,
-            GPUType.NVIDIA_TESLA_P4.value,
-            GPUType.NVIDIA_TESLA_K80.value,
-            GPUType.NVIDIA_TESLA_A10G.value,
-            GPUType.NVIDIA_L4.value,
-            GPUType.NVIDIA_L40S.value,
-            GPUType.NVIDIA_A100.value,
-            GPUType.NVIDIA_H100.value,
-            GPUType.NVIDIA_H200.value,
-            GPUType.NVIDIA_H20.value,
-            GPUType.NVIDIA_A100_40G.value,
-            GPUType.NVIDIA_A100_80G.value,
+            AcceleratorType.NVIDIA_TESLA_V100.value,
+            AcceleratorType.NVIDIA_TESLA_P100.value,
+            AcceleratorType.NVIDIA_TESLA_T4.value,
+            AcceleratorType.NVIDIA_TESLA_P4.value,
+            AcceleratorType.NVIDIA_TESLA_K80.value,
+            AcceleratorType.NVIDIA_TESLA_A10G.value,
+            AcceleratorType.NVIDIA_L4.value,
+            AcceleratorType.NVIDIA_L40S.value,
+            AcceleratorType.NVIDIA_A100.value,
+            AcceleratorType.NVIDIA_H100.value,
+            AcceleratorType.NVIDIA_H200.value,
+            AcceleratorType.NVIDIA_H20.value,
+            AcceleratorType.NVIDIA_A100_40G.value,
+            AcceleratorType.NVIDIA_A100_80G.value,
         )
 
     @property
@@ -388,20 +501,11 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            topology = self._tpu_topology
-            if topology:
-                # Create a PG for the multi-host configuration.
-                pg = self._create_tpu_placement_group(name, topology)
-            else:
-                # Use placement_bundles and placement_strategy properties which handle
-                # both custom and default placement group configurations
-                pg = placement_group(
-                    bundles=self.placement_bundles,
-                    strategy=self.placement_strategy,
-                    name=name,
-                )
+            # Delegate the placement group creation to the active hardware backend.
+            pg = self._accelerator_backend.create_placement_group(name)
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
+
         return pg
 
     @staticmethod
@@ -424,56 +528,3 @@ class VLLMEngineConfig(BaseModelExtended):
             return gpu_value
 
         return None
-
-    @property
-    def _tpu_topology(self) -> Optional[str]:
-        """Returns the TPU topology string if requested, otherwise None."""
-        if not self.use_tpu:
-            return None
-
-        return self.topology
-
-    def _create_tpu_placement_group(self, name: str, topology: str) -> PlacementGroup:
-        """Provisions a multi-host TPU Slice Placement Group.
-
-        This enables atomic scheduling on TPUs for SPMD workloads by ensuring
-        the requested topology is spread across the physical hosts in a slice.
-
-        Args:
-            name: The name prefix for the placement group.
-            topology: The requested TPU topology.
-
-        Returns:
-            PlacementGroup: The created Ray placement group for the TPU slice.
-        """
-        from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
-
-        accel_str = (
-            self.accelerator_type.value
-            if hasattr(self.accelerator_type, "value")
-            else str(self.accelerator_type)
-        )
-        version = get_tpu_version_from_type(accel_str)
-
-        logger.info(
-            f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
-        )
-
-        # If the user specified placement_bundles for TPU, we assume resources are identical
-        # for each TPU bundle (i.e. to specify host-level resources) Otherwise, default to 1
-        # TPU chip per bundle to support tensor parallelism.
-        worker_bundle = (
-            self.placement_bundles[-1] if self.placement_bundles else {"TPU": 1}
-        )
-
-        slice_pg_wrapper = slice_placement_group(
-            topology=topology,
-            accelerator_version=version,
-            resources_per_bundle=worker_bundle,
-            strategy=self.placement_strategy,
-            name=name,
-        )
-
-        self._tpu_slice_pg_wrapper = slice_pg_wrapper
-
-        return slice_pg_wrapper.placement_group

@@ -45,7 +45,7 @@ from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 transformers = try_import("transformers")
 
 
-GPUType = Enum("GPUType", vars(accelerators))
+AcceleratorType = Enum("AcceleratorType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
@@ -168,7 +168,7 @@ class LLMConfig(BaseModelExtended):
 
     accelerator_type: Optional[str] = Field(
         default=None,
-        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in AcceleratorType])}",
     )
 
     topology: Optional[str] = Field(
@@ -384,7 +384,7 @@ class LLMConfig(BaseModelExtended):
         if value == "A10":
             value = "A10G"
 
-        if value not in [t.value for t in GPUType]:
+        if value not in [t.value for t in AcceleratorType]:
             raise ValueError(f"Unsupported accelerator type: {value}")
 
         return value
