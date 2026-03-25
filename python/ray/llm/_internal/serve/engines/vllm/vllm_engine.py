@@ -611,14 +611,9 @@ class VLLMEngine(LLMEngine):
             yield self._make_error_response(self._oai_serving_embedding, e)
             return
 
-        if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(
-                error=ErrorInfo(**embedding_response.error.model_dump())
-            )
-        else:
-            # vLLM 0.18+ returns a starlette Response object
-            content = json.loads(embedding_response.body)
-            yield EmbeddingResponse(**content)
+        # vLLM 0.18+ returns a starlette Response object
+        content = json.loads(embedding_response.body)
+        yield EmbeddingResponse(**content)
 
     async def transcriptions(
         self,
