@@ -238,9 +238,7 @@ _latency_panels_list = [
     *_histogram_panels(
         "ray_vllm_request_time_per_output_token_seconds", "TPOT", (6, 7, 8), 10
     ),
-    *_histogram_panels(
-        "ray_vllm_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18
-    ),
+    *_histogram_panels("ray_vllm_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18),
     *_histogram_panels(
         "ray_vllm_e2e_request_latency_seconds",
         "Request Latency",
