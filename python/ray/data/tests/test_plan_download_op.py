@@ -7,12 +7,14 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
 
-from ray.data._internal.planner.plan_download_op import (
-    _FILE_SIZE_COLUMN_PREFIX,
+from ray.data._internal.planner._obstore_download import (
     _download_uris_with_obstore,
-    _download_uris_with_pyarrow,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+)
+from ray.data._internal.planner.plan_download_op import (
+    _FILE_SIZE_COLUMN_PREFIX,
+    _download_uris_with_pyarrow,
     download_bytes_threaded,
 )
 from ray.data._internal.util import RetryingPyFileSystem
@@ -171,7 +173,7 @@ class TestDownloadHelpers:
         mock_fs = MagicMock()
         mock_fs.account_name = account_name
         mock_fs.account_key = account_key
-        with patch("pyarrow.fs.AzureFileSystem", type(mock_fs)):
+        with patch("pyarrow.fs.AzureFileSystem", type(mock_fs), create=True):
             result = _extract_credentials_from_filesystem(mock_fs)
         assert result == expected
 
@@ -191,7 +193,7 @@ class TestDownloadHelpers:
     def test_is_obstore_supported_url(self, uri, raises, expected):
         if raises == "none":
             ctx = patch(
-                "ray.data._internal.planner.plan_download_op.obstore_parse_scheme",
+                "ray.data._internal.planner._obstore_download.obstore_parse_scheme",
                 new=None,
             )
         else:
@@ -201,7 +203,7 @@ class TestDownloadHelpers:
                 else MagicMock(return_value="s3")
             )
             ctx = patch(
-                "ray.data._internal.planner.plan_download_op.obstore_parse_scheme",
+                "ray.data._internal.planner._obstore_download.obstore_parse_scheme",
                 new=mock,
             )
         with ctx:
@@ -335,10 +337,10 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/big.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size * 2,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             results = asyncio.run(
@@ -354,10 +356,10 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/big2.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             results = asyncio.run(
@@ -372,7 +374,7 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/small.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             1024 * 1024,
         ):
             results = asyncio.run(
@@ -393,10 +395,10 @@ class TestObstoreRangeSplitDownload:
             f"file://{tmp_path}/small.bin",
         ]
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size * 2,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             results = asyncio.run(
@@ -415,7 +417,7 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/f.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             0,
         ):
             results = asyncio.run(
@@ -471,7 +473,7 @@ class TestObstoreRangeSplitDownload:
         http_uri = f"http://127.0.0.1:{port}/test.bin"
         try:
             with patch(
-                "ray.data._internal.planner.plan_download_op.logger"
+                "ray.data._internal.planner._obstore_download.logger"
             ) as mock_logger:
                 results = asyncio.run(_download_uris_with_obstore([http_uri], "uri"))
 
@@ -509,10 +511,10 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/f.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             import obstore as obs
@@ -558,10 +560,10 @@ class TestObstoreRangeSplitDownload:
         file_sizes: list[Optional[int]] = [len(large_content), len(small_content), 0]
 
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size * 2,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             import obstore as obs
@@ -590,10 +592,10 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/exact.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             threshold,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             256,
         ):
             import obstore as obs
@@ -622,10 +624,10 @@ class TestObstoreRangeSplitDownload:
 
         uri = f"file://{tmp_path}/fail.bin"
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
             chunk_size,
         ):
             import obstore as obs
@@ -663,13 +665,13 @@ class TestObstoreRangeSplitDownload:
         uri = f"file://{tmp_path}/f.bin"
         # Simulate misconfiguration: range splitting on, but concurrency = 0.
         with patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
             chunk_size,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_MAX_CONCURRENCY",
             0,
         ), patch(
-            "ray.data._internal.planner.plan_download_op.logger"
+            "ray.data._internal.planner._obstore_download.logger"
         ) as mock_logger:
             import obstore as obs
 
