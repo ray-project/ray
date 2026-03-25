@@ -73,33 +73,66 @@ class TestRLModule(unittest.TestCase):
         module.forward_inference({"obs": obs})
         module.forward_exploration({"obs": obs})
 
-    def test_training_mode_toggling(self):
-        """Test that eval mode is set during inference/exploration and restored after."""
+    def test_training_mode_during_forward_passes(self):
+        """Test that self.training is correctly set during each forward pass.
+
+        Regression test for https://github.com/ray-project/ray/issues/61961:
+        RLModule.self.training was True even during evaluation because
+        model.eval() was never called before forward_inference / forward_exploration.
+        """
+
+        training_flags: dict = {}
+
+        class TrainingFlagCapture(VPGTorchRLModule):
+            def _forward_inference(self, batch, **kwargs):
+                training_flags["inference"] = self.training
+                return super()._forward_inference(batch, **kwargs)
+
+            def _forward_exploration(self, batch, **kwargs):
+                training_flags["exploration"] = self.training
+                return super()._forward_exploration(batch, **kwargs)
+
+            def _forward_train(self, batch, **kwargs):
+                training_flags["train"] = self.training
+                return super()._forward_train(batch, **kwargs)
 
         env = gym.make("CartPole-v1")
-        module = VPGTorchRLModule(
+        module = TrainingFlagCapture(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config={"hidden_dim": 32},
         )
 
-        obs_shape = env.observation_space.shape
-        obs = torch.randn((1,) + obs_shape)
+        obs = torch.randn((1,) + env.observation_space.shape)
+        batch = {"obs": obs}
 
-        # Module starts in training mode.
-        self.assertTrue(module.training)
+        # forward_inference must run with self.training == False (eval mode).
+        module.forward_inference(batch)
+        self.assertFalse(
+            training_flags["inference"],
+            "self.training should be False inside _forward_inference (eval mode)",
+        )
 
-        # forward_inference should set eval mode internally and restore train mode.
-        module.forward_inference({"obs": obs})
-        self.assertTrue(module.training)
+        # forward_exploration must also run with self.training == False (eval mode).
+        module.forward_exploration(batch)
+        self.assertFalse(
+            training_flags["exploration"],
+            "self.training should be False inside _forward_exploration (eval mode)",
+        )
 
-        # forward_exploration should also set eval mode and restore train mode.
-        module.forward_exploration({"obs": obs})
-        self.assertTrue(module.training)
+        # forward_train must run with self.training == True (train mode).
+        module.forward_train(batch)
+        self.assertTrue(
+            training_flags["train"],
+            "self.training should be True inside _forward_train (train mode)",
+        )
 
-        # forward_train should keep train mode.
-        module.forward_train({"obs": obs})
-        self.assertTrue(module.training)
+        # After all forward passes, the module should be back in train mode
+        # (the default PyTorch state).
+        self.assertTrue(
+            module.training,
+            "Module should be restored to train mode after forward passes complete",
+        )
 
     def test_get_set_state(self):
 

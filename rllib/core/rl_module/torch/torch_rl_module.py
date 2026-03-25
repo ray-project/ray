@@ -83,26 +83,46 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        was_training = self.training
+        """Forward-pass during evaluation/inference with eval mode set.
+
+        Sets the module to ``eval`` mode (``self.training == False``) before
+        delegating to the parent implementation and restores ``train`` mode
+        afterwards.  This ensures that layers such as ``BatchNorm`` and
+        ``Dropout`` behave correctly during evaluation and that
+        ``self.training`` reads ``False`` inside any user-defined
+        ``_forward_inference`` override.
+        """
         self.eval()
         try:
-            return self._forward_inference(batch, **kwargs)
+            return super().forward_inference(batch, **kwargs)
         finally:
-            if was_training:
-                self.train()
+            self.train()
 
     @override(RLModule)
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        was_training = self.training
+        """Forward-pass during sample collection with eval mode set.
+
+        Sets the module to ``eval`` mode before delegating to the parent
+        implementation and restores ``train`` mode afterwards.  During
+        exploration the agent collects environment data; gradient-dependent
+        layers (``BatchNorm``, ``Dropout``) should still run in inference mode
+        to avoid contaminating running statistics with exploratory noise.
+        """
         self.eval()
         try:
-            return self._forward_exploration(batch, **kwargs)
+            return super().forward_exploration(batch, **kwargs)
         finally:
-            if was_training:
-                self.train()
+            self.train()
 
     @override(RLModule)
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Forward-pass for loss computation with train mode explicitly set.
+
+        Ensures ``self.training == True`` is set before the forward pass so
+        that the behaviour is well-defined even when the module was previously
+        used for inference on the same process (e.g. a local EnvRunner that
+        also runs learning updates).
+        """
         self.train()
         return super().forward_train(batch, **kwargs)
 
