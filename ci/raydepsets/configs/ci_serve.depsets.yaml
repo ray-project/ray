@@ -7,7 +7,7 @@ build_arg_sets:
     PYTHON_SHORT: "312"
 
 depsets:
-  - name: serve_base_ci_depset_${PYTHON_SHORT}
+  - name: serve_base_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
@@ -15,7 +15,7 @@ depsets:
       - python/requirements/serve/serve-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
-    output: python/deplocks/ci/serve_base_ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/serve_base_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
@@ -27,20 +27,20 @@ depsets:
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
-  - name: serve_ci_depset_${PYTHON_SHORT}
+  - name: serve_depset_${PYTHON_SHORT}
     operation: relax
-    source_depset: serve_base_ci_depset_${PYTHON_SHORT}
+    source_depset: serve_base_depset_${PYTHON_SHORT}
     packages:
       - uvloop
-    output: python/deplocks/ci/serve_ci_depset_py${PYTHON_VERSION}.lock
+    output: python/deplocks/ci/serve_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
       - py312
 
-  - name: serve_tracing_ci_depset_${PYTHON_SHORT}
+  - name: serve_tracing_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
-      - serve_ci_depset_${PYTHON_SHORT}
+      - serve_depset_${PYTHON_SHORT}
     requirements:
       - python/requirements/serve/tracing-reqs.txt
     constraints:
