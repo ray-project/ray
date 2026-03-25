@@ -14,7 +14,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
+from ray.data.context import DataContext
 
 
 def test_average_max_uss_per_task():
@@ -24,10 +24,11 @@ def test_average_max_uss_per_task():
 
     def create_bundle(uss_bytes: int):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = uss_bytes
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=uss_bytes,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=0,
@@ -166,10 +167,11 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
     def create_output_bundle(gen_time_s, ser_time_s):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.wall_time_s = gen_time_s
-        stats.block_ser_time_s = ser_time_s
-        stats.max_uss_bytes = 0
+        stats = BlockExecStats(
+            wall_time_s=gen_time_s,
+            block_ser_time_s=ser_time_s,
+            max_uss_bytes=0,
+        )
         metadata = BlockMetadata(
             num_rows=1,
             size_bytes=0,
@@ -270,10 +272,11 @@ def test_block_size_bytes_histogram():
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=0,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=size_bytes,
@@ -318,10 +321,11 @@ def test_block_size_rows_histogram():
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            max_uss_bytes=0,
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
@@ -440,15 +444,11 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 @pytest.mark.parametrize(
     "metrics_fixture,test_property,expected_calculator",
     [
-        # When no sample is available but target_max_block_size is set, uses fallback
+        # When no sample is available, returns None
         (
             "metrics_config_no_sample_with_target",
             "obj_store_mem_max_pending_output_per_task",
-            lambda m: (
-                m._op.data_context.target_max_block_size
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
+            lambda m: None,
         ),
         # When sample is available, uses average_bytes_per_output
         (
@@ -459,16 +459,11 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
         ),
-        # When no sample is available but target_max_block_size is set, uses fallback
+        # When no sample is available, returns None
         (
             "metrics_config_pending_outputs_no_sample",
             "obj_store_mem_pending_task_outputs",
-            lambda m: (
-                m.num_tasks_running
-                * m._op.data_context.target_max_block_size
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
+            lambda m: None,
         ),
     ],
 )

@@ -16,7 +16,6 @@ from ray.data._internal.execution.interfaces.common import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -135,12 +134,13 @@ def metric_property(
 class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
-    bytes_outputs: int
+    bytes_output: int
     num_rows_produced: int
     start_time: float
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
+    last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
 
 
 @dataclass
@@ -759,16 +759,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
-        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
-        # estimate – just bail out.
+        # If no output has been produced it, return null
+        #
+        # NOTE: It's important that we do not overestimate pending task outputs
+        #       assuming that it will be at least `target_max_block_size` as this
+        #       might result in inability to schedule tasks that actually produce
+        #       substantially smaller outputs.
         if bytes_per_output is None:
-            if context.target_max_block_size is None:
-                return None
-            else:
-                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
-                bytes_per_output = (
-                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
-                )
+            return None
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
@@ -935,7 +933,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
-            bytes_outputs=0,
+            bytes_output=0,
             num_rows_produced=0,
             start_time=time.perf_counter(),
             cum_block_gen_time_s=0,
@@ -970,8 +968,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         )
 
         task_info.num_outputs += num_outputs
-        task_info.bytes_outputs += output_bytes
+        task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
+        task_info.last_updated = time.perf_counter()
 
         for block_ref, meta in output.blocks:
             exec_stats = meta.exec_stats
@@ -1034,7 +1033,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info = self._running_tasks[task_index]
 
         self.num_outputs_of_finished_tasks += task_info.num_outputs
-        self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self.bytes_outputs_of_finished_tasks += task_info.bytes_output
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         # NOTE: This metric tracks task's wall-clock time as measured by
