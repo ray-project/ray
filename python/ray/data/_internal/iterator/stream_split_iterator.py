@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
-SPLIT_IDX = int
+SplitIdx = int
 
 
 class StreamSplitDataIterator(DataIterator):
@@ -182,39 +182,45 @@ class SplitCoordinator:
         self._num_splits = num_splits
         self._locality_hints = locality_hints
 
-        # Condition variable protects all mutable state and replaces spin-waits.
+        # Condition variable protects epoch synchronization state.
         self._cond = threading.Condition()
         self._current_executor = None
 
+        # Consumers that have called signal_epoch_done() for the current epoch
+        # transition. Once all unique split indices arrive, the next epoch starts.
+        # Using a set keyed by split_idx means duplicate consumers for the same
+        # split only count once, ensuring they both proceed into get() together
+        # where the _active_consumers check detects the conflict.
         # Guarded by self._cond.
-        self._next_bundle: Dict[SPLIT_IDX, RefBundle] = {}
+        self._ready_consumers: Set[SplitIdx] = set()
+
+        # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
 
-        # Consumers that have called signal_epoch_done() for the current epoch
-        # transition. Once all consumers signal, the next epoch starts.
-        # Guarded by self._cond.
-        self._ready_consumers: Set[SPLIT_IDX] = set()
+        self._lock = threading.Lock()
+        # Guarded by self._lock.
+        self._next_bundle: Dict[SplitIdx, RefBundle] = {}
 
         # Consumers currently inside get(). Used to detect duplicate readers
         # on the same split, which would corrupt data.
-        # Guarded by self._cond.
-        self._active_consumers: Set[SPLIT_IDX] = set()
+        # Guarded by self._lock.
+        self._active_consumers: Set[SplitIdx] = set()
 
         # Track prefetched bytes reported by each client (from BatchIterator).
-        # Guarded by self._cond.
+        # Guarded by self._lock.
         self._client_prefetched_bytes: Dict[int, int] = {}
 
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
         self._output_iterator = None
-        # Store the error raised from the `gen_epoch` call.
+        # Store the error raised from the `_start_executor` call.
         self._gen_epoch_error: Optional[Exception] = None
 
     def _start_executor(self):
         """Start a new streaming executor for the current epoch.
 
-        Must be called while holding self._cond (or during __init__).
+        Must be called while holding self._cond.
         """
         self._next_bundle.clear()
         self._client_prefetched_bytes.clear()
@@ -239,7 +245,7 @@ class SplitCoordinator:
         except Exception as e:
             self._gen_epoch_error = e
 
-    def signal_epoch_done(self, split_idx: SPLIT_IDX) -> None:
+    def signal_epoch_done(self, split_idx: SplitIdx) -> None:
         """Signal that this consumer is done with the current epoch and ready
         for the next one. Blocks until all consumers have signaled.
 
@@ -275,17 +281,16 @@ class SplitCoordinator:
                             f"StreamSplitDataIterator(split={split_idx}) "
                             f"blocked waiting on other clients for at least "
                             f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
-                            "read from the DataIterator splits at the same time."
+                            "read from the DataIterator splits at the same "
+                            "time."
                         )
 
         if self._gen_epoch_error is not None:
-            # If there was an error when advancing to the next epoch,
-            # re-raise it for all threads.
             raise self._gen_epoch_error
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
-        with self._cond:
+        with self._lock:
             executor = self._current_executor
             coordinator_overhead_s = self._coordinator_overhead_s
         if executor:
@@ -298,7 +303,7 @@ class SplitCoordinator:
 
     def get(
         self,
-        output_split_idx: SPLIT_IDX,
+        output_split_idx: SplitIdx,
         client_prefetched_bytes: int = 0,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
@@ -316,7 +321,7 @@ class SplitCoordinator:
         start_time = time.perf_counter()
         returned_normally = False
         try:
-            with self._cond:
+            with self._lock:
                 # Reject concurrent readers on the same split.
                 if output_split_idx in self._active_consumers:
                     raise ValueError(
@@ -328,7 +333,7 @@ class SplitCoordinator:
             if self._gen_epoch_error is not None:
                 raise self._gen_epoch_error
             # Check for cached leftover blocks from a previous get().
-            with self._cond:
+            with self._lock:
                 next_bundle = self._next_bundle.get(output_split_idx)
 
             # Fetch next bundle if needed.
@@ -347,7 +352,7 @@ class SplitCoordinator:
             )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
-            with self._cond:
+            with self._lock:
                 self._next_bundle[output_split_idx] = remainder
                 if not remainder.blocks:
                     del self._next_bundle[output_split_idx]
@@ -364,7 +369,7 @@ class SplitCoordinator:
             return None
 
         finally:
-            with self._cond:
+            with self._lock:
                 self._active_consumers.discard(output_split_idx)
                 # Clear prefetched bytes on any exit (StopIteration or other
                 # exceptions) to avoid stale backpressure data.
@@ -377,7 +382,7 @@ class SplitCoordinator:
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
 
-        Must be called while holding self._cond.
+        Must be called while holding self._lock.
         """
         # Bytes buffered in the coordinator.
         total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
@@ -388,20 +393,25 @@ class SplitCoordinator:
     def _report_prefetched_bytes_to_executor(self) -> None:
         """Report total prefetched bytes to the executor's resource manager.
 
-        Must be called while holding self._cond.
+        Must be called while holding self._lock.
         """
         if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
-            self._current_executor.set_external_consumer_bytes(total_bytes)
+            try:
+                self._current_executor.set_external_consumer_bytes(total_bytes)
+            except AttributeError:
+                # The executor may have been shut down or not fully initialized
+                # (e.g., _resource_manager is only set during execute()).
+                pass
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
-        with self._cond:
+        with self._lock:
             return dict(self._client_prefetched_bytes)
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""
-        with self._cond:
+        with self._lock:
             # Call shutdown on the executor
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
