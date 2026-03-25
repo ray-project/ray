@@ -395,17 +395,16 @@ class ActorPoolMapOperator(MapOperator):
             )
             actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
-
-            # Call _remote() directly instead of .options().remote() to
-            # avoid the FuncWrapper closure in ActorMethod.options(), which
-            # creates a reference cycle that prevents the ActorHandle from
-            # being collected by reference counting alone.
-            gen = actor.submit._remote(
-                args=[self.data_context, ctx, *input_blocks],
-                kwargs={"slices": bundle.slices, **self.get_map_task_kwargs()},
+            gen = actor.submit.options(
                 num_returns="streaming",
                 _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
                 **actor_task_args,
+            ).remote(
+                self.data_context,
+                ctx,
+                *input_blocks,
+                slices=bundle.slices,
+                **self.get_map_task_kwargs(),
             )
 
             def _task_done_callback(actor_to_return):
