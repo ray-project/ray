@@ -89,7 +89,6 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
     assert mock_tokenizer.apply_chat_template.call_count == 2
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "chat_template_kwargs, expected_prompt",
     [
@@ -102,6 +101,7 @@ async def test_chat_template_udf_multiple_messages(mock_tokenizer_setup):
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_chat_template_udf_chat_template_kwargs(
     mock_tokenizer_setup, chat_template_kwargs, expected_prompt
 ):

@@ -56,9 +56,9 @@ def create_oai_client(llm_config: LLMConfig):
 
 
 class TestOpenAiIngress:
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
     @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.asyncio
     async def test_chat(self, stream_batching_interval_ms, client, stream):
         """Tests chat streaming with different stream_batching_interval_ms values.
 
@@ -92,9 +92,9 @@ class TestOpenAiIngress:
         assert role == "assistant"
         assert text.strip() == " ".join([f"test_{i}" for i in range(n_tokens)])
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stream_batching_interval_ms", [None, 0, 10000])
     @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.asyncio
     async def test_completion(self, stream_batching_interval_ms, client, stream):
         """Tests text completions streaming with different stream_batching_interval_ms values."""
 
@@ -119,8 +119,8 @@ class TestOpenAiIngress:
         expected_text = " ".join([f"test_{i}" for i in range(n_tokens)])
         assert text.strip() == expected_text
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.asyncio
     async def test_tool_call(self, client, stream):
         response = client.chat.completions.create(
             model="llm_model_id",
