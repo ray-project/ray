@@ -231,7 +231,7 @@ class DataParallelTrainer:
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback())
+            callbacks.append(StateManagerCallback(datasets=self.datasets))
 
         run_config_callbacks = (
             self.run_config.callbacks if self.run_config.callbacks is not None else []
