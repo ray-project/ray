@@ -831,8 +831,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
     )
     def average_max_uss_per_task(self) -> Optional[float]:
-        # TODO replace with histogram
-
         """Average max USS usage of tasks."""
         if self._cum_max_uss_bytes is None:
             return None
