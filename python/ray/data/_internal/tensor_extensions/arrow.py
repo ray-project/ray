@@ -64,9 +64,9 @@ class _SerializationFormat(Enum):
 
 # Set the default serialization format for Arrow extension types.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.CLOUDPICKLE
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_CLOUDPICKLE_FORMAT", 0) == 1
-    else _SerializationFormat.JSON  # default (safe)
+    _SerializationFormat.JSON  # legacy
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 1) == 1
+    else _SerializationFormat.CLOUDPICKLE
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
