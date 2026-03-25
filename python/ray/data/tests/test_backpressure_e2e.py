@@ -7,6 +7,7 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
@@ -35,23 +36,25 @@ def test_large_e2e_backpressure_no_spilling(
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 20
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
-    BLOCK_SIZE = 10 * 1024 * 1024
-    object_store_memory = 200 * 1024**2
-    print(f"object_store_memory: {object_store_memory/1024/1024}MB")
+    BLOCK_SIZE = 10 * MiB
+    object_store_memory = 200 * MiB
+
+    print(f">>> Setting Object Store to {memory_string(object_store_memory)}")
+
     ray.init(num_cpus=NUM_CPUS, object_store_memory=object_store_memory)
 
     def produce(batch):
-        print("Produce task started", batch["id"])
+        print(">>> [Producer] Produce task started", batch["id"])
         time.sleep(0.1)
         for id in batch["id"]:
-            print("Producing", id)
+            print(f">>> [Producer] Producing row {id=}")
             yield {
                 "id": [id],
                 "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
             }
 
     def consume(batch):
-        print("Consume task started", batch["id"])
+        print(">>> [Consumer] Consume task started", batch["id"])
         time.sleep(0.01)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 

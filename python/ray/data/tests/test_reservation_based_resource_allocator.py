@@ -758,10 +758,10 @@ class TestReservationOpResourceAllocator:
         # Before the fix: budget.gpu=0 (couldn't scale)
         # After the fix: budget.gpu=1 (can scale to 1 more actor)
         assert allocator.get_budget(o4) == ExecutionResources(
-            cpu=0, gpu=1, object_store_memory=625000
+            cpu=0, gpu=1, object_store_memory=1875000
         )
         assert allocator.get_allocation(o4) == ExecutionResources(
-            cpu=0, gpu=2, object_store_memory=625000
+            cpu=0, gpu=2, object_store_memory=1875000
         )
 
     def test_gpu_bounded_vs_unbounded_operators(self, restore_data_context):

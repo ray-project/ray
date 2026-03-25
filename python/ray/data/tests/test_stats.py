@@ -246,7 +246,7 @@ def gen_expected_metrics(
             "'obj_store_mem_internal_inqueue': Z",
             "'obj_store_mem_internal_outqueue': Z",
             "'obj_store_mem_pending_task_inputs': Z",
-            "'obj_store_mem_pending_task_outputs': Z",
+            "'obj_store_mem_pending_task_outputs': None",
             "'average_bytes_inputs_per_task': None",
             "'average_rows_inputs_per_task': None",
             "'average_bytes_outputs_per_task': None",
