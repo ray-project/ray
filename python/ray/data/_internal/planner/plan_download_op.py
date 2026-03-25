@@ -35,15 +35,18 @@ URI_DOWNLOAD_MAX_WORKERS = 16
 
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 
+_DEFAULT_RANGE_THRESHOLD = str(4 * 1024 * 1024)  # 4 MB
+_DEFAULT_RANGE_CHUNK_SIZE = str(8 * 1024 * 1024)  # 8 MB
+
 # Range-split downloads: files above this threshold (bytes) are downloaded as
 # parallel get_range requests instead of a single get.  Default 4 MB — below
 # the crossover where ranged overhead exceeds the single-GET time, but above
 # it large/skewed workloads see 10-25x speedup.  Set to 0 to disable.
 RAY_DATA_OBSTORE_RANGE_THRESHOLD = int(
-    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", str(4 * 1024 * 1024))
+    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", _DEFAULT_RANGE_THRESHOLD)
 )
 RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = int(
-    os.environ.get("RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", str(8 * 1024 * 1024))
+    os.environ.get("RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", _DEFAULT_RANGE_CHUNK_SIZE)
 )
 RAY_DATA_OBSTORE_MAX_CONCURRENCY = int(
     os.environ.get("RAY_DATA_OBSTORE_MAX_CONCURRENCY", "128")
