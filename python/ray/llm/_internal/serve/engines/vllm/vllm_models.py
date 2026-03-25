@@ -248,7 +248,7 @@ class VLLMEngineConfig(BaseModelExtended):
             return None
         # Validate through PlacementGroupConfig, then dump back to dict
         validated = PlacementGroupConfig(**value)
-        return validated.model_dump()
+        return validated.model_dump(exclude_unset=True)
 
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
