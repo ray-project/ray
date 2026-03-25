@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -17,7 +17,6 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    import pyarrow
     from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
@@ -50,9 +49,7 @@ class StreamSplitDataIterator(DataIterator):
 
         context = base_dataset.context
 
-        return [
-            StreamSplitDataIterator(context, coord_actor, i, n) for i in range(n)
-        ]
+        return [StreamSplitDataIterator(context, coord_actor, i, n) for i in range(n)]
 
     def __init__(
         self,

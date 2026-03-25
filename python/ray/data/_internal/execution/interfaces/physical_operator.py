@@ -382,7 +382,9 @@ class PhysicalOperator(Operator):
         self._output_dependencies: List["PhysicalOperator"] = []
 
         for input in input_dependencies:
-            assert isinstance(input, PhysicalOperator), f"Must inherit from PhysicalOperator"
+            assert isinstance(
+                input, PhysicalOperator
+            ), "Must inherit from PhysicalOperator"
 
             # Assert that number of output splits produced by this operator is not
             # exceeded by its input deps
