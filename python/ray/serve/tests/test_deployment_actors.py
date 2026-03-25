@@ -88,6 +88,17 @@ class EnvReportingActor:
 
 
 @ray.remote
+class AltCounter:
+    """Alternative counter with different behavior, for testing actor class swap."""
+
+    def __init__(self, start: int = 0):
+        self.count = start * 10
+
+    def get(self):
+        return self.count
+
+
+@ray.remote
 class InitArgsActor:
     """Accepts init_args for testing positional constructor args."""
 
@@ -1409,6 +1420,368 @@ def test_user_config_update_with_deployment_actors(serve_instance):
 
     serve.run(MyDeployment.options(user_config="updated").bind(), blocking=False)
     wait_for_condition(lambda: "updated:50" in httpx.get(url).text, timeout=30)
+
+
+def test_controller_restart_preserves_mutated_actor_state(serve_instance):
+    """Controller restart preserves mutated deployment actor state.
+
+    Strengthens test_deployment_actor_survives_controller_restart: that test
+    only checks the init value (start=42) survives. This test mutates the
+    actor's state (increments counter beyond init value) before the restart
+    and verifies the mutations survive — proving the *same* actor instance
+    continues running, not a freshly created one.
+    """
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(MyDeployment.bind(), name="app")
+    resp = request_with_retries(timeout=30, app_name="app")
+    assert resp.text == "0"
+
+    # Mutate actor state directly (bypass replica to isolate the test)
+    actor_names = _get_deployment_actor_names()
+    assert len(actor_names) == 1
+    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
+    for _ in range(5):
+        ray.get(handle.increment.remote())
+    assert ray.get(handle.get.remote()) == 5
+
+    ray.kill(serve_instance._controller, no_restart=False)
+
+    wait_for_condition(
+        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
+    )
+
+    # Mutated state (5) must survive, not reset to init value (0)
+    for _ in range(5):
+        resp = request_with_retries(timeout=30, app_name="app")
+        assert resp.text == "5"
+
+
+def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
+    """Redeploying adds deployment actors to a deployment that previously had none.
+
+    RFC redeployment table: 'Actor added → Create new actor'.
+    Uses the declarative path (deploy_apps) so the controller diffs old vs.
+    new config and exercises the actor-creation branch, unlike serve.run()
+    which always creates a fresh deployment.
+    """
+    client = serve_instance
+
+    config_v1 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files.flex_deployment_actor:app"
+                ),
+                "deployments": [{"name": "FlexDriver"}],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
+    wait_for_condition(check_running)
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "no_actor")
+    assert _check_deployment_actor_count(0)
+
+    config_v2 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files.flex_deployment_actor:app"
+                ),
+                "deployments": [
+                    {
+                        "name": "FlexDriver",
+                        "deployment_actors": [
+                            {
+                                "name": "counter",
+                                "actor_class": (
+                                    "ray.serve.tests.test_deployment_actors"
+                                    ":SharedCounter"
+                                ),
+                                "init_kwargs": {"start": 42},
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
+    wait_for_condition(check_running)
+    wait_for_condition(lambda: httpx.get(url).text == "42")
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+
+def test_redeployment_changes_actor_class(serve_instance):
+    """Redeploying with a different actor class (same logical name) replaces the actor.
+
+    RFC redeployment table: 'Actor class changed → Kill old, create new'.
+    Uses the declarative path so the controller diffs old vs. new actor class.
+    SharedCounter.get() returns start; AltCounter.get() returns start * 10.
+    """
+    client = serve_instance
+
+    config_v1 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files.flex_deployment_actor:app"
+                ),
+                "deployments": [
+                    {
+                        "name": "FlexDriver",
+                        "deployment_actors": [
+                            {
+                                "name": "counter",
+                                "actor_class": (
+                                    "ray.serve.tests.test_deployment_actors"
+                                    ":SharedCounter"
+                                ),
+                                "init_kwargs": {"start": 10},
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
+    wait_for_condition(check_running)
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "10")
+    v1_actor_names = _get_deployment_actor_names()
+    assert len(v1_actor_names) == 1
+
+    config_v2 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files.flex_deployment_actor:app"
+                ),
+                "deployments": [
+                    {
+                        "name": "FlexDriver",
+                        "deployment_actors": [
+                            {
+                                "name": "counter",
+                                "actor_class": (
+                                    "ray.serve.tests.test_deployment_actors"
+                                    ":AltCounter"
+                                ),
+                                "init_kwargs": {"start": 10},
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
+    wait_for_condition(check_running)
+    # AltCounter.get() returns start * 10 = 100, proving the class changed
+    wait_for_condition(lambda: httpx.get(url).text == "100")
+    v2_actor_names = _get_deployment_actor_names()
+    assert len(v2_actor_names) == 1
+    assert v1_actor_names[0] != v2_actor_names[0]
+
+
+def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance):
+    """Changed init_kwargs with the same actor name kills and recreates the actor.
+
+    RFC redeployment table: 'init_args/kwargs changed → Kill and recreate
+    (state loss expected)'. Uses the declarative path so the controller diffs
+    old vs. new init_kwargs. Mutates actor state before redeploy and verifies
+    the accumulated state is discarded.
+    """
+    client = serve_instance
+
+    config_v1 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files"
+                    ".config_only_deployment_actor:app"
+                ),
+                "deployments": [
+                    {
+                        "name": "ConfigOnlyDriver",
+                        "deployment_actors": [
+                            {
+                                "name": "counter",
+                                "actor_class": (
+                                    "ray.serve.tests.test_deployment_actors"
+                                    ":SharedCounter"
+                                ),
+                                "init_kwargs": {"start": 0},
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
+    wait_for_condition(check_running)
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "0")
+
+    # Mutate actor state directly so it diverges from init value
+    actor_names = _get_deployment_actor_names()
+    assert len(actor_names) == 1
+    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
+    for _ in range(5):
+        ray.get(handle.increment.remote())
+    wait_for_condition(lambda: httpx.get(url).text == "5")
+
+    config_v2 = {
+        "applications": [
+            {
+                "name": "default",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests.test_config_files"
+                    ".config_only_deployment_actor:app"
+                ),
+                "deployments": [
+                    {
+                        "name": "ConfigOnlyDriver",
+                        "deployment_actors": [
+                            {
+                                "name": "counter",
+                                "actor_class": (
+                                    "ray.serve.tests.test_deployment_actors"
+                                    ":SharedCounter"
+                                ),
+                                "init_kwargs": {"start": 100},
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    }
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
+    wait_for_condition(check_running)
+    # State reset: returns 100 (new init value), not 5 (old mutated state)
+    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=30)
+
+
+def test_partial_actor_creation_failure(serve_instance):
+    """When one of multiple deployment actors fails, the deployment fails.
+
+    A deployment with two actors — one healthy, one whose constructor raises —
+    should transition to DEPLOY_FAILED, not partially succeed.
+    """
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="good_counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+            DeploymentActorConfig(
+                name="bad_actor",
+                actor_class=FailingDeploymentActor,
+                init_kwargs={"should_fail": True},
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            return "ok"
+
+    with pytest.raises(RuntimeError):
+        serve.run(MyDeployment.bind())
+
+    status = serve.status()
+    app_status = status.applications["default"]
+    assert app_status.status == ApplicationStatus.DEPLOY_FAILED
+
+
+def test_deployment_actors_outlive_replicas_during_deletion(serve_instance):
+    """Deployment actors remain alive while replicas are still stopping.
+
+    The RFC specifies that actors are killed only after all replicas have
+    stopped (STEP 9). This ensures replicas can still reach their deployment
+    actors during graceful shutdown / request draining.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name="OutliveTest",
+        graceful_shutdown_timeout_s=120,
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class SlowDrainDeployment:
+        async def __call__(self):
+            await signal.wait.remote()
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    h = serve.run(SlowDrainDeployment.bind(), name="app")
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+    # Send a request that blocks — keeps replica busy during deletion
+    _ = h.remote()
+
+    serve.delete(name="app", _blocking=False)
+
+    # Replica should enter STOPPING while draining the in-flight request
+    wait_for_condition(
+        lambda: check_replica_counts(
+            controller=serve_instance._controller,
+            deployment_id=DeploymentID(name="OutliveTest", app_name="app"),
+            total=1,
+            by_state=[(ReplicaState.STOPPING, 1, None)],
+        ),
+        timeout=15,
+    )
+
+    # Deployment actor must still be alive while replica is stopping
+    assert _check_deployment_actor_count(1)
+
+    # Release the blocked request so replica can finish draining
+    ray.get(signal.send.remote())
+
+    # After replica stops, deployment actor should be cleaned up
+    wait_for_condition(_check_no_deployment_actors, timeout=30)
 
 
 if __name__ == "__main__":

@@ -3801,6 +3801,11 @@ class DeploymentState:
                     == running_at_target_version_replica_cnt
                     and running_at_target_version_replica_cnt == all_running_replica_cnt
                 )
+                # Stay in transition until deployment actors for obsolete code versions
+                # are dropped (see stop_deployment_actors_if_needed); otherwise
+                # scale_deployment_replicas would never run cleanup after _in_transition
+                # is cleared.
+                and not self._orphaned_deployment_actor_code_versions()
             ):
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
@@ -4548,6 +4553,8 @@ class DeploymentState:
 
     def deployment_actor_terminally_failed(self) -> bool:
         """True when deployment actors have failed too many times to keep retrying."""
+        if self._target_state.deleting:
+            return False
         deployment_actors_configs = self._get_deployment_actors_configs()
         if not deployment_actors_configs:
             return False
@@ -4705,6 +4712,23 @@ class DeploymentState:
             return True
         return False
 
+    def _orphaned_deployment_actor_code_versions(self) -> Set[str]:
+        """Code versions still tracked for deployment actors that no replica needs.
+
+        Matches the retention rule in ``stop_deployment_actors_if_needed``:
+        keep actors for every replica's ``code_version``, and (when not deleting)
+        for the target deployment version.
+        """
+        target_version = self._target_state.version
+        if target_version is None:
+            return set()
+
+        versions_to_keep = {r.version.code_version for r in self._replicas.get()}
+        if not self._target_state.deleting:
+            versions_to_keep.add(target_version.code_version)
+
+        return self._deployment_actors.get_code_versions() - versions_to_keep
+
     def stop_deployment_actors_if_needed(self) -> None:
         """Stop deployment-scoped actors when no longer needed.
 
@@ -4713,20 +4737,11 @@ class DeploymentState:
         PENDING_MIGRATION), since all of these may need deployment actors.
         During deletion, actors are kept only while replicas still exist.
         """
-        target_version = self._target_state.version
-        if target_version is None:
+        if self._target_state.version is None:
             return
 
-        replicas = self._replicas.get()
-        versions_to_keep = {r.version.code_version for r in replicas}
-        if not self._target_state.deleting:
-            versions_to_keep.add(target_version.code_version)
-
-        versions_to_remove = (
-            self._deployment_actors.get_code_versions() - versions_to_keep
-        )
         wrappers_to_stop: List[DeploymentActorWrapper] = []
-        for code_version in versions_to_remove:
+        for code_version in self._orphaned_deployment_actor_code_versions():
             entries = self._deployment_actors.pop(
                 code_version=code_version,
                 states=[

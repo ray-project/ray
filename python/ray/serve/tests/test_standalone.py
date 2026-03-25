@@ -1018,5 +1018,58 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
 
 
+def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
+    """serve.shutdown() kills all deployment actors.
+
+    Deployment actors are detached, so they must be explicitly killed during
+    shutdown. The RFC specifies that shutdown() → delete() → STEP 9 cleanup
+    handles this. Without explicit cleanup, actors would leak as orphans.
+    """
+    from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+    from ray.serve.config import DeploymentActorConfig
+
+    ray.init(num_cpus=4, namespace="default_test_namespace")
+    serve.start()
+
+    @ray.remote
+    class SharedCounter:
+        def __init__(self, start: int = 0):
+            self.count = start
+
+        def get(self):
+            return self.count
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(MyDeployment.bind())
+
+    def _check_deployment_actor_count(expected: int):
+        actors = list_actors(filters=[("state", "=", "ALIVE")])
+        names = [
+            a["name"]
+            for a in actors
+            if a["name"] and a["name"].startswith(SERVE_DEPLOYMENT_ACTOR_PREFIX)
+        ]
+        return len(names) == expected
+
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+    serve.shutdown()
+
+    wait_for_condition(lambda: _check_deployment_actor_count(0), timeout=15)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
