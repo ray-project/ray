@@ -548,6 +548,10 @@ class SGLangServer:
 
         ray_actor_options = deployment_options.get("ray_actor_options", {})
 
+        # Testing for now
+        if "num_gpus" not in ray_actor_options:
+            ray_actor_options["num_gpus"] = 1  # ← add this
+
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
         pp_size = llm_config.engine_kwargs.get("pp_size", 1)
         num_devices = tp_size * pp_size
