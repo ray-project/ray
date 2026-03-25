@@ -1,5 +1,4 @@
 from io import BytesIO
-import time
 from typing import Dict, Any
 import uuid
 
@@ -10,6 +9,7 @@ import torch
 from transformers import ViTImageProcessor, ViTForImageClassification
 
 import ray
+from benchmark import Benchmark
 
 
 INPUT_PREFIX = "s3://anonymous@ray-example-data/image-datasets/10TiB-b64encoded-images-in-parquet-v3/"
@@ -84,19 +84,21 @@ class Infer:
             }
 
 
-start_time = time.time()
-
-ds = (
-    ray.data.read_parquet(INPUT_PREFIX)
-    .map(decode)
-    .map(preprocess)
-    .map_batches(
-        Infer,
-        batch_size=BATCH_SIZE,
-        num_gpus=1,
-        concurrency=40,
+def run_pipeline():
+    (
+        ray.data.read_parquet(INPUT_PREFIX)
+        .map(decode)
+        .map(preprocess)
+        .map_batches(
+            Infer,
+            batch_size=BATCH_SIZE,
+            num_gpus=1,
+            concurrency=40,
+        )
+        .write_parquet(OUTPUT_PREFIX)
     )
-    .write_parquet(OUTPUT_PREFIX)
-)
 
-print("Runtime", time.time() - start_time)
+
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()

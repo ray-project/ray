@@ -6,6 +6,7 @@ import torchvision
 import numpy as np
 import io
 import uuid
+from benchmark import Benchmark
 
 NUM_GPU_NODES = 8
 YOLO_MODEL = "yolo11n.pt"
@@ -87,12 +88,21 @@ def crop_image(row):
     return row
 
 
-ds = ray.data.read_videos(INPUT_PATH)
-ds = ds.map(resize_frame)
-ds = ds.map_batches(
-    ExtractImageFeatures, batch_size=BATCH_SIZE, num_gpus=1.0, concurrency=NUM_GPU_NODES
-)
-ds = ds.flat_map(explode_features)
-ds = ds.map(crop_image)
-ds = ds.drop_columns(["frame"])
-ds.write_parquet(OUTPUT_PATH)
+def run_pipeline():
+    ds = ray.data.read_videos(INPUT_PATH)
+    ds = ds.map(resize_frame)
+    ds = ds.map_batches(
+        ExtractImageFeatures,
+        batch_size=BATCH_SIZE,
+        num_gpus=1.0,
+        concurrency=NUM_GPU_NODES,
+    )
+    ds = ds.flat_map(explode_features)
+    ds = ds.map(crop_image)
+    ds = ds.drop_columns(["frame"])
+    ds.write_parquet(OUTPUT_PATH)
+
+
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()

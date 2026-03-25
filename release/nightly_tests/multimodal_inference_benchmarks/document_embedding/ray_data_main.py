@@ -9,7 +9,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 
 import uuid
-import time
+from benchmark import Benchmark
 
 EMBED_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
@@ -82,24 +82,26 @@ class Embedder:
         return batch
 
 
-start_time = time.time()
-
-(
-    ray.data.read_parquet(INPUT_PATH)
-    .filter(lambda row: row["file_name"].endswith(".pdf"))
-    .with_column("bytes", download("uploaded_pdf_path"))
-    .flat_map(extract_text_from_pdf)
-    .flat_map(chunker)
-    .map_batches(
-        Embedder,
-        concurrency=NUM_GPU_NODES,
-        num_gpus=1.0,
-        batch_size=EMBEDDING_BATCH_SIZE,
+def run_pipeline():
+    (
+        ray.data.read_parquet(INPUT_PATH)
+        .filter(lambda row: row["file_name"].endswith(".pdf"))
+        .with_column("bytes", download("uploaded_pdf_path"))
+        .flat_map(extract_text_from_pdf)
+        .flat_map(chunker)
+        .map_batches(
+            Embedder,
+            concurrency=NUM_GPU_NODES,
+            num_gpus=1.0,
+            batch_size=EMBEDDING_BATCH_SIZE,
+        )
+        .select_columns(
+            ["uploaded_pdf_path", "page_number", "chunk_id", "chunk", "embedding"]
+        )
+        .write_parquet(OUTPUT_PATH)
     )
-    .select_columns(
-        ["uploaded_pdf_path", "page_number", "chunk_id", "chunk", "embedding"]
-    )
-    .write_parquet(OUTPUT_PATH)
-)
 
-print("Runtime:", time.time() - start_time)
+
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()

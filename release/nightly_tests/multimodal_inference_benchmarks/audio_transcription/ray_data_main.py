@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import time
 import uuid
 
 import numpy as np
@@ -10,6 +9,7 @@ import torch
 import torchaudio
 import torchaudio.transforms as T
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
+from benchmark import Benchmark
 
 
 TRANSCRIPTION_MODEL = "openai/whisper-tiny"
@@ -92,19 +92,21 @@ def decoder(batch):
     return batch
 
 
-start_time = time.time()
+def run_pipeline():
+    ds = ray.data.read_parquet(INPUT_PATH)
+    ds = ds.repartition(target_num_rows_per_block=BATCH_SIZE)
+    ds = ds.map(resample)
+    ds = ds.map_batches(whisper_preprocess, batch_size=BATCH_SIZE)
+    ds = ds.map_batches(
+        Transcriber,
+        batch_size=BATCH_SIZE,
+        concurrency=NUM_GPUS,
+        num_gpus=1,
+    )
+    ds = ds.map_batches(decoder)
+    ds.write_parquet(OUTPUT_PATH)
 
-ds = ray.data.read_parquet(INPUT_PATH)
-ds = ds.repartition(target_num_rows_per_block=BATCH_SIZE)
-ds = ds.map(resample)
-ds = ds.map_batches(whisper_preprocess, batch_size=BATCH_SIZE)
-ds = ds.map_batches(
-    Transcriber,
-    batch_size=BATCH_SIZE,
-    concurrency=NUM_GPUS,
-    num_gpus=1,
-)
-ds = ds.map_batches(decoder)
-ds.write_parquet(OUTPUT_PATH)
 
-print("Runtime:", time.time() - start_time)
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()
