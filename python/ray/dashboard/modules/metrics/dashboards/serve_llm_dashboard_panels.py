@@ -14,8 +14,8 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 # ---------------------------------------------------------------------------
 # WorkerId join: attaches deployment + replica labels to vLLM-only metrics
 _WORKER_JOIN = (
-    '\n* on(WorkerId) group_left(deployment, replica)'
-    '\nmax by(WorkerId, deployment, replica) ('
+    "\n* on(WorkerId) group_left(deployment, replica)"
+    "\nmax by(WorkerId, deployment, replica) ("
     'ray_serve_deployment_request_counter_total{{{global_filters}, deployment=~"$deployment"}} * 0 + 1)'
 )
 
@@ -32,50 +32,45 @@ _DEP_REPLICA = "{{deployment}}: {{replica}}"
 def _mean_with_join(metric_base: str) -> str:
     """Mean = sum(_sum) / sum(_count) with NaN guard + WorkerId join."""
     return (
-        '(\n'
-        '  (\n'
-        f'    sum by(WorkerId) (rate({metric_base}_sum{{{{{_VLLM_FILTER}}}}}[$interval]))\n'
-        '    /\n'
-        f'    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval]))\n'
-        '  )\n'
-        '  and on(WorkerId)\n'
-        '  (\n'
-        f'    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n'
-        '  )\n'
-        ')'
-        + _WORKER_JOIN
+        "(\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({metric_base}_sum{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        "    /\n"
+        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        "  )\n"
+        "  and on(WorkerId)\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        "  )\n"
+        ")" + _WORKER_JOIN
     )
 
 
 def _percentile_with_join(metric_base: str, quantile: float) -> str:
     """histogram_quantile with NaN guard + WorkerId join."""
     return (
-        '(\n'
-        '  histogram_quantile(\n'
-        f'    {quantile},\n'
-        f'    sum by (le, WorkerId) (rate({metric_base}_bucket{{{{{_VLLM_FILTER}}}}}[$interval]))\n'
-        '  )\n'
-        '  and on(WorkerId)\n'
-        '  (\n'
-        f'    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n'
-        '  )\n'
-        ')'
-        + _WORKER_JOIN
+        "(\n"
+        "  histogram_quantile(\n"
+        f"    {quantile},\n"
+        f"    sum by (le, WorkerId) (rate({metric_base}_bucket{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        "  )\n"
+        "  and on(WorkerId)\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({metric_base}_count{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        "  )\n"
+        ")" + _WORKER_JOIN
     )
 
 
 def _gauge_with_join(metric: str) -> str:
     """Simple gauge metric with WorkerId join (no rate, no guard)."""
-    return (
-        f'sum by(WorkerId) ({metric}{{{{{_VLLM_FILTER}}}}})'
-        + _WORKER_JOIN
-    )
+    return f"sum by(WorkerId) ({metric}{{{{{_VLLM_FILTER}}}}})" + _WORKER_JOIN
 
 
 def _rate_with_join(metric: str, agg_fn: str = "rate") -> str:
     """rate() or increase() of a metric summed by WorkerId, with join."""
     return (
-        f'sum by(WorkerId) ({agg_fn}({metric}{{{{{_VLLM_FILTER}}}}}[$interval]))'
+        f"sum by(WorkerId) ({agg_fn}({metric}{{{{{_VLLM_FILTER}}}}}[$interval]))"
         + _WORKER_JOIN
     )
 
@@ -93,19 +88,18 @@ def _ratio_with_join_and_guard(
     """
     guard = guard_metric or denominator_metric
     return (
-        '(\n'
-        '  (\n'
-        f'    sum by(WorkerId) (rate({numerator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n'
-        '    /\n'
-        f'    sum by(WorkerId) (rate({denominator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n'
-        + (f'    {scale}\n' if scale else '')
-        + '  )\n'
-        '  and on(WorkerId)\n'
-        '  (\n'
-        f'    sum by(WorkerId) (rate({guard}{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n'
-        '  )\n'
-        ')'
-        + _WORKER_JOIN
+        "(\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({numerator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        "    /\n"
+        f"    sum by(WorkerId) (rate({denominator_metric}{{{{{_VLLM_FILTER}}}}}[$interval]))\n"
+        + (f"    {scale}\n" if scale else "")
+        + "  )\n"
+        "  and on(WorkerId)\n"
+        "  (\n"
+        f"    sum by(WorkerId) (rate({guard}{{{{{_VLLM_FILTER}}}}}[$interval])) > 0\n"
+        "  )\n"
+        ")" + _WORKER_JOIN
     )
 
 
@@ -127,7 +121,9 @@ def _latency_panels(
             description=description,
             unit="s",
             targets=[Target(expr=_mean_with_join(metric_base), legend=_DEP_REPLICA)],
-            fill=1, linewidth=2, stack=False,
+            fill=1,
+            linewidth=2,
+            stack=False,
             grid_pos=GridPos(0, y, 8, 8),
         ),
         Panel(
@@ -135,8 +131,14 @@ def _latency_panels(
             title=f"{label} -- P50",
             description=description,
             unit="s",
-            targets=[Target(expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA)],
-            fill=1, linewidth=2, stack=False,
+            targets=[
+                Target(
+                    expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA
+                )
+            ],
+            fill=1,
+            linewidth=2,
+            stack=False,
             grid_pos=GridPos(8, y, 8, 8),
         ),
         Panel(
@@ -144,8 +146,14 @@ def _latency_panels(
             title=f"{label} -- P90",
             description=description,
             unit="s",
-            targets=[Target(expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA)],
-            fill=1, linewidth=2, stack=False,
+            targets=[
+                Target(
+                    expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA
+                )
+            ],
+            fill=1,
+            linewidth=2,
+            stack=False,
             grid_pos=GridPos(16, y, 8, 8),
         ),
     ]
@@ -168,7 +176,9 @@ def _length_panels(
             description="",
             unit="short",
             targets=[Target(expr=_mean_with_join(metric_base), legend=_DEP_REPLICA)],
-            fill=1, linewidth=1, stack=False,
+            fill=1,
+            linewidth=1,
+            stack=False,
             grid_pos=GridPos(0, y, 8, 8),
         ),
         Panel(
@@ -176,8 +186,14 @@ def _length_panels(
             title=f"{label} -- P50",
             description="",
             unit="short",
-            targets=[Target(expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA)],
-            fill=1, linewidth=1, stack=False,
+            targets=[
+                Target(
+                    expr=_percentile_with_join(metric_base, 0.5), legend=_DEP_REPLICA
+                )
+            ],
+            fill=1,
+            linewidth=1,
+            stack=False,
             grid_pos=GridPos(8, y, 8, 8),
         ),
         Panel(
@@ -185,8 +201,14 @@ def _length_panels(
             title=f"{label} -- P90",
             description="",
             unit="short",
-            targets=[Target(expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA)],
-            fill=1, linewidth=1, stack=False,
+            targets=[
+                Target(
+                    expr=_percentile_with_join(metric_base, 0.9), legend=_DEP_REPLICA
+                )
+            ],
+            fill=1,
+            linewidth=1,
+            stack=False,
             grid_pos=GridPos(16, y, 8, 8),
         ),
     ]
@@ -203,15 +225,17 @@ _throughput_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (deployment, replica) (rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))',
+                expr=f"sum by (deployment, replica) (rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))",
                 legend=_DEP_REPLICA,
             ),
             Target(
-                expr=f'sum(rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))',
+                expr=f"sum(rate(ray_serve_deployment_request_counter_total{{{{{_SERVE_FILTER}}}}}[$interval]))",
                 legend="Total QPS",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 1, 8, 8),
     ),
     Panel(
@@ -225,11 +249,13 @@ _throughput_panels = [
                 legend=_DEP_REPLICA,
             ),
             Target(
-                expr=f'sum(rate(ray_vllm_request_prompt_tokens_sum{{{{{_VLLM_FILTER}}}}}[$interval]))',
+                expr=f"sum(rate(ray_vllm_request_prompt_tokens_sum{{{{{_VLLM_FILTER}}}}}[$interval]))",
                 legend="Total",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(8, 1, 8, 8),
     ),
     Panel(
@@ -243,11 +269,13 @@ _throughput_panels = [
                 legend=_DEP_REPLICA,
             ),
             Target(
-                expr=f'sum(rate(ray_vllm_generation_tokens_total{{{{{_VLLM_FILTER}}}}}[$interval]))',
+                expr=f"sum(rate(ray_vllm_generation_tokens_total{{{{{_VLLM_FILTER}}}}}[$interval]))",
                 legend="Total",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(16, 1, 8, 8),
     ),
 ]
@@ -256,9 +284,17 @@ _throughput_panels = [
 # Row 2: Latency (3x3 grid)
 # ===================================================================
 _latency_panels_list = [
-    *_latency_panels("ray_vllm_request_time_per_output_token_seconds", "TPOT", (6, 7, 8), 10),
+    *_latency_panels(
+        "ray_vllm_request_time_per_output_token_seconds", "TPOT", (6, 7, 8), 10
+    ),
     *_latency_panels("ray_vllm_time_to_first_token_seconds", "TTFT", (9, 10, 11), 18),
-    *_latency_panels("ray_vllm_e2e_request_latency_seconds", "Request Latency", (12, 13, 14), 26, description="Latency from request start to first token returned (in seconds)."),
+    *_latency_panels(
+        "ray_vllm_e2e_request_latency_seconds",
+        "Request Latency",
+        (12, 13, 14),
+        26,
+        description="Latency from request start to first token returned (in seconds).",
+    ),
 ]
 
 # ===================================================================
@@ -276,7 +312,9 @@ _cache_panels = [
                 legend=_DEP_REPLICA,
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 35, 12, 8),
     ),
     Panel(
@@ -287,31 +325,33 @@ _cache_panels = [
         targets=[
             Target(
                 expr=(
-                    f'100 * ('
-                    f'(sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) '
-                    f'/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval])))'
-                    f' and on(WorkerId) '
-                    f'(sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval])) > 0))'
+                    f"100 * ("
+                    f"(sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) "
+                    f"/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval])))"
+                    f" and on(WorkerId) "
+                    f"(sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval])) > 0))"
                     + _WORKER_JOIN
                 ),
                 legend=_DEP_REPLICA,
             ),
             Target(
                 expr=(
-                    f'max(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) '
-                    f'/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))'
+                    f"max(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) "
+                    f"/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))"
                 ),
                 legend="Max Hit Rate",
             ),
             Target(
                 expr=(
-                    f'min(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) '
-                    f'/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))'
+                    f"min(100 * (sum by(WorkerId) (rate(ray_vllm_prefix_cache_hits_total{{{{{_VLLM_FILTER}}}}}[$interval])) "
+                    f"/ sum by(WorkerId) (rate(ray_vllm_prefix_cache_queries_total{{{{{_VLLM_FILTER}}}}}[$interval]))))"
                 ),
                 legend="Min Hit Rate",
             ),
         ],
-        fill=1, linewidth=1, stack=False,
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(12, 35, 12, 8),
     ),
 ]
@@ -320,8 +360,12 @@ _cache_panels = [
 # Row 4: Request Length
 # ===================================================================
 _request_length_panels = [
-    *_length_panels("ray_vllm_request_prompt_tokens", "Prompt Length", (19, 20, 21), 44),
-    *_length_panels("ray_vllm_request_generation_tokens", "Generation Length", (22, 23, 24), 52),
+    *_length_panels(
+        "ray_vllm_request_prompt_tokens", "Prompt Length", (19, 20, 21), 44
+    ),
+    *_length_panels(
+        "ray_vllm_request_generation_tokens", "Generation Length", (22, 23, 24), 52
+    ),
 ]
 
 # ===================================================================
@@ -333,8 +377,15 @@ _scheduler_panels = [
         title="Scheduler: Running",
         description="",
         unit="short",
-        targets=[Target(expr=_gauge_with_join("ray_vllm_num_requests_running"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_gauge_with_join("ray_vllm_num_requests_running"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(0, 61, 8, 8),
     ),
     Panel(
@@ -342,8 +393,15 @@ _scheduler_panels = [
         title="Scheduler: Swapped",
         description="",
         unit="short",
-        targets=[Target(expr=_gauge_with_join("ray_vllm_num_requests_swapped"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_gauge_with_join("ray_vllm_num_requests_swapped"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(8, 61, 8, 8),
     ),
     Panel(
@@ -351,8 +409,15 @@ _scheduler_panels = [
         title="Scheduler: Waiting",
         description="",
         unit="short",
-        targets=[Target(expr=_gauge_with_join("ray_vllm_num_requests_waiting"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_gauge_with_join("ray_vllm_num_requests_waiting"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(16, 61, 8, 8),
     ),
     Panel(
@@ -363,13 +428,15 @@ _scheduler_panels = [
         targets=[
             Target(
                 expr=(
-                    f'sum by(finished_reason, WorkerId) (increase(ray_vllm_request_success_total{{{{{_VLLM_FILTER}}}}}[$interval]))'
+                    f"sum by(finished_reason, WorkerId) (increase(ray_vllm_request_success_total{{{{{_VLLM_FILTER}}}}}[$interval]))"
                     + _WORKER_JOIN
                 ),
                 legend="{{finished_reason}} \u2014 {{deployment}}: {{replica}}",
             ),
         ],
-        fill=1, linewidth=1, stack=False,
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(0, 69, 12, 8),
     ),
     Panel(
@@ -377,8 +444,15 @@ _scheduler_panels = [
         title="Queue Time",
         description="",
         unit="s",
-        targets=[Target(expr=_rate_with_join("ray_vllm_request_queue_time_seconds_sum"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join("ray_vllm_request_queue_time_seconds_sum"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(12, 69, 12, 8),
     ),
     Panel(
@@ -386,8 +460,15 @@ _scheduler_panels = [
         title="Prefill Time",
         description="",
         unit="s",
-        targets=[Target(expr=_rate_with_join("ray_vllm_request_prefill_time_seconds_sum"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join("ray_vllm_request_prefill_time_seconds_sum"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(0, 77, 12, 8),
     ),
     Panel(
@@ -395,8 +476,15 @@ _scheduler_panels = [
         title="Decode Time",
         description="",
         unit="s",
-        targets=[Target(expr=_rate_with_join("ray_vllm_request_decode_time_seconds_sum"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join("ray_vllm_request_decode_time_seconds_sum"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(12, 77, 12, 8),
     ),
 ]
@@ -420,7 +508,9 @@ _nixl_panels = [
                 legend=_DEP_REPLICA,
             ),
         ],
-        fill=1, linewidth=1, stack=False,
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(0, 86, 8, 8),
     ),
     Panel(
@@ -439,7 +529,9 @@ _nixl_panels = [
                 legend=_DEP_REPLICA,
             ),
         ],
-        fill=1, linewidth=1, stack=False,
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(8, 86, 8, 8),
     ),
     Panel(
@@ -447,8 +539,15 @@ _nixl_panels = [
         title="NIXL: Transfer Rate",
         description="Number of NIXL KV cache transfers per second.",
         unit="ops",
-        targets=[Target(expr=_rate_with_join("ray_vllm_nixl_xfer_time_seconds_count"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join("ray_vllm_nixl_xfer_time_seconds_count"),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(16, 86, 8, 8),
     ),
     Panel(
@@ -466,7 +565,9 @@ _nixl_panels = [
                 legend=_DEP_REPLICA,
             ),
         ],
-        fill=1, linewidth=1, stack=False,
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(0, 94, 8, 8),
     ),
     Panel(
@@ -474,8 +575,17 @@ _nixl_panels = [
         title="NIXL: KV Transfer Failures",
         description="Number of failed NIXL KV cache transfers.",
         unit="short",
-        targets=[Target(expr=_rate_with_join("ray_vllm_nixl_num_failed_transfers", agg_fn="increase"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join(
+                    "ray_vllm_nixl_num_failed_transfers", agg_fn="increase"
+                ),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(8, 94, 8, 8),
     ),
     Panel(
@@ -483,8 +593,17 @@ _nixl_panels = [
         title="NIXL: KV Expired Requests",
         description="Number of requests whose KV blocks expired before decode consumed them.",
         unit="short",
-        targets=[Target(expr=_rate_with_join("ray_vllm_nixl_num_kv_expired_reqs_total", agg_fn="increase"), legend=_DEP_REPLICA)],
-        fill=1, linewidth=1, stack=False,
+        targets=[
+            Target(
+                expr=_rate_with_join(
+                    "ray_vllm_nixl_num_kv_expired_reqs_total", agg_fn="increase"
+                ),
+                legend=_DEP_REPLICA,
+            )
+        ],
+        fill=1,
+        linewidth=1,
+        stack=False,
         grid_pos=GridPos(16, 94, 8, 8),
     ),
 ]
@@ -502,15 +621,17 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])))',
+                expr=f"(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])))",
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr=f'(sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])))',
+                expr=f"(sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])))",
                 legend="Generated: {{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 103, 12, 8),
         template=PanelTemplate.STAT,
     ),
@@ -521,15 +642,17 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])',
+                expr=f"delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])",
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr=f'delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])',
+                expr=f"delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1h])",
                 legend="Generated: {{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(12, 103, 12, 8),
         template=PanelTemplate.STAT,
     ),
@@ -540,11 +663,13 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])) / sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])) / sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d]))",
                 legend="{{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 111, 12, 8),
         template=PanelTemplate.STAT,
     ),
@@ -555,11 +680,13 @@ _token_distribution_panels = [
         unit="Requests",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1d]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1d]))",
                 legend="{{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(12, 111, 12, 8),
         template=PanelTemplate.PIE_CHART,
     ),
@@ -570,11 +697,13 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'max_over_time(sum by (model_name) (rate(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[2m]))[24h:1m])',
+                expr=f"max_over_time(sum by (model_name) (rate(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[2m]))[24h:1m])",
                 legend="{{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 119, 12, 8),
         template=PanelTemplate.STAT,
     ),
@@ -585,11 +714,13 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])) + sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d])) + sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1d]))",
                 legend="{{model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(12, 119, 12, 8),
         template=PanelTemplate.STAT,
     ),
@@ -601,14 +732,16 @@ _token_distribution_panels = [
         targets=[
             Target(
                 expr=(
-                    f'(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) +\n'
-                    f'sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])))'
-                    f' / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))'
+                    f"(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) +\n"
+                    f"sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])))"
+                    f" / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))"
                 ),
                 legend="{{ model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 127, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
@@ -619,11 +752,13 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))",
                 legend="{{ model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(12, 127, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
@@ -634,15 +769,17 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w]))",
                 legend="In: {{ model_name}}",
             ),
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w]))",
                 legend="Out: {{ model_name }}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 135, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
@@ -654,14 +791,16 @@ _token_distribution_panels = [
         targets=[
             Target(
                 expr=(
-                    f'(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) '
-                    f'+ sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])))'
-                    f'/ sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))'
+                    f"(sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) "
+                    f"+ sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])))"
+                    f"/ sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))"
                 ),
                 legend="{{ model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(12, 135, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
@@ -672,15 +811,17 @@ _token_distribution_panels = [
         unit="short",
         targets=[
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))",
                 legend="In: {{ model_name}}",
             ),
             Target(
-                expr=f'sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))',
+                expr=f"sum by (model_name) (delta(ray_vllm_generation_tokens_total{{{{{_WORKERID_FILTER}}}}}[1w])) / sum by (model_name) (delta(ray_vllm_request_success_total{{{{{_WORKERID_FILTER}}}}}[1w]))",
                 legend="Out: {{ model_name}}",
             ),
         ],
-        fill=1, linewidth=2, stack=False,
+        fill=1,
+        linewidth=2,
+        stack=False,
         grid_pos=GridPos(0, 143, 12, 8),
         template=PanelTemplate.GAUGE,
     ),
@@ -696,16 +837,19 @@ _ALL_ROWS = [
     Row(title="Request Length", id=504, panels=_request_length_panels),
     Row(title="Scheduler", id=505, panels=_scheduler_panels),
     Row(title="NIXL", id=506, panels=_nixl_panels),
-    Row(title="Token Distribution", id=507, collapsed=True, panels=_token_distribution_panels),
+    Row(
+        title="Token Distribution",
+        id=507,
+        collapsed=True,
+        panels=_token_distribution_panels,
+    ),
 ]
 
 # Validate uniqueness of panel IDs across all rows
-_all_ids = sorted(
-    panel.id for row in _ALL_ROWS for panel in row.panels
-)
-assert len(_all_ids) == len(set(_all_ids)), (
-    f"Duplicated id found. Use unique id for each panel. {_all_ids}"
-)
+_all_ids = sorted(panel.id for row in _ALL_ROWS for panel in row.panels)
+assert len(_all_ids) == len(
+    set(_all_ids)
+), f"Duplicated id found. Use unique id for each panel. {_all_ids}"
 
 serve_llm_dashboard_config = DashboardConfig(
     name="SERVE_LLM",
