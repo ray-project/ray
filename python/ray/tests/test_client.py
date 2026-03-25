@@ -1073,8 +1073,8 @@ def test_ray_client_uv_hook_error_handling():
         side_effect=RuntimeError("mock error"),
     ):
         original = {"env_vars": {"TEST": "value"}}
-        result = _apply_uv_hook_for_client(original)
-        assert result == original
+        with pytest.raises(RuntimeError, match="RAY_ENABLE_UV_RUN_RUNTIME_ENV=0"):
+            _apply_uv_hook_for_client(original)
 
 
 def test_ray_client_uv_hook_feature_flag_disabled():

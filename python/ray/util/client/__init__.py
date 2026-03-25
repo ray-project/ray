@@ -72,45 +72,38 @@ def _apply_uv_hook_for_client(
         - Issue: https://github.com/ray-project/ray/issues/57991
         - UV docs: https://docs.astral.sh/uv/
     """
+    if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
+        return runtime_env
+
+    # If user provided py_executable, skip UV hook entirely to avoid side effects
+    # (e.g., auto-setting working_dir which triggers unwanted directory upload)
+    if runtime_env and "py_executable" in runtime_env:
+        logger.debug(
+            "User-provided py_executable found, skipping UV hook to avoid "
+            "unintended runtime_env modifications"
+        )
+        return runtime_env
+
+    # Import hook here (not at module level) to:
+    # 1. Avoid circular import issues with ray._private modules
+    # 2. Only load UV hook code when feature flag is enabled
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
     try:
-        if not ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV:
-            return runtime_env
-
-        # If user provided py_executable, skip UV hook entirely to avoid side effects
-        # (e.g., auto-setting working_dir which triggers unwanted directory upload)
-        if runtime_env and "py_executable" in runtime_env:
-            logger.debug(
-                "User-provided py_executable found, skipping UV hook to avoid "
-                "unintended runtime_env modifications"
-            )
-            return runtime_env
-
-        # Import hook here (not at module level) to:
-        # 1. Avoid circular import issues with ray._private modules
-        # 2. Only load UV hook code when feature flag is enabled
-        from ray._private.runtime_env.uv_runtime_env_hook import hook
-
         result = hook(runtime_env)
-        if "py_executable" in result:
-            # UV environment was detected and applied by the hook
-            logger.debug(
-                f"UV environment detected for Ray Client: "
-                f"py_executable={result['py_executable']}"
-            )
-            return result
-    except (ImportError, KeyError, ValueError, OSError) as e:
-        # Expected errors: module not available, internal hook errors, file system issues
-        # Log and proceed without UV propagation
-        logger.warning(
-            f"Failed to apply UV runtime env hook for Ray Client: {e}. "
-            "UV environment will not be propagated to workers."
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to apply UV runtime env hook for Ray Client: {e} "
+            "If you want the driver to use UV without propagating to workers, "
+            "set RAY_ENABLE_UV_RUN_RUNTIME_ENV=0."
+        ) from e
+    if "py_executable" in result:
+        # UV environment was detected and applied by the hook
+        logger.debug(
+            f"UV environment detected for Ray Client: "
+            f"py_executable={result['py_executable']}"
         )
-    except Exception:
-        # Unexpected errors - log with full traceback but don't fail connection
-        logger.exception(
-            "Unexpected error in UV runtime env hook for Ray Client. "
-            "UV environment will not be propagated to workers."
-        )
+        return result
 
     return runtime_env
 
