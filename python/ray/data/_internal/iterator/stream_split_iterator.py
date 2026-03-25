@@ -145,14 +145,25 @@ class SplitCoordinator:
     This actor runs a streaming executor locally on its main thread. Clients can
     retrieve results via actor calls running on other threads.
 
-    Epoch lifecycle:
-        - Consumers call signal_epoch_done() to indicate they are ready for the
-          next epoch. This blocks (via Condition.wait) until all consumers have
-          signaled, at which point the executor is started and all waiters are
-          released.
-        - Consumers then call get() to pull blocks. When a consumer receives all
-          its data (StopIteration), get() returns None.
-        - The consumer's next call to signal_epoch_done() starts the cycle again.
+    Epoch lifecycle (each split consumer; ``StreamSplitDataIterator`` issues these
+    RPCs)::
+
+        signal_epoch_done(split_idx)
+                 |
+                 |  wait under Condition until all ``num_splits`` consumers
+                 |  have signaled; then start executor + output iterator
+                 v
+        +------------------------+
+        | get(split_idx, bytes)  |----+
+        |   -> RefBundle         |    | repeat until stream exhausted
+        +------------------------+    |
+                 |                    |
+                 v                    |
+        +------------------------+    |
+        | get(...) -> None       |<---+
+        +------------------------+
+                 |
+                 +---- next pass: signal_epoch_done again
     """
 
     def __init__(
@@ -358,9 +369,12 @@ class SplitCoordinator:
         finally:
             with self._cond:
                 self._active_consumers.discard(output_split_idx)
+                # Clear prefetched bytes on any exit (StopIteration or other
+                # exceptions) to avoid stale backpressure data.
                 if not returned_normally:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
+                # Track overhead time in the instance variable
                 self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
