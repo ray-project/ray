@@ -262,23 +262,21 @@ class SplitCoordinator:
             else:
                 # Wait for all other consumers to arrive.
                 target_epoch = self._cur_epoch + 1
-                start_time = time.time()
                 while self._cur_epoch < target_epoch:
                     # Use a timeout so we can log a warning for blocked clients.
-                    self._cond.wait(timeout=BLOCKED_CLIENT_WARN_TIMEOUT)
-                    if self._cur_epoch < target_epoch:
-                        elapsed = time.time() - start_time
-                        if elapsed >= BLOCKED_CLIENT_WARN_TIMEOUT:
-                            if log_once(
-                                f"stream_split_blocked_{split_idx}_{target_epoch}"
-                            ):
-                                logger.warning(
-                                    f"StreamSplitDataIterator(split={split_idx}) "
-                                    f"blocked waiting on other clients for more "
-                                    f"than {elapsed:.0f}s. All clients must read "
-                                    "from the DataIterator splits at the same "
-                                    "time."
-                                )
+                    # wait() returns False iff the timeout elapsed (no notify).
+                    timed_out = not self._cond.wait(timeout=BLOCKED_CLIENT_WARN_TIMEOUT)
+                    if (
+                        self._cur_epoch < target_epoch
+                        and timed_out
+                        and log_once(f"stream_split_blocked_{split_idx}_{target_epoch}")
+                    ):
+                        logger.warning(
+                            f"StreamSplitDataIterator(split={split_idx}) "
+                            f"blocked waiting on other clients for at least "
+                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
+                            "read from the DataIterator splits at the same time."
+                        )
 
         if self._gen_epoch_error is not None:
             # If there was an error when advancing to the next epoch,
@@ -287,12 +285,15 @@ class SplitCoordinator:
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
-        if self._current_executor:
-            stats = self._current_executor.get_stats()
+        with self._cond:
+            executor = self._current_executor
+            coordinator_overhead_s = self._coordinator_overhead_s
+        if executor:
+            stats = executor.get_stats()
         else:
             stats = self._base_dataset._plan.stats()
 
-        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+        stats.streaming_split_coordinator_s.add(coordinator_overhead_s)
         return stats
 
     def get(
@@ -313,23 +314,19 @@ class SplitCoordinator:
             The next RefBundle for this split, or None if the epoch is done.
         """
         start_time = time.perf_counter()
-
-        with self._cond:
-            # Reject concurrent readers on the same split.
-            if output_split_idx in self._active_consumers:
-                raise ValueError(
-                    f"Concurrent read on split {output_split_idx} detected. "
-                    "Each split must have exactly one reader at a time."
-                )
-            self._active_consumers.add(output_split_idx)
-
-        if self._gen_epoch_error is not None:
-            with self._cond:
-                self._active_consumers.discard(output_split_idx)
-            raise self._gen_epoch_error
-
         returned_normally = False
         try:
+            with self._cond:
+                # Reject concurrent readers on the same split.
+                if output_split_idx in self._active_consumers:
+                    raise ValueError(
+                        f"Concurrent read on split {output_split_idx} detected. "
+                        "Each split must have exactly one reader at a time."
+                    )
+                self._active_consumers.add(output_split_idx)
+
+            if self._gen_epoch_error is not None:
+                raise self._gen_epoch_error
             # Check for cached leftover blocks from a previous get().
             with self._cond:
                 next_bundle = self._next_bundle.get(output_split_idx)
