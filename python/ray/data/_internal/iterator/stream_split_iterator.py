@@ -234,7 +234,7 @@ class SplitCoordinator:
             #       those callbacks to be silently missed.
             # TODO: Fix this by having Planner.plan() return callbacks explicitly
             self._output_iterator = execute_to_legacy_bundle_iterator(
-                self._current_executor, plan, self._base_dataset.context
+                self._current_executor, plan
             )
         except Exception as e:
             self._gen_epoch_error = e
