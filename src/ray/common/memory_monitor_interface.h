@@ -52,8 +52,7 @@ using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
  *
  * \param system_memory snapshot of system memory information.
  */
-using KillWorkersCallback =
-    std::function<void(const SystemMemorySnapshot &system_memory)>;
+using KillWorkersCallback = std::function<void(SystemMemorySnapshot system_memory)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node

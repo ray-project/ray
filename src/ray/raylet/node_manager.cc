@@ -3032,9 +3032,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](const SystemMemorySnapshot &system_memory_snapshot) {
+  return [this](SystemMemorySnapshot system_memory_snapshot) {
     io_service_.post(
-        [this, system_memory = system_memory_snapshot]() {
+        [this, system_memory = std::move(system_memory_snapshot)]() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =

@@ -110,12 +110,10 @@ PressureMemoryMonitor::PressureMemoryMonitor(std::string cgroup_path,
 
 PressureMemoryMonitor::~PressureMemoryMonitor() {
   uint64_t val = 1;
-  ssize_t written_bytes = write(shutdown_event_fd_, &val, sizeof(val));
-  RAY_CHECK(written_bytes == sizeof(val)) << absl::StrFormat(
-      "PressureMemoryMonitor could not be successfully cleaned up due to "
-      "Failure to signal shutdown to monitoring thread via eventfd, errno: %d, error: %s",
-      errno,
-      strerror(errno));
+  if (write(shutdown_event_fd_, &val, sizeof(val)) != sizeof(val)) {
+    RAY_LOG(ERROR) << absl::StrFormat(
+        "Failed to signal shutdown to pressure monitoring thread, errno: %d", errno);
+  }
 
   if (pressure_monitoring_thread_.joinable()) {
     pressure_monitoring_thread_.join();
