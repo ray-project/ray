@@ -32,7 +32,7 @@ click-repl==0.3.0
 cloudpickle==2.2.0
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1770031329518/work/conda-src
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1772191252352/work/conda-src
 conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1770137318695/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1729004031731/work
@@ -129,7 +129,7 @@ python-dateutil==2.8.2
 python-dotenv==1.2.1
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-2.54.0-cp310-cp310-manylinux2014_x86_64.whl#sha256=5cd272c09ea098a9b893d0433f760a2473e2191d7bcab9a2328f17e2e392f0a6
+ray @ file:///home/ray/ray-2.54.1-cp310-cp310-manylinux2014_x86_64.whl#sha256=1653c8abc91c17cd7ce13abc574eb9bcbfb919fd42b0608eb37dade0744c3a74
 referencing==0.36.2
 requests==2.32.5
 rich==13.7.1
