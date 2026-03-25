@@ -781,10 +781,7 @@ class FaultInjectableIncrementBatch:
             )
         )
         if action["raise_transient"]:
-            raise TransientBenchmarkError(
-                f"Injected transient error in actor {self.actor_index} "
-                f"at local call {self.local_call_count}"
-            )
+            os._exit(1)
         return increment_batch(batch, self.map_batches_sleep_ms)
 
 
