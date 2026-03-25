@@ -438,6 +438,8 @@ CoreWorker::CoreWorker(
               pool_id, work_item_id, task_id, actor_id, status, error_info);
         }
       });
+  actor_task_submitter_->SetPoolTaskSubmittedCallback(
+      [this](const ActorID &actor_id) { actor_pool_manager_->OnTaskSubmitted(actor_id); });
 
   // Wire actor state notifications from GCS to ActorPoolManager.
   // When a pool actor restarts (ALIVE), this triggers DrainWorkQueue to
@@ -878,12 +880,17 @@ void CoreWorker::InternalHeartbeat() {
             continue;
           }
           // Redirect the task to the selected actor.
+          const ObjectID old_dummy_obj_id = spec.ActorCreationDummyObjectId();
           auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
           mutable_actor_spec->set_actor_id(new_actor_id.Binary());
           const TaskID creation_task_id = TaskID::ForActorCreationTask(new_actor_id);
           const ObjectID dummy_obj_id =
               ObjectID::FromIndex(creation_task_id, /*index=*/1);
           mutable_actor_spec->set_actor_creation_dummy_object_id(dummy_obj_id.Binary());
+          if (!task_manager_->MovePoolTaskActorDependency(
+                  spec.TaskId(), old_dummy_obj_id, dummy_obj_id)) {
+            continue;
+          }
         }
       }
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());

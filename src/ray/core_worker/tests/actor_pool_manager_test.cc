@@ -836,6 +836,27 @@ TEST_F(ActorPoolManagerTest, GetNumActiveActors) {
   EXPECT_EQ(pool_manager_->GetNumActiveActors(ActorPoolID::FromRandom()), 0);
 }
 
+TEST_F(ActorPoolManagerTest, OnTaskSubmittedTracksPerActorInflight) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor1), 0);
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor2), 0);
+
+  pool_manager_->OnTaskSubmitted(actor1);
+  pool_manager_->OnTaskSubmitted(actor1);
+  pool_manager_->OnTaskSubmitted(actor2);
+
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor1), 2);
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor2), 1);
+  EXPECT_EQ(pool_manager_->GetNumActiveActors(pool_id), 2);
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 3);
+}
+
 // =========================================================================
 // Actor Death/Restart Recovery Tests
 // =========================================================================
@@ -960,6 +981,22 @@ TEST_F(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive) {
   // SelectActorForTask should skip actor1
   auto selected = pool_manager_->SelectActorForTask(pool_id);
   EXPECT_EQ(selected, actor2);
+}
+
+TEST_F(ActorPoolManagerTest, OnActorDeadClearsInflightCount) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->OnTaskSubmitted(actor1);
+  pool_manager_->OnTaskSubmitted(actor1);
+
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor1), 2);
+
+  pool_manager_->OnActorDead(actor1);
+
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor1), 0);
+  EXPECT_EQ(pool_manager_->GetNumActiveActors(pool_id), 0);
 }
 
 // Test: OnActorDead for non-pool actor is safe

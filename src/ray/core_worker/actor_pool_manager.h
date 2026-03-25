@@ -261,6 +261,14 @@ class ActorPoolManager {
   /// \return Number of actors currently processing tasks.
   int32_t GetNumActiveActors(const ActorPoolID &pool_id) const;
 
+  /// Returns the number of tasks currently in flight for a specific actor.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \param actor_id The ID of the actor.
+  /// \return Number of tasks currently in flight for the actor.
+  int32_t GetActorTasksInFlight(const ActorPoolID &pool_id,
+                                const ActorID &actor_id) const;
+
   /// Select an actor from the pool for task execution or reconstruction.
   /// Thread-safe wrapper around SelectActorFromPool.
   ///
@@ -286,6 +294,11 @@ class ActorPoolManager {
                           const ActorID &actor_id,
                           const Status &status,
                           const rpc::RayErrorInfo *error_info);
+
+  /// Notify that a task was pushed to an actor in a pool.
+  ///
+  /// \param actor_id The actor that received the task.
+  void OnTaskSubmitted(const ActorID &actor_id);
 
   /// Notify that an actor has come alive (e.g. after restart).
   /// Called from ActorManager::HandleActorStateNotification when state = ALIVE.

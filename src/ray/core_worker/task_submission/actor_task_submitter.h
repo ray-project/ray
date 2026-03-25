@@ -55,6 +55,11 @@ using PoolTaskCompletionCallback =
                        const Status &status,
                        const rpc::RayErrorInfo *error_info)>;
 
+/// Callback type for notifying ActorPoolManager when a pool task is actually
+/// pushed to an actor. This keeps per-actor in-flight accounting aligned with
+/// the submitter path, including redirected retries.
+using PoolTaskSubmittedCallback = std::function<void(const ActorID &actor_id)>;
+
 // Interface for testing.
 class ActorTaskSubmitterInterface {
  public:
@@ -209,6 +214,12 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] callback The callback to invoke when a pool task completes.
   void SetPoolTaskCompletionCallback(PoolTaskCompletionCallback callback) {
     pool_task_completion_callback_ = std::move(callback);
+  }
+
+  /// Set the callback for pool task submission notifications.
+  /// This is used to notify ActorPoolManager when a task is actually pushed to an actor in a pool.
+  void SetPoolTaskSubmittedCallback(PoolTaskSubmittedCallback callback) {
+    pool_task_submitted_callback_ = std::move(callback);
   }
 
   /// Get the given actor id's address.
@@ -488,6 +499,11 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// Set once during CoreWorker construction via SetPoolTaskCompletionCallback()
   /// before any concurrent access; immutable thereafter.
   PoolTaskCompletionCallback pool_task_completion_callback_;
+
+  /// Callback for notifying ActorPoolManager when a pool task is submitted to
+  /// a specific actor. Set once during CoreWorker construction via
+  /// SetPoolTaskSubmittedCallback() before any concurrent access.
+  PoolTaskSubmittedCallback pool_task_submitted_callback_;
 };
 
 }  // namespace core
