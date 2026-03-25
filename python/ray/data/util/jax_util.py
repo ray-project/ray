@@ -119,7 +119,7 @@ def jax_sync_generator(
     batch_iterable: Iterable[Any],
     drop_last: bool,
     named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
-    synchronize_batches: bool = True,
+    synchronize_batches: bool = False,
     synchronize_lookahead: int = 10,
 ) -> Iterator[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
     """A generator that synchronizes and shards batches across JAX workers.
@@ -194,7 +194,7 @@ def jax_sync_generator(
 
             if local_batch_size > min_batch_size:
                 logger.info(
-                    f"Dropping last {local_batch_size - min_batch_size} samples "
+                    f"Dropping last {local_batch_size - min_batch_size} samples on process {jax.process_index()}"
                     f"from the batch to be evenly divisible by the number of local JAX devices."
                 )
                 if isinstance(batch, dict):

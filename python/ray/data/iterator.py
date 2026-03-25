@@ -627,7 +627,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        synchronize_batches: bool = True,
+        synchronize_batches: bool = False,
     ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
         """Return a batched iterable of JAX Arrays over the dataset.
 
@@ -652,6 +652,8 @@ class DataIterator(abc.ABC):
             synchronize_batches: Whether to synchronize batch shapes across all hosts.
                 Setting this to False can improve performance if you guarantee that all
                 hosts produce identical batch shapes and counts beforehand.
+                Setting this to True can help catch bugs where different hosts
+                produce different batch shapes.
 
         Returns:
             An iterable over JAX Array batches.
