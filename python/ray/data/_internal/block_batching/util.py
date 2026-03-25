@@ -200,12 +200,12 @@ def _format_batch(
             batch_format
         )
         if ensure_copy:
-            formatted_data = _make_batch_writable(formatted_data)
+            formatted_data = _copy_batch(formatted_data)
     return dataclasses.replace(batch, data=formatted_data)
 
 
-def _make_batch_writable(batch: "DataBatch") -> "DataBatch":
-    """Return a writeable batch.
+def _copy_batch(batch: "DataBatch") -> "DataBatch":
+    """Return a copy of a batch, making it writable.
 
     ``pa.Array.to_numpy()`` returns read-only arrays by default, so when
     a caller passes ``ensure_copy=True`` (i.e. ``zero_copy_batch=False``) and the
@@ -216,15 +216,12 @@ def _make_batch_writable(batch: "DataBatch") -> "DataBatch":
 
     if isinstance(batch, dict):
         # Return a dictionary with the same keys (column names) and values (column numpy arrays),
-        # with the values copied if they are read only (based on the flags.writeable attribute)
+        # with the values copied
         return {
-            k: v.copy() if (isinstance(v, np.ndarray) and not v.flags.writeable) else v
-            for k, v in batch.items()
+            k: v.copy() if isinstance(v, np.ndarray) else v for k, v in batch.items()
         }
-    elif isinstance(batch, np.ndarray) and not batch.flags.writeable:
+    elif isinstance(batch, np.ndarray):
         return batch.copy()
-    # pandas DataFrames already have writable numpy arrays via to_pandas()
-    # by default, Arrow tables are immutable by design
     return batch
 
 
