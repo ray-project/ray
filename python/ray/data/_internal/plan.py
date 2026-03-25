@@ -11,7 +11,6 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
-from ray.data._internal.logical.operators import Read
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
@@ -102,7 +101,7 @@ class ExecutionPlan:
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
 
-        convert_fns = [lambda x: x] + get_plan_conversion_fns()
+        convert_fns = [lambda x: x] + list(get_plan_conversion_fns())
         titles: List[str] = [
             "Logical Plan",
             "Logical Plan (Optimized)",
@@ -118,6 +117,12 @@ class ExecutionPlan:
 
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
+            # TODO: This loop mixes two kinds of functions: optimizers (return a Plan) and
+            # the planner (returns a (PhysicalPlan, callbacks) tuple). The isinstance check
+            # below is a workaround for that mismatch. Fix this by pulling the planner step
+            # out of the loop so each function has a uniform return type.
+            if isinstance(plan, tuple):
+                plan = plan[0]
 
             # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
@@ -355,7 +360,7 @@ class ExecutionPlan:
         """Get the estimated number of blocks from the logical plan
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""
-        return self._logical_plan.dag.estimated_num_outputs()
+        return self._logical_plan.initial_num_blocks()
 
     def schema(
         self, fetch_if_missing: bool = False
@@ -395,13 +400,6 @@ class ExecutionPlan:
         if schema is not None:
             self._cache.set_schema(self._logical_plan.dag, schema)
         return schema
-
-    def input_files(self) -> Optional[List[str]]:
-        """Get the input files of the dataset, if available."""
-        input_files = self._logical_plan.dag.infer_metadata().input_files
-        if input_files is None:
-            return None
-        return list(set(input_files))
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -444,7 +442,7 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -522,7 +520,6 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
-                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()
@@ -591,7 +588,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return all(isinstance(op, Read) for op in self._logical_plan.sources())
+        return self._logical_plan.has_lazy_input()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
@@ -601,9 +598,4 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators import Zip
-
-        for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, Zip):
-                return True
-        return False
+        return self._logical_plan.require_preserve_order()

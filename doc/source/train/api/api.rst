@@ -181,6 +181,7 @@ Ray Train Output
     :toctree: doc/
 
     ~train.ReportedCheckpoint
+    ~train.ReportedCheckpointStatus
     ~train.Result
 
 Ray Train Errors
