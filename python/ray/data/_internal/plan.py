@@ -1,7 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
 import pyarrow
 
