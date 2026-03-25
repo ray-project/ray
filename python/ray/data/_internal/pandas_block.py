@@ -61,7 +61,7 @@ def lazy_import_pandas():
     return _pandas
 
 
-def _safe_from_pandas(df: "pandas.DataFrame") -> "pyarrow.Table":
+def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
     """Convert a pandas DataFrame to an Arrow table, handling object-dtype columns.
 
     ``pa.Table.from_pandas`` infers Arrow types for object-dtype columns by inspecting
@@ -518,9 +518,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
-        # _safe_from_pandas handles object-dtype columns that pa.Table.from_pandas
+        # _from_pandas_safe handles object-dtype columns that pa.Table.from_pandas
         # cannot convert (e.g. multi-dimensional numpy arrays, PIL images), because Arrow cannot handle them natively.
-        arrow_table = _safe_from_pandas(self._table)
+        arrow_table = _from_pandas_safe(self._table)
 
         # NOTE: Pandas by default coerces all-null column types (including None,
         #       NaN, etc) into "double" type by default, which is incorrect in a
