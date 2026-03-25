@@ -36,6 +36,20 @@ logger = get_logger(__name__)
 EXECUTOR_BACKEND_RAY = "ray"
 EXECUTOR_BACKEND_MP = "mp"
 
+# Set of GPU string values from Ray's known accelerators.
+GPU_ACCELERATOR_VALUES = {
+    member.value
+    for name, member in AcceleratorType.__members__.items()
+    if name.startswith(("NVIDIA", "AMD", "INTEL", "METAX"))
+}
+
+# Set of TPU string values from Ray's known accelerators.
+TPU_ACCELERATOR_VALUES = {
+    member.value
+    for name, member in AcceleratorType.__members__.items()
+    if name.startswith("GOOGLE_TPU")
+}
+
 
 class BundleConfig(BaseModelExtended):
     """Configuration for placement group bundle.
@@ -241,7 +255,7 @@ class VLLMEngineConfig(BaseModelExtended):
     frontend_kwargs: Dict[str, Any] = {}
 
     _tpu_slice_pg_wrapper: Any = PrivateAttr(default=None)
-    _accelerator_backend: Any = PrivateAttr(default=None)
+    _accelerator_backend: AcceleratorBackend = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _resolve_accelerator_backend(self):
@@ -256,7 +270,7 @@ class VLLMEngineConfig(BaseModelExtended):
             if isinstance(self.use_cpu, bool) and self.use_cpu:
                 raise ValueError("Cannot specify a `topology` when `use_cpu=True`.")
 
-            if "TPU" not in str(self.accelerator_type).upper():
+            if self.accelerator_type not in TPU_ACCELERATOR_VALUES:
                 raise ValueError(
                     f"Multi-host `topology` is currently only supported for TPU deployments. "
                     f"Received accelerator_type: '{self.accelerator_type}'"
@@ -441,22 +455,7 @@ class VLLMEngineConfig(BaseModelExtended):
             # Default to GPU when no accelerator_type is specified
             return True
 
-        return self.accelerator_type in (
-            AcceleratorType.NVIDIA_TESLA_V100.value,
-            AcceleratorType.NVIDIA_TESLA_P100.value,
-            AcceleratorType.NVIDIA_TESLA_T4.value,
-            AcceleratorType.NVIDIA_TESLA_P4.value,
-            AcceleratorType.NVIDIA_TESLA_K80.value,
-            AcceleratorType.NVIDIA_TESLA_A10G.value,
-            AcceleratorType.NVIDIA_L4.value,
-            AcceleratorType.NVIDIA_L40S.value,
-            AcceleratorType.NVIDIA_A100.value,
-            AcceleratorType.NVIDIA_H100.value,
-            AcceleratorType.NVIDIA_H200.value,
-            AcceleratorType.NVIDIA_H20.value,
-            AcceleratorType.NVIDIA_A100_40G.value,
-            AcceleratorType.NVIDIA_A100_80G.value,
-        )
+        return self.accelerator_type in GPU_ACCELERATOR_VALUES
 
     @property
     def use_tpu(self) -> bool:
@@ -472,11 +471,11 @@ class VLLMEngineConfig(BaseModelExtended):
                 # If any bundle has TPU > 0, we use TPU
                 return any(bundle.get("TPU", 0) > 0 for bundle in bundles)
 
-        # Default behavior based on accelerator_type
-        if self.accelerator_type:
-            return "TPU" in str(self.accelerator_type).upper()
+        # Default to False if no accelerator is requested
+        if not self.accelerator_type:
+            return False
 
-        return False
+        return self.accelerator_type in TPU_ACCELERATOR_VALUES
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
