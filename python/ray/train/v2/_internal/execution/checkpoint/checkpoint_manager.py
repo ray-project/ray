@@ -565,7 +565,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 )
             except (asyncio.TimeoutError, TimeoutError):
                 # Return checkpoints as-is; pending ones will have PENDING_VALIDATION status
-                pass
+                logger.debug(
+                    f"Timed out while waiting for report index {current_report_index} checkpoint to become available."
+                )
 
         # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
         # instead of _TrainingResult but that is a large refactor.
