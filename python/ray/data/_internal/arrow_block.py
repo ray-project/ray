@@ -262,7 +262,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             view = transform_pyarrow.combine_chunks(view, copy)
         return view
 
-    def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
+    def random_shuffle(self, random_seed: tuple[int, ...] | None) -> "pyarrow.Table":
         return shuffle(self._table, random_seed)
 
     def schema(self) -> "pyarrow.lib.Schema":

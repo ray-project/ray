@@ -6,6 +6,7 @@ from ray.data._internal.block_batching.util import (
     collate,
     format_batches,
 )
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, DataBatch
 
@@ -21,7 +22,7 @@ def batch_blocks(
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
-    shuffle_seed: Optional[int] = None,
+    shuffle_seed: RandomSeedConfig | None = None,
     ensure_copy: bool = False,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from 1 or more blocks.

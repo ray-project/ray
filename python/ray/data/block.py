@@ -428,8 +428,16 @@ class BlockAccessor:
         """
         raise NotImplementedError()
 
-    def random_shuffle(self, random_seed: Optional[int]) -> Block:
-        """Randomly shuffle this block."""
+    def random_shuffle(self, random_seed: tuple[int, ...] | None) -> Block:
+        """Randomly shuffle this block.
+
+        Args:
+            random_seed: A tuple of integers to seed ``np.random.default_rng()``,
+                or None for non-deterministic shuffling.
+
+        Returns:
+            A new block with rows in random order.
+        """
         raise NotImplementedError
 
     def to_pandas(self) -> "pandas.DataFrame":

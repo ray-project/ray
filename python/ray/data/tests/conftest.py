@@ -66,6 +66,13 @@ def data_context_override(request):
 
 
 @pytest.fixture(scope="module")
+def ray_start_1_cpu_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=1, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
 def ray_start_2_cpus_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:

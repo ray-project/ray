@@ -2012,15 +2012,15 @@ class Dataset:
         ):
             ctx = TaskContext.get_current()
 
-            seed_result = seed_config.get_seed_tuple(data_context=data_context)
+            seed = seed_config.make_seed(data_context=data_context)
 
             if "rng" in ctx.kwargs:
                 rng = ctx.kwargs["rng"]
-            elif seed_result is None:
+            elif seed is None:
                 rng = np.random.default_rng()
                 ctx.kwargs["rng"] = rng
             else:
-                rng = np.random.default_rng(seed_result.to_rng_args(ctx.task_idx))
+                rng = np.random.default_rng(seed.spawn(ctx.task_idx).as_rng_seed())
                 ctx.kwargs["rng"] = rng
 
             mask_idx = np.where(rng.random(len(batch)) < fraction)[0]
@@ -5829,7 +5829,7 @@ class Dataset:
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
     ) -> Iterable[DataBatch]:
         """Return an iterable over batches of data.
@@ -5876,7 +5876,11 @@ class Dataset:
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`RandomSeedConfig`. If an integer is provided, it
+                defaults to the same order across iterator runs
+                (``reseed_after_execution=False``). If ``None``, the shuffle is
+                non-deterministic. See :class:`RandomSeedConfig` for details.
             _collate_fn: A custom function to collate each batch of data.
 
         Returns:
@@ -5905,7 +5909,7 @@ class Dataset:
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         pin_memory: bool = False,
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
@@ -5981,7 +5985,9 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`RandomSeedConfig`. See :meth:`Dataset.iter_batches`
+                for semantics.
             pin_memory: [Alpha] If True, copies the tensor to pinned memory. Note that
                 `pin_memory` is only supported when using `DefaultCollateFn`.
 
@@ -6128,7 +6134,7 @@ class Dataset:
         ] = None,  # noqa: F821
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
     ) -> Iterable[TensorFlowTensorBatchType]:
         """Return an iterable over batches of data represented as TensorFlow tensors.
 
@@ -6183,7 +6189,9 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer are drained.
                 ``batch_size`` must also be specified when using local shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`RandomSeedConfig`. See :meth:`Dataset.iter_batches`
+                for semantics.
 
         Returns:
             An iterable over TensorFlow Tensor batches.
@@ -6218,7 +6226,7 @@ class Dataset:
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
-        local_shuffle_seed: Optional[int] = None,
+        local_shuffle_seed: int | RandomSeedConfig | None = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
@@ -6317,7 +6325,9 @@ class Dataset:
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
-            local_shuffle_seed: The seed to use for the local random shuffle.
+            local_shuffle_seed: An optional random seed for the local shuffle. Can be
+                an integer or a :class:`RandomSeedConfig`. See :meth:`Dataset.iter_batches`
+                for semantics.
             feature_type_spec: The `tf.TypeSpec` of `feature_columns`. If there is
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
                 specify a ``dict`` that maps column names to their `tf.TypeSpec`.
