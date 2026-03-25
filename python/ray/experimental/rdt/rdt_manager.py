@@ -34,9 +34,8 @@ class ObjectStoreFetchRequest(FetchRequest):
         tensors: Unused. Tensors are returned directly by ray.get.
     """
 
-    obj_id: str
-    object_ref: ObjectRef
-    tensors = None
+    object_ref: Optional[ObjectRef] = None
+    tensors: Optional[List[Any]] = None
 
 
 if TYPE_CHECKING:
