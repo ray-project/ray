@@ -217,7 +217,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   }
 
   /// Set the callback for pool task submission notifications.
-  /// This is used to notify ActorPoolManager when a task is actually pushed to an actor in a pool.
+  /// This is used to notify ActorPoolManager when a task is actually pushed to an actor
+  /// in a pool.
   void SetPoolTaskSubmittedCallback(PoolTaskSubmittedCallback callback) {
     pool_task_submitted_callback_ = std::move(callback);
   }
