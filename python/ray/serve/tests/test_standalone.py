@@ -21,6 +21,7 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
@@ -28,6 +29,7 @@ from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
+    DeploymentActorConfig,
     DeploymentMode,
     GangSchedulingConfig,
     HTTPOptions,
@@ -1025,10 +1027,9 @@ def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     shutdown. The RFC specifies that shutdown() → delete() → STEP 9 cleanup
     handles this. Without explicit cleanup, actors would leak as orphans.
     """
-    from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
-    from ray.serve.config import DeploymentActorConfig
 
-    ray.init(num_cpus=4, namespace="default_test_namespace")
+    ray_context = ray.init(num_cpus=4, namespace="default_test_namespace")
+    address = ray_context.address_info["address"]
     serve.start()
 
     @ray.remote
@@ -1056,7 +1057,7 @@ def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     serve.run(MyDeployment.bind())
 
     def _check_deployment_actor_count(expected: int):
-        actors = list_actors(filters=[("state", "=", "ALIVE")])
+        actors = list_actors(address=address, filters=[("state", "=", "ALIVE")])
         names = [
             a["name"]
             for a in actors

@@ -271,6 +271,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
+    data = glob(["test_config_files/**/*"]),
     env = {
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
         "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
