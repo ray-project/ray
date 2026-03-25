@@ -77,6 +77,7 @@ logger = logging.getLogger(__name__)
 
 
 MIN_PYARROW_TO_BATCHES_READAHEAD = parse_version("10.0.0")
+_MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS = parse_version("22.0.0")
 
 
 # The `num_cpus` for each metadata prefetching task.
@@ -1270,13 +1271,11 @@ def _infer_schema(
     #       type promotion across fragments (GH-46629).
     pa_version = get_pyarrow_version()
 
-    if pa_version >= parse_version("22.0.0"):
+    if pa_version >= _MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS:
         inspect_kwargs = {
             "fragments": inspect_num_fragments,
             "promote_options": "permissive",
         }
-    elif pa_version >= parse_version("21.0.0"):
-        inspect_kwargs = {"fragments": inspect_num_fragments}
     else:
         inspect_kwargs = {}
 
@@ -1288,7 +1287,7 @@ def _infer_schema(
     #
     # In that case we manually collect physical schemas from all fragments and
     # call ``pa.unify_schemas`` to correctly promote the types.
-    if pa_version < parse_version("22.0.0") and any(
+    if pa_version < _MIN_PYARROW_VERSION_FS_FACTORY_INSPECT_PROMOTE_OPTIONS and any(
         field.type == pa.null() for field in schema
     ):
         dataset = factory.finish(schema)
