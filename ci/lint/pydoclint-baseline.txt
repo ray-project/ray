@@ -1079,10 +1079,6 @@ python/ray/data/_internal/execution/streaming_executor_state.py
     DOC101: Method `OpState.get_output_blocking`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `OpState.get_output_blocking`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [output_split_idx: Optional[int]].
 --------------------
-python/ray/data/_internal/iterator/stream_split_iterator.py
-    DOC101: Method `SplitCoordinator.start_epoch`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `SplitCoordinator.start_epoch`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [split_idx: int].
---------------------
 python/ray/data/_internal/logging.py
     DOC201: Function `register_dataset_logger` does not have a return section in docstring
     DOC201: Function `unregister_dataset_logger` does not have a return section in docstring
