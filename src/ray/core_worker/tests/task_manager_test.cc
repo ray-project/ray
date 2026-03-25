@@ -892,6 +892,86 @@ TEST_F(TaskManagerLineageTest, TestPoolTaskLineagePinned) {
   ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
 }
 
+TEST_F(TaskManagerLineageTest, TestPoolTaskRetargetMovesActorDependency) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "pool_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil(),
+      "");
+  builder.SetActorTaskSpec(actor_id,
+                           actor_creation_dummy_object_id,
+                           /*max_retries=*/0,
+                           false,
+                           "",
+                           0,
+                           std::nullopt);
+  TaskSpecification spec = std::move(builder).ConsumeAndBuild();
+
+  ActorPoolID pool_id = ActorPoolID::FromRandom();
+  spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
+  spec.GetMutableMessage().set_actor_pool_work_item_id(
+      TaskID::FromRandom(JobID::Nil()).Binary());
+
+  manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
+  ASSERT_TRUE(reference_counter_->HasReference(actor_creation_dummy_object_id));
+
+  const ActorID new_actor_id = ActorID::FromHex("c1738a0df4ce02420592ca6801000000");
+  const ObjectID new_actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(new_actor_id), /*index=*/1);
+
+  auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+  mutable_actor_spec->set_actor_id(new_actor_id.Binary());
+  mutable_actor_spec->set_actor_creation_dummy_object_id(
+      new_actor_creation_dummy_object_id.Binary());
+  ASSERT_TRUE(manager_.MovePoolTaskActorDependency(
+      spec.TaskId(),
+      actor_creation_dummy_object_id,
+      new_actor_creation_dummy_object_id));
+  ASSERT_EQ(spec.ActorId(), new_actor_id);
+  ASSERT_EQ(spec.ActorCreationDummyObjectId(), new_actor_creation_dummy_object_id);
+  ASSERT_FALSE(reference_counter_->HasReference(actor_creation_dummy_object_id));
+  ASSERT_TRUE(reference_counter_->HasReference(new_actor_creation_dummy_object_id));
+
+  auto counts = reference_counter_->GetAllReferenceCounts();
+  ASSERT_EQ(counts[new_actor_creation_dummy_object_id].second, 1);
+
+  auto return_id = spec.ReturnId(0);
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  ASSERT_TRUE(reference_counter_->HasReference(new_actor_creation_dummy_object_id));
+
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(reference_counter_->HasReference(new_actor_creation_dummy_object_id));
+}
+
 // Non-pool actor tasks with max_retries=0 should NOT have lineage pinned.
 TEST_F(TaskManagerLineageTest, TestNonPoolTaskNotPinned) {
   rpc::Address caller_address;

@@ -148,6 +148,9 @@ cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" no
         c_bool HasPool(const CActorPoolID &pool_id) const
         int64_t GetOccupiedTaskSlots(const CActorPoolID &pool_id) const
         int32_t GetNumActiveActors(const CActorPoolID &pool_id) const
+        int32_t GetActorTasksInFlight(
+            const CActorPoolID &pool_id,
+            const CActorID &actor_id) const
 
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:

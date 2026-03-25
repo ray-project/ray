@@ -290,6 +290,23 @@ int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
   return active;
 }
 
+int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
+                                                const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return 0;
+  }
+
+  auto state_it = pool_it->second.actor_states.find(actor_id);
+  if (state_it == pool_it->second.actor_states.end()) {
+    return 0;
+  }
+
+  return state_it->second.num_tasks_in_flight;
+}
+
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
                                              const std::vector<ObjectID> &arg_ids) {
   absl::MutexLock lock(&mu_);
@@ -330,6 +347,27 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
   }
 }
 
+void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = actor_to_pool_.find(actor_id);
+  if (pool_it == actor_to_pool_.end()) {
+    return;
+  }
+
+  auto info_it = pools_.find(pool_it->second);
+  if (info_it == pools_.end()) {
+    return;
+  }
+
+  auto state_it = info_it->second.actor_states.find(actor_id);
+  if (state_it == info_it->second.actor_states.end()) {
+    return;
+  }
+
+  state_it->second.num_tasks_in_flight++;
+}
+
 void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_id) {
   absl::MutexLock lock(&mu_);
 
@@ -353,11 +391,9 @@ void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_
   auto &actor_state = state_it->second;
   actor_state.is_alive = true;
   actor_state.consecutive_failures = 0;
-  // Reset in-flight count. Cross-actor retry redirects tasks to other actors
-  // via InternalHeartbeat, bypassing SubmitToActor (so num_tasks_in_flight is
-  // not incremented on the target). The guarded decrement in OnTaskSucceeded
-  // (num_tasks_in_flight > 0) prevents underflow. Minor load-balancing
-  // imprecision only, not a correctness issue.
+  // Tasks previously assigned to an older incarnation of this actor will
+  // either fail and retry elsewhere or have already completed, so any stale
+  // in-flight count for the previous incarnation is cleared here.
   actor_state.num_tasks_in_flight = 0;
   if (!node_id.IsNil()) {
     actor_state.location = node_id;
@@ -389,6 +425,7 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
   }
 
   state_it->second.is_alive = false;
+  state_it->second.num_tasks_in_flight = 0;
 
   RAY_LOG(INFO) << "Actor " << actor_id << " in pool " << pool_id
                 << " marked dead/restarting";
@@ -505,8 +542,6 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   auto &pool_info = pool_it->second;
 
-  auto &actor_state = pool_info.actor_states[actor_id];
-  actor_state.num_tasks_in_flight++;
   pool_info.total_tasks_submitted++;
 
   TaskID work_item_id = work_item.work_item_id;
@@ -517,6 +552,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
+    pool_info.actor_states[actor_id].num_tasks_in_flight++;
     work_items_[work_item_id] = std::move(work_item);
     return {};
   }

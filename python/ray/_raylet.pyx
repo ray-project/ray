@@ -5027,6 +5027,19 @@ cdef class CoreWorker:
 
         return result
 
+    def get_actor_tasks_in_flight(self, ActorPoolID pool_id, ActorID actor_id):
+        """Get number of tasks in flight for a specific actor in a pool."""
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            CActorID c_actor_id = actor_id.native()
+            int32_t result
+
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).GetActorTasksInFlight(c_pool_id, c_actor_id)
+
+        return result
+
     def submit_task_to_pool(
             self,
             ActorPoolID pool_id,

@@ -541,6 +541,34 @@ bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   return it->second.IsWaitingForExecution();
 }
 
+bool TaskManager::MovePoolTaskActorDependency(
+    const TaskID &task_id,
+    const ObjectID &old_actor_creation_dummy_id,
+    const ObjectID &new_actor_creation_dummy_id) {
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end() || !it->second.IsPending()) {
+      return false;
+    }
+    RAY_CHECK(it->second.spec_.IsActorTask());
+    RAY_CHECK(it->second.spec_.IsPoolTask());
+  }
+
+  if (old_actor_creation_dummy_id == new_actor_creation_dummy_id) {
+    return true;
+  }
+
+  std::vector<ObjectID> deleted;
+  reference_counter_.UpdateSubmittedTaskReferences(
+      /*return_ids=*/{},
+      /*argument_ids_to_add=*/{new_actor_creation_dummy_id},
+      /*argument_ids_to_remove=*/{old_actor_creation_dummy_id},
+      &deleted);
+  in_memory_store_.Delete(deleted);
+  return true;
+}
+
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
@@ -992,7 +1020,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec_;
-
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.

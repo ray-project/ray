@@ -41,7 +41,6 @@ _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 class _ActorState:
     """Per-actor state for Ray Data compatibility."""
 
-    num_tasks_in_flight: int
     actor_location: str
     is_restarting: bool
 
@@ -217,6 +216,11 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         capacity = self._max_tasks_in_flight * self.num_running_actors()
         return max(0, capacity - occupied)
 
+    def _get_actor_tasks_in_flight(self, actor: ActorHandle) -> int:
+        return self._get_worker().core_worker.get_actor_tasks_in_flight(
+            self._pool.pool_id, actor._actor_id
+        )
+
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         """Apply scaling request."""
         if not self._can_apply(req):
@@ -312,7 +316,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         actor_location = ray.get(ready[0])
 
         self._running_actors[actor] = _ActorState(
-            num_tasks_in_flight=0,
             actor_location=actor_location,
             is_restarting=False,
         )
@@ -424,7 +427,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 "Python num_free_task_slots() and C++ max_tasks_in_flight_per_actor."
             )
 
-        # C++ tracks in-flight counts authoritatively via SubmitToActor().
+        # C++ tracks in-flight counts authoritatively via ActorTaskSubmitter.
         # No Python-side increment needed.
 
         if actual_num_returns == STREAMING_GENERATOR_RETURN:
@@ -439,34 +442,24 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         return True
 
     # =========================================================================
-    # Task Tracking (Python-side for Ray Data compatibility)
+    # Task Tracking (compatibility hooks)
     # =========================================================================
 
     def on_task_submitted(self, actor: ActorHandle):
-        """Called when a task is submitted to an actor (legacy direct-submission path).
+        """Called when a task is submitted to an actor.
 
-        For pool-submitted tasks, C++ tracks counts authoritatively.
-        This method only updates the per-actor Python state for the legacy path.
+        Core actor-pool accounting is maintained in C++; this hook is retained
+        only to satisfy the AutoscalingActorPool interface.
         """
-        if actor not in self._running_actors:
-            return
-        state = self._running_actors[actor]
-        state.num_tasks_in_flight += 1
+        pass
 
     def on_task_completed(self, actor: Optional[ActorHandle] = None):
         """Called when a task completes.
 
-        Args:
-            actor: The actor that ran the task. None for pool-submitted tasks
-                   where C++ selected the actor.
+        Core actor-pool accounting is maintained in C++; this hook is retained
+        only to satisfy the AutoscalingActorPool interface.
         """
-        # For pool-submitted tasks (actor=None), C++ handles decrement
-        # via OnTaskSucceeded(). Only update per-actor Python state for
-        # the legacy direct-submission path.
-        if actor is not None and actor in self._running_actors:
-            state = self._running_actors[actor]
-            if state.num_tasks_in_flight > 0:
-                state.num_tasks_in_flight -= 1
+        pass
 
     def select_actors(
         self,
@@ -543,8 +536,8 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def _try_remove_idle_actor(self) -> bool:
         """Try to remove an idle running actor."""
-        for actor, state in list(self._running_actors.items()):
-            if state.num_tasks_in_flight == 0:
+        for actor in list(self._running_actors):
+            if self._get_actor_tasks_in_flight(actor) == 0:
                 self._release_running_actor(actor)
                 return True
         return False

@@ -29,6 +29,14 @@ namespace core {
 
 namespace {
 
+void MaybeNotifyPoolTaskSubmitted(const PoolTaskSubmittedCallback &callback,
+                                  const TaskSpecification &task_spec) {
+  if (!callback || !task_spec.IsPoolTask()) {
+    return;
+  }
+  callback(task_spec.ActorId());
+}
+
 // Helper to notify ActorPoolManager when a pool task completes.
 void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
                                  const TaskSpecification &task_spec,
@@ -651,6 +659,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   const TaskAttempt task_attempt = std::make_pair(task_id, task_spec.AttemptNumber());
   queue.inflight_task_callbacks_.emplace(task_attempt, std::move(reply_callback));
+  MaybeNotifyPoolTaskSubmitted(pool_task_submitted_callback_, task_spec);
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
       [this, task_attempt, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> push_task_reply_callback;
