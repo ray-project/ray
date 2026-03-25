@@ -2,6 +2,7 @@ import abc
 import functools
 import json
 import logging
+import os
 import sys
 import threading
 import warnings
@@ -63,9 +64,9 @@ class _SerializationFormat(Enum):
 
 # Set the default serialization format for Arrow extension types.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.JSON  # legacy
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
-    else _SerializationFormat.CLOUDPICKLE  # default
+    _SerializationFormat.CLOUDPICKLE
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_CLOUDPICKLE_FORMAT", 0) == 1
+    else _SerializationFormat.JSON  # default (safe)
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
@@ -124,19 +125,27 @@ def _extension_array_concat_supported() -> bool:
     return get_pyarrow_version() >= MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED
 
 
+_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
+    os.environ.get("RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", "0") == "1"
+)
+
+
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
-    """Deserialize data with cloudpickle first, fallback to JSON."""
+    """Deserialize extension type metadata, using JSON only by default.
+
+    cloudpickle deserialization is gated behind an opt-in env var because
+    it allows arbitrary code execution from untrusted Parquet files.
+    """
     try:
-        # Try cloudpickle first (new format)
-        return cloudpickle.loads(serialized)
-    except Exception:
-        # Fallback to JSON format (legacy)
-        try:
-            return json.loads(serialized)
-        except json.JSONDecodeError:
-            raise ValueError(
-                f"Unable to deserialize {field_name} from {type(serialized)}"
-            )
+        return json.loads(serialized)
+    except (json.JSONDecodeError, ValueError):
+        if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
+            return cloudpickle.loads(serialized)
+        raise ValueError(
+            f"Unable to deserialize {field_name}. If this file was written by "
+            f"Ray 2.49-2.50, set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1 "
+            f"(trusted sources only)."
+        )
 
 
 @DeveloperAPI(stability="beta")
