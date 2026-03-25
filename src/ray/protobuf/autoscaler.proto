@@ -91,7 +91,7 @@ message LocalityConstraint {
 message LocalityRequirement {
   // The locality constraint to apply
   LocalityConstraint locality_constraint = 1;
-  // Optional label selectors to filter down the pool of target nodes
+  // Optional label selector to filter down the pool of target nodes
   LabelSelector label_selector = 2;
 }
 
