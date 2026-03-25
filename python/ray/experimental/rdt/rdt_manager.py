@@ -859,9 +859,21 @@ class RDTManager:
                         owner_address="",
                         call_site="",
                     )
-            result[object_id] = self._wait_fetch(
-                object_id, fetch_request, timeout=remaining
-            )
+            try:
+                result[object_id] = self._wait_fetch(
+                    object_id, fetch_request, timeout=remaining
+                )
+            except (TimeoutError, GetTimeoutError):
+                if user_timeout_is_smaller:
+                    raise GetTimeoutError(
+                        f"ray.get timed out after {timeout}s."
+                    )
+                else:
+                    raise ObjectFetchTimedOutError(
+                        object_ref_hex=object_id,
+                        owner_address="",
+                        call_site="",
+                    )
         return result
 
     def queue_or_free_object_primary_copy(self, object_id: str):
