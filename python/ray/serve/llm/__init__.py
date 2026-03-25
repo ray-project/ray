@@ -369,7 +369,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     return build_pd_openai_app(pd_serving_args=pd_serving_args)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def build_dp_deployment(
     llm_config: "LLMConfig",
     *,
@@ -398,7 +398,7 @@ def build_dp_deployment(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def build_dp_openai_app(dp_serving_args: dict) -> "Application":
     """Build an OpenAI compatible app with the DP attention deployment
     setup from the given builder configuration.
