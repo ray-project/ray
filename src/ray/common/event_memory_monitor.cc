@@ -199,6 +199,12 @@ void EventMemoryMonitor::MonitoringThreadMain() {
         kill_workers_callback_(
             MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_));
       }
+    } else {
+      RAY_LOG(ERROR) << absl::StrFormat(
+          "Got unexpected revent while monitoring memory events, event: 0x%x. "
+          "Event monitoring thread is stoppping.",
+          fds[0].revents);
+      return;
     }
   }
 }
