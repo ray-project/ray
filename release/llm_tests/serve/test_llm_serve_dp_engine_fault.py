@@ -52,13 +52,21 @@ def get_num_running_replicas(deployment_name: str) -> int:
 
 
 def find_vllm_worker_actors():
-    """Find all alive RayWorkerWrapper actors created by vLLM's ray distributed executor backend."""
+    """Find all alive vLLM worker actors created by the ray distributed executor backend."""
     actors = list_actors(
         filters=[
-            ("class_name", "=", "RayWorkerWrapper"),
+            ("class_name", "=", "RayWorkerProc"),
             ("state", "=", "ALIVE"),
         ]
     )
+    if not actors:
+        # Fallback to legacy executor class name
+        actors = list_actors(
+            filters=[
+                ("class_name", "=", "RayWorkerWrapper"),
+                ("state", "=", "ALIVE"),
+            ]
+        )
     return actors
 
 
@@ -119,6 +127,7 @@ def test_llm_serve_dp_engine_fault():
         runtime_env={
             "env_vars": {
                 "VLLM_DISABLE_COMPILE_CACHE": "1",
+                "VLLM_USE_RAY_V2_EXECUTOR_BACKEND": "1",
                 # Shorter compiled graph timeout so the dead worker is detected quickly.
                 "RAY_CGRAPH_get_timeout": "30",
             },

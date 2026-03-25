@@ -109,6 +109,13 @@ def test_llm_serve_multi_node(tp_size, pp_size):
         # TP=2 cases — explicit placement_group_config with 2 bundles for TP=2
         (2, 2, None, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
         (2, 2, 2, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
+        # TP=4 case
+        (
+            4,
+            2,
+            1,
+            {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]},
+        ),
     ],
 )
 def test_llm_serve_data_parallelism(
@@ -135,7 +142,12 @@ def test_llm_serve_data_parallelism(
             enforce_eager=True,
         ),
         placement_group_config=placement_group_config,
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+        runtime_env={
+            "env_vars": {
+                "VLLM_DISABLE_COMPILE_CACHE": "1",
+                "VLLM_USE_RAY_V2_EXECUTOR_BACKEND": "1",
+            }
+        },
     )
 
     app = build_dp_deployment(llm_config)
