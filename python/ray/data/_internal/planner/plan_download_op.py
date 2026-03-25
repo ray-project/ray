@@ -364,6 +364,93 @@ async def _fetch_whole(
     return None
 
 
+async def _fetch_chunk(
+    uri: str,
+    store: Any,
+    path: str,
+    start: int,
+    end: int,
+    result: bytearray,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    """Download a single byte range and write it into *result* in place."""
+    import obstore as obs
+
+    async with semaphore:
+        chunk = await obs.get_range_async(store, path, start=start, end=end)
+        expected = end - start
+        if len(chunk) != expected:
+            raise IOError(
+                f"Range request for {uri!r} returned {len(chunk)} "
+                f"bytes, expected {expected}"
+            )
+        result[start:end] = chunk
+
+
+async def _fetch_ranged(
+    uri: str,
+    size: int,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: asyncio.Semaphore,
+    range_chunk_size: int,
+) -> Optional[bytes]:
+    """Download a single large file using parallel range requests.
+
+    Falls back to a simple GET if any range chunk fails, so the
+    pipeline never loses a file due to a transient range error.
+    """
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        result = bytearray(size)
+
+        ranges = [
+            (chunk_start, min(chunk_start + range_chunk_size, size))
+            for chunk_start in range(0, size, range_chunk_size)
+        ]
+        tasks = [
+            asyncio.ensure_future(
+                _fetch_chunk(uri, store, path, s, e, result, semaphore)
+            )
+            for s, e in ranges
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except Exception:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        return bytes(result)
+    except Exception as e:
+        logger.debug(
+            "Ranged download failed for %r, falling back to simple GET: %s", uri, e
+        )
+        return await _fetch_whole(uri, registry, uri_column_name, semaphore)
+
+
+async def _resolve_size(
+    uri: str,
+    registry: StoreRegistry,
+    semaphore: Optional[asyncio.Semaphore] = None,
+) -> int:
+    """Return the file size in bytes via a HEAD request, or 0 on failure."""
+    import obstore as obs
+
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        if semaphore is not None:
+            async with semaphore:
+                meta = await obs.head_async(store, path)
+        else:
+            meta = await obs.head_async(store, path)
+        return meta["size"] if isinstance(meta, dict) else meta.size
+    except Exception:
+        return 0
+
+
 async def _download_uris_with_obstore(
     uris: List[str],
     uri_column_name: str,
@@ -396,8 +483,6 @@ async def _download_uris_with_obstore(
         Downloaded bytes in the same order as *uris*.  ``None`` entries
         indicate failed downloads.
     """
-    import obstore as obs
-
     fs_kwargs = _extract_credentials_from_filesystem(filesystem)
 
     range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
@@ -427,49 +512,6 @@ async def _download_uris_with_obstore(
 
     registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
-    async def _download_one_ranged(uri: str, size: int) -> Optional[bytes]:
-        """Download a single large file using parallel range requests.
-
-        Falls back to a simple GET if any range chunk fails, so the
-        pipeline never loses a file due to a transient range error.
-        """
-        try:
-            store_url, path = _split_uri(uri)
-            store = registry.get(store_url)
-            result = bytearray(size)
-
-            async def _fetch_range(start: int, end: int) -> None:
-                async with sem:
-                    chunk = await obs.get_range_async(store, path, start=start, end=end)
-                    expected = end - start
-                    if len(chunk) != expected:
-                        raise IOError(
-                            f"Range request for '{uri}' returned {len(chunk)} "
-                            f"bytes, expected {expected}"
-                        )
-                    result[start:end] = chunk
-
-            ranges = [
-                (start, min(start + range_chunk_size, size))
-                for start in range(0, size, range_chunk_size)
-            ]
-            tasks = [asyncio.ensure_future(_fetch_range(s, e)) for s, e in ranges]
-            try:
-                await asyncio.gather(*tasks)
-            except Exception:
-                for t in tasks:
-                    t.cancel()
-                # Let cancelled tasks finish so semaphore permits are released.
-                await asyncio.gather(*tasks, return_exceptions=True)
-                raise
-            return bytes(result)
-        except Exception as e:
-            logger.debug(
-                f"Ranged download failed for '{uri}', falling back to "
-                f"simple GET: {e}"
-            )
-            return await _fetch_whole(uri, registry, uri_column_name, sem)
-
     if range_threshold <= 0:
         tasks = [_fetch_whole(uri, registry, uri_column_name, sem) for uri in uris]
         return list(await asyncio.gather(*tasks))
@@ -482,26 +524,20 @@ async def _download_uris_with_obstore(
     # from correctly routing large files to ranged download.
     unknown_indices = [i for i, s in enumerate(sizes) if not s or s <= 0]
     if unknown_indices:
-
-        async def _head(idx: int):
-            try:
-                store_url, path = _split_uri(uris[idx])
-                store = registry.get(store_url)
-                if sem is not None:
-                    async with sem:
-                        meta = await obs.head_async(store, path)
-                else:
-                    meta = await obs.head_async(store, path)
-                sizes[idx] = meta["size"] if isinstance(meta, dict) else meta.size
-            except Exception:
-                sizes[idx] = 0
-
-        await asyncio.gather(*[_head(i) for i in unknown_indices])
+        resolved = await asyncio.gather(
+            *[_resolve_size(uris[i], registry, sem) for i in unknown_indices]
+        )
+        for i, sz in zip(unknown_indices, resolved):
+            sizes[i] = sz
 
     tasks = []
     for uri, size in zip(uris, sizes):
         if size and size > range_threshold:
-            tasks.append(_download_one_ranged(uri, size))
+            tasks.append(
+                _fetch_ranged(
+                    uri, size, registry, uri_column_name, sem, range_chunk_size
+                )
+            )
         else:
             tasks.append(_fetch_whole(uri, registry, uri_column_name, sem))
     return list(await asyncio.gather(*tasks))
