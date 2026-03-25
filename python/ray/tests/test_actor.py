@@ -922,6 +922,53 @@ def test_options_name(ray_start_regular_shared):
     ray.get(f.method.options(name="bar").remote("bar"))
 
 
+def test_options_no_actor_handle_ref_cycle(ray_start_regular_shared):
+    """ActorMethod.options() must not create a reference cycle.
+
+    The old implementation defined FuncWrapper inside the options() closure,
+    capturing ``self`` (the ActorMethod) via ``func_cls = self``.  CPython's
+    implicit ``__class__`` cell in a nested class definition also kept the
+    closure alive.  Together they formed a cycle:
+
+        FuncWrapper  →  closure cell  →  ActorMethod  →  ActorHandle
+
+    This cycle prevented the reference-count from dropping to zero, so the
+    ActorHandle was only freed after a full cyclic-GC pass instead of
+    immediately when the last user reference was dropped.
+
+    Regression test for https://github.com/ray-project/ray/issues/61922.
+    """
+    import gc
+    import weakref
+
+    @ray.remote
+    class MyActor:
+        def task(self, x):
+            return x
+
+    # Disable the cyclic GC so that only reference-counting drives collection.
+    gc.disable()
+    try:
+        actor = MyActor.remote()
+        weak = weakref.ref(actor)
+
+        # Call via .options().remote() — this is what triggered the cycle.
+        ref = actor.task.options(num_returns=1).remote(42)
+        assert ray.get(ref) == 42
+
+        # Drop the strong references.  With the fix the handle should be freed
+        # immediately by reference counting (no gc.collect() needed).
+        del ref
+        del actor
+
+        assert weak() is None, (
+            "ActorHandle still alive after del — reference cycle was not broken. "
+            "See https://github.com/ray-project/ray/issues/61922"
+        )
+    finally:
+        gc.enable()
+
+
 def test_define_actor(ray_start_regular_shared):
     @ray.remote
     class Test:
