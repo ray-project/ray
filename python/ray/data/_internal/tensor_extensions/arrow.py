@@ -63,7 +63,7 @@ class _SerializationFormat(Enum):
 
 # Set the default serialization format for Arrow extension types.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.JSON  # legacy
+    _SerializationFormat.JSON  # default
     if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 1) == 1
     else _SerializationFormat.CLOUDPICKLE
 )
@@ -422,7 +422,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -504,7 +504,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this
@@ -1325,8 +1325,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 dtype.byteorder == "=" and sys.byteorder == "big"
             ):
                 raise ValueError(
-                    "Only little-endian string tensors are supported, "
-                    f"but got: {dtype}"
+                    f"Only little-endian string tensors are supported, but got: {dtype}"
                 )
             pa_value_type = pa.binary(dtype.itemsize)
 
