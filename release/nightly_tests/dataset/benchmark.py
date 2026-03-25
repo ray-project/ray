@@ -6,12 +6,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, Union
 
 import ray
-from ray.data.dataset import Dataset
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-
-
-import pyarrow as pa
-import pandas as pd
 
 
 def _get_spilled_bytes_total() -> float:
@@ -64,95 +59,6 @@ class Benchmark:
 
     def __init__(self):
         self.result = {}
-
-    def run_materialize_ds(
-        self,
-        name: str,
-        fn: Callable[..., Dataset],
-        *fn_args,
-        **fn_kwargs,
-    ):
-        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
-        return the Dataset which is to be materialized. Runtime and throughput
-        are automatically calculated and reported."""
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        start_spilled_bytes = _get_spilled_bytes_total()
-        output_ds = fn(*fn_args, **fn_kwargs)
-        output_ds.materialize()
-        duration = time.perf_counter() - start_time
-        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
-
-        # TODO(chengsu): Record more metrics based on dataset stats.
-        num_rows = output_ds.count()
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: num_rows,
-            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
-                spilled_bytes_total
-            ),
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
-    def run_iterate_ds(
-        self,
-        name: str,
-        dataset: Any,
-    ):
-        """Run a benchmark iterating over a dataset. Runtime and throughput
-        are automatically calculated and reported. Supported dataset types are:
-        - Ray Dataset (`ray.data.Dataset`)
-        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
-            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
-        - Torch DataLoader (`torch.utils.data.DataLoader`)
-        - TensorFlow Dataset (`tf.data.Dataset`)
-        """
-        # Import TF/Torch within this method, as not all benchmarks
-        # will use/install these libraries.
-        import tensorflow as tf
-        import torch
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        start_spilled_bytes = _get_spilled_bytes_total()
-        record_count = 0
-        ds_iterator = iter(dataset)
-        for batch in ds_iterator:
-            # Unwrap list to get the underlying batch format.
-            if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                batch = batch[0]
-
-            # Get the batch size for various batch formats.
-            if isinstance(batch, dict):
-                feature_lengths = {k: len(batch[k]) for k in batch}
-                batch_size = max(feature_lengths.values())
-            elif isinstance(batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(batch)
-            elif isinstance(batch, torch.Tensor):
-                batch_size = batch.size(dim=0)
-            elif isinstance(batch, tf.Tensor):
-                batch_size = batch.shape.as_list()[0]
-            else:
-                raise TypeError(f"Unexpected batch type: {type(batch)}")
-            record_count += batch_size
-
-        duration = time.perf_counter() - start_time
-        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: record_count,
-            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
-                spilled_bytes_total
-            ),
-        }
-        print(f"Result of case {name}: {self.result[name]}")
 
     def run_fn(
         self,
