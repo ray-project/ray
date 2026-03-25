@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
-from ray.data._internal.logical.operators import Read, StreamingSplit
+from ray.data._internal.logical.operators import StreamingSplit
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import (
     LogicalOptimizer,
@@ -375,7 +375,8 @@ class ExecutionPlan:
 
         def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
             dag = plan._logical_plan.dag
-            # Unwrap `StreamingSplit` if any
+            # Unwrap `StreamingSplit` if any, as `StreamingSplit` must be a
+            # terminal operator (ie can't be wrapped into other ops)
             if isinstance(dag, StreamingSplit):
                 dag = dag.input_dependencies[0]
 
