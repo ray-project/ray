@@ -46,6 +46,9 @@ transformers = try_import("transformers")
 
 
 AcceleratorType = Enum("AcceleratorType", vars(accelerators))
+# TODO(ryanaoleary@): Remove this alias once all downstream files are migrated
+# to use AcceleratorType.
+GPUType = AcceleratorType
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
