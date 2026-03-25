@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 from typing import Type
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -24,11 +24,13 @@ from ray._private.client_mode_hook import (
     disable_client_hook,
     enable_client_mode,
 )
+from ray.job_config import JobConfig
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
     run_wrapped_actor_creation,
 )
 from ray.tests.conftest import call_ray_start_context
+from ray.util.client import _apply_uv_hook_for_client
 from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE, ClientObjectRef
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server,
@@ -1019,9 +1021,6 @@ def test_ray_client_uv_hook_detection(
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
@@ -1047,9 +1046,6 @@ def test_ray_client_uv_hook_none_runtime_env():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
@@ -1060,13 +1056,10 @@ def test_ray_client_uv_hook_none_runtime_env():
 
 
 def test_ray_client_uv_hook_error_handling():
-    """Test that hook failures don't crash - returns original runtime_env.
+    """Test that hook failures propagate as exceptions.
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook.hook",
@@ -1082,9 +1075,6 @@ def test_ray_client_uv_hook_feature_flag_disabled():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch("ray._private.ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV", False):
         original = {"env_vars": {"TEST": "value"}}
@@ -1106,9 +1096,6 @@ def test_ray_client_uv_respects_user_py_executable(user_py_executable):
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
@@ -1140,9 +1127,6 @@ def test_ray_client_uv_hook_with_existing_runtime_env():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
@@ -1170,11 +1154,6 @@ def test_ray_client_uv_hook_with_job_config_runtime_env():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.job_config import JobConfig
-    from ray.util.client import _apply_uv_hook_for_client
-
     # Create a JobConfig with runtime_env
     job_config = JobConfig(runtime_env={"env_vars": {"TEST_VAR": "test_value"}})
 
@@ -1217,9 +1196,6 @@ def test_ray_client_uv_hook_with_remote_working_dir(working_dir_uri):
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
@@ -1242,11 +1218,6 @@ def test_ray_client_uv_hook_updates_job_config():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.job_config import JobConfig
-    from ray.util.client import _apply_uv_hook_for_client
-
     job_config = JobConfig(runtime_env={"env_vars": {"TEST_VAR": "test_value"}})
 
     with patch(
@@ -1287,9 +1258,6 @@ def test_ray_client_uv_hook_skipped_with_user_py_executable():
 
     Related to: https://github.com/ray-project/ray/issues/57991
     """
-    from unittest.mock import patch
-
-    from ray.util.client import _apply_uv_hook_for_client
 
     with patch(
         "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline"
