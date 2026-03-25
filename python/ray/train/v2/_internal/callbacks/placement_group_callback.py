@@ -94,7 +94,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
         )
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         self._stop_cleaner()
 
     def _stop_cleaner(self):
