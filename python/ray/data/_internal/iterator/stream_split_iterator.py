@@ -4,6 +4,7 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
+from ray.data import Schema
 from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     RefBundle,
@@ -49,18 +50,20 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(base_dataset, n, locality_hints)
 
+        context = base_dataset.context
+
         return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+            StreamSplitDataIterator(context, coord_actor, i, n) for i in range(n)
         ]
 
     def __init__(
         self,
-        base_dataset: "Dataset",
+        context: "DataContext",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
     ):
-        self._base_dataset = base_dataset
+        self._context = context
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
@@ -116,12 +119,12 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> Schema:
         """Implements DataIterator."""
-        return self._base_dataset.schema()
+        return ray.get(self._coord_actor.get_schema.remote())
 
     def get_context(self) -> DataContext:
-        return self._base_dataset.context
+        return self._context
 
     def world_size(self) -> int:
         """Returns the number of splits total."""
@@ -231,6 +234,9 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = self._n
         self._next_bundle.clear()
         self._gen_epoch_error = None
+
+    def get_schema(self) -> Schema:
+        return self._base_dataset.schema()
 
     def get_dataset_id(self) -> str:
         return self._base_dataset.get_dataset_id()
