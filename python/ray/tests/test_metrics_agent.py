@@ -812,6 +812,7 @@ def test_histogram(_setup_cluster_for_test):
         prom_addresses,
         autoscaler_export_addr,
         dashboard_export_addr,
+        _,
     ) = _setup_cluster_for_test
     timeseries = PrometheusTimeseries()
 
@@ -1256,7 +1257,7 @@ def test_custom_metrics_validation(shutdown_only):
 @pytest.mark.parametrize("_setup_cluster_for_test", [False], indirect=True)
 def test_metrics_disablement(_setup_cluster_for_test):
     """Make sure the metrics are not exported when it is disabled."""
-    prom_addresses, _, _ = _setup_cluster_for_test
+    prom_addresses, _, _, _ = _setup_cluster_for_test
     # When metrics are disabled, prom_addresses should be empty
     assert len(prom_addresses) == 0, (
         f"Expected no prometheus addresses when metrics disabled, "
