@@ -3,9 +3,11 @@
 It should be deleted once we fully move to the new executor backend.
 """
 import logging
-from typing import Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple
 
-from ray.data._internal.execution.execution_callback import get_execution_callbacks
+if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
+
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,
@@ -16,7 +18,6 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data.context import DataContext
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -27,25 +28,22 @@ logger = logging.getLogger(__name__)
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    data_context: DataContext,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a bundle iterator.
     """
-    dag, stats = _get_execution_dag(
+    dag, stats, callbacks = _get_execution_dag(
         executor,
         plan,
         preserve_order=False,
     )
 
-    callbacks = get_execution_callbacks(data_context)
     bundle_iter = executor.execute(dag, initial_stats=stats, callbacks=callbacks)
 
     topology: "Topology" = executor._topology
@@ -100,7 +98,6 @@ def execute_to_ref_bundle(
     plan: ExecutionPlan,
     dataset_uuid: str,
     preserve_order: bool,
-    data_context: DataContext,
 ) -> RefBundle:
     """Execute a plan with the new executor and return the output as a RefBundle.
 
@@ -109,18 +106,16 @@ def execute_to_ref_bundle(
         plan: The legacy plan to execute.
         dataset_uuid: UUID of the dataset for this execution.
         preserve_order: Whether to preserve order in execution.
-        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a RefBundle.
     """
-    dag, stats = _get_execution_dag(
+    dag, stats, callbacks = _get_execution_dag(
         executor,
         plan,
         preserve_order,
     )
 
-    callbacks = get_execution_callbacks(data_context)
     bundles = executor.execute(dag, initial_stats=stats, callbacks=callbacks)
     ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
@@ -132,7 +127,7 @@ def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
     preserve_order: bool,
-) -> Tuple[PhysicalOperator, DatasetStats]:
+) -> Tuple[PhysicalOperator, DatasetStats, List["ExecutionCallback"]]:
     """Get the physical operators DAG from a plan."""
     from ray.data._internal.logical.optimizers import get_execution_plan
 
@@ -141,7 +136,8 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    dag = get_execution_plan(plan._logical_plan).dag
+    physical_plan, callbacks = get_execution_plan(plan._logical_plan)
+    dag = physical_plan.dag
     stats = _get_initial_stats_from_plan(plan)
 
     # Enforce to preserve ordering if the plan has operators
@@ -149,7 +145,7 @@ def _get_execution_dag(
     if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
-    return dag, stats
+    return dag, stats, callbacks
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:

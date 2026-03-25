@@ -1,4 +1,7 @@
-from typing import Callable, List
+from typing import TYPE_CHECKING, Callable, List, Tuple
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
 
 from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
@@ -68,7 +71,11 @@ class PhysicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_physical_ruleset()]
 
 
-def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
+def get_plan_conversion_fns() -> Tuple[
+    Callable[[Plan], Plan],
+    Callable[[LogicalPlan], Tuple[PhysicalPlan, List["ExecutionCallback"]]],
+    Callable[[Plan], Plan],
+]:
     """Get the list of transformation functions to convert a logical plan
     to an optimized physical plan.
 
@@ -82,14 +89,16 @@ def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
     """
     from ray.data._internal.planner import create_planner
 
-    return [
+    return (
         LogicalOptimizer().optimize,  # Logical optimization
         create_planner().plan,  # Planning
         PhysicalOptimizer().optimize,  # Physical optimization
-    ]
+    )
 
 
-def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
+def get_execution_plan(
+    logical_plan: LogicalPlan,
+) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
     """Get the physical execution plan for the provided logical plan.
 
     This process has 3 steps:
@@ -108,7 +117,7 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     logical_plan._dag = optimized_logical_plan.dag
 
     # 4. Logical (Optimized) -> Physical
-    physical_plan = plan(optimized_logical_plan)
+    physical_plan, callbacks = plan(optimized_logical_plan)
 
     # 5. Physical (Optimized) -> Physical
-    return optimize_physical(physical_plan)
+    return optimize_physical(physical_plan), callbacks
