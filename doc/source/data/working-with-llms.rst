@@ -402,12 +402,17 @@ Then reference the remote path in your config:
 
 C/C++ runtime dependencies incompatibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray 2.55 installs vLLM 0.18.0. Depending on the Conda environment, you may encounter incompatibilities with native runtime libraries (e.g., libstdc++, CXXABI, ICU).
-In such cases, configure ``LD_LIBRARY_PATH`` to prefer the Conda environment's libraries over system libraries.
 
-.. code-block:: shell
+.. admonition:: Known issue
 
-    export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
+   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
+
+   In such cases, configure ``LD_LIBRARY_PATH`` to prefer the conda environment's libraries over system libraries.
+
+   .. code-block:: shell
+
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 .. _resiliency:
 
