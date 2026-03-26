@@ -252,9 +252,14 @@ class ResourceManager:
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
 
+        external_consumer_usage = ExecutionResources(
+            object_store_memory=self._external_consumer_bytes
+        )
+
         available_limits = (
             self.get_global_limits()
             .subtract(completed_ops_usage)
+            .subtract(external_consumer_usage)
             .max(ExecutionResources.zero())
         )
 
