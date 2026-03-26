@@ -307,7 +307,9 @@ class Reconciler:
             )
 
         Reconciler._fill_autoscaling_state(
-            instance_manager=instance_manager, autoscaling_state=autoscaling_state
+            instance_manager=instance_manager,
+            autoscaling_state=autoscaling_state,
+            autoscaling_config=autoscaling_config,
         )
 
     #######################################################
@@ -1313,7 +1315,16 @@ class Reconciler:
     def _fill_autoscaling_state(
         instance_manager: InstanceManager,
         autoscaling_state: AutoscalingState,
+        autoscaling_config: AutoscalingConfig,
     ) -> None:
+        provider_instance_type_map: Dict[str, str] = {}
+
+        def get_provider_instance_type(instance_type: str) -> str:
+            if instance_type not in provider_instance_type_map:
+                provider_instance_type_map[
+                    instance_type
+                ] = autoscaling_config.get_provider_instance_type(instance_type)
+            return provider_instance_type_map[instance_type]
 
         # Use the IM instance version for the autoscaler_state_version
         instances, version = Reconciler._get_im_instances(instance_manager)
@@ -1351,6 +1362,7 @@ class Reconciler:
             for instance_type, count in num_instances_by_type.items():
                 autoscaling_state.pending_instance_requests.append(
                     PendingInstanceRequest(
+                        instance_type_name=get_provider_instance_type(instance_type),
                         ray_node_type_name=instance_type,
                         count=int(count),
                         request_ts=int(request_time_ns // 1e9),
@@ -1362,13 +1374,15 @@ class Reconciler:
             instances_by_status[IMInstance.ALLOCATED]
             + instances_by_status[IMInstance.RAY_INSTALLING]
         ):
-
             status_history = sorted(
                 instance.status_history, key=lambda x: x.timestamp_ns, reverse=True
             )
             autoscaling_state.pending_instances.append(
                 PendingInstance(
                     instance_id=instance.instance_id,
+                    instance_type_name=get_provider_instance_type(
+                        instance.instance_type
+                    ),
                     ray_node_type_name=instance.instance_type,
                     details=status_history[0].details,
                 )
@@ -1390,6 +1404,9 @@ class Reconciler:
             )
             autoscaling_state.failed_instance_requests.append(
                 FailedInstanceRequest(
+                    instance_type_name=get_provider_instance_type(
+                        instance.instance_type
+                    ),
                     ray_node_type_name=instance.instance_type,
                     start_ts=int(request_time // 1e9),
                     failed_ts=int(
