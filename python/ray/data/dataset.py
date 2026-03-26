@@ -1059,7 +1059,7 @@ class Dataset:
         self,
         cols: List[str],
         *,
-        compute: Optional[str] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1120,7 +1120,7 @@ class Dataset:
         self,
         cols: Union[str, List[str]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         concurrency: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1474,7 +1474,7 @@ class Dataset:
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -3584,7 +3584,7 @@ class Dataset:
         self,
         key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
-        boundaries: List[Union[int, float]] = None,
+        boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
         The `key` parameter must be specified (i.e., it cannot be `None`).
