@@ -1,9 +1,11 @@
 import logging
-from typing import Any, Callable, Dict, Iterable, Iterator, Union
+from typing import Any, Dict, Iterable, Iterator, Union
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+GLOBAL_MESH_1D_AXIS = "data"
 
 
 def _get_slice_start(sl: slice) -> int:
@@ -32,10 +34,10 @@ def _convert_ndarray_to_jax_array(
     global_devices = jax.devices()
     host_count = jax.process_count()
 
-    # 1. Physical Sharding (1D across the "data" dimension)
+    # 1. Physical Sharding (1D across the GLOBAL_MESH_1D_AXIS dimension)
     # The full global_devices list is used to create a 1D mesh across all processes.
-    physical_mesh = Mesh(np.array(global_devices), ("data",))
-    physical_sharding = NamedSharding(physical_mesh, PartitionSpec("data"))
+    physical_mesh = Mesh(np.array(global_devices), (GLOBAL_MESH_1D_AXIS,))
+    physical_sharding = NamedSharding(physical_mesh, PartitionSpec(GLOBAL_MESH_1D_AXIS))
 
     # Global shape assumes each host gets the exact same local batch size.
     global_shape = (local_batch_size * host_count,) + ndarray.shape[1:]
@@ -72,17 +74,11 @@ def _convert_ndarray_to_jax_array(
 
 def _convert_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
-    transform: Callable[
-        [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
-    ] = None,
 ) -> Any:
     """Convert a NumPy ndarray batch to a globally sharded JAX Array batch.
 
     Args:
         ndarrays: A single NumPy ndarray or dictionary of NumPy ndarrays.
-        transform: A flexible mapping function that converts the data parallel
-            JAX arrays (or dictionary of arrays) to the final format.
-            If None, the default 1D batch sharding is used.
 
     Returns:
          A globally sharded JAX Array (or dictionary of arrays) residing
@@ -100,17 +96,12 @@ def _convert_batch(
                     f"JAX Array Conversion Error for column '{col_name}': \n{e}"
                 )
 
-    if transform:
-        return transform(jax_batch)
     return jax_batch
 
 
 def jax_sync_generator(
     batch_iterable: Iterable[Any],
     drop_last: bool,
-    transform: Callable[
-        [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
-    ] = None,
     synchronize_batches: bool = False,
     synchronize_lookahead: int = 10,
 ) -> Iterator[Any]:
@@ -133,9 +124,6 @@ def jax_sync_generator(
             or a dictionary of NumPy ndarrays).
         drop_last: If True, drops mismatched or unevenly sized leftover batches. If False,
             raises a ValueError when uneven batches or uneven batch sizes are detected.
-        transform: A flexible mapping function that converts the data parallel
-            JAX arrays (or dictionary of arrays) to the final format.
-            If None, the default 1D batch sharding is used.
         synchronize_batches: Whether to synchronize batch shapes across all hosts.
             Setting this to False can improve performance if you guarantee that all
             hosts produce identical batch shapes and counts beforehand.
@@ -194,7 +182,7 @@ def jax_sync_generator(
                 else:
                     batch = batch[:min_batch_size]
 
-            yield _convert_batch(batch, transform=transform)
+            yield _convert_batch(batch)
         return
 
     # Multi-host synchronization with lookahead
@@ -298,4 +286,4 @@ def jax_sync_generator(
                 else:
                     batch = batch[:min_batch_size]
 
-            yield _convert_batch(batch, transform=transform)
+            yield _convert_batch(batch)

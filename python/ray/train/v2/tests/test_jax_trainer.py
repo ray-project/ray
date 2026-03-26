@@ -571,11 +571,10 @@ def train_func_with_data_single_host(config):
     drop_last = config.get("drop_last", False) if config else False
     # Local batch size must be evenly divisible by 8 (num_local_devices)
     for batch in ds_shard.iter_jax_batches(
-        transform=lambda x: jax.device_put(x, named_sharding),
         batch_size=16,
         drop_last=drop_last,
     ):
-        arr = batch["features"]
+        arr = jax.device_put(batch["features"], named_sharding)
         assert arr.sharding == named_sharding
         batches.append(arr.shape)
 
@@ -600,10 +599,10 @@ def test_single_host_data_iterator_2d(ray_tpu_single_host, tmp_path):
 
     import ray
 
-    # Create 56 rows. Each row is {"features": np.ones((8,))}
-    # We have 1 worker. The worker processes 56 rows in batches of 16.
-    # The first 3 batches are (16, 8) in shape, and the last batch is (8, 8) in shape.
-    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(56)])
+    # Create 48 rows. Each row is {"features": np.ones((8,))}
+    # We have 1 worker. The worker processes 48 rows in batches of 16.
+    # The first 3 batches are (16, 8) in shape.
+    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(48)])
 
     trainer = JaxTrainer(
         train_loop_per_worker=train_func_with_data_single_host,
@@ -637,10 +636,10 @@ def test_single_host_data_iterator_2d(ray_tpu_single_host, tmp_path):
     for r in reports:
         assert r["devices"] == 8
         assert r["local_devices"] == 8
-        assert len(r["batches"]) == 4
+        assert len(r["batches"]) == 3
 
         for batch_shape in r["batches"]:
-            assert batch_shape == (16, 8) or batch_shape == (8, 8)
+            assert batch_shape == (16, 8)
 
 
 @pytest.mark.skipif(

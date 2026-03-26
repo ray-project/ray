@@ -591,26 +591,6 @@ def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
         np.testing.assert_array_equal(arr, combined_iterations)
 
 
-def test_iter_jax_batches_custom_transform(ray_start_regular_shared):
-    df1 = pd.DataFrame({"ones": [1, 2, 3], "tens": [10, 20, 30]})
-    df2 = pd.DataFrame({"ones": [4, 5, 6], "tens": [40, 50, 60]})
-    df3 = pd.DataFrame({"ones": [7, 8], "tens": [70, 80]})
-    arr_sum = np.array([11, 22, 33, 44, 55, 66, 77, 88])
-    ds = ray.data.from_pandas([df1, df2, df3])
-
-    # Custom transform that returns a tuple of (array, sum)
-    def custom_transform(batch):
-        return batch["ones"] + batch["tens"]
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        iterations = []
-        for batch in ds.iter_jax_batches(batch_size=3, transform=custom_transform):
-            iterations.append(batch)
-        combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(arr_sum), np.sort(combined_iterations))
-
-
 def test_get_internal_block_refs(ray_start_regular_shared):
     blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
     assert len(blocks) == 10

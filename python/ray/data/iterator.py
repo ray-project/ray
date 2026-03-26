@@ -39,7 +39,6 @@ from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
-    import jax
     import tensorflow as tf
     import torch
 
@@ -621,9 +620,6 @@ class DataIterator(abc.ABC):
     def iter_jax_batches(
         self,
         *,
-        transform: Callable[
-            [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
-        ] = None,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         drop_last: bool = False,
@@ -641,10 +637,6 @@ class DataIterator(abc.ABC):
         tensor if the underlying dataset consists of a single unnamed column.
 
         Args:
-            transform: A flexible mapping function that converts the data parallel
-                JAX arrays (or dictionary of arrays) to the final format.
-                If None, the batches will be returned as 1D data parallel JAX
-                arrays, sharded along the "data" dimension across all JAX devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
@@ -688,7 +680,6 @@ class DataIterator(abc.ABC):
         return jax_sync_generator(
             batch_iterable,
             drop_last,
-            transform,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),
         )
