@@ -319,7 +319,6 @@ class SplitCoordinator:
         """
         start_time = time.perf_counter()
         returned_normally = False
-        added_to_active = False
         try:
             with self._cond:
                 # Reject concurrent readers on the same split.
@@ -329,7 +328,6 @@ class SplitCoordinator:
                         "Each split must have exactly one reader at a time."
                     )
                 self._active_consumers.add(output_split_idx)
-                added_to_active = True
 
             if self._gen_epoch_error is not None:
                 raise self._gen_epoch_error
@@ -371,11 +369,12 @@ class SplitCoordinator:
 
         finally:
             with self._cond:
-                if added_to_active:
+                # Only clean up if we were the legitimate reader. A rejected
+                # concurrent reader was never added to _active_consumers.
+                is_active = output_split_idx in self._active_consumers
+                if is_active:
                     self._active_consumers.discard(output_split_idx)
-                # Clear prefetched bytes on any exit (StopIteration or other
-                # exceptions) to avoid stale backpressure data.
-                if not returned_normally:
+                if is_active and not returned_normally:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
                 # Track overhead time in the instance variable
