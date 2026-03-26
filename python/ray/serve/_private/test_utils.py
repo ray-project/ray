@@ -461,6 +461,14 @@ class MockReplicaActorWrapper:
     def reconfigure_start_time(self) -> Optional[float]:
         return None
 
+    def set_pending_nonblocking_reconfigure(self, old_version=None):
+        """No-op for mock: non-blocking reconfigure tracking."""
+        pass
+
+    def check_pending_nonblocking_reconfigure(self) -> Optional[float]:
+        """No-op for mock: always returns None (no pending reconfigure)."""
+        return None
+
     @property
     def last_health_check_latency_ms(self) -> Optional[float]:
         return None
