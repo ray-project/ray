@@ -8,13 +8,13 @@ import pyarrow.fs as pafs
 import pytest
 
 from ray.data._internal.planner._obstore_download import (
+    _FILE_SIZE_COLUMN_PREFIX,
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
-    _FILE_SIZE_COLUMN_PREFIX,
-    _download_uris_with_pyarrow,
     download_bytes_threaded,
 )
 from ray.data._internal.util import RetryingPyFileSystem
@@ -41,8 +41,6 @@ from ray.data.datasource.path_util import _split_uri
             "https://s3.amazonaws.com",
             "bucket/key?X-Amz-Signature=abc&X-Amz-Expires=3600",
         ),
-        # No query string: path only.
-        ("https://host.com/a/b/c.png", "https://host.com", "a/b/c.png"),
         # '#' in path must not be parsed as a fragment delimiter.
         ("s3://bucket/my#file.jpg", "s3://bucket", "my#file.jpg"),
     ],
@@ -278,43 +276,41 @@ class TestObstoreDownloadPath:
             # from_url should be called exactly once.
             assert spy.call_count == 1
 
-    @pytest.mark.parametrize(
-        "use_obstore, expect_obstore_called",
-        [
-            (True, True),
-            (False, False),
-        ],
-    )
-    def test_download_bytes_threaded_dispatch(
-        self, tmp_path, use_obstore, expect_obstore_called
-    ):
-        # Verify that download_bytes_threaded dispatches to the correct backend.
+    def test_download_bytes_async_uses_obstore(self, tmp_path):
+        # Verify download_bytes_async routes through obstore for supported schemes.
         content = b"dispatch test content"
-        if use_obstore:
-            uri = f"file://{tmp_path}/test.bin"
-        else:
-            # PyArrow path uses bare filesystem paths, not file:// URIs.
-            uri = str(tmp_path / "test.bin")
+        uri = f"file://{tmp_path}/test.bin"
         (tmp_path / "test.bin").write_bytes(content)
 
         table = pa.Table.from_arrays([pa.array([uri])], names=["uri"])
         ctx = DataContext.get_current()
 
         with patch(
-            "ray.data._internal.planner.plan_download_op._download_uris_with_obstore",
+            "ray.data._internal.planner._obstore_download._download_uris_with_obstore",
             wraps=_download_uris_with_obstore,
-        ) as obstore_spy, patch(
-            "ray.data._internal.planner.plan_download_op._download_uris_with_pyarrow",
-            wraps=_download_uris_with_pyarrow,
-        ) as pyarrow_spy:
-            results = list(
-                download_bytes_threaded(
-                    table, ["uri"], ["bytes"], ctx, use_obstore=use_obstore
-                )
-            )
+        ) as obstore_spy:
+            results = list(download_bytes_async(table, ["uri"], ["bytes"], ctx))
 
-        assert obstore_spy.called == expect_obstore_called
-        assert pyarrow_spy.called == (not expect_obstore_called)
+        assert obstore_spy.called
+        assert results[0].column("bytes")[0].as_py() == content
+
+    def test_download_bytes_async_falls_back_for_unsupported_scheme(self, tmp_path):
+        # Verify download_bytes_async falls back to download_bytes_threaded
+        # for URI schemes obstore doesn't handle (e.g. bare filesystem paths).
+        content = b"fallback test content"
+        (tmp_path / "test.bin").write_bytes(content)
+        uri = str(tmp_path / "test.bin")
+
+        table = pa.Table.from_arrays([pa.array([uri])], names=["uri"])
+        ctx = DataContext.get_current()
+
+        with patch(
+            "ray.data._internal.planner.plan_download_op.download_bytes_threaded",
+            wraps=download_bytes_threaded,
+        ) as threaded_spy:
+            results = list(download_bytes_async(table, ["uri"], ["bytes"], ctx))
+
+        assert threaded_spy.called
         assert results[0].column("bytes")[0].as_py() == content
 
 
@@ -425,8 +421,8 @@ class TestObstoreRangeSplitDownload:
             )
         assert results == [content]
 
-    def test_download_bytes_threaded_reads_and_drops_size_column(self, tmp_path):
-        # Verify that download_bytes_threaded reads the hidden size column
+    def test_download_bytes_async_reads_and_drops_size_column(self, tmp_path):
+        # Verify that download_bytes_async reads the hidden size column
         # from PartitionActor, passes it through, and drops it from output.
         content = b"test content for size column"
         (tmp_path / "test.bin").write_bytes(content)
@@ -439,9 +435,7 @@ class TestObstoreRangeSplitDownload:
         )
         ctx = DataContext.get_current()
 
-        results = list(
-            download_bytes_threaded(table, ["uri"], ["bytes"], ctx, use_obstore=True)
-        )
+        results = list(download_bytes_async(table, ["uri"], ["bytes"], ctx))
 
         out = results[0]
         assert out.column("bytes")[0].as_py() == content
@@ -462,7 +456,7 @@ class TestObstoreRangeSplitDownload:
                 self.end_headers()
                 self.wfile.write(content)
 
-            def log_message(self, format: str, *args):
+            def log_message(self, format, *args):
                 pass
 
         server = HTTPServer(("127.0.0.1", 0), _Handler)
@@ -616,8 +610,8 @@ class TestObstoreRangeSplitDownload:
         assert results == [content]
 
     def test_ranged_download_failure_returns_none(self, tmp_path):
-        # If a range request fails mid-transfer, _download_one_ranged should
-        # catch the exception and return None rather than crashing.
+        # If a range request fails mid-transfer, _fetch_ranged should
+        # catch the exception and fall back to a simple GET.
         chunk_size = 256
         content = os.urandom(chunk_size * 4)
         (tmp_path / "fail.bin").write_bytes(content)

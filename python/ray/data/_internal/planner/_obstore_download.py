@@ -1,16 +1,29 @@
 import asyncio
 import logging
+import math
 import os
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+
+import pyarrow as pa
 import pyarrow.fs
 
 from ray.data._internal.util import RetryingPyFileSystem
+from ray.data.block import BlockAccessor
 from ray.data.datasource.path_util import _split_uri
+
+try:
+    from obstore import parse_scheme as obstore_parse_scheme
+except ImportError:
+    obstore_parse_scheme = None
 
 logger = logging.getLogger(__name__)
 
+# Constants & configuration
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
+OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE and obstore_parse_scheme is not None
 
 _DEFAULT_RANGE_THRESHOLD = str(4 * 1024 * 1024)  # 4 MB
 _DEFAULT_RANGE_CHUNK_SIZE = str(8 * 1024 * 1024)  # 8 MB
@@ -29,15 +42,52 @@ RAY_DATA_OBSTORE_MAX_CONCURRENCY = int(
     os.environ.get("RAY_DATA_OBSTORE_MAX_CONCURRENCY", "128")
 )
 
-try:
-    from obstore import parse_scheme as obstore_parse_scheme
+_FILE_SIZE_COLUMN_PREFIX = "__ray_file_size__"
 
-    OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE
-except ImportError:
-    OBSTORE_AVAILABLE = False
-    obstore_parse_scheme = None
+# Public utilities (exported to plan_download_op.py)
+_fallback_warned = False
 
 
+def _log_fallback_warning(use_obstore: bool) -> None:
+    """Log a one-time warning when falling back to the PyArrow download path."""
+    global _fallback_warned
+    if _fallback_warned or use_obstore:
+        return
+    _fallback_warned = True
+    if not RAY_DATA_USE_OBSTORE:
+        logger.info(
+            "obstore disabled via RAY_DATA_USE_OBSTORE=0 — "
+            "using the PyArrow download path."
+        )
+    else:
+        logger.warning(
+            "obstore is not installed — falling back to the "
+            "PyArrow download path, which is significantly "
+            "slower for large or numerous files. "
+            "Install it with: pip install obstore"
+        )
+
+
+def _is_obstore_supported_url(path: str) -> bool:
+    """Check if *path* is a URL that obstore can handle.
+
+    obstore supports ``s3://``, ``gs://``, ``az://``, ``file://``,
+    ``http://``, and ``https://`` schemes.  Uses obstore's native
+    ``parse_scheme`` when available.
+
+    Returns ``False`` for relative paths or unsupported schemes.
+    This function should only be called when obstore is known to be available.
+    """
+    if obstore_parse_scheme is None:
+        return False
+    try:
+        obstore_parse_scheme(path)
+        return True
+    except Exception:
+        return False
+
+
+# Credential extraction & store management
 def _extract_credentials_from_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> Dict[str, Any]:
@@ -132,149 +182,105 @@ class StoreRegistry:
         return self._cache[store_url]
 
 
-def _is_obstore_supported_url(path: str) -> bool:
-    """Check if *path* is a URL that obstore can handle.
+# Block utilities
+def _arrow_batcher(table: pa.Table, output_batch_size: int):
+    """Batch a PyArrow table into smaller tables using zero-copy slicing."""
+    num_rows = table.num_rows
+    for i in range(0, num_rows, output_batch_size):
+        end_idx = min(i + output_batch_size, num_rows)
+        yield table.slice(i, end_idx - i)
 
-    obstore supports ``s3://``, ``gs://``, ``az://``, ``file://``,
-    ``http://``, and ``https://`` schemes.  Uses obstore's native
-    ``parse_scheme`` when available.
 
-    Returns ``False`` for relative paths or unsupported schemes.
-    This function should only be called when obstore is known to be available.
+# Public entry point
+def download_bytes_async(
+    block: pa.Table,
+    uri_column_names: List[str],
+    output_bytes_column_names: List[str],
+    data_context: "DataContext",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> Iterator[pa.Table]:
+    """Download bytes for URI columns using obstore's async API.
+
+    For URI schemes not supported by obstore, falls back to the threaded
+    PyArrow download path via lazy import.
+
+    Args:
+        block: Input PyArrow table containing URI columns.
+        uri_column_names: Names of columns containing URIs to download.
+        output_bytes_column_names: Names for the output columns containing
+            downloaded bytes.
+        data_context: Ray Data context for configuration.
+        filesystem: PyArrow filesystem to use for reading remote files.
+            If None, the filesystem is auto-detected from the path scheme.
+
+    Yields:
+        pa.Table: PyArrow table with the downloaded bytes added as new columns.
     """
-    if obstore_parse_scheme is None:
-        return False
-    try:
-        obstore_parse_scheme(path)
-        return True
-    except Exception:
-        return False
+    if not isinstance(block, pa.Table):
+        block = BlockAccessor.for_block(block).to_arrow()
 
-
-async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
-    """Download a single URI as a whole-file GET and return raw bytes."""
-    import obstore as obs
-
-    store_url, path = _split_uri(uri)
-    result = await obs.get_async(registry.get(store_url), path)
-    return bytes(await result.bytes_async())
-
-
-async def _fetch_whole(
-    uri: str,
-    registry: StoreRegistry,
-    uri_column_name: str,
-    semaphore: Optional[asyncio.Semaphore] = None,
-) -> Optional[bytes]:
-    """Download a single URI, returning ``None`` on failure."""
-    try:
-        if semaphore is not None:
-            async with semaphore:
-                return await _fetch(uri, registry)
-        # No semaphore, indicate we not using range splitting.
-        # Number of concurrent connections controlled by PartitionActor.
-        return await _fetch(uri, registry)
-    except OSError as e:
-        logger.debug(
-            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
+    # Check first URI to determine if obstore supports this scheme.
+    first_uris = block.column(uri_column_names[0]).to_pylist()
+    if not first_uris or not _is_obstore_supported_url(first_uris[0]):
+        from ray.data._internal.planner.plan_download_op import (
+            download_bytes_threaded,
         )
-    except Exception as e:
-        logger.warning(
-            "Unexpected error reading uri %r for column %r: %s",
-            uri,
-            uri_column_name,
-            e,
+
+        yield from download_bytes_threaded(
+            block,
+            uri_column_names,
+            output_bytes_column_names,
+            data_context,
+            filesystem,
         )
-    return None
+        return
 
+    output_block = block
 
-async def _fetch_chunk(
-    uri: str,
-    store: Any,
-    path: str,
-    start: int,
-    end: int,
-    result: bytearray,
-    semaphore: asyncio.Semaphore,
-) -> None:
-    """Download a single byte range and write it into *result* in place."""
-    import obstore as obs
+    for uri_column_name, output_bytes_column_name in zip(
+        uri_column_names, output_bytes_column_names
+    ):
+        uris = output_block.column(uri_column_name).to_pylist()
 
-    async with semaphore:
-        chunk = await obs.get_range_async(store, path, start=start, end=end)
-        expected = end - start
-        if len(chunk) != expected:
-            raise IOError(
-                f"Range request for {uri!r} returned {len(chunk)} "
-                f"bytes, expected {expected}"
+        if not uris:
+            continue
+
+        # Read pre-computed file sizes from the PartitionActor if available.
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+        file_sizes = None
+        if size_col in output_block.column_names:
+            file_sizes = output_block.column(size_col).to_pylist()
+
+        uri_bytes = asyncio.run(
+            _download_uris_with_obstore(
+                uris, uri_column_name, filesystem=filesystem, file_sizes=file_sizes
             )
-        result[start:end] = chunk
-
-
-async def _fetch_ranged(
-    uri: str,
-    size: int,
-    registry: StoreRegistry,
-    uri_column_name: str,
-    semaphore: asyncio.Semaphore,
-    range_chunk_size: int,
-) -> Optional[bytes]:
-    """Download a single large file using parallel range requests.
-
-    Falls back to a simple GET if any range chunk fails, so the
-    pipeline never loses a file due to a transient range error.
-    """
-    try:
-        store_url, path = _split_uri(uri)
-        store = registry.get(store_url)
-        result = bytearray(size)
-
-        ranges = [
-            (chunk_start, min(chunk_start + range_chunk_size, size))
-            for chunk_start in range(0, size, range_chunk_size)
-        ]
-        tasks = [
-            asyncio.ensure_future(
-                _fetch_chunk(uri, store, path, s, e, result, semaphore)
-            )
-            for s, e in ranges
-        ]
-        try:
-            await asyncio.gather(*tasks)
-        except Exception:
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
-        return bytes(result)
-    except Exception as e:
-        logger.debug(
-            "Ranged download failed for %r, falling back to simple GET: %s", uri, e
         )
-        return await _fetch_whole(uri, registry, uri_column_name, semaphore)
+
+        output_block = output_block.append_column(
+            output_bytes_column_name, pa.array(uri_bytes)
+        )
+
+    # Drop internal file-size columns before yielding output.
+    size_cols = [
+        f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+        for name in uri_column_names
+        if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in output_block.column_names
+    ]
+    if size_cols:
+        output_block = output_block.drop(size_cols)
+
+    output_block_size = output_block.nbytes
+    max_bytes = data_context.target_max_block_size
+    if max_bytes is not None and output_block_size > max_bytes:
+        num_blocks = math.ceil(output_block_size / max_bytes)
+        num_rows = output_block.num_rows
+        yield from _arrow_batcher(output_block, int(math.ceil(num_rows / num_blocks)))
+    else:
+        yield output_block
 
 
-async def _resolve_size(
-    uri: str,
-    registry: StoreRegistry,
-    semaphore: Optional[asyncio.Semaphore] = None,
-) -> int:
-    """Return the file size in bytes via a HEAD request, or 0 on failure."""
-    import obstore as obs
-
-    try:
-        store_url, path = _split_uri(uri)
-        store = registry.get(store_url)
-        if semaphore is not None:
-            async with semaphore:
-                meta = await obs.head_async(store, path)
-        else:
-            meta = await obs.head_async(store, path)
-        return meta["size"] if isinstance(meta, dict) else meta.size
-    except Exception:
-        return 0
-
-
+# Core async download logic
 async def _download_uris_with_obstore(
     uris: List[str],
     uri_column_name: str,
@@ -366,3 +372,130 @@ async def _download_uris_with_obstore(
         else:
             tasks.append(_fetch_whole(uri, registry, uri_column_name, sem))
     return list(await asyncio.gather(*tasks))
+
+
+# Async helpers
+async def _resolve_size(
+    uri: str,
+    registry: StoreRegistry,
+    semaphore: asyncio.Semaphore,
+) -> int:
+    """Return the file size in bytes via a HEAD request, or 0 on failure."""
+    import obstore as obs
+
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        async with semaphore:
+            meta = await obs.head_async(store, path)
+        return meta["size"] if isinstance(meta, dict) else meta.size
+    except Exception:
+        return 0
+
+
+async def _fetch_whole(
+    uri: str,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: Optional[asyncio.Semaphore] = None,
+) -> Optional[bytes]:
+    """Download a single URI, returning ``None`` on failure."""
+    try:
+        if semaphore is not None:
+            async with semaphore:
+                return await _fetch(uri, registry)
+        # No semaphore, so not using range splitting.
+        # Concurrency is controlled by the PartitionActor batch size.
+        return await _fetch(uri, registry)
+    except OSError as e:
+        logger.debug(
+            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
+        )
+    except Exception as e:
+        logger.warning(
+            "Unexpected error reading uri %r for column %r: %s",
+            uri,
+            uri_column_name,
+            e,
+        )
+    return None
+
+
+async def _fetch_ranged(
+    uri: str,
+    size: int,
+    registry: StoreRegistry,
+    uri_column_name: str,
+    semaphore: asyncio.Semaphore,
+    range_chunk_size: int,
+) -> Optional[bytes]:
+    """Download a single large file using parallel range requests.
+
+    Falls back to a simple GET if any range chunk fails, so the
+    pipeline never loses a file due to a transient range error.
+    """
+    try:
+        store_url, path = _split_uri(uri)
+        store = registry.get(store_url)
+        result = bytearray(size)
+
+        tasks = [
+            asyncio.ensure_future(
+                _fetch_chunk(
+                    uri,
+                    store,
+                    path,
+                    chunk_start,
+                    min(chunk_start + range_chunk_size, size),
+                    result,
+                    semaphore,
+                )
+            )
+            for chunk_start in range(0, size, range_chunk_size)
+        ]
+
+        try:
+            await asyncio.gather(*tasks)
+        except Exception:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        return bytes(result)
+    except Exception as e:
+        logger.debug(
+            "Ranged download failed for %r, falling back to simple GET: %s", uri, e
+        )
+        return await _fetch_whole(uri, registry, uri_column_name, semaphore)
+
+
+async def _fetch_chunk(
+    uri: str,
+    store: Any,
+    path: str,
+    start: int,
+    end: int,
+    result: bytearray,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    """Download a single byte range and write it into *result* in place."""
+    import obstore as obs
+
+    async with semaphore:
+        chunk = await obs.get_range_async(store, path, start=start, end=end)
+        expected = end - start
+        if len(chunk) != expected:
+            raise IOError(
+                f"Range request for {uri!r} returned {len(chunk)} "
+                f"bytes, expected {expected}"
+            )
+        result[start:end] = chunk
+
+
+async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
+    """Download a single URI as a whole-file GET and return raw bytes."""
+    import obstore as obs
+
+    store_url, path = _split_uri(uri)
+    result = await obs.get_async(registry.get(store_url), path)
+    return bytes(await result.bytes_async())

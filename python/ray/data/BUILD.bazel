@@ -1947,9 +1947,9 @@ py_test(
 )
 
 py_test(
-    name = "test_plan_download_op",
+    name = "test_obstore_download",
     size = "small",
-    srcs = ["tests/test_plan_download_op.py"],
+    srcs = ["tests/test_obstore_download.py"],
     tags = [
         "exclusive",
         "team:data",
