@@ -13,12 +13,14 @@ def build_parser() -> argparse.ArgumentParser:
     ## Mode flags ##
     mode = parser.add_argument_group("mode")
     mode.add_argument(
-        "-s", "--smoke",
+        "-s",
+        "--smoke",
         action="store_true",
         help="Smoke test (single request, exit)",
     )
     mode.add_argument(
-        "-i", "--interactive",
+        "-i",
+        "--interactive",
         action="store_true",
         help="Interactive mode (server by default)",
     )
@@ -31,12 +33,14 @@ def build_parser() -> argparse.ArgumentParser:
     ## Server / API ##
     server = parser.add_argument_group("server/API")
     server.add_argument(
-        "-u", "--base-url",
+        "-u",
+        "--base-url",
         default="http://127.0.0.1:8000",
         help="Base URL of the OpenAI-compatible API (default: %(default)s)",
     )
     server.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         default="test-model",
         help="Model name to send in requests (default: %(default)s)",
     )
@@ -186,19 +190,13 @@ def main() -> None:
 
         sys.exit(run_smoke(args))
     elif args.interactive and args.client:
-        print(
-            "Interactive client mode is not implemented yet.", file=sys.stderr
-        )
+        print("Interactive client mode is not implemented yet.", file=sys.stderr)
         sys.exit(1)
     elif args.interactive:
-        print(
-            "Interactive server mode is not implemented yet.", file=sys.stderr
-        )
+        print("Interactive server mode is not implemented yet.", file=sys.stderr)
         sys.exit(1)
     elif args.concurrency or args.request_rate:
-        print(
-            "Direct benchmark mode is not implemented yet.", file=sys.stderr
-        )
+        print("Direct benchmark mode is not implemented yet.", file=sys.stderr)
         sys.exit(1)
     else:
         parser.print_help()

@@ -136,9 +136,7 @@ async def send_chat_completion(
 
 async def _run_smoke_async(args) -> dict:
     """Run a single smoke-test request and return metrics."""
-    messages = [
-        {"role": "user", "content": "Say 'this is a test' and nothing else."}
-    ]
+    messages = [{"role": "user", "content": "Say 'this is a test' and nothing else."}]
     async with aiohttp.ClientSession() as session:
         result = await send_chat_completion(
             session=session,
