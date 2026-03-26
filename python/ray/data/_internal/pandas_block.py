@@ -357,12 +357,6 @@ class PandasBlockSchema:
         object.__setattr__(self, "names", tuple(names))
         object.__setattr__(self, "types", tuple(types))
 
-    def equals(self, other, check_metadata: bool = False):
-        """NOTE: This method exists for sole purpose of making it compatible
-                 with Pyarrow's ``Schema``
-        """
-        return self == other
-
 
 class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
