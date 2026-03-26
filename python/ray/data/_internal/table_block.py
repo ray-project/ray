@@ -14,8 +14,6 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
 from ray._common.utils import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
@@ -166,13 +164,6 @@ class TableBlockBuilder(BlockBuilder):
         self._columns.clear()
         self._num_compactions += 1
         self._num_uncompacted_rows = 0
-
-
-def _coerce_1d_ndarray_to_list(v: Any) -> Any:
-    """Return ``v.tolist()`` if ``v`` is a 1-D numpy array, otherwise return ``v`` unchanged."""
-    if isinstance(v, np.ndarray) and v.ndim == 1:
-        return v.tolist()
-    return v
 
 
 class TableBlockAccessor(BlockAccessor):
@@ -466,16 +457,13 @@ class TableBlockAccessor(BlockAccessor):
                                 )
                             count[name] += 1
                             resolved_agg_names[i] = name
-                            # pa.ListArray entries become 1-D numpy arrays after
-                            # Arrow→Pandas; coerce back to lists so tensor-extension
-                            # casting doesn't misidentify accumulator columns.
-                            accumulators[i] = _coerce_1d_ndarray_to_list(r[name])
+                            accumulators[i] = r[name]
                         first = False
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i].merge(
                                 accumulators[i],
-                                _coerce_1d_ndarray_to_list(r[resolved_agg_names[i]]),
+                                r[resolved_agg_names[i]],
                             )
                 # Build the row.
                 row = {}
