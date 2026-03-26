@@ -19,6 +19,7 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
     SetReadParallelismRule,
 )
+from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
@@ -31,6 +32,10 @@ _LOGICAL_RULESET = Ruleset(
     ]
 )
 
+if DataContext.get_current().batch_to_block_arrow_format:
+    _LOGICAL_RULESET.remove(
+        InheritBatchFormatRule
+    )  # Disable the InheritBatchFormatRule if batch_to_block_arrow_format is False to prevent arrow to pandas round trip list/ndarray conversion errors
 
 _PHYSICAL_RULESET = Ruleset(
     [
