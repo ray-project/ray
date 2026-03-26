@@ -399,6 +399,21 @@ Then reference the remote path in your config:
     :start-after: __s3_config_example_start__
     :end-before: __s3_config_example_end__
 
+
+C/C++ runtime dependencies incompatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. admonition:: Known issue
+
+   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
+   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
+
+   In such cases, configure ``LD_LIBRARY_PATH`` to prefer the conda environment's libraries over system libraries.
+
+   .. code-block:: shell
+
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
 .. _resiliency:
 
 Resiliency
