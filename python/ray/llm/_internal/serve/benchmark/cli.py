@@ -202,8 +202,9 @@ def main() -> None:
         print("Interactive server mode is not implemented yet.", file=sys.stderr)
         sys.exit(1)
     elif args.concurrency or args.request_rate:
-        print("Direct benchmark mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
+        from ray.llm._internal.serve.benchmark.multiturn_bench import run_direct
+
+        sys.exit(run_direct(args))
     else:
         parser.print_help()
         sys.exit(1)
