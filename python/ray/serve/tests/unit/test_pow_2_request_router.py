@@ -197,7 +197,10 @@ def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
 
 
 def fake_pending_request(
-    *, created_at: Optional[float] = None, model_id: str = ""
+    *,
+    created_at: Optional[float] = None,
+    model_id: str = "",
+    session_id: str = "",
 ) -> PendingRequest:
     if created_at is not None:
         return PendingRequest(
@@ -207,6 +210,7 @@ def fake_pending_request(
                 request_id=generate_request_id(),
                 internal_request_id=generate_request_id(),
                 multiplexed_model_id=model_id,
+                session_id=session_id,
             ),
             created_at=created_at,
         )
@@ -218,6 +222,7 @@ def fake_pending_request(
                 request_id=generate_request_id(),
                 internal_request_id=generate_request_id(),
                 multiplexed_model_id=model_id,
+                session_id=session_id,
             ),
         )
 
@@ -2254,6 +2259,203 @@ def test_request_router_backoff_params_custom():
     assert router.initial_backoff_s == custom_initial_backoff
     assert router.backoff_multiplier == custom_multiplier
     assert router.max_backoff_s == custom_max_backoff
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"prefer_local_node": True, "prefer_local_az": True},
+        {"prefer_local_node": True, "prefer_local_az": False},
+        {"prefer_local_node": False, "prefer_local_az": True},
+        {"prefer_local_node": False, "prefer_local_az": False},
+    ],
+    indirect=True,
+)
+class TestSessionAffinity:
+    async def test_session_routes_to_same_replica(self, pow_2_router):
+        """Requests with the same session_id should route to the same replica."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        # First request establishes the session mapping.
+        request = fake_pending_request(session_id="s1")
+        first_replica = await loop.create_task(s._choose_replica_for_request(request))
+        assert first_replica in {r1, r2}
+
+        # Subsequent requests with the same session_id should go to the same replica.
+        for _ in range(10):
+            request = fake_pending_request(session_id="s1")
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == first_replica
+
+    async def test_session_fallback_when_replica_removed(self, pow_2_router):
+        """If the mapped replica is removed, fall back to any available replica."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        # Establish session mapping.
+        request = fake_pending_request(session_id="s1")
+        first_replica = await loop.create_task(s._choose_replica_for_request(request))
+        other_replica = r2 if first_replica == r1 else r1
+
+        # Remove the mapped replica.
+        s.update_replicas([other_replica])
+
+        # Should fall back to the remaining replica.
+        for _ in range(5):
+            request = fake_pending_request(session_id="s1")
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == other_replica
+
+    async def test_session_no_session_id_routes_normally(self, pow_2_router):
+        """Requests without session_id should route normally."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        replicas_chosen = set()
+        for _ in range(20):
+            request = fake_pending_request()
+            task = loop.create_task(s._choose_replica_for_request(request))
+            replicas_chosen.add(await task)
+
+        # Without session_id, both replicas should be eligible.
+        assert replicas_chosen == {r1, r2}
+
+    async def test_session_mapping_cleaned_on_replica_death(self, pow_2_router):
+        """on_replica_actor_died should clean up session mappings."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        # Establish session mapping to r1.
+        request = fake_pending_request(session_id="s1")
+        first_replica = await loop.create_task(s._choose_replica_for_request(request))
+
+        # Kill that replica.
+        s.on_replica_actor_died(first_replica.replica_id)
+
+        # Session mapping should be cleaned up.
+        assert first_replica.replica_id not in set(s._session_id_to_replica_id.values())
+
+    async def test_different_sessions_different_replicas(self, pow_2_router):
+        """Different session_ids can map to different replicas."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        # Route s1.
+        request_s1 = fake_pending_request(session_id="s1")
+        replica_s1 = await loop.create_task(s._choose_replica_for_request(request_s1))
+        # Route s2.
+        request_s2 = fake_pending_request(session_id="s2")
+        replica_s2 = await loop.create_task(s._choose_replica_for_request(request_s2))
+
+        # Each session should consistently map to its own replica.
+        for _ in range(10):
+            task_s1 = loop.create_task(
+                s._choose_replica_for_request(fake_pending_request(session_id="s1"))
+            )
+            assert (await task_s1) == replica_s1
+
+            task_s2 = loop.create_task(
+                s._choose_replica_for_request(fake_pending_request(session_id="s2"))
+            )
+            assert (await task_s2) == replica_s2
+
+    async def test_multiplex_takes_priority_over_session(self, pow_2_router):
+        """When both multiplexed_model_id and session_id are set,
+        multiplexing should take priority."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2", model_ids={"m2"})
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        # First, establish session mapping via a session-only request.
+        request = fake_pending_request(session_id="s1")
+        await loop.create_task(s._choose_replica_for_request(request))
+
+        # Now send a request with both session_id and multiplexed_model_id.
+        # Multiplex should take priority: request should go to r2 (has m2),
+        # not necessarily to the session-mapped replica.
+        for _ in range(10):
+            request = PendingRequest(
+                args=list(),
+                kwargs=dict(),
+                metadata=RequestMetadata(
+                    request_id=generate_request_id(),
+                    internal_request_id=generate_request_id(),
+                    multiplexed_model_id="m2",
+                    session_id="s1",
+                ),
+            )
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == r2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
+async def test_rank_replicas_via_session(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """Test rank_replicas_via_session returns the correct ranking."""
+    s = pow_2_router
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    all_replicas = [r1, r2]
+    s.update_replicas(all_replicas)
+
+    # Establish session mapping to r1.
+    loop = get_or_create_event_loop()
+    request = fake_pending_request(session_id="s1")
+    chosen = await loop.create_task(s._choose_replica_for_request(request))
+
+    other = r2 if chosen == r1 else r1
+    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="s1") == [
+        [chosen],
+        [other],
+    ]
+
+    # For an unknown session, all replicas should be in rank 1.
+    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="unknown") == [
+        [],
+        all_replicas,
+    ]
 
 
 if __name__ == "__main__":

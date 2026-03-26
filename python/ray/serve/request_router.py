@@ -11,4 +11,5 @@ from ray.serve._private.request_router.request_router import (  # noqa: F401
     LocalityMixin,
     MultiplexMixin,
     RequestRouter,
+    SessionMixin,
 )

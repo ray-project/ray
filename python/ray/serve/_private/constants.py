@@ -339,6 +339,7 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+SERVE_SESSION_ID = "x-session-id"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"

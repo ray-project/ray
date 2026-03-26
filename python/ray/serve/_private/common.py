@@ -785,6 +785,9 @@ class RequestMetadata:
     # Multiplexed model ID.
     multiplexed_model_id: str = ""
 
+    # Session ID for session affinity routing.
+    session_id: str = ""
+
     # If this request expects a streaming response.
     is_streaming: bool = False
 

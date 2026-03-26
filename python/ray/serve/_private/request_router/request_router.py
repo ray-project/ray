@@ -376,6 +376,106 @@ class MultiplexMixin:
 
 
 @PublicAPI(stability="alpha")
+class SessionMixin:
+    """Mixin for session affinity routing.
+
+    This mixin routes requests to replicas that previously handled
+    requests with the same session_id. Mappings are tracked at the
+    router level. When the mapped replica is no longer available,
+    the request falls back to all replicas.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session_id_to_replica_id: Dict[str, ReplicaID] = {}
+
+    def _get_pending_request_matching_session_id(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        """Match pending request by session_id using dict index for O(1) lookup.
+
+        Also performs lazy cleanup of done futures to prevent memory leaks.
+        """
+        if request_metadata is None or not request_metadata.session_id:
+            return None
+
+        session_id = request_metadata.session_id
+        candidates = self._pending_requests_by_session_id.get(session_id)
+        while candidates:
+            pr = candidates[0]
+            if not pr.future.done():
+                return pr
+            candidates.popleft()
+        self._pending_requests_by_session_id.pop(session_id, None)
+        return None
+
+    def _update_session_mappings_on_replica_removed(self, replica_id: ReplicaID):
+        """Remove all session mappings pointing to a removed replica."""
+        to_remove = [
+            sid
+            for sid, rid in self._session_id_to_replica_id.items()
+            if rid == replica_id
+        ]
+        for sid in to_remove:
+            del self._session_id_to_replica_id[sid]
+
+    def _record_session_assignment(self, session_id: str, replica_id: ReplicaID):
+        """Record that a session was routed to a specific replica."""
+        if session_id:
+            self._session_id_to_replica_id[session_id] = replica_id
+
+    def apply_session_routing(
+        self,
+        pending_request: Optional[PendingRequest] = None,
+    ) -> Set[ReplicaID]:
+        """Apply session affinity routing.
+
+        If the session_id has a mapped replica that still exists,
+        return just that replica. Otherwise return all replicas.
+
+        Args:
+            pending_request: The pending request to be routed based on
+                session affinity policy.
+
+        Returns:
+            A set of replica IDs that are candidates for the existing
+            routing call.
+        """
+        if not pending_request:
+            return self._replica_id_set
+
+        session_id = pending_request.metadata.session_id
+        if not session_id:
+            return self._replica_id_set
+
+        mapped_replica_id = self._session_id_to_replica_id.get(session_id)
+        if mapped_replica_id and mapped_replica_id in self._replica_id_set:
+            return {mapped_replica_id}
+
+        return self._replica_id_set
+
+    def rank_replicas_via_session(
+        self,
+        replicas: List[RunningReplica],
+        session_id: str,
+    ) -> List[List[RunningReplica]]:
+        """Rank replicas based on session affinity.
+
+        Rank 0: the previously mapped replica for this session.
+        Rank 1: all other replicas.
+        """
+        mapped_replica_id = self._session_id_to_replica_id.get(session_id)
+        ranked_replicas = [[] for _ in range(2)]
+        for replica in replicas:
+            if replica.replica_id == mapped_replica_id:
+                ranked_replicas[0].append(replica)
+            else:
+                ranked_replicas[1].append(replica)
+        return ranked_replicas
+
+
+@PublicAPI(stability="alpha")
 class FIFOMixin:
     """Mixin for FIFO routing.
 
@@ -399,12 +499,20 @@ class FIFOMixin:
         """Matching pending request based on the request metadata.
 
         If multiplex mixin is used, this will be using the multiplexed model
-        id for the matching. Else, it will return none as no matching pending request.
+        id for the matching. If session mixin is used, it will try session_id
+        matching. Otherwise, it will return none as no matching pending request.
         """
         if hasattr(self, "_get_pending_request_matching_multiplexed_model_id"):
-            return self._get_pending_request_matching_multiplexed_model_id(
+            result = self._get_pending_request_matching_multiplexed_model_id(
                 request_metadata
             )
+            if result is not None:
+                return result
+
+        if hasattr(self, "_get_pending_request_matching_session_id"):
+            result = self._get_pending_request_matching_session_id(request_metadata)
+            if result is not None:
+                return result
 
         return None
 
@@ -428,6 +536,11 @@ class FIFOMixin:
             matched_pending_request.future.set_result(replica)
             # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
             self._remove_pending_request_from_indices(matched_pending_request)
+            if hasattr(self, "_record_session_assignment"):
+                self._record_session_assignment(
+                    matched_pending_request.metadata.session_id,
+                    replica.replica_id,
+                )
             return
 
         # If no pending request matches the request metadata, fulfill the next in the
@@ -438,6 +551,10 @@ class FIFOMixin:
                 self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
                 self._remove_pending_request_from_indices(pr)
+                if hasattr(self, "_record_session_assignment"):
+                    self._record_session_assignment(
+                        pr.metadata.session_id, replica.replica_id
+                    )
                 break
 
 
@@ -535,6 +652,10 @@ class RequestRouter(ABC):
         # Maps multiplexed_model_id -> deque of PendingRequests for fast lookup by model.
         # Using deque allows O(1) popleft for cleaning done entries at the front.
         self._pending_requests_by_model_id: DefaultDict[
+            str, Deque[PendingRequest]
+        ] = defaultdict(deque)
+        # Maps session_id -> deque of PendingRequests for fast lookup by session.
+        self._pending_requests_by_session_id: DefaultDict[
             str, Deque[PendingRequest]
         ] = defaultdict(deque)
 
@@ -781,6 +902,8 @@ class RequestRouter(ABC):
         self._queue_len_gauge_last_update.pop(replica_id, None)
         if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
             self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
+        if hasattr(self, "_update_session_mappings_on_replica_removed"):
+            self._update_session_mappings_on_replica_removed(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
@@ -797,6 +920,9 @@ class RequestRouter(ABC):
         model_id = pending_request.metadata.multiplexed_model_id
         if model_id:
             self._pending_requests_by_model_id[model_id].append(pending_request)
+        session_id = pending_request.metadata.session_id
+        if session_id:
+            self._pending_requests_by_session_id[session_id].append(pending_request)
 
     def _remove_pending_request_from_indices(self, pending_request: PendingRequest):
         """Remove a pending request from the dict indices."""
@@ -906,7 +1032,13 @@ class RequestRouter(ABC):
 
         # Get list of new replicas
         new_ids = new_replica_id_set - self._replica_id_set
+        removed_ids = self._replica_id_set - new_replica_id_set
         replicas_to_ping = [new_replicas.get(id) for id in new_ids]
+
+        # Clean up session mappings for removed replicas (before updating _replica_id_set).
+        if hasattr(self, "_update_session_mappings_on_replica_removed"):
+            for removed_id in removed_ids:
+                self._update_session_mappings_on_replica_removed(removed_id)
 
         self._replicas = new_replicas
         self._replicas_list = list(new_replicas.values())

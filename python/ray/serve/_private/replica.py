@@ -2069,6 +2069,7 @@ class Replica(ReplicaBase):
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    session_id=request_metadata.session_id,
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress

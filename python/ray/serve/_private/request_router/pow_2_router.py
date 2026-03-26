@@ -19,13 +19,14 @@ from ray.serve._private.request_router.request_router import (
     LocalityMixin,
     MultiplexMixin,
     RequestRouter,
+    SessionMixin,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class PowerOfTwoChoicesRequestRouter(
-    FIFOMixin, LocalityMixin, MultiplexMixin, RequestRouter
+    FIFOMixin, LocalityMixin, SessionMixin, MultiplexMixin, RequestRouter
 ):
     """Chooses a replica for each request using the "power of two choices" procedure.
 
@@ -68,6 +69,11 @@ class PowerOfTwoChoicesRequestRouter(
         ):
             # Get candidates for multiplexed model ID.
             candidate_replica_ids = self.apply_multiplex_routing(
+                pending_request=pending_request,
+            )
+        elif pending_request is not None and pending_request.metadata.session_id:
+            # Get candidates for session affinity.
+            candidate_replica_ids = self.apply_session_routing(
                 pending_request=pending_request,
             )
         else:
