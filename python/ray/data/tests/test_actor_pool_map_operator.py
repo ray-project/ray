@@ -40,6 +40,9 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     _ActorPool,
     _MapWorker,
 )
+from ray.data._internal.execution.operators.core_actor_pool_adapter import (
+    CoreActorPoolAdapter,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -1628,6 +1631,39 @@ def test_actor_pool_stats_parity(
     result = ds.take_all()
 
     assert len(result) == 20
+
+
+def test_core_actor_pool_does_not_remove_pending_actor_during_scale_down():
+    adapter = CoreActorPoolAdapter.__new__(CoreActorPoolAdapter)
+    ready_ref = MagicMock()
+    actor = MagicMock()
+    adapter._pending_actors = {ready_ref: actor}
+    adapter._pool = MagicMock()
+
+    with patch("ray.cancel") as cancel:
+        assert not adapter._try_remove_pending_actor()
+
+    cancel.assert_not_called()
+    adapter._pool.remove_actor.assert_not_called()
+    assert adapter._pending_actors == {ready_ref: actor}
+
+
+def test_core_actor_pool_release_pending_actors_cancels_ready_refs():
+    adapter = CoreActorPoolAdapter.__new__(CoreActorPoolAdapter)
+    ready_ref_1 = MagicMock()
+    ready_ref_2 = MagicMock()
+    adapter._pending_actors = {
+        ready_ref_1: MagicMock(),
+        ready_ref_2: MagicMock(),
+    }
+
+    with patch("ray.cancel") as cancel:
+        adapter._release_pending_actors(force=False)
+
+    cancel.assert_any_call(ready_ref_1, force=True)
+    cancel.assert_any_call(ready_ref_2, force=True)
+    assert cancel.call_count == 2
+    assert adapter._pending_actors == {}
 
 
 if __name__ == "__main__":

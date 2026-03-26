@@ -520,18 +520,22 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def _remove_inactive_actor(self) -> bool:
         """Remove a pending or idle actor."""
-        released = self._try_remove_pending_actor()
+        # In the core-backed pool, pending actors can already have queued work
+        # assigned in C++ before Python marks them running. Prefer removing idle
+        # running actors first to avoid killing pending actors that are about to
+        # start processing submitted tasks.
+        released = self._try_remove_idle_actor()
         if not released:
-            released = self._try_remove_idle_actor()
+            released = self._try_remove_pending_actor()
         return released
 
     def _try_remove_pending_actor(self) -> bool:
         """Try to remove a pending actor."""
-        if self._pending_actors:
-            ready_ref = next(iter(self._pending_actors.keys()))
-            actor = self._pending_actors.pop(ready_ref)
-            self._pool.remove_actor(actor, kill=True)
-            return True
+        # Pending actors are not safe scale-down targets during execution in the
+        # core-backed pool. C++ may already have routed queued work to them before
+        # Python marks them running, and killing them can surface ActorDiedError
+        # for user-facing submit refs. Leave pending actors alone until shutdown.
+        # TODO: support removing pending actors during scale-down
         return False
 
     def _try_remove_idle_actor(self) -> bool:
@@ -551,6 +555,8 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def _release_pending_actors(self, force: bool):
         """Release all pending actors."""
+        for ready_ref in self._pending_actors:
+            self._cancel_pending_ready_ref(ready_ref)
         self._pending_actors.clear()
 
     def _release_running_actors(self, force: bool):
@@ -598,6 +604,13 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
         del self._running_actors[actor]
         return ref
+
+    def _cancel_pending_ready_ref(self, ready_ref: ObjectRef) -> None:
+        """Cancel a pending startup task so metadata tracking can retire it."""
+        try:
+            ray.cancel(ready_ref, force=True)
+        except Exception:
+            pass
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Get actor pool info for metrics."""
