@@ -160,6 +160,11 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   bool ReturnCpuResourcesToUnblockedWorker(
       std::shared_ptr<WorkerInterface> worker) override;
 
+  /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
+  /// resource manager.
+  /// Calculate normal task resources.
+  ResourceSet CalcNormalTaskResources() const override;
+
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
                         int64_t backlog_size) override;

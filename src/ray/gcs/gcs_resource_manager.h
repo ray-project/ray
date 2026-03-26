@@ -123,6 +123,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> &&listener);
 
+  // Update node normal task resources.
+  void UpdateNodeNormalTaskResources(const NodeID &node_id,
+                                     const rpc::ResourcesData &heartbeat);
+
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.

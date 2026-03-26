@@ -116,6 +116,12 @@ class ClusterResourceManager {
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
                                  const ResourceSet &resource_set);
 
+  /// Update node normal task resources.
+  /// Return false if such node doesn't exist.
+  /// TODO(Shanly): Integrated this method into `UpdateNode` later.
+  bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
+                                     const rpc::ResourcesData &resource_data);
+
   /// Return if the node is tracked.
   bool HasNode(const scheduling::NodeID &node_id) const {
     return nodes_.count(node_id) > 0;
