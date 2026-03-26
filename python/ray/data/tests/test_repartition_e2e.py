@@ -282,7 +282,7 @@ def test_streaming_repartition_write_with_operator_fusion(
         ds = ds.map_batches(fn, batch_size=b_s)
         ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
     planner = create_planner()
-    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan, _ = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     if streaming_repartition_first:
@@ -348,7 +348,7 @@ def test_streaming_repartition_fusion_output_shape(
     ds = ds.map_batches(fn, batch_size=20)
     ds = ds.repartition(target_num_rows_per_block=20, strict=True)
     planner = create_planner()
-    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan, _ = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert (
@@ -522,7 +522,7 @@ def test_streaming_repartition_fusion_non_strict(
 
     # Verify fusion happened
     planner = create_planner()
-    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan, _ = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 

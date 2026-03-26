@@ -386,15 +386,15 @@ SUBMITTED_TASKS_PANEL = Panel(
     stack=False,
 )
 
-RUNNING_TASKS_PANEL = Panel(
+ACTIVE_TASKS_PANEL = Panel(
     id=30,
-    title="Running Tasks",
-    description="Tracks the current number of tasks actively running across operators. Provides insight into the degree of parallelism currently utilized for data processing.",
+    title="Active Tasks",
+    description="Tracks the current number of tasks that have been submitted and have not completed (pending or running) across operators. Provides insight into the degree of parallelism currently utilized for data processing.",
     unit="tasks",
     targets=[
         Target(
             expr='sum(ray_data_num_tasks_running{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
-            legend="Running Tasks: {{dataset}}, {{operator}}",
+            legend="Active Tasks: {{dataset}}, {{operator}}",
         )
     ],
     fill=0,
@@ -1412,7 +1412,7 @@ DATA_GRAFANA_ROWS = [
             BLOCKS_GENERATED_PANEL,
             ROWS_GENERATED_PANEL,
             OBJECT_STORE_MEMORY_PANEL,
-            RUNNING_TASKS_PANEL,
+            ACTIVE_TASKS_PANEL,
             COMBINED_INQUEUE_BLOCKS_PANEL,
             COMBINED_OUTQUEUE_BLOCKS_PANEL,
         ],
