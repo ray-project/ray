@@ -112,9 +112,25 @@ You can combine gang scheduling with `placement_group_bundles` to reserve additi
 :language: python
 ```
 
+```{image} images/gang-single-pg.png
+:alt: Gang scheduling with a single bundle per replica
+:width: 600px
+```
+
 In this example, each gang of 2 replicas creates a single gang placement group with 2 bundles (one `{"CPU": 1, "GPU": 1}` bundle per replica) upon scheduling. Note that `ray_actor_options={"num_cpus": 0}` is set so the replica actor doesn't request resources outside the placement group — all resource reservation is handled through the bundles.
 
-If each replica needed multiple bundles (for example, one for the replica actor and one for a worker), the gang PG would contain `gang_size * len(placement_group_bundles)` total bundles. Replica 0 would occupy bundle indices 0 and 1, replica 1 would occupy indices 2 and 3, and so on.
+If each replica needed multiple bundles, for example, one for the replica actor and one for a worker, the gang PG would contain `gang_size * len(placement_group_bundles)` total bundles. Replica 0 would occupy bundle indices 0 and 1, while replica 1 would occupy indices 2 and 3.
+
+```{literalinclude} ../doc_code/gang_scheduling.py
+:start-after: __multi_placement_group_bundles_start__
+:end-before: __multi_placement_group_bundles_end__
+:language: python
+```
+
+```{image} images/gang-multi-pg.png
+:alt: Gang scheduling with multiple bundles per replica
+:width: 600px
+```
 
 You can also use `placement_group_bundle_label_selector` to control which nodes the gang's bundles are placed on. The per-replica label selector is replicated across all replicas in the gang, so every replica is steered to nodes matching the selector. For example, to schedule all gang members on nodes with A100 GPUs:
 

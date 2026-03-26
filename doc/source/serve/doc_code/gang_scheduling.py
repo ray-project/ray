@@ -10,12 +10,12 @@ from ray.serve.config import GangSchedulingConfig
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=4),
 )
-class MyModel:
+class Gang:
     def __call__(self, request):
         return "Hello!"
 
 
-app = MyModel.bind()
+app = Gang.bind()
 # __basic_gang_end__
 
 # __gang_context_start__
@@ -24,7 +24,7 @@ app = MyModel.bind()
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=2),
 )
-class CoordinatedModel:
+class GangWithContext:
     def __init__(self):
         ctx = serve.get_replica_context()
         gc = ctx.gang_context
@@ -41,7 +41,7 @@ class CoordinatedModel:
         }
 
 
-coordinated_app = CoordinatedModel.bind()
+gang_context_app = GangWithContext.bind()
 # __gang_context_end__
 
 # __pack_strategy_start__
@@ -57,12 +57,12 @@ from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
         gang_placement_strategy=GangPlacementStrategy.PACK,
     ),
 )
-class PackedModel:
+class PackedGang:
     def __call__(self, request):
         return "Packed on same node"
 
 
-packed_app = PackedModel.bind()
+packed_app = PackedGang.bind()
 # __pack_strategy_end__
 
 # __spread_strategy_start__
@@ -74,22 +74,22 @@ packed_app = PackedModel.bind()
         gang_placement_strategy=GangPlacementStrategy.SPREAD,
     ),
 )
-class SpreadModel:
+class SpreadGang:
     def __call__(self, request):
         return "Spread across nodes"
 
 
-spread_app = SpreadModel.bind()
+spread_app = SpreadGang.bind()
 # __spread_strategy_end__
 
 # __options_start__
 @serve.deployment
-class BaseModel:
+class BaseGang:
     def __call__(self, request):
         return "Hello!"
 
 
-app_with_gang = BaseModel.options(
+app_with_gang = BaseGang.options(
     num_replicas=8,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=4),
@@ -107,12 +107,12 @@ app_with_gang = BaseModel.options(
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=4),
 )
-class AutoscaledModel:
+class AutoscaledGang:
     def __call__(self, request):
         return "Hello!"
 
 
-autoscaled_app = AutoscaledModel.bind()
+autoscaled_app = AutoscaledGang.bind()
 # __autoscaling_end__
 
 # __fault_tolerance_start__
@@ -128,12 +128,12 @@ from ray.serve.config import GangRuntimeFailurePolicy, GangSchedulingConfig
         runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
     ),
 )
-class FaultTolerantModel:
+class FaultTolerantGang:
     def __call__(self, request):
         return "Hello!"
 
 
-fault_tolerant_app = FaultTolerantModel.bind()
+fault_tolerant_app = FaultTolerantGang.bind()
 # __fault_tolerance_end__
 
 # __placement_group_bundles_start__
@@ -143,13 +143,28 @@ fault_tolerant_app = FaultTolerantModel.bind()
     placement_group_bundles=[{"CPU": 1, "GPU": 1}],
     gang_scheduling_config=GangSchedulingConfig(gang_size=2),
 )
-class MultiGPUModel:
+class GangWithSingleBundleReplica:
     def __call__(self, request):
         return "Running on reserved GPUs"
 
 
-multi_gpu_app = MultiGPUModel.bind()
+gang_single_bundle_replica_app = GangWithSingleBundleReplica.bind()
 # __placement_group_bundles_end__
+
+# __multi_placement_group_bundles_start__
+@serve.deployment(
+    num_replicas=4,
+    ray_actor_options={"num_cpus": 1},
+    placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"GPU": 1}],
+    gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+)
+class GangWithMultiBundlesReplica:
+    def __call__(self, request):
+        return "Running on reserved GPUs"
+
+
+gang_multi_bundles_replica_app = GangWithMultiBundlesReplica.bind()
+# __multi_placement_group_bundles_end__
 
 # __label_selector_start__
 @serve.deployment(
