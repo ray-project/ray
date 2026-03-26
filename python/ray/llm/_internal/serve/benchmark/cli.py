@@ -6,10 +6,11 @@ import sys
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog="python -m ray.llm._internal.serve.benchmark",
         description="Multi-turn OpenAI-compatible HTTP benchmark",
     )
 
-    # ── Mode flags ──────────────────────────────────────────────────────
+    ## Mode flags ##
     mode = parser.add_argument_group("mode")
     mode.add_argument(
         "-s", "--smoke",
@@ -27,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Interactive client mode (used with -i)",
     )
 
-    # ── Server / API ────────────────────────────────────────────────────
+    ## Server / API ##
     server = parser.add_argument_group("server/API")
     server.add_argument(
         "-u", "--base-url",
@@ -45,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="HuggingFace tokenizer name/path (default: same as --model)",
     )
 
-    # ── Workload (simple mode) ──────────────────────────────────────────
+    ## Workload ##
     workload = parser.add_argument_group("workload")
     workload.add_argument(
         "--isl",
@@ -90,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of content chunks before recording first-chunk latency (default: %(default)s)",
     )
 
-    # ── Traffic ──────────────────────────────────────────────────────────
+    ## Traffic ##
     traffic = parser.add_argument_group("traffic")
     traffic.add_argument(
         "--concurrency",
@@ -129,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ramp interval in seconds (default: %(default)s)",
     )
 
-    # ── Interactive-only ─────────────────────────────────────────────────
+    ## Interactive-only ##
     interactive = parser.add_argument_group("interactive-only")
     interactive.add_argument(
         "--status-interval",
