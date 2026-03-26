@@ -2322,7 +2322,7 @@
 
   cluster:
     byod:
-      type: llm-cu128 # llm image already has nixl
+      type: llm-cu130 # llm image already has nixl
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
