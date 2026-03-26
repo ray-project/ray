@@ -365,10 +365,12 @@ class RefBundle:
         return (
             self.blocks == other.blocks
             and self.slices == other.slices
-            and (
-                (self.schema is None and other.schema is None) or
-                (self.schema is not None and other.schema is not None and self.schema.equals(other.schema, check_metadata=False))
-            )
+            # NOTE: We're establishing a requirement of schemas for `RefBundle`
+            #       to be exactly the same object for it to be considered equal.
+            #
+            #       This is necessary to avoid a full schema equality check that
+            #       is computationally intensive.
+            and self.schema is other.schema
             and self.owns_blocks == other.owns_blocks
             and self.output_split_idx == other.output_split_idx
         )
@@ -378,7 +380,8 @@ class RefBundle:
             (
                 *self.blocks,
                 *self.slices,
-                _make_hashable_schema(self.schema) if self.schema is not None else None,
+                # Check out comment in ``__eq__``
+                id(self.schema),
                 self.owns_blocks,
                 self.output_split_idx,
             )
