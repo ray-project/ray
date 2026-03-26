@@ -208,11 +208,13 @@ def main() -> None:
 
         sys.exit(run_smoke(args))
     elif args.interactive and args.client:
-        print("Interactive client mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
+        from ray.llm._internal.serve.benchmark.interactive import run_interactive_client
+
+        sys.exit(run_interactive_client(args))
     elif args.interactive:
-        print("Interactive server mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
+        from ray.llm._internal.serve.benchmark.interactive import run_interactive_server
+
+        sys.exit(run_interactive_server(args))
     elif args.concurrency or args.request_rate:
         from ray.llm._internal.serve.benchmark.multiturn_bench import run_direct
 
