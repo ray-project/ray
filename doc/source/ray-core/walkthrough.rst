@@ -19,9 +19,9 @@ This walk-through introduces you to these core concepts with simple examples tha
 
 .. note::
 
-    Ray has introduced an experimental API for high-performance workloads that's
-    especially well suited for applications using multiple GPUs.
-    See :ref:`Ray Compiled Graph <ray-compiled-graph>` for more details.
+    Ray has introduced an experimental API to transfer objects using GLOO / NCCL / NIXL / (bring your own)
+    as an alternative to the default shared memory + gRPC based object store.
+    See :ref:`Ray Direct Transport <direct-transport>` for more details.
 
 
 Getting Started

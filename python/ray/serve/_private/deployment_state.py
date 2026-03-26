@@ -4398,6 +4398,28 @@ class DeploymentState:
         """
         return self._rank_manager.get_replica_ranks_mapping()
 
+    @staticmethod
+    def _group_effective_deadline(
+        group: List[DeploymentReplica],
+        deadlines: Dict[str, int],
+    ) -> float:
+        """Return the effective deadline for a group of replicas.
+
+        Uses the earliest deadline among members on draining nodes, and
+        falls back to infinity if no member is on a draining node.
+        """
+        member_deadlines = [
+            deadlines[r.actor_node_id] for r in group if r.actor_node_id in deadlines
+        ]
+        return min(member_deadlines) if member_deadlines else float("inf")
+
+    @staticmethod
+    def _group_shutdown_timeout_ms(
+        group: List[DeploymentReplica],
+    ) -> float:
+        """Return the graceful shutdown timeout (in ms) for the group."""
+        return group[0]._actor.graceful_shutdown_timeout_s * 1000
+
     def _choose_pending_migration_replicas_to_stop(
         self,
         replicas: List[DeploymentReplica],
@@ -4406,34 +4428,84 @@ class DeploymentState:
     ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
         """Returns a partition of replicas to stop and to keep.
 
+        Each replica is treated as an independent unit.
+
         Args:
             replicas: The current list of replicas pending migration.
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
         """
-        to_stop = []
-        remaining = []
+        # Treat each replica as a group of one.
+        groups = [[r] for r in replicas]
+        return self._partition_groups_to_stop(groups, deadlines, min_replicas_to_stop)
 
-        # Stop replicas whose deadline is up
+    def _group_replicas_by_gang_id(
+        self, replicas: List[DeploymentReplica]
+    ) -> Dict[str, List[DeploymentReplica]]:
+        """Group replicas by their gang_id."""
+        gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
         for replica in replicas:
-            assert replica.actor_node_id in deadlines
+            gangs[replica.gang_context.gang_id].append(replica)
+        return gangs
 
-            curr_timestamp_ms = time.time() * 1000
-            timeout_ms = replica._actor.graceful_shutdown_timeout_s * 1000
-            if curr_timestamp_ms >= deadlines[replica.actor_node_id] - timeout_ms:
-                to_stop.append(replica)
+    def _choose_pending_migration_gangs_to_stop(
+        self,
+        replicas: List[DeploymentReplica],
+        deadlines: Dict[str, int],
+        min_replicas_to_stop: int,
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Gang-aware variant: stop complete gangs atomically.
+
+        A gang is considered deadline-expired if ANY member's deadline is up.
+        For excess stopping, gangs are sorted by their earliest member
+        deadline.
+        """
+        gangs = self._group_replicas_by_gang_id(replicas)
+        return self._partition_groups_to_stop(
+            list(gangs.values()), deadlines, min_replicas_to_stop
+        )
+
+    def _partition_groups_to_stop(
+        self,
+        groups: List[List[DeploymentReplica]],
+        deadlines: Dict[str, int],
+        min_replicas_to_stop: int,
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Partition replica groups into those to stop and those to keep.
+
+        A group (single replica or full gang) is the atomic unit of stopping.
+
+        1. Groups whose deadline is up are stopped unconditionally.
+        2. Remaining groups are stopped greedily (earliest deadline first)
+           until min_replicas_to_stop is satisfied.
+        """
+        to_stop: List[DeploymentReplica] = []
+        remaining_groups: List[Tuple[float, List[DeploymentReplica]]] = []
+
+        curr_timestamp_ms = time.time() * 1000
+        for group in groups:
+            effective_deadline = self._group_effective_deadline(group, deadlines)
+            timeout_ms = self._group_shutdown_timeout_ms(group)
+
+            if curr_timestamp_ms >= effective_deadline - timeout_ms:
+                to_stop.extend(group)
             else:
-                remaining.append(replica)
+                remaining_groups.append((effective_deadline, group))
 
-        # Stop excess PENDING_MIGRATION replicas when new "replacement"
-        # replicas have transitioned to RUNNING. The replicas with the
-        # earliest deadlines should be chosen greedily.
-        remaining.sort(key=lambda r: deadlines[r.actor_node_id])
+        # Stop excess groups, earliest deadline first.
+        # NOTE: num_excess can be negative when deadline-forced stops in the
+        # loop above already exceed min_replicas_to_stop. That's fine — no
+        # extra groups are stopped because of the guard num_excess >= len(group).
+        remaining_groups.sort(key=lambda x: x[0])
         num_excess = min_replicas_to_stop - len(to_stop)
 
-        if num_excess > 0:
-            to_stop.extend(remaining[:num_excess])
-            remaining = remaining[num_excess:]
+        remaining: List[DeploymentReplica] = []
+        for _, group in remaining_groups:
+            if num_excess >= len(group):
+                to_stop.extend(group)
+                num_excess -= len(group)
+            else:
+                remaining.extend(group)
 
         return to_stop, remaining
 
@@ -4444,38 +4516,88 @@ class DeploymentState:
         if not draining_nodes and not self._in_transition:
             return
 
-        # Move replicas back to running if they are no longer on a draining node.
+        gang_config = self.get_gang_config()
+
+        # Move replicas back to RUNNING if they are no longer on a draining node.
         # If this causes the number of replicas to exceed the target state,
         # they will be scaled down because `scale_deployment_replicas` is called on
-        # each deployment after this
-        for replica in self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]):
-            if replica.actor_node_id not in draining_nodes:
-                self._replicas.add(ReplicaState.RUNNING, replica)
-            else:
+        # each deployment after this.
+        pending_migration_replicas = self._replicas.pop(
+            states=[ReplicaState.PENDING_MIGRATION]
+        )
+
+        if gang_config is not None:
+            # For gangs, only move back to RUNNING if ALL members' nodes are no
+            # longer draining.
+            gangs = self._group_replicas_by_gang_id(pending_migration_replicas)
+
+            gangs_still_draining: Set[str] = set()
+            for gang_id, gang_replicas in gangs.items():
+                if any(
+                    replica.actor_node_id in draining_nodes for replica in gang_replicas
+                ):
+                    gangs_still_draining.add(gang_id)
+
+            def still_draining(r):
+                return r.gang_context.gang_id in gangs_still_draining
+
+        else:
+
+            def still_draining(r):
+                return r.actor_node_id in draining_nodes
+
+        for replica in pending_migration_replicas:
+            if still_draining(replica):
                 self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            else:
+                self._replicas.add(ReplicaState.RUNNING, replica)
 
         # Migrate replicas on draining nodes
-        for replica in self._replicas.pop(
-            states=[ReplicaState.UPDATING, ReplicaState.RUNNING, ReplicaState.STARTING]
-        ):
-            if replica.actor_node_id in draining_nodes:
-                # For RUNNING replicas, migrate them safely by starting
-                # a replacement replica first.
-                if replica.actor_details.state == ReplicaState.RUNNING:
-                    logger.info(
-                        f"Migrating {replica.replica_id} from draining node "
-                        f"'{replica.actor_node_id}'. A new replica will be created on "
-                        "another node."
-                    )
-                    self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
-                # For replicas that are STARTING or UPDATING, might as
-                # well terminate them immediately to allow replacement
-                # replicas to start. Otherwise we need to wait for them
-                # to transition to RUNNING before starting migration.
-                else:
-                    self._stop_replica(replica, graceful_stop=True)
-            else:
+        all_replicas = self._replicas.pop(
+            states=[
+                ReplicaState.UPDATING,
+                ReplicaState.RUNNING,
+                ReplicaState.STARTING,
+            ]
+        )
+
+        if gang_config is not None:
+            # For gangs, if ANY member is on a draining node the entire gang migrates.
+            gangs_to_migrate: Set[str] = set()
+            for replica in all_replicas:
+                if replica.actor_node_id in draining_nodes:
+                    gangs_to_migrate.add(replica.gang_context.gang_id)
+
+            def needs_migration(r):
+                return r.gang_context.gang_id in gangs_to_migrate
+
+        else:
+
+            def needs_migration(r):
+                return r.actor_node_id in draining_nodes
+
+        for replica in all_replicas:
+            if not needs_migration(replica):
                 self._replicas.add(replica.actor_details.state, replica)
+            # For RUNNING replicas, migrate them safely by starting
+            # a replacement replica first.
+            elif replica.actor_details.state == ReplicaState.RUNNING:
+                logger.info(
+                    f"Migrating {replica.replica_id} from draining node "
+                    f"'{replica.actor_node_id}'. A new replica will be "
+                    "created on another node."
+                )
+                self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            # For replicas that are STARTING or UPDATING, might as
+            # well terminate them immediately to allow replacement
+            # replicas to start. Otherwise we need to wait for them
+            # to transition to RUNNING before starting migration.
+            else:
+                self._stop_replica(
+                    replica,
+                    # Always force-stop gang members to avoid leaving partial gangs.
+                    graceful_stop=gang_config is None,
+                )
 
         num_running = self._replicas.count(states=[ReplicaState.RUNNING])
         num_draining = self._replicas.count(states=[ReplicaState.PENDING_MIGRATION])
@@ -4483,10 +4605,12 @@ class DeploymentState:
             num_running + num_draining - self._target_state.target_num_replicas
         )
 
-        (
-            replicas_to_stop,
-            replicas_to_keep,
-        ) = self._choose_pending_migration_replicas_to_stop(
+        choose_pending_migration_to_stop_fn = (
+            self._choose_pending_migration_gangs_to_stop
+            if gang_config is not None
+            else self._choose_pending_migration_replicas_to_stop
+        )
+        replicas_to_stop, replicas_to_keep = choose_pending_migration_to_stop_fn(
             self._replicas.pop(states=[ReplicaState.PENDING_MIGRATION]),
             draining_nodes,
             num_pending_migration_replicas_to_stop,

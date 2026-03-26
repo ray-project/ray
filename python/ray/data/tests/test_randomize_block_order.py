@@ -22,7 +22,8 @@ def test_randomize_blocks_operator(ray_start_regular_shared):
         seed_config=RandomSeedConfig(seed=0),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "RandomizeBlockOrder"
     assert isinstance(physical_op, AllToAllOperator)
