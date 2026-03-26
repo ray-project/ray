@@ -182,17 +182,18 @@ class SplitCoordinator:
         self._num_splits = num_splits
         self._locality_hints = locality_hints
 
-        # Condition variable protects epoch synchronization state.
-        self._cond = threading.Condition()
+        # Lock protects shared state accessed by get(), _advance_epoch, and
+        # shutdown_executor.
+        self._cond = threading.Lock()
         self._current_executor = None
 
-        # Consumers that have called signal_epoch_done() for the current epoch
-        # transition. Once all unique split indices arrive, the next epoch starts.
-        # Using a set keyed by split_idx means duplicate consumers for the same
-        # split only count once, ensuring they both proceed into get() together
-        # where the _active_consumers check detects the conflict.
-        # Guarded by self._cond.
-        self._ready_consumers: Set[SplitIdx] = set()
+        # Barrier trips when all num_splits consumers have called
+        # signal_epoch_done(). The action (_advance_epoch) runs once before
+        # any waiting thread is released.
+        self._epoch_barrier = threading.Barrier(
+            num_splits,
+            action=self._advance_epoch,
+        )
 
         # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
@@ -215,6 +216,17 @@ class SplitCoordinator:
         self._output_iterator = None
         # Store the error raised from the `_start_executor` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+    def _advance_epoch(self) -> None:
+        """Barrier action: called once when all consumers reach the barrier.
+
+        Runs before any waiting thread is released from barrier.wait().
+        Acquires _cond because _start_executor requires it and get() waiters
+        need notification.
+        """
+        with self._cond:
+            self._cur_epoch += 1
+            self._start_executor()
 
     def _start_executor(self):
         """Start a new streaming executor for the current epoch.
@@ -248,42 +260,27 @@ class SplitCoordinator:
         """Signal that this consumer is done with the current epoch and ready
         for the next one. Blocks until all consumers have signaled.
 
-        Uses Condition.wait() instead of spin-wait — zero CPU while waiting.
+        Uses a Barrier so all consumers rendezvous before the next epoch starts.
+        Retries with a timeout to log a warning if a consumer is slow to arrive.
         """
-        with self._cond:
-            self._ready_consumers.add(split_idx)
-
-            if len(self._ready_consumers) == self._num_splits:
-                # Last consumer to arrive — start the next epoch.
-                self._ready_consumers.clear()
-                # NOTE: Do NOT clear _active_consumers here. Each
-                # consumer that successfully entered get() removes its
-                # own entry in the finally block before reaching
-                # signal_epoch_done(). If a stale entry remains, it
-                # means a duplicate reader is still inside get() —
-                # keeping it lets us detect the conflict.
-                self._cur_epoch += 1
-                self._start_executor()
-                self._cond.notify_all()
-            else:
-                # Wait for all other consumers to arrive.
-                target_epoch = self._cur_epoch + 1
-                while self._cur_epoch < target_epoch:
-                    # Use a timeout so we can log a warning for blocked clients.
-                    # wait() returns False iff the timeout elapsed (no notify).
-                    timed_out = not self._cond.wait(timeout=BLOCKED_CLIENT_WARN_TIMEOUT)
-                    if (
-                        self._cur_epoch < target_epoch
-                        and timed_out
-                        and log_once(f"stream_split_blocked_{split_idx}_{target_epoch}")
-                    ):
-                        logger.warning(
-                            f"StreamSplitDataIterator(split={split_idx}) "
-                            f"blocked waiting on other clients for at least "
-                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
-                            "read from the DataIterator splits at the same "
-                            "time."
-                        )
+        target_epoch = self._cur_epoch + 1
+        while True:
+            try:
+                self._epoch_barrier.wait(timeout=BLOCKED_CLIENT_WARN_TIMEOUT)
+                break
+            except threading.BrokenBarrierError:
+                # All consumers timed out together — log once and reset to retry.
+                if self._cur_epoch < target_epoch and log_once(
+                    f"stream_split_blocked_{split_idx}_{target_epoch}"
+                ):
+                    logger.warning(
+                        f"StreamSplitDataIterator(split={split_idx}) "
+                        f"blocked waiting on other clients for at least "
+                        f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
+                        "read from the DataIterator splits at the same "
+                        "time."
+                    )
+                self._epoch_barrier.reset()
 
         if self._gen_epoch_error is not None:
             raise self._gen_epoch_error
