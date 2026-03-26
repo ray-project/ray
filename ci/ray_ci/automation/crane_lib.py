@@ -2,11 +2,7 @@
 Wrapper library for using the crane tool for managing container images.
 https://github.com/google/go-containerregistry/blob/v0.19.0/cmd/crane/doc/crane.md
 
-All functions return (return_code, output) tuples. On success, return_code is 0.
-On failure, return_code is non-zero and output contains best-effort diagnostics.
-
-Callers are responsible for checking return_code to detect failures rather than
-relying on exceptions.
+Functions raise CraneError on failure.
 """
 
 import os
@@ -14,11 +10,15 @@ import platform
 import subprocess
 import tarfile
 import tempfile
-from typing import List, Tuple
+from typing import List
 
 import runfiles
 
 from ci.ray_ci.utils import logger
+
+
+class CraneError(Exception):
+    """Exception raised when a crane operation fails."""
 
 
 def _crane_binary() -> str:
@@ -38,9 +38,7 @@ def _crane_binary() -> str:
     return r.Rlocation("crane_linux_x86_64/crane")
 
 
-def _run_crane_command(
-    args: List[str], stdin_input: str | None = None
-) -> Tuple[int, str]:
+def _run_crane_command(args: List[str], stdin_input: str | None = None) -> str:
     """
     Run a crane command that produces TEXT output.
 
@@ -49,8 +47,10 @@ def _run_crane_command(
         stdin_input: Optional input to pass via stdin (e.g., for passwords).
 
     Returns:
-        (return_code, output). output is stdout (best-effort) and may include
-        stderr on failures.
+        Command stdout output.
+
+    Raises:
+        CraneError: If the command fails.
     """
     command = [_crane_binary()] + args
     try:
@@ -74,19 +74,19 @@ def _run_crane_command(
             return_code = proc.wait()
             if return_code:
                 stderr = proc.stderr.read() if proc.stderr else ""
-                logger.error(
-                    f"Crane command `{' '.join(command)}` failed with stderr:\n{stderr}"
+                raise CraneError(
+                    f"Crane command `{' '.join(command)}` failed "
+                    f"(rc={return_code}): {stderr}"
                 )
-                return return_code, output or stderr or ""
-            return return_code, output
+            return output
     except FileNotFoundError:
-        logger.error(f"Crane binary not found at {command[0]}")
-        return 1, f"Crane binary not found at {command[0]}"
+        raise CraneError(f"Crane binary not found at {command[0]}")
+    except CraneError:
+        raise
     except Exception as e:
-        logger.error(
+        raise CraneError(
             f"Unexpected error running crane command `{' '.join(command)}`: {e}"
         )
-        return 1, str(e)
 
 
 def _extract_tar_to_dir(tar_path: str, output_dir: str) -> None:
@@ -116,7 +116,7 @@ def _extract_tar_to_dir(tar_path: str, output_dir: str) -> None:
             tf.extract(m, path=output_dir)
 
 
-def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
+def call_crane_copy(source: str, destination: str) -> None:
     """
     Copy a container image from source to destination.
 
@@ -124,14 +124,13 @@ def call_crane_copy(source: str, destination: str) -> Tuple[int, str]:
         source: Source image reference (e.g., "registry.example.com/repo:tag").
         destination: Destination image reference.
 
-    Returns:
-        Tuple of (return_code, output). return_code is 0 on success, non-zero on
-        failure. On failure, output may be None since stderr is not captured.
+    Raises:
+        CraneError: If the copy fails.
     """
-    return _run_crane_command(["copy", source, destination])
+    _run_crane_command(["copy", source, destination])
 
 
-def call_crane_cp(tag: str, source: str, dest_repo: str) -> Tuple[int, str]:
+def call_crane_cp(tag: str, source: str, dest_repo: str) -> None:
     """
     Copy a container image to a destination repository with a specified tag.
 
@@ -140,14 +139,13 @@ def call_crane_cp(tag: str, source: str, dest_repo: str) -> Tuple[int, str]:
         source: Source image reference.
         dest_repo: Destination repository URL (tag will be appended as ":tag").
 
-    Returns:
-        Tuple of (return_code, output). return_code is 0 on success, non-zero on
-        failure. On failure, output may be None since stderr is not captured.
+    Raises:
+        CraneError: If the copy fails.
     """
-    return _run_crane_command(["cp", source, f"{dest_repo}:{tag}"])
+    _run_crane_command(["cp", source, f"{dest_repo}:{tag}"])
 
 
-def call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
+def call_crane_index(index_name: str, tags: List[str]) -> None:
     """
     Create a multi-architecture image index from platform-specific images.
 
@@ -155,36 +153,34 @@ def call_crane_index(index_name: str, tags: List[str]) -> Tuple[int, str]:
         index_name: Name for the resulting multi-arch index.
         tags: List of exactly 2 platform-specific image tags to combine.
 
-    Returns:
-        Tuple of (return_code, output). return_code is 0 on success, non-zero on
-        failure. On failure, output may be None since stderr is not captured.
+    Raises:
+        CraneError: If the index creation fails.
+        ValueError: If tags list doesn't contain exactly 2 tags.
     """
     if len(tags) != 2:
-        logger.error("call_crane_index requires exactly 2 tags")
-        return 1, "call_crane_index requires exactly 2 tags"
+        raise ValueError("call_crane_index requires exactly 2 tags")
 
     args = ["index", "append", "-m", tags[0], "-m", tags[1], "-t", index_name]
-    return _run_crane_command(args)
+    _run_crane_command(args)
 
 
-def call_crane_manifest(tag: str) -> Tuple[int, str]:
+def call_crane_manifest(tag: str) -> str:
     """
     Fetch the manifest for a container image.
-
-    Can be used to check if an image exists (return_code 0 means it exists).
 
     Args:
         tag: Image reference to fetch manifest for (e.g., "registry.example.com/repo:tag").
 
     Returns:
-        Tuple of (return_code, output). return_code is 0 if image exists, non-zero
-        if image doesn't exist or fetch fails. On failure, output may be None
-        since stderr is not captured.
+        The image manifest as a string.
+
+    Raises:
+        CraneError: If the image doesn't exist or fetch fails.
     """
     return _run_crane_command(["manifest", tag])
 
 
-def call_crane_export(tag: str, output_dir: str) -> Tuple[int, str]:
+def call_crane_export(tag: str, output_dir: str) -> None:
     """
     Export a container image to a tar file and extract it.
 
@@ -195,8 +191,8 @@ def call_crane_export(tag: str, output_dir: str) -> Tuple[int, str]:
         tag: Image reference to export.
         output_dir: Directory to extract the image filesystem into.
 
-    Returns:
-        (return_code, output) where output is best-effort diagnostics.
+    Raises:
+        CraneError: If the export or extraction fails.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -208,20 +204,12 @@ def call_crane_export(tag: str, output_dir: str) -> Tuple[int, str]:
         try:
             subprocess.check_call(crane_cmd, env=os.environ)
         except subprocess.CalledProcessError as e:
-            msg = f"crane export failed (rc={e.returncode})"
-            logger.error(msg)
-            return e.returncode, msg
+            raise CraneError(f"crane export failed (rc={e.returncode})")
         except FileNotFoundError:
-            msg = f"Crane binary not found at {crane_cmd[0]}"
-            logger.error(msg)
-            return 1, msg
+            raise CraneError(f"Crane binary not found at {crane_cmd[0]}")
 
         try:
             logger.info(f"Extracting {tar_path} to {output_dir}")
             _extract_tar_to_dir(tar_path, output_dir)
         except Exception as e:
-            msg = f"tar extraction failed: {e}"
-            logger.error(msg)
-            return 1, msg
-
-    return 0, ""
+            raise CraneError(f"tar extraction failed: {e}")

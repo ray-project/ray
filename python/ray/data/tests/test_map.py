@@ -15,9 +15,10 @@ import pyarrow.compute as pc
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
@@ -25,6 +26,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -886,8 +888,6 @@ def test_actor_udf_cleanup(
     """Test that for the actor map operator, the UDF object is deleted properly."""
     ray.shutdown()
     ray.init(num_cpus=2)
-    ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 

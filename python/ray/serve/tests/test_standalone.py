@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
 import random
@@ -14,24 +15,27 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
-    run_string_as_driver,
-)
+from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.config import (
+    DeploymentActorConfig,
+    DeploymentMode,
+    GangSchedulingConfig,
+    HTTPOptions,
+    ProxyLocation,
+)
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeConfigException
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.util.state import list_actors
 
@@ -339,6 +343,47 @@ async def test_multi_app_shutdown_actors_async(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
+    """Test that actors registered via _register_shutdown_cleanup_actor are killed.
+
+    This tests the internal actor registration API that allows deployments to register
+    auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
+    """
+    ray.init(num_cpus=4)
+    serve.start()
+
+    # Create a detached actor that we'll register for cleanup
+    @ray.remote
+    class DummyActor:
+        def ping(self):
+            return "pong"
+
+    dummy_actor_name = "test_registered_cleanup_dummy"
+    dummy = DummyActor.options(
+        name=dummy_actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
+    ).remote()
+
+    # Verify actor is alive
+    assert ray.get(dummy.ping.remote()) == "pong"
+
+    # Register the actor with the controller for cleanup
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    ray.get(controller._register_shutdown_cleanup_actor.remote(dummy))
+
+    # Shutdown serve
+    serve.shutdown()
+
+    # Verify the registered actor is killed
+    def check_actor_dead():
+        try:
+            ray.get_actor(dummy_actor_name, namespace=SERVE_NAMESPACE)
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(check_actor_dead)
+
+
 def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -588,7 +633,7 @@ def test_no_http(ray_shutdown):
 
     address = ray.init(num_cpus=8)["address"]
     for i, option in enumerate(options):
-        print(f"[{i+1}/{len(options)}] Running with {option}")
+        print(f"[{i + 1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
@@ -703,11 +748,11 @@ serve.run(A.bind())"""
         driver_template.format(address=address, namespace="test_namespace1", port=8000)
     )
     run_string_as_driver(
-        driver_template.format(address=address, namespace="test_namespace2", port=8000)
+        driver_template.format(address=address, namespace="test_namespace2", port=8001)
     )
 
 
-def test_serve_start_different_http_checkpoint_options_error(
+def test_serve_start_different_http_checkpoint_options_warning(
     ray_shutdown, propagate_logs, caplog
 ):
     logger = logging.getLogger("ray.serve")
@@ -727,10 +772,13 @@ def test_serve_start_different_http_checkpoint_options_error(
     # create a different config
     test_http = dict(host="127.1.1.8", port=_get_random_port())
 
-    with pytest.raises(
-        RayServeConfigException, match="Attempt to update `http_options`"
-    ):
-        serve.start(http_options=test_http)
+    serve.start(http_options=test_http)
+
+    for test_config, msg in zip([["host", "port"]], warning_msg):
+        for test_msg in test_config:
+            if "Autoscaling metrics pusher thread" in msg:
+                continue
+            assert test_msg in msg
 
 
 def test_recovering_controller_no_redeploy():
@@ -782,6 +830,29 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def updating_message():
         deployment_status = (
             serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
+        )
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=20)
+
+
+def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
+    @serve.deployment(
+        num_replicas=4,
+        ray_actor_options={"num_cpus": 1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    def g(*args):
+        pass
+
+    serve._run(g.bind(), _blocking=False)
+
+    def updating_message():
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["g"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
@@ -898,7 +969,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
         {
             "proxy_location": None,
             "http_options": HTTPOptions(),
-            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+            "expected": HTTPOptions(location=DeploymentMode.HeadOnly),
         },  # using default location from HTTPOptions
         {
             "proxy_location": None,
@@ -947,6 +1018,57 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert ray.get(client._controller.get_http_config.remote()) == expected_options
+
+
+def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
+    """serve.shutdown() kills all deployment actors.
+
+    Deployment actors are detached, so they must be explicitly killed during
+    shutdown.
+    """
+
+    ray_context = ray.init(num_cpus=4, namespace="default_test_namespace")
+    address = ray_context.address_info["address"]
+    serve.start()
+
+    @ray.remote
+    class SharedCounter:
+        def __init__(self, start: int = 0):
+            self.count = start
+
+        def get(self):
+            return self.count
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(MyDeployment.bind())
+
+    def _check_deployment_actor_count(expected: int):
+        actors = list_actors(address=address, filters=[("state", "=", "ALIVE")])
+        names = [
+            a["name"]
+            for a in actors
+            if a["name"] and a["name"].startswith(SERVE_DEPLOYMENT_ACTOR_PREFIX)
+        ]
+        return len(names) == expected
+
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+    serve.shutdown()
+
+    wait_for_condition(lambda: _check_deployment_actor_count(0), timeout=15)
 
 
 if __name__ == "__main__":

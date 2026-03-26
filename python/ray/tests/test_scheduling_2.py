@@ -9,11 +9,13 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
-    client_test_enabled,
+    SignalActor,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     get_metric_check_condition,
     make_global_state_accessor,
 )
@@ -786,16 +788,6 @@ def test_workload_placement_metrics(ray_start_regular):
     pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # When in client mode, the placement group creation and the _get_bundle_cache
-    # function when checking whether the placement group is ready will be executed as
-    # a remote task. In other mode, the functions will be called directly as local
-    # functions. So the expected task workload metrics values are different between
-    # client and non-client mode.
-    if client_test_enabled():
-        expected_task_metrics_value = 4.0
-    else:
-        expected_task_metrics_value = 2.0
-
     timeseries = PrometheusTimeseries()
     placement_metric_condition = get_metric_check_condition(
         [
@@ -805,9 +797,9 @@ def test_workload_placement_metrics(ray_start_regular):
                 partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_ms_bucket",
-                value=expected_task_metrics_value,
-                partial_label_match={"WorkloadType": "Task"},
+                name="ray_tasks",
+                value=1.0,
+                partial_label_match={"State": "FINISHED", "Name": "task"},
             ),
             MetricSamplePattern(
                 name="ray_scheduler_placement_time_ms_bucket",

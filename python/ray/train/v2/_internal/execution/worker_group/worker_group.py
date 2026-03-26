@@ -4,15 +4,14 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
 from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -41,6 +40,10 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.execution.worker_group.execution_group import (
+    ExecutionGroup,
+    ReplicaGroup,
+)
 from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
     DefaultPlacementGroupHandle,
     PlacementGroupHandle,
@@ -64,7 +67,6 @@ from ray.train.v2._internal.util import (
     ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
-    ray_get_safe,
     time_monotonic,
 )
 from ray.train.v2.api.config import ScalingConfig
@@ -81,8 +83,6 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ class WorkerGroupContext:
     num_slices: int = 1
 
 
-class WorkerGroup(BaseWorkerGroup):
+class WorkerGroup(ExecutionGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -170,6 +170,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         self._worker_group_state: Optional[WorkerGroupState] = None
+        self._replica_groups: Optional[List[ReplicaGroup]] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
@@ -262,6 +263,7 @@ class WorkerGroup(BaseWorkerGroup):
         """
         self._assert_inactive()
         worker_group_context = self._worker_group_context
+        start_time = time_monotonic()
 
         # Check that we have sufficient resources in the cluster before waiting for
         # a placement group.
@@ -294,13 +296,16 @@ class WorkerGroup(BaseWorkerGroup):
             # time out if this hangs for a while to try again with a different size.
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
-            try:
-                ray.get(pg_handle.ready(), timeout=self._worker_group_start_timeout_s)
-            except GetTimeoutError as timeout_exc:
+            pg_wait_start = time_monotonic()
+            if not pg_handle.wait(self._worker_group_start_timeout_s):
                 pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
-                ) from timeout_exc
+                )
+            logger.debug(
+                "[Worker Group Initialization] Placement group ready in "
+                f"{time_monotonic() - pg_wait_start:.2f}s."
+            )
 
             # TODO: Figure out ordering between these different calls/callbacks.
             worker_group_state_builder.with_placement_group_handle(pg_handle)
@@ -317,18 +322,29 @@ class WorkerGroup(BaseWorkerGroup):
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
+            create_workers_start = time_monotonic()
             workers = self._create_workers(
                 worker_group_context.num_workers,
                 pg_handle.placement_group,
                 worker_group_context.resources_per_worker,
             )
             worker_group_state_builder.with_workers(workers)
+            logger.debug(
+                f"[Worker Group Initialization] {worker_group_context.num_workers} worker actors created in "
+                f"{time_monotonic() - create_workers_start:.2f}s."
+            )
+
+            self._replica_groups = [
+                ReplicaGroup([worker], worker_group_context.resources_per_worker)
+                for worker in workers
+            ]
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
+                before_init_train_context_cb_start = time_monotonic()
                 train_context_args = {}
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
@@ -341,15 +357,39 @@ class WorkerGroup(BaseWorkerGroup):
                             arg not in train_context_args
                         ), f"Callback {callable} returned {arg} which is already set."
                         train_context_args[arg] = arg_values
+                logger.debug(
+                    "[Worker Group Initialization] before_init_train_context "
+                    f"callbacks completed in {time_monotonic() - before_init_train_context_cb_start:.2f}s."
+                )
 
+                init_ctx_start = time_monotonic()
                 self._init_train_context_on_workers(
                     workers, sync_actor, train_context_args
+                )
+                logger.debug(
+                    "[Worker Group Initialization] Train context initialized "
+                    f"on workers in {time_monotonic() - init_ctx_start:.2f}s."
                 )
 
                 self._worker_group_state = worker_group_state_builder.build()
 
+                after_wg_start_cb_start = time_monotonic()
+                after_wg_start_cb_times = {}
                 for callback in self._callbacks:
+                    cb_start = time_monotonic()
                     callback.after_worker_group_start(self)
+                    after_wg_start_cb_times[type(callback).__name__] = (
+                        time_monotonic() - cb_start
+                    )
+                after_wg_start_cb_breakdown = "\n".join(
+                    f"    {name}: {elapsed:.2f}s"
+                    for name, elapsed in after_wg_start_cb_times.items()
+                )
+                logger.debug(
+                    "[Worker Group Initialization] after_worker_group_start "
+                    f"callbacks completed in {time_monotonic() - after_wg_start_cb_start:.2f}s.\n"
+                    f"  Individual callback time breakdown:\n{after_wg_start_cb_breakdown}"
+                )
 
             except RayActorError as actor_error:
                 error_msg = "At least one of the worker actors failed to initialize."
@@ -357,11 +397,16 @@ class WorkerGroup(BaseWorkerGroup):
 
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
-        ray_get_safe(
+        launch_start = time_monotonic()
+        ray.get(
             [
                 worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
             ]
+        )
+        logger.debug(
+            "[Worker Group Initialization] Train function launched on "
+            f"workers in {time_monotonic() - launch_start:.2f}s."
         )
 
         workers_info = "\n".join(
@@ -373,12 +418,33 @@ class WorkerGroup(BaseWorkerGroup):
                 for w in workers
             ]
         )
+
+        after_training_start_cb_start = time_monotonic()
+        after_training_start_cb_times = {}
+        for callback in self._callbacks:
+            cb_start = time_monotonic()
+            callback.after_worker_group_training_start(self)
+            after_training_start_cb_times[type(callback).__name__] = (
+                time_monotonic() - cb_start
+            )
+        after_training_start_cb_breakdown = "\n".join(
+            f"    {name}: {elapsed:.2f}s"
+            for name, elapsed in after_training_start_cb_times.items()
+        )
+        logger.debug(
+            "[Worker Group Initialization] after_worker_group_training_start "
+            f"callbacks completed in {time_monotonic() - after_training_start_cb_start:.2f}s.\n"
+            f"  Individual callback time breakdown:\n{after_training_start_cb_breakdown}"
+        )
+
+        logger.debug(
+            "[Worker Group Initialization] Worker group startup completed in "
+            f"{time_monotonic() - start_time:.2f}s total."
+        )
+
         logger.info(
             f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
-
-        for callback in self._callbacks:
-            callback.after_worker_group_training_start(self)
 
     def _create_workers(
         self,
@@ -405,9 +471,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         try:
-            actor_metadatas = ray_get_safe(
-                [actor.get_metadata.remote() for actor in actors]
-            )
+            actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
         except RayActorError as actor_error:
             for actor in actors:
                 ray.kill(actor)
@@ -444,7 +508,7 @@ class WorkerGroup(BaseWorkerGroup):
             )
             for i, worker in enumerate(workers)
         ]
-        ray_get_safe(context_init_tasks)
+        ray.get(context_init_tasks)
 
         self._decorate_worker_log_file_paths(workers)
 
@@ -674,64 +738,6 @@ class WorkerGroup(BaseWorkerGroup):
         return poll_tasks
 
     #####################################################################################
-    # Execution Methods
-    #####################################################################################
-
-    def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
-        """Execute ``func`` on each worker and return the futures.
-
-        Returns:
-            (List[ObjectRef]) A list of ``ObjectRef`` representing the
-                output of ``func`` from each worker. The order is the same
-                as ``self.workers``.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
-
-    def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
-        """Execute ``func`` on each worker and return the outputs of ``func``.
-
-        Returns:
-            (List[T]) A list containing the output of ``func`` from each
-                worker. The order is the same as ``self.workers``.
-
-        """
-        return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
-
-    def execute_single_async(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> ObjectRef:
-        """Execute ``func`` on worker with ``rank`` and return futures.
-
-        Returns:
-            (ObjectRef) An ObjectRef representing the output of func.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        if rank >= len(workers):
-            raise ValueError(
-                f"The provided {rank=} is " f"not valid for {len(workers)} workers."
-            )
-
-        return workers[rank].execute_async(fn, *fn_args, **fn_kwargs)
-
-    def execute_single(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> T:
-        """Execute ``func`` on worker with ``rank``.
-
-        Returns:
-            (T) The output of func.
-
-        """
-        return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
-
-    #####################################################################################
     # Utility Methods
     #####################################################################################
 
@@ -769,9 +775,8 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_active()
         return self._latest_poll_status
 
-    def __len__(self) -> int:
-        self._assert_active()
-        return len(self.get_workers())
+    def get_replica_groups(self) -> Optional[List[ReplicaGroup]]:
+        return self._replica_groups
 
     def get_resources_per_worker(self) -> dict:
         """Get the resources allocated per worker."""
@@ -792,7 +797,7 @@ class WorkerGroup(BaseWorkerGroup):
         pod_name_refs = [
             worker.execute_async(get_current_pod_name) for worker in workers
         ]
-        pod_names = ray_get_safe(pod_name_refs)
+        pod_names = ray.get(pod_name_refs)
 
         # Zip workers with names and sort by name.
         worker_name_pairs = list(zip(workers, pod_names))
@@ -849,7 +854,7 @@ class WorkerGroup(BaseWorkerGroup):
             worker.execute_async(get_train_application_worker_log_path)
             for worker in workers
         ]
-        log_paths = ray_get_safe(log_path_refs)
+        log_paths = ray.get(log_path_refs)
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):

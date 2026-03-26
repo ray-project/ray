@@ -569,6 +569,17 @@ def ray_start_with_dashboard(request, maybe_setup_external_redis):
 
 
 @pytest.fixture
+def ray_start_with_dashboard_and_proxy(request, httpserver, maybe_setup_external_redis):
+    hsurl = httpserver.url_for("/")
+
+    param = getattr(request, "param", {})
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, proxy_server_url=hsurl, **param) as info:
+        yield info
+
+
+@pytest.fixture
 def make_sure_dashboard_http_port_unused():
     """Make sure the dashboard agent http port is unused."""
     for process in psutil.process_iter():
@@ -626,13 +637,6 @@ def ray_start_regular_shared(request):
 def ray_start_regular_shared_2_cpus(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
-        yield res
-
-
-@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request):
-    param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
         yield res
 
 
@@ -749,10 +753,12 @@ def ray_start_cluster_head_with_env_vars(
     request, maybe_setup_external_redis, monkeypatch
 ):
     param = getattr(request, "param", {})
-    env_vars = param.pop("env_vars", {})
+    env_vars = param.get("env_vars", {})
+    # Create a copy of param without env_vars to pass to _ray_start_cluster
+    cluster_param = {k: v for k, v in param.items() if k != "env_vars"}
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(do_init=True, num_nodes=1, **cluster_param) as res:
         yield res
 
 
@@ -782,6 +788,17 @@ def ray_start_object_store_memory(request, maybe_setup_external_redis):
 @pytest.fixture
 def call_ray_start(request):
     with call_ray_start_context(request) as address:
+        yield address
+
+
+# This fixture will start an httpserver and use it as the proxy-server-url parameters
+@pytest.fixture
+def call_ray_start_context_with_proxy_server(httpserver):
+    hsurl = httpserver.url_for("/")
+    cmd = f"ray start --head --num-cpus=1 --proxy-server-url={hsurl} --port 0 --min-worker-port=0 --max-worker-port=0"
+    tempObject = type("Temp", (), {"param": cmd})
+
+    with call_ray_start_context(tempObject) as address:
         yield address
 
 
@@ -1134,7 +1151,9 @@ def _ray_start_chaos_cluster(request):
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed.remote())
+        killed = {
+            node_id for node_id, _, _ in ray.get(node_killer.get_killed_nodes.remote())
+        }
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(

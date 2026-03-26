@@ -6,10 +6,10 @@ import torch
 
 from ray.train._internal.dl_predictor import TensorDtype
 from ray.train.torch.torch_predictor import TorchPredictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class TorchDetectionPredictor(TorchPredictor):
     """A predictor for TorchVision detection models.
 

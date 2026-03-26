@@ -42,8 +42,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "voxtral-mini",
-        "model_source": "mistralai/Voxtral-Mini-3B-2507",
+        "model_id": "whisper-small",
+        "model_source": "openai/whisper-small",
     },
     deployment_config={
         "autoscaling_config": {
@@ -52,12 +52,6 @@ llm_config = LLMConfig(
         }
     },
     accelerator_type="A10G",
-    # You can customize the engine arguments (e.g. vLLM engine kwargs)
-    engine_kwargs={
-        "tokenizer_mode": "mistral",
-        "config_format": "mistral",
-        "load_format": "mistral",
-    },
     log_engine_metrics=True,
 )
 
@@ -93,7 +87,7 @@ client = openai.OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 with open("audio.wav", "rb") as f:
     try:
         response = client.audio.transcriptions.create(
-            model="voxtral-mini",
+            model="whisper-small",
             file=f,
             temperature=0.0,
             language="en",

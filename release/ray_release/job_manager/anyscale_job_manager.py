@@ -3,12 +3,13 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import anyscale
+from anyscale.job.models import JobState
 from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     CreateProductionJobConfig,
-    HaJobStates,
 )
 
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
     CommandTimeout,
@@ -23,11 +24,14 @@ from ray_release.util import (
     format_link,
 )
 
+JOB_SUCCEEDED = 0
+JOB_FAILED = -1
+JOB_STATE_UNKNOWN = -2
+
 job_status_to_return_code = {
-    HaJobStates.SUCCESS: 0,
-    HaJobStates.OUT_OF_RETRIES: -1,
-    HaJobStates.BROKEN: -2,
-    HaJobStates.TERMINATED: -3,
+    JobState.SUCCEEDED: JOB_SUCCEEDED,
+    JobState.FAILED: JOB_FAILED,
+    JobState.UNKNOWN: JOB_STATE_UNKNOWN,
 }
 terminal_state = set(job_status_to_return_code.keys())
 
@@ -37,7 +41,9 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
+        self._sdk = cluster_manager.sdk
         self._last_job_result = None
+        self._job_id: Optional[str] = None
         self._last_logs = None
         self.cluster_startup_timeout = 600
         self._duration = None
@@ -57,8 +63,6 @@ class AnyscaleJobManager:
         logger.info(
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
-
-        anyscale_client = self.sdk
 
         runtime_env = {
             "env_vars": env_vars_for_job,
@@ -81,7 +85,7 @@ class AnyscaleJobManager:
                     max_retries=0,
                 ),
             )
-            job_response = anyscale_client.create_job(job_request)
+            job_response = self._sdk.create_job(job_request)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -89,64 +93,55 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self.last_job_result = job_response.result
+        self._job_id = job_response.result.id
+        self._last_job_result = None
         self.start_time = time.time()
 
-        logger.info(f"Link to job: " f"{format_link(self.job_url)}")
+        logger.info(f"Link to job: " f"{format_link(self.job_url())}")
         return
 
-    @property
-    def sdk(self):
-        return self.cluster_manager.sdk
+    def save_last_job_status(self, status):
+        if status and hasattr(status, "id") and status.id != self._job_id:
+            logger.warning(f"Job ID mismatch: expected {self._job_id}, got {status.id}")
+        self._last_job_result = status
 
-    @property
-    def last_job_result(self):
-        return self._last_job_result
-
-    @last_job_result.setter
-    def last_job_result(self, value):
-        self._last_job_result = value
-
-    @property
     def job_id(self) -> Optional[str]:
-        if not self.last_job_result:
-            return None
-        return self.last_job_result.id
+        return self._job_id
 
-    @property
     def job_url(self) -> Optional[str]:
-        if not self.job_id:
+        if not self._job_id:
             return None
-        return anyscale_job_url(self.job_id)
+        return anyscale_job_url(self._job_id)
 
-    @property
-    def last_job_status(self) -> Optional[HaJobStates]:
-        if not self.last_job_result:
+    def _last_job_status(self) -> Optional["JobState"]:
+        if not self._last_job_result:
             return None
-        return self.last_job_result.state.current_state
+        return self._last_job_result.state
 
-    @property
-    def in_progress(self) -> bool:
-        return self.last_job_result and self.last_job_status not in terminal_state
+    def _in_progress(self) -> bool:
+        if not self._last_job_result:
+            return False
+        return self._last_job_status() not in terminal_state
 
     def _get_job_status_with_retry(self):
-        anyscale_client = self.cluster_manager.sdk
         return exponential_backoff_retry(
-            lambda: anyscale_client.get_production_job(self.job_id),
+            lambda: anyscale.job.status(id=self._job_id),
             retry_exceptions=Exception,
             initial_retry_delay_s=1,
             max_retries=3,
-        ).result
+        )
 
     def _terminate_job(self, raise_exceptions: bool = False):
-        if not self.in_progress:
+        if not self._job_id:
             return
-        logger.info(f"Terminating job {self.job_id}...")
+        if self._last_job_result is not None and not self._in_progress():
+            return
+        logger.info(f"Terminating job {self._job_id}...")
         try:
-            self.sdk.terminate_job(self.job_id)
-            logger.info(f"Job {self.job_id} terminated!")
+            self._sdk.terminate_job(self._job_id)
+            logger.info(f"Job {self._job_id} terminated!")
         except Exception:
-            msg = f"Couldn't terminate job {self.job_id}!"
+            msg = f"Couldn't terminate job {self._job_id}!"
             if raise_exceptions:
                 logger.error(msg)
                 raise
@@ -173,11 +168,11 @@ class AnyscaleJobManager:
         self._terminate_job()
         unregister_handler(terminate_handler)
 
-    def _wait_job(self, timeout: int):
+    def _wait_job(self, timeout: int) -> Tuple[int, float]:
         # The context ensures the job always either finishes normally
         # or is terminated.
         with self._terminate_job_context():
-            assert self.job_id, "Job must have been started"
+            assert self._job_id, "Job must have been started"
 
             start_time = time.monotonic()
             # Waiting for cluster needs to be a part of the whole
@@ -209,12 +204,12 @@ class AnyscaleJobManager:
                     next_status += 30
 
                 result = self._get_job_status_with_retry()
-                self.last_job_result = result
-                status = self.last_job_status
+                self.save_last_job_status(result)
+                status = self._last_job_status()
 
                 if not job_running and status in {
-                    HaJobStates.RUNNING,
-                    HaJobStates.ERRORED,
+                    JobState.STARTING,
+                    JobState.RUNNING,
                 }:
                     logger.info(
                         f"... job started ...({int(now - start_time)} seconds) ..."
@@ -230,10 +225,10 @@ class AnyscaleJobManager:
                 time.sleep(1)
 
         result = self._get_job_status_with_retry()
-        self.last_job_result = result
-        status = self.last_job_status
+        self.save_last_job_status(result)
+        status = self._last_job_status()
         assert status in terminal_state
-        if status == HaJobStates.TERMINATED and not job_running:
+        if status == JobState.FAILED and not job_running:
             # Soft infra error
             retcode = -4
         else:
@@ -258,17 +253,11 @@ class AnyscaleJobManager:
         return self._wait_job(timeout)
 
     def _get_ray_logs(self) -> str:
-        """
-        Obtain the last few logs
-        """
-        if self.cluster_manager.log_streaming_limit == -1:
-            return anyscale.job.get_logs(id=self.job_id)
-        return anyscale.job.get_logs(
-            id=self.job_id, max_lines=self.cluster_manager.log_streaming_limit
-        )
+        """Obtain the last few log"""
+        return anyscale.job.get_logs(id=self._job_id, max_lines=LAST_LOGS_LENGTH)
 
     def get_last_logs(self):
-        if not self.job_id:
+        if not self._job_id:
             raise RuntimeError(
                 "Job has not been started, therefore there are no logs to obtain."
             )
@@ -286,6 +275,6 @@ class AnyscaleJobManager:
             initial_retry_delay_s=30,
             max_retries=3,
         )
-        if ret and not self.in_progress:
+        if ret and not self._in_progress():
             self._last_logs = ret
         return ret

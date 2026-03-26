@@ -5,21 +5,25 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
+from ray._common.utils import env_float
 from ray.actor import ActorHandle
-from ray.data import DataIterator, Dataset
-from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
+from ray.train.v2._internal.constants import (
+    AWS_RETRYABLE_TOKENS,
+    CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+)
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
-    _ValidationSpec,
 )
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
+    context_watchdog,
     invoke_context_managers,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -27,8 +31,10 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
+    from ray.data import DataIterator
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -45,6 +51,9 @@ logger = logging.getLogger(__file__)
 # TODO: make this value manually or automatically configurable.
 MAX_CHECKPOINT_UPLOAD_THREADS = 1
 
+DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate a network issue or slow storage backend. Consider specifying a different filesystem via RunConfig(storage_filesystem=...)."
+CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Custom checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate an issue in your custom upload function passed to `ray.train.report(custom_upload_fn)`."
+
 
 @dataclass(frozen=True)
 class TrainRunContext:
@@ -57,16 +66,13 @@ class TrainRunContext:
     run_config: RunConfig
 
     # The configuration passed to the training function.
-    train_loop_config: Optional[Dict[str, Any]]
+    train_loop_config: Optional[Dict]
 
     # The scaling configuration for the current training run.
     scaling_config: ScalingConfig
 
     # The configuration for the training backend (e.g., PyTorch, XGBoost).
     backend_config: "BackendConfig"
-
-    # The datasets used in the current training run.
-    datasets: Dict[str, Dataset]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
@@ -117,6 +123,7 @@ class TrainContext:
     controller_actor: ActorHandle
 
     dataset_shard_provider: "DatasetShardProvider"
+    has_validation_fn: Optional[bool] = None
 
     # TODO: consolidate into CheckpointContext
     checkpoint: Optional["Checkpoint"] = None
@@ -126,6 +133,11 @@ class TrainContext:
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
+
+    def __post_init__(self):
+        # Ray train initializes worker with current report index
+        # report_call_index should start at the current report index
+        self.report_call_index = self.current_report_index
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
@@ -170,7 +182,7 @@ class TrainContext:
             )
         )
 
-    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> DataIterator:
+    def get_dataset_shard(self, dataset_info: "DatasetShardMetadata") -> "DataIterator":
         """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
         Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
@@ -229,7 +241,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validation_spec: Optional[_ValidationSpec] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> _TrainingReport:
         """Save the checkpoint to remote storage.
 
@@ -241,23 +253,45 @@ class TrainContext:
             checkpoint_upload_fn: A user defined function that will be called with the
                 checkpoint to upload it. If not provided, defaults to using the `pyarrow.fs.copy_files`
                 utility for copying to the destination `storage_path`.
-            validation_spec: The validation specification.
+            validation: The validation configuration.
 
         Returns:
             The training result object containing the persisted checkpoint.
         """
 
         if not checkpoint:
-            return _TrainingReport(
-                checkpoint=None, metrics=metrics, validation_spec=None
-            )
+            return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
-        # Persist the checkpoint to the remote storage path.
-        try:
-            if checkpoint_upload_fn:
-                persisted_checkpoint = checkpoint_upload_fn(
-                    checkpoint, checkpoint_dir_name
+        def slow_upload_warning(stop_event: threading.Event, message: str):
+            # Log a warning for the checkpoint upload every `CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR`
+            #   seconds until `stop_event` is set.
+            elapsed = 0.0
+            interval = env_float(
+                CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+                DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+            )
+            while not stop_event.wait(interval):
+                elapsed += interval
+                logger.warning(
+                    message.format(
+                        checkpoint_dir_name=checkpoint_dir_name,
+                        elapsed=elapsed,
+                        interval=interval,
+                    )
                 )
+
+        try:
+            # Persist the checkpoint to the remote storage path.
+            if checkpoint_upload_fn:
+                # Wraps the checkpoint_upload_fn with warning if slow
+                with context_watchdog(
+                    slow_upload_warning, CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
+                ):
+                    persisted_checkpoint = checkpoint_upload_fn(
+                        checkpoint, checkpoint_dir_name
+                    )
+
+                # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
                 if persisted_checkpoint is None or not isinstance(
                     persisted_checkpoint, ray.train.Checkpoint
                 ):
@@ -265,9 +299,16 @@ class TrainContext:
                         "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
                     )
             else:
-                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-                    checkpoint, checkpoint_dir_name
-                )
+                # Wraps the `storage_context.persist_current_checkpoint` with warning if slow
+                with context_watchdog(
+                    slow_upload_warning, DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
+                ):
+                    persisted_checkpoint = (
+                        self.storage_context.persist_current_checkpoint(
+                            checkpoint, checkpoint_dir_name
+                        )
+                    )
+
         except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "
@@ -288,7 +329,7 @@ class TrainContext:
         return _TrainingReport(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
-            validation_spec=validation_spec,
+            validation=validation,
         )
 
     def _wait_then_report(
@@ -328,8 +369,7 @@ class TrainContext:
         checkpoint_upload_fn: Optional[
             Callable[["Checkpoint", str], "Checkpoint"]
         ] = None,
-        validate_fn: Optional[Callable[["Checkpoint", Optional[Dict]], Dict]] = None,
-        validate_config: Optional[Dict] = None,
+        validation: Union[bool, ValidationTaskConfig] = False,
     ) -> None:
         """
         Upload checkpoint to remote storage and put a training
@@ -352,19 +392,17 @@ class TrainContext:
                     "or save tensors as part of the checkpoint files instead."
                 )
 
+        if validation and not self.has_validation_fn:
+            raise ValueError(
+                "`validation_config` was not set on the trainer, but a validation was requested."
+            )
+
         with invoke_context_managers(
             [
                 callback.on_report
                 for callback in self.execution_context.train_context_callbacks
             ]
         ):
-            if validate_fn:
-                validation_spec = _ValidationSpec(
-                    validate_fn=validate_fn,
-                    validate_config=validate_config,
-                )
-            else:
-                validation_spec = None
             self.report_call_index += 1
             report_call_index = self.report_call_index
 
@@ -381,7 +419,7 @@ class TrainContext:
                     checkpoint,
                     delete_local_checkpoint_after_upload,
                     checkpoint_upload_fn,
-                    validation_spec,
+                    validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -389,7 +427,7 @@ class TrainContext:
                 training_report = _TrainingReport(
                     checkpoint=checkpoint,
                     metrics=metrics,
-                    validation_spec=validation_spec,
+                    validation=validation,
                 )
                 self._wait_then_report(training_report, report_call_index)
 
@@ -408,7 +446,7 @@ class TrainContext:
                             checkpoint,
                             delete_local_checkpoint_after_upload,
                             checkpoint_upload_fn,
-                            validation_spec,
+                            validation,
                         )
                         self._wait_then_report(training_report, report_call_index)
                     except Exception as e:

@@ -2,6 +2,7 @@ import copy
 import glob
 import logging
 import os
+import uuid
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -375,7 +376,9 @@ class Searcher:
             session_str: Unique identifier of the current run
                 session.
         """
-        tmp_search_ckpt_path = os.path.join(checkpoint_dir, ".tmp_searcher_ckpt")
+        file_name = self.CKPT_FILE_TMPL.format(session_str)
+        tmp_file_name = f".{str(uuid.uuid4())}-tmp-{file_name}"
+        tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
         success = True
         try:
             self.save(tmp_search_ckpt_path)
@@ -387,7 +390,7 @@ class Searcher:
         if success and os.path.exists(tmp_search_ckpt_path):
             os.replace(
                 tmp_search_ckpt_path,
-                os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format(session_str)),
+                os.path.join(checkpoint_dir, file_name),
             )
 
     def restore_from_dir(self, checkpoint_dir: str):

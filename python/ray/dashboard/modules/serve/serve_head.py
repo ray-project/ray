@@ -10,7 +10,13 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._common.pydantic_compat import ValidationError
+from ray._common.pydantic_compat import ValidationError as ValidationErrorV1
+
+# Import native Pydantic v2 ValidationError for schemas using native Pydantic
+try:
+    from pydantic import ValidationError as ValidationErrorV2
+except ImportError:
+    ValidationErrorV2 = ValidationErrorV1  # Fallback if only v1 is available
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -151,17 +157,19 @@ class ServeHead(SubprocessModule):
         from ray.serve.schema import ServeDeploySchema
 
         try:
-            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
+            config: ServeDeploySchema = ServeDeploySchema.model_validate(
+                await req.json()
+            )
+        except (ValidationErrorV1, ValidationErrorV2) as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.dict()
+        config_http_options = config.http_options.model_dump()
         location = ProxyLocation._to_deployment_mode(config.proxy_location)
         full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.dict()
+        grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
@@ -169,6 +177,11 @@ class ServeHead(SubprocessModule):
                 grpc_options=grpc_options,
                 global_logging_config=config.logging_config,
             )
+
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. Therefore we validate that no
+        # existing HTTP options are updated and print warning in case they are
+        self.validate_http_options(client, full_http_options)
 
         try:
             if config.logging_config:
@@ -267,6 +280,22 @@ class ServeHead(SubprocessModule):
                 return self._create_json_response(
                     {"error": "Internal Server Error"}, 503
                 )
+
+    def validate_http_options(self, client, http_options):
+        divergent_http_options = []
+
+        for option, new_value in http_options.items():
+            prev_value = getattr(client.http_config, option)
+            if prev_value != new_value:
+                divergent_http_options.append(option)
+
+        if divergent_http_options:
+            logger.warning(
+                "Serve is already running on this Ray cluster and "
+                "it's not possible to update its HTTP options without "
+                "restarting it. Following options are attempted to be "
+                f"updated: {divergent_http_options}."
+            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.

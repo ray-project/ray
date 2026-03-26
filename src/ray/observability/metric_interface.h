@@ -41,6 +41,10 @@ class MetricInterface {
   virtual void Record(double value, stats::TagsType tags) = 0;
   virtual void Record(double value,
                       std::vector<std::pair<std::string_view, std::string>> tags) = 0;
+
+  // Flush any buffered data to the output system. Default is a no-op; override
+  // for metrics that buffer internally (e.g. PercentileMetric).
+  virtual void Flush() {}
 };
 
 }  // namespace observability

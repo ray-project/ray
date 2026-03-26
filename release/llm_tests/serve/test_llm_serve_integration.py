@@ -1,4 +1,5 @@
 import pytest
+import requests
 import sys
 
 from ray import serve
@@ -156,7 +157,7 @@ def test_deepseek_model(model_name):
     time.sleep(1)
 
 
-@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
+@pytest.mark.parametrize("model_name", ["openai/whisper-small"])
 def test_transcription_model(model_name):
     """
     Test that the transcription models can be loaded successfully.
@@ -173,15 +174,91 @@ def test_transcription_model(model_name):
             trust_remote_code=True,
             gpu_memory_utilization=0.9,
             enable_prefix_caching=True,
-            max_model_len=2048,
-            tokenizer_mode="mistral",
-            config_format="mistral",
-            load_format="mistral",
         ),
     )
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_embedding_model(model_name):
+    """
+    Test that embedding models can be loaded and serve embedding requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/embeddings",
+        json={
+            "model": model_name,
+            "input": "Hello, world!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) > 0
+    embedding = data["data"][0]["embedding"]
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_score_model(model_name):
+    """
+    Test that embedding models can serve score requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/score",
+        json={
+            "model": model_name,
+            "text_1": "What is the capital of France?",
+            "text_2": ["Paris is the capital of France.", "Berlin is in Germany."],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) == 2
+    for item in data["data"]:
+        assert "score" in item
+        assert isinstance(item["score"], float)
+
     serve.shutdown()
     time.sleep(1)
 
@@ -266,6 +343,30 @@ class TestRemoteCode:
 
         # Wait for the application to be running (timeout after 5 minutes)
         wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_nested_engine_kwargs_structured_outputs():
+    """Regression test for https://github.com/ray-project/ray/pull/60380"""
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            structured_outputs_config={
+                "backend": "xgrammar",
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
 
 
 if __name__ == "__main__":

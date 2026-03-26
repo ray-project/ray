@@ -998,6 +998,47 @@ def test_one_hot_encoder_with_max_categories():
     pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
+def test_one_hot_encoder_max_categories_global_sum_across_partitions():
+    """Tests that max_categories sums counts across partitions before picking top-k.
+
+    Edge case: a category that is NOT in the per-partition top-k of ANY single
+    partition can still become a global top-k category once counts are summed.
+
+    Setup: 2 partitions with column "X" having these value counts:
+      Partition 1: {A: 5, B: 4, C: 3}  → per-partition top-2: {A, B}
+      Partition 2: {D: 5, E: 4, C: 3}  → per-partition top-2: {D, E}
+
+    Global counts: {A: 5, B: 4, C: 6, D: 5, E: 4}
+    Global top-2:  {C, A} or {C, D} (C=6 is highest, then A=5 and D=5 tie)
+
+    If top-k were applied per-partition first, C would be excluded from both
+    partitions' top-2, and the union {A, B, D, E} would never include C.
+    """
+    part1 = pd.DataFrame({"X": ["A"] * 5 + ["B"] * 4 + ["C"] * 3})
+    part2 = pd.DataFrame({"X": ["D"] * 5 + ["E"] * 4 + ["C"] * 3})
+    ds = ray.data.from_pandas([part1, part2])
+
+    encoder = OneHotEncoder(["X"], max_categories={"X": 2})
+    encoder.fit(ds)
+
+    stats = encoder.stats_
+    encoded_categories = set(stats["unique_values(X)"].keys())
+    assert len(encoded_categories) == 2, (
+        f"Expected 2 categories from global top-k, got {len(encoded_categories)}: "
+        f"{encoded_categories}"
+    )
+    # C must be included since it has the highest global count (6).
+    assert (
+        "C" in encoded_categories
+    ), f"Expected C (global count=6) to be in top-2, got {encoded_categories}"
+    # The second category should be one of A or D (both have count=5).
+    remaining = encoded_categories - {"C"}
+    assert remaining <= {
+        "A",
+        "D",
+    }, f"Expected second category to be A or D (count=5), got {remaining}"
+
+
 def test_multi_hot_encoder():
     """Tests basic MultiHotEncoder functionality."""
     col_a = ["red", "green", "blue", "red"]
