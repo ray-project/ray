@@ -554,12 +554,6 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
 
 
 def test_iter_jax_batches(ray_start_regular_shared):
-    try:
-        import jax
-        from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
     )
@@ -570,13 +564,10 @@ def test_iter_jax_batches(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
 
-    mesh = Mesh(jax.devices(), ("x",))
-    named_sharding = NamedSharding(mesh, P("x"))
-
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=3):
+        for batch in ds.iter_jax_batches(batch_size=3):
             iterations.append(
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
@@ -584,48 +575,40 @@ def test_iter_jax_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_iter_jax_batches_default_sharding(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
-    df = pd.DataFrame(
-        {"one": [1, 2, 3, 4, 5, 6], "two": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}
-    )
-    ds = ray.data.from_pandas(df)
-
-    # Test with default named_sharding=None
-    for batch in ds.iter_jax_batches(batch_size=2):
-        assert isinstance(batch, dict)
-        assert "one" in batch
-        assert "two" in batch
-        assert len(batch["one"]) == 2
-
-
 def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
-    try:
-        import jax
-        from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
     arr = np.concatenate((arr1, arr2))
     ds = ray.data.from_numpy([arr1, arr2])
 
-    mesh = Mesh(jax.devices(), ("x",))
-    named_sharding = NamedSharding(mesh, P("x"))
-
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=2):
+        for batch in ds.iter_jax_batches(batch_size=2):
             iterations.append(batch["data"])
 
         combined_iterations = np.concatenate(iterations)
         np.testing.assert_array_equal(arr, combined_iterations)
+
+
+def test_iter_jax_batches_custom_transform(ray_start_regular_shared):
+    df1 = pd.DataFrame({"ones": [1, 2, 3], "tens": [10, 20, 30]})
+    df2 = pd.DataFrame({"ones": [4, 5, 6], "tens": [40, 50, 60]})
+    df3 = pd.DataFrame({"ones": [7, 8], "tens": [70, 80]})
+    arr_sum = np.array([11, 22, 33, 44, 55, 66, 77, 88])
+    ds = ray.data.from_pandas([df1, df2, df3])
+
+    # Custom transform that returns a tuple of (array, sum)
+    def custom_transform(batch):
+        return batch["ones"] + batch["tens"]
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_jax_batches(batch_size=3, transform=custom_transform):
+            iterations.append(batch)
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(arr_sum), np.sort(combined_iterations))
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterable, Iterator, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, Union
 
 import numpy as np
 
@@ -14,22 +14,13 @@ def _get_slice_stop(sl: slice, length: int) -> int:
     return length if sl.stop is None else sl.stop
 
 
-def _convert_ndarray_to_jax_tensor(
+def _convert_ndarray_to_jax_array(
     ndarray: np.ndarray,
-    named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
 ) -> "jax.Array":  # noqa: F821
 
     local_batch_size = ndarray.shape[0]
 
     # Validate rank
-    if named_sharding:
-        partition_spec = named_sharding.spec
-        if len(partition_spec) > len(ndarray.shape):
-            raise ValueError(
-                f"PartitionSpec {partition_spec} defines sharding for {len(partition_spec)} "
-                f"dimensions, but the input tensor only has {len(ndarray.shape)} dimensions "
-                f"(shape: {ndarray.shape})."
-            )
 
     # Ray Data partitions objects equally across the total number of hosts/workers
     # operating in the DataParallelTrainer (along the batch / 0-th dimension).
@@ -41,10 +32,10 @@ def _convert_ndarray_to_jax_tensor(
     global_devices = jax.devices()
     host_count = jax.process_count()
 
-    # 1. Physical Sharding (1D across the batch dimension)
+    # 1. Physical Sharding (1D across the "data" dimension)
     # The full global_devices list is used to create a 1D mesh across all processes.
-    physical_mesh = Mesh(np.array(global_devices), ("batch",))
-    physical_sharding = NamedSharding(physical_mesh, PartitionSpec("batch"))
+    physical_mesh = Mesh(np.array(global_devices), ("data",))
+    physical_sharding = NamedSharding(physical_mesh, PartitionSpec("data"))
 
     # Global shape assumes each host gets the exact same local batch size.
     global_shape = (local_batch_size * host_count,) + ndarray.shape[1:]
@@ -76,52 +67,53 @@ def _convert_ndarray_to_jax_tensor(
         global_shape, physical_sharding, arrays
     )
 
-    if named_sharding:
-        # 2. Reshard to the user's exact requested target sharding (e.g. 2D / 3D)
-        # JAX will automatically manage the NCCL all-to-all communications to reshuffle
-        # the 1D chunks into the target N-dimensional layout.
-        return jax.device_put(physical_array, named_sharding)
     return physical_array
 
 
-def _convert_ndarray_batch_to_jax_tensor_batch(
+def _convert_batch(
     ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
-    named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
-) -> Union["jax.Array", Dict[str, "jax.Array"]]:  # noqa: F821
+    transform: Callable[
+        [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
+    ] = None,
+) -> Any:
     """Convert a NumPy ndarray batch to a globally sharded JAX Array batch.
 
     Args:
         ndarrays: A single NumPy ndarray or dictionary of NumPy ndarrays.
-        named_sharding: The JAX NamedSharding specification defining the
-            global mesh and partition layout. Default is ``None``, in which case
-            the array will be sharded along the batch dimension across all devices.
+        transform: A flexible mapping function that converts the data parallel
+            JAX arrays (or dictionary of arrays) to the final format.
+            If None, the default 1D batch sharding is used.
 
     Returns:
          A globally sharded JAX Array (or dictionary of arrays) residing
          in TPU/GPU memory.
     """
     if isinstance(ndarrays, np.ndarray):
-        return _convert_ndarray_to_jax_tensor(ndarrays, named_sharding)
+        jax_batch = _convert_ndarray_to_jax_array(ndarrays)
+    else:
+        jax_batch = {}
+        for col_name, col_ndarray in ndarrays.items():
+            try:
+                jax_batch[col_name] = _convert_ndarray_to_jax_array(col_ndarray)
+            except ValueError as e:
+                raise ValueError(
+                    f"JAX Array Conversion Error for column '{col_name}': \n{e}"
+                )
 
-    jax_batch = {}
-    for col_name, col_ndarray in ndarrays.items():
-        try:
-            jax_batch[col_name] = _convert_ndarray_to_jax_tensor(
-                col_ndarray, named_sharding
-            )
-        except ValueError as e:
-            raise ValueError(f"JAX Sharding Error for column '{col_name}': \n{e}")
-
+    if transform:
+        return transform(jax_batch)
     return jax_batch
 
 
 def jax_sync_generator(
     batch_iterable: Iterable[Any],
     drop_last: bool,
-    named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+    transform: Callable[
+        [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
+    ] = None,
     synchronize_batches: bool = False,
     synchronize_lookahead: int = 10,
-) -> Iterator[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
+) -> Iterator[Any]:
     """A generator that synchronizes and shards batches across JAX workers.
 
     This generator wraps a locally yielded batch iterable and ensures that all JAX
@@ -141,8 +133,9 @@ def jax_sync_generator(
             or a dictionary of NumPy ndarrays).
         drop_last: If True, drops mismatched or unevenly sized leftover batches. If False,
             raises a ValueError when uneven batches or uneven batch sizes are detected.
-        named_sharding: An optional JAX NamedSharding specification defining the mesh
-            and partition layout. If None, the array is sharded 1D along the batch dimension.
+        transform: A flexible mapping function that converts the data parallel
+            JAX arrays (or dictionary of arrays) to the final format.
+            If None, the default 1D batch sharding is used.
         synchronize_batches: Whether to synchronize batch shapes across all hosts.
             Setting this to False can improve performance if you guarantee that all
             hosts produce identical batch shapes and counts beforehand.
@@ -151,8 +144,7 @@ def jax_sync_generator(
             increase memory usage as more batches are buffered locally.
 
     Yields:
-        (jax.Array, Dict[str, jax.Array]): A globally sharded JAX Array or a
-            dictionary of JAX Arrays natively placed on devices.
+        Any: Globally sharded batches.
     """
     import jax
 
@@ -202,9 +194,7 @@ def jax_sync_generator(
                 else:
                     batch = batch[:min_batch_size]
 
-            yield _convert_ndarray_batch_to_jax_tensor_batch(
-                batch, named_sharding=named_sharding
-            )
+            yield _convert_batch(batch, transform=transform)
         return
 
     # Multi-host synchronization with lookahead
@@ -308,6 +298,4 @@ def jax_sync_generator(
                 else:
                     batch = batch[:min_batch_size]
 
-            yield _convert_ndarray_batch_to_jax_tensor_batch(
-                batch, named_sharding=named_sharding
-            )
+            yield _convert_batch(batch, transform=transform)

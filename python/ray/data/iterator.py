@@ -621,28 +621,30 @@ class DataIterator(abc.ABC):
     def iter_jax_batches(
         self,
         *,
-        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+        transform: Callable[
+            [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
+        ] = None,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-    ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
+    ) -> Iterable[Any]:
         """Return a batched iterable of JAX Arrays over the dataset.
 
         This iterator fetches data blocks, converts them to NumPy arrays, and
-        loads them directly onto JAX-addressable devices using Global SPMD
+        loads them directly onto JAX-addressable devices using Global Data Parallel
         sharding. Data types are inferred from the underlying NumPy arrays.
 
-        This iterable will yield single-tensor batches if the underlying dataset
-        consists of a single column; otherwise, it will yield a dictionary of
-        column-tensors.
+        This iterable will yield a dictionary of column-tensors, or a single
+        tensor if the underlying dataset consists of a single unnamed column.
 
         Args:
-            named_sharding: The JAX NamedSharding object defining the global
-                mesh and partition layout. Default is ``None``, in which case
-                the array will be sharded along the batch dimension across all devices.
+            transform: A flexible mapping function that converts the data parallel
+                JAX arrays (or dictionary of arrays) to the final format.
+                If None, the batches will be returned as 1D data parallel JAX
+                arrays, sharded along the "data" dimension across all JAX devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
@@ -686,7 +688,7 @@ class DataIterator(abc.ABC):
         return jax_sync_generator(
             batch_iterable,
             drop_last,
-            named_sharding,
+            transform,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),
         )

@@ -6005,17 +6005,21 @@ class Dataset:
     def iter_jax_batches(
         self,
         *,
-        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+        transform: Callable[
+            [Union["jax.Array", Dict[str, "jax.Array"]]], Any  # noqa: F821
+        ] = None,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-    ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
+    ) -> Iterable[Any]:
         """Return an iterable over batches of data represented as JAX arrays.
 
         This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
+        The returned batches will be 1D data parallel JAX arrays (sharded along
+        the "data" dimension) by default if no ``transform`` is provided.
         Data types are inferred from the underlying NumPy arrays.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to JAX arrays.
@@ -6039,9 +6043,10 @@ class Dataset:
                 [5.1 4.9] [0 0]
 
         Args:
-            named_sharding: The JAX NamedSharding object defining the global
-                mesh and partition layout. Default is ``None``, in which case
-                the data is sharded along the batch dimension across all devices.
+            transform: A flexible mapping function that converts the data parallel
+                JAX arrays (or dictionary of arrays) to the final format.
+                If None, the batches will be returned as 1D data parallel JAX
+                arrays, sharded along the "data" dimension across all JAX devices.
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
@@ -6064,7 +6069,7 @@ class Dataset:
 
         """  # noqa: E501
         return self.iterator().iter_jax_batches(
-            named_sharding=named_sharding,
+            transform=transform,
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             drop_last=drop_last,

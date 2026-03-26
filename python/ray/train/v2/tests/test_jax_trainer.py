@@ -571,7 +571,9 @@ def train_func_with_data_single_host(config):
     drop_last = config.get("drop_last", False) if config else False
     # Local batch size must be evenly divisible by 8 (num_local_devices)
     for batch in ds_shard.iter_jax_batches(
-        named_sharding=named_sharding, batch_size=16, drop_last=drop_last
+        transform=lambda x: jax.device_put(x, named_sharding),
+        batch_size=16,
+        drop_last=drop_last,
     ):
         arr = batch["features"]
         assert arr.sharding == named_sharding
