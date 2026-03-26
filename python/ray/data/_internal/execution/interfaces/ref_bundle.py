@@ -365,7 +365,7 @@ class RefBundle:
         return (
             self.blocks == other.blocks
             and self.slices == other.slices
-            and self.schema == other.schema
+            and ((self.schema is None and other.schema is None) or self.schema.equals(other, check_metadata=False))
             and self.owns_blocks == other.owns_blocks
             and self.output_split_idx == other.output_split_idx
         )
