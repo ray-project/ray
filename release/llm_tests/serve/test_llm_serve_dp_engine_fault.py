@@ -59,14 +59,6 @@ def find_vllm_worker_actors():
             ("state", "=", "ALIVE"),
         ]
     )
-    if not actors:
-        # Fallback to legacy executor class name
-        actors = list_actors(
-            filters=[
-                ("class_name", "=", "RayWorkerWrapper"),
-                ("state", "=", "ALIVE"),
-            ]
-        )
     return actors
 
 
