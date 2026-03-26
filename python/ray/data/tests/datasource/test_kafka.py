@@ -1189,6 +1189,8 @@ def test_write_kafka_dataset_with_nulls(
         value = json.loads(msg.value().decode("utf-8"))
         assert "id" in value
         # value["value"] should be either a string or null
+
+
 @pytest.mark.parametrize(
     "start_offset,expected_error",
     [
