@@ -143,27 +143,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
   }
 
-  // Simulate a syncer update (available = total) so tests see resources restored.
-  void SimulateSyncerUpdate(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-    auto node_id = NodeID::FromBinary(node->node_id());
-    syncer::ResourceViewSyncMessage msg;
-    for (const auto &[name, value] : node->resources_total()) {
-      (*msg.mutable_resources_total())[name] = value;
-      rpc::syncer::ResourceInstances instances;
-      auto resource_id = scheduling::ResourceID(name);
-      if (resource_id.IsUnitInstanceResource()) {
-        size_t num = static_cast<size_t>(value);
-        for (size_t i = 0; i < num; i++) {
-          instances.add_values(1.0);
-        }
-      } else {
-        instances.add_values(value);
-      }
-      (*msg.mutable_resources_available_instances())[name] = instances;
-    }
-    gcs_resource_manager_->UpdateFromResourceView(node_id, msg);
-  }
-
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     rpc::NodeDeathInfo death_info;
     gcs_node_manager_->RemoveNode(
@@ -258,10 +237,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void AddTwoNodes() {
-    node0_ = GenNodeInfo(0);
-    node1_ = GenNodeInfo(1);
-    AddNode(node0_);
-    AddNode(node1_);
+    auto node0 = GenNodeInfo(0);
+    auto node1 = GenNodeInfo(1);
+    AddNode(node0);
+    AddNode(node1);
   }
 
   bool EnsureClusterResourcesAreNotInUse() {
@@ -321,8 +300,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<InMemoryStoreClient> store_client_;
 
   std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
-  std::shared_ptr<rpc::GcsNodeInfo> node0_;
-  std::shared_ptr<rpc::GcsNodeInfo> node1_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
@@ -1327,10 +1304,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromDeadNodes) {
   GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
                               /*grant1=*/{false, Status::IOError("")});
 
-  // Syncer delivers real state after bundle release.
-  SimulateSyncerUpdate(node0_);
-  SimulateSyncerUpdate(node1_);
-
   // Make sure the resources are returned to the cluster_resource_manager at the GCS
   // side.
   ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
@@ -1358,9 +1331,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPrepareFromNodeWithInsufficientResour
   // node1 grants the schedule request with success=false and status=Status::OK()
   GrantPrepareBundleResources(/*grant0=*/{true, Status::OK()},
                               /*grant1=*/{false, Status::OK()});
-
-  SimulateSyncerUpdate(node0_);
-  SimulateSyncerUpdate(node1_);
 
   // Make sure the resources are returned to the cluster_resource_manager at the GCS
   // side.
@@ -1394,9 +1364,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
   // node0 grants the schedule request status=Status::IOError("")
   // node1 grants the schedule request status=Status::IOError("")
   GrantCommitBundleResources(Status::IOError(""), Status::IOError(""));
-
-  SimulateSyncerUpdate(node0_);
-  SimulateSyncerUpdate(node1_);
 
   // Make sure the resources are returned to the cluster_resource_manager at the GCS
   // side.

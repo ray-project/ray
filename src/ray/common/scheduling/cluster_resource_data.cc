@@ -48,7 +48,6 @@ ResourceRequest ResourceMapToResourceRequest(
 /// \param resource_map_available: Available capacities of resources we want to convert.
 ///
 /// \request Conversion result to a ResourceRequest data structure.
-/// Callers must pass integer values for available unit instance resources.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,

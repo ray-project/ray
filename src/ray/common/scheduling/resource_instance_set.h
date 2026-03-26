@@ -25,16 +25,15 @@
 
 namespace ray {
 
-/// Maps each resource to the per-instance amounts that were allocated (or should
-/// be freed). Enables precise speculative deduction and rollback at the cluster
-/// level, and carries allocation details through the PG Acquire->Commit flow.
 using ResourceAllocation = absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>;
 
 /// Represents a node resource set that contains the per-instance resource values.
 class NodeResourceInstanceSet {
  public:
-  /// \param track_pg_index If true, maintain the pg_indexed_resources_ index
-  /// for PG cross-bundle allocation. The raylet needs this; the GCS does not.
+  /// \param track_pg_index If true, parse resource names on every Set/Remove
+  /// to build a lookup table for PG bundle resources. The raylet uses this to
+  /// find which bundle can satisfy a PG resource request. The GCS passes false
+  /// because it never does local PG allocation, and the parsing overhead is large.
   explicit NodeResourceInstanceSet(bool track_pg_index = true)
       : track_pg_index_(track_pg_index){};
 
@@ -111,24 +110,13 @@ class NodeResourceInstanceSet {
   /// Convert to node resource set with summed per-instance values.
   NodeResourceSet ToNodeResourceSet() const;
 
-  /// Cap a single resource's available instances at the corresponding total.
-  /// For unit-instance resources, per-instance cap is 1.0.
-  /// For non-unit single-instance resources, cap is the aggregate total.
-  void CapResourceAtTotal(ResourceID resource_id, const NodeResourceSet &total);
-
-  /// Access the underlying resource map. Used by the syncer to serialize
-  /// per-instance state and by UpdateNode to rebuild available from proto.
   const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
     return resources_;
   }
 
-  /// Allocate a single resource using ComputeAllocation, then update internal state.
-  /// Public because SubtractNodeAvailableResources uses per-resource allocation
-  /// (deliberately avoiding the multi-resource TryAllocate's PG cross-bundle logic).
-  ///
   /// \param resource_id: The id of the resource to be allocated.
   /// \param demand: The resource amount to be allocated.
-  /// \return the allocated instances, or nullopt if demand cannot be satisfied.
+  /// \return the allocated instances, if allocation successful. Else, return nullopt.
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
 
@@ -156,7 +144,6 @@ class NodeResourceInstanceSet {
   /// pd id. The key of the map is the original resource id. The value is a map of pg id
   /// to the corresponding placement group indexed resource ids. This map should always
   /// be consistent with the resources_ map.
-  /// Only populated when track_pg_index_ is true.
   absl::flat_hash_map<ResourceID,
                       absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
       pg_indexed_resources_;

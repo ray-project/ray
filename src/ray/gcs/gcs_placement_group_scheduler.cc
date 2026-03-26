@@ -304,7 +304,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(
         lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID());
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
+                          lease_status_tracker.get());
     schedule_failure_handler(lease_status_tracker->GetPlacementGroup(),
                              /*is_feasible=*/true);
     return;
@@ -384,7 +385,8 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
+                          lease_status_tracker.get());
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -438,7 +440,8 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   // to destroy them separately.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
-    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
+                          lease_status_tracker.get());
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -452,7 +455,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
       placement_group->GetMutableBundle(bundle.first.second)->clear_node_id();
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-    ReturnBundleResources(uncommitted_bundle_locations);
+    ReturnBundleResources(uncommitted_bundle_locations, lease_status_tracker.get());
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
   } else {
     schedule_success_handler(placement_group);
@@ -736,10 +739,23 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
 }
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
-  // Return bundle resources to gcs resources manager should contains the following steps.
-  // 1. Remove related bundle resources from nodes.
-  // 2. Add resources allocated for bundles back to nodes.
+    const std::shared_ptr<BundleLocations> &bundle_locations,
+    const LeaseStatusTracker *lease_status_tracker) {
+  // If a tracker is provided, restore the original resources that were
+  // speculatively deducted by AcquireBundleResources, using the saved
+  // per-instance allocation.
+  if (lease_status_tracker) {
+    auto &crm = cluster_resource_scheduler_.GetClusterResourceManager();
+    for (const auto &[bundle_id, location] : *bundle_locations) {
+      const auto *alloc = lease_status_tracker->GetBundleAllocation(bundle_id);
+      if (alloc) {
+        crm.AddNodeAvailableResources(scheduling::NodeID(location.first.Binary()),
+                                      *alloc);
+      }
+    }
+  }
+
+  // Clean up PG-formatted resources (wildcard + indexed).
   for (auto &bundle : *bundle_locations) {
     if (!TryReleasingBundleResources(bundle.second)) {
       waiting_removed_bundles_.push_back(bundle.second);
@@ -802,8 +818,8 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   // It will affect nothing if the resource_id to be deleted does not exist in the
   // cluster_resource_manager_.
   cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
-  // Original resources are restored when the node broadcasts its updated
-  // state via syncer, not here.
+  // Original resources are restored by the caller (ReturnBundleResources)
+  // when a LeaseStatusTracker is available, or by syncer otherwise.
   return true;
 }
 

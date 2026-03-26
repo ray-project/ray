@@ -155,10 +155,6 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
     return std::nullopt;
   }
 
-  // Multiple instances, each with total capacity of 1.
-  // Allocate full unit-capacity instances first until the remaining demand becomes
-  // fractional, then best-fit the fractional part: pick the instance whose available
-  // capacity is >= remaining demand and leaves the smallest leftover.
   std::vector<FixedPoint> allocation(available.size(), FixedPoint(0));
   std::vector<FixedPoint> remaining_available = available;
   FixedPoint remaining_demand = demand;
@@ -184,12 +180,12 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
   // Remaining demand is fractional. Find the best fit, if one exists.
   if (remaining_demand > 0.) {
     int64_t idx_best_fit = -1;
-    FixedPoint remaining_best_fit = 1.;
+    FixedPoint available_best_fit = 1.;
     for (size_t i = 0; i < remaining_available.size(); i++) {
       if (remaining_available[i] >= remaining_demand) {
         if (idx_best_fit == -1 ||
-            (remaining_available[i] - remaining_demand < remaining_best_fit)) {
-          remaining_best_fit = remaining_available[i] - remaining_demand;
+            (remaining_available[i] - remaining_demand < available_best_fit)) {
+          available_best_fit = remaining_available[i] - remaining_demand;
           idx_best_fit = static_cast<int64_t>(i);
         }
       }
@@ -414,26 +410,6 @@ void NodeResourceInstanceSet::Free(ResourceID resource_id,
   }
 
   Set(resource_id, std::move(available));
-}
-
-void NodeResourceInstanceSet::CapResourceAtTotal(ResourceID resource_id,
-                                                 const NodeResourceSet &total) {
-  auto it = resources_.find(resource_id);
-  if (it == resources_.end()) {
-    return;
-  }
-  auto &instances = it->second;
-  if (resource_id.IsUnitInstanceResource()) {
-    for (auto &val : instances) {
-      val = std::min(val, FixedPoint(1.0));
-    }
-  } else if (instances.size() == 1) {
-    instances[0] = std::min(instances[0], total.Get(resource_id));
-  } else {
-    RAY_LOG(DEBUG) << "CapResourceAtTotal: non-unit resource " << resource_id.Binary()
-                   << " has " << instances.size()
-                   << " instances; skipping cap (syncer will correct).";
-  }
 }
 
 void NodeResourceInstanceSet::Add(ResourceID resource_id,

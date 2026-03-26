@@ -303,9 +303,6 @@ bool ClusterResourceManager::AddNodeAvailableResources(
   auto node_resources = it->second.GetMutableLocalView();
   for (const auto &[resource_id, instances] : allocation) {
     node_resources->available.Free(resource_id, instances);
-    // Cap at total to match master behavior. Only cap the freed resource,
-    // not the entire node (avoids O(all_resources) on every rollback).
-    node_resources->available.CapResourceAtTotal(resource_id, node_resources->total);
   }
   return true;
 }

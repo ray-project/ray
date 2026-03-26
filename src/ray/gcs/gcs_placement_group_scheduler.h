@@ -468,9 +468,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Return the bundle resources to the cluster resources.
-  /// Removes PG-formatted resources (wildcard + indexed). Original resources
-  /// are NOT added back here; syncer delivers the real state.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  /// Removes PG-formatted resources (wildcard + indexed). If a LeaseStatusTracker
+  /// is provided, also restores original resources using the saved per-instance
+  /// allocation from AcquireBundleResources.
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations,
+                             const LeaseStatusTracker *lease_status_tracker = nullptr);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
