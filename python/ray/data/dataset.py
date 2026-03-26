@@ -3168,7 +3168,7 @@ class Dataset:
     @AllToAllAPI
     @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
+    def aggregate(self, *aggs: AggregateFn) -> Any:
         """Aggregate values using one or more functions.
 
         Use this method to compute metrics like the product of a column.
@@ -4088,8 +4088,7 @@ class Dataset:
             80
 
         Returns:
-            The in-memory size of the dataset in bytes, or None if the
-            in-memory size is not known.
+            The in-memory size of the dataset in bytes.
         """
         # If the size is known from metadata, return it.
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
