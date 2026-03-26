@@ -176,3 +176,108 @@ def run_trainer() -> ray.train.Result:
 
 
 # __validation_fn_report_end__
+
+# __exp_tracking_same_run_wandb_start__
+import wandb
+import ray.train
+from ray.train import ValidationConfig, ValidationTaskConfig
+
+
+entity = "my_entity"
+project = "my_project"
+num_epochs = ...
+
+
+def validation_fn(checkpoint: ray.train.Checkpoint, wandb_run_id: str, val_step: int) -> dict:
+    wandb.init(
+        entity=entity,
+        project=project,
+        settings=wandb.Settings(mode="shared", x_primary=False),
+        id=wandb_run_id,
+    )
+    score = ...
+    wandb.log({"validation/loss": score, "val_step": val_step})
+    wandb.finish()  # flush the metrics
+    return {"validation/loss": score}
+
+
+def train_func():
+    if ray.train.get_context().get_world_rank() == 0:
+        run = wandb.init(
+            entity=entity,
+            project=project,
+            settings=wandb.Settings(mode="shared", x_primary=True,)
+        )
+        wandb.define_metric("val_step", hidden=True)
+        wandb.define_metric("train_step", hidden=True)
+        wandb.define_metric("validation/loss", step_metric="val_step")
+        wandb.define_metric("train/loss", step_metric="train_step")
+
+    for epoch in range(num_epochs):
+        loss = ...
+        if ray.train.get_context().get_world_rank() == 0:
+            wandb.log({"train/loss": loss, "train_step": epoch})
+            checkpoint = ...
+            ray.train.report(
+                {"train/loss": loss},
+                checkpoint=checkpoint,
+                validation=ValidationTaskConfig(
+                    fn_kwargs={"wandb_run_id": run.id, "val_step": epoch}
+                ),
+            )
+        else:
+            ray.train.report({}, None)
+
+    if ray.train.get_context().get_world_rank() == 0:
+        wandb.finish()
+
+
+# __exp_tracking_same_run_wandb_end__
+
+# __exp_tracking_same_run_mlflow_start__
+import mlflow
+from mlflow.tracking import MlflowClient
+import ray.train
+from ray.train import ValidationConfig, ValidationTaskConfig
+
+
+def validation_fn(
+    checkpoint: ray.train.Checkpoint, run_id: str, tracking_uri: str
+) -> dict:
+    # Use the non-fluent MlflowClient to log to the existing run.
+    client = MlflowClient(tracking_uri=tracking_uri)
+    score = ...  # compute validation metrics
+    client.log_metric(run_id, "val_score", score)
+    return {"val_score": score}
+
+
+def train_func():
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.set_tracking_uri("databricks")
+        mlflow.set_experiment("my_experiment")
+        mlflow.start_run()
+        run_id = mlflow.active_run().info.run_id
+        tracking_uri = mlflow.get_tracking_uri()
+
+    for epoch in range(num_epochs):
+        loss = ...  # training step
+        if ray.train.get_context().get_world_rank() == 0:
+            mlflow.log_metrics({"train_loss": loss, "epoch": epoch})
+            ray.train.report(
+                {"train_loss": loss},
+                checkpoint=...,
+                validation=ValidationTaskConfig(
+                    fn_kwargs={
+                        "run_id": run_id,
+                        "tracking_uri": tracking_uri,
+                    }
+                ),
+            )
+        else:
+            ray.train.report({}, None)
+
+    if ray.train.get_context().get_world_rank() == 0:
+        mlflow.end_run()
+
+
+# __exp_tracking_same_run_mlflow_end__
