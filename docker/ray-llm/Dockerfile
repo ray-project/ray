@@ -65,7 +65,3 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
-
-# vLLM 0.17.0 eagerly imports xgrammar -> ICU 78 -> CXXABI_1.3.15.
-# System libstdc++ only has 1.3.13; prepend conda's newer copy.
-ENV LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
