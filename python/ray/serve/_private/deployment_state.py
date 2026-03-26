@@ -583,6 +583,9 @@ class ActorReplicaWrapper:
         # detect failures and record latency even when the replica stays
         # in RUNNING state.
         self._pending_nonblocking_reconfigure_ref: Optional[ObjectRef] = None
+        # The version before a non-blocking reconfigure was started, used to
+        # revert on failure so the controller retries on the next loop.
+        self._pre_nonblocking_reconfigure_version: Optional[DeploymentVersion] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
@@ -827,9 +830,14 @@ class ActorReplicaWrapper:
         """
         return self._reconfigure_start_time
 
-    def set_pending_nonblocking_reconfigure(self):
-        """Mark the current _ready_obj_ref as a non-blocking reconfigure ref."""
+    def set_pending_nonblocking_reconfigure(self, old_version: DeploymentVersion):
+        """Mark the current _ready_obj_ref as a non-blocking reconfigure ref.
+
+        Args:
+            old_version: The version before reconfigure, used to revert on failure.
+        """
         self._pending_nonblocking_reconfigure_ref = self._ready_obj_ref
+        self._pre_nonblocking_reconfigure_version = old_version
 
     def check_pending_nonblocking_reconfigure(self) -> Optional[float]:
         """Check if a pending non-blocking reconfigure has completed.
@@ -851,10 +859,16 @@ class ActorReplicaWrapper:
         try:
             ray.get(self._pending_nonblocking_reconfigure_ref)
         except Exception:
+            # Revert version so the controller detects this replica as
+            # outdated and retries reconfigure on the next control loop.
+            if self._pre_nonblocking_reconfigure_version is not None:
+                self._version = self._pre_nonblocking_reconfigure_version
             self._pending_nonblocking_reconfigure_ref = None
+            self._pre_nonblocking_reconfigure_version = None
             raise
 
         self._pending_nonblocking_reconfigure_ref = None
+        self._pre_nonblocking_reconfigure_version = None
         if self._reconfigure_start_time is not None:
             return time.time() - self._reconfigure_start_time
         return 0.0
@@ -3441,6 +3455,9 @@ class DeploymentState:
                 current_rank = self._rank_manager.get_replica_rank(
                     replica.replica_id.unique_id
                 )
+                # Save old version before reconfigure updates it eagerly,
+                # so we can revert on failure for non-blocking reconfigure.
+                old_version = replica.version
                 actor_updating = replica.reconfigure(
                     self._target_state.version, rank=current_rank.rank
                 )
@@ -3452,7 +3469,7 @@ class DeploymentState:
                 elif actor_updating and not blocking_reconfigure:
                     # Non-blocking: keep serving but track the obj ref so
                     # we can detect failures and record latency.
-                    replica._actor.set_pending_nonblocking_reconfigure()
+                    replica._actor.set_pending_nonblocking_reconfigure(old_version)
                     self._replicas.add(ReplicaState.RUNNING, replica)
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
