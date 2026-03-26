@@ -12,7 +12,6 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     Schema,
-    _make_hashable_schema,
 )
 from ray.data.context import DataContext
 from ray.types import ObjectRef
