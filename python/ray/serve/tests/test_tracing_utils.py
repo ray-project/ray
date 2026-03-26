@@ -1265,11 +1265,15 @@ def test_tracing_config_custom_sampling_ratio(serve_and_ray_shutdown):
     if os.path.exists(spans_dir):
         for file in os.listdir(spans_dir):
             if "replica" in file or "proxy" in file:
-                spans = load_spans(os.path.join(spans_dir, file))
-                assert len(spans) == 0, (
-                    f"Expected no spans with 0% sampling, found {len(spans)} "
-                    f"in {file}"
-                )
+                file_path = os.path.join(spans_dir, file)
+                with open(file_path, "r") as f:
+                    content = f.read().strip()
+                if content:
+                    spans = load_spans(file_path)
+                    assert len(spans) == 0, (
+                        f"Expected no spans with 0% sampling, "
+                        f"found {len(spans)} in {file}"
+                    )
 
 
 def test_tracing_config_from_dict(serve_and_ray_shutdown):
