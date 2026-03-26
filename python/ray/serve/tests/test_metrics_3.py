@@ -149,21 +149,21 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
     url = get_application_url("HTTP", "app")
     assert "hello" == httpx.get(url).text
 
-    # Verify startup latency metric count is exactly 1 (one replica started)
+    # Verify startup latency: two replicas aggregate into one time series (_count == 2).
     wait_for_condition(
         check_metric_float_eq,
         timeout=20,
         metric="ray_serve_replica_startup_latency_ms_count",
-        expected=1,
+        expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
     )
 
-    # Verify initialization latency metric count is exactly 1
+    # Verify initialization latency _count matches (one observation per replica).
     wait_for_condition(
         check_metric_float_eq,
         timeout=20,
         metric="ray_serve_replica_initialization_latency_ms_count",
-        expected=1,
+        expected=2,
         expected_tags={"deployment": "MyDeployment", "application": "app"},
     )
 
@@ -180,25 +180,19 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
 
     wait_for_condition(check_initialization_latency_value, timeout=20)
 
-    # Assert that 2 metrics are recorded (one per replica)
-    def check_metrics_count():
+    # One aggregated time series per deployment (no per-replica label).
+    def check_single_series_no_replica_label():
         metrics = get_metric_dictionaries(
             "ray_serve_replica_initialization_latency_ms_count",
             wait=False,
         )
-        assert len(metrics) == 2, f"Expected 2 metrics, got {len(metrics)}"
-        # All metrics should have same deployment and application
-        for metric in metrics:
-            assert metric["deployment"] == "MyDeployment"
-            assert metric["application"] == "app"
-        # Each replica should have a unique replica tag
-        replica_ids = {metric["replica"] for metric in metrics}
-        assert (
-            len(replica_ids) == 2
-        ), f"Expected 2 unique replica IDs, got {replica_ids}"
+        assert len(metrics) == 1, f"Expected 1 metric series, got {len(metrics)}"
+        assert metrics[0]["deployment"] == "MyDeployment"
+        assert metrics[0]["application"] == "app"
+        assert "replica" not in metrics[0]
         return True
 
-    wait_for_condition(check_metrics_count, timeout=20)
+    wait_for_condition(check_single_series_no_replica_label, timeout=20)
 
 
 def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
