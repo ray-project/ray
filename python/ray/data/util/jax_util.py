@@ -5,7 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_MESH_1D_AXIS = "data"
+_GLOBAL_MESH_1D_AXIS = "data"
 
 
 def _get_slice_start(sl: slice) -> int:
@@ -34,10 +34,12 @@ def _convert_ndarray_to_jax_array(
     global_devices = jax.devices()
     host_count = jax.process_count()
 
-    # 1. Physical Sharding (1D across the GLOBAL_MESH_1D_AXIS dimension)
+    # 1. Physical Sharding (1D across the _GLOBAL_MESH_1D_AXIS dimension)
     # The full global_devices list is used to create a 1D mesh across all processes.
-    physical_mesh = Mesh(np.array(global_devices), (GLOBAL_MESH_1D_AXIS,))
-    physical_sharding = NamedSharding(physical_mesh, PartitionSpec(GLOBAL_MESH_1D_AXIS))
+    physical_mesh = Mesh(np.array(global_devices), (_GLOBAL_MESH_1D_AXIS,))
+    physical_sharding = NamedSharding(
+        physical_mesh, PartitionSpec(_GLOBAL_MESH_1D_AXIS)
+    )
 
     # Global shape assumes each host gets the exact same local batch size.
     global_shape = (local_batch_size * host_count,) + ndarray.shape[1:]
@@ -174,7 +176,7 @@ def jax_sync_generator(
 
             if local_batch_size > min_batch_size:
                 logger.info(
-                    f"Dropping last {local_batch_size - min_batch_size} samples on process {jax.process_index()}"
+                    f"Dropping last {local_batch_size - min_batch_size} samples on process {jax.process_index()} "
                     f"from the batch to be evenly divisible by the number of local JAX devices."
                 )
                 if isinstance(batch, dict):

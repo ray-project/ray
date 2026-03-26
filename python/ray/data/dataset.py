@@ -6007,6 +6007,7 @@ class Dataset:
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -6043,6 +6044,22 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output must be a `np.ndarray` or `Dict[str, np.ndarray]`, and will be
+                automatically sharded across JAX-addressable devices.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
             drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -6064,6 +6081,7 @@ class Dataset:
         return self.iterator().iter_jax_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
+            collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,

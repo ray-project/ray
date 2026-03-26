@@ -622,6 +622,9 @@ class DataIterator(abc.ABC):
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
+        collate_fn: Optional[
+            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -640,6 +643,22 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output must be a `np.ndarray` or `Dict[str, np.ndarray]`, and will be
+                automatically sharded across JAX-addressable devices.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
             drop_last: Whether to drop the last batch if incomplete.
             local_shuffle_buffer_size: Minimum rows for local in-memory shuffle.
             local_shuffle_seed: Seed for local random shuffle.
@@ -664,14 +683,35 @@ class DataIterator(abc.ABC):
                 f"({num_local_devices}) on this host."
             )
 
-        # Directly Fetch the underlying blocks as NumPy arrays.
+        if collate_fn is None:
+            batch_format = "numpy"
+        elif isinstance(collate_fn, ArrowBatchCollateFn):
+            batch_format = "pyarrow"
+        elif isinstance(collate_fn, NumpyBatchCollateFn):
+            batch_format = "numpy"
+        elif isinstance(collate_fn, PandasBatchCollateFn):
+            batch_format = "pandas"
+        elif callable(collate_fn):
+            batch_format = "numpy"
+            warnings.warn(
+                "Passing a function to `iter_jax_batches(collate_fn)` is "
+                "deprecated in Ray 2.47. Please switch to using a callable class that "
+                "inherits from `ArrowBatchCollateFn`, `NumpyBatchCollateFn`, or "
+                "`PandasBatchCollateFn`.",
+                RayDeprecationWarning,
+            )
+        else:
+            raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
+
+        # Directly Fetch the underlying blocks.
         batch_iterable = self._iter_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
-            batch_format="numpy",
+            batch_format=batch_format,
             drop_last=False,  # drop_last is handled by jax_sync_generator
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
+            _collate_fn=collate_fn,
         )
 
         from ray.data.util.jax_util import jax_sync_generator

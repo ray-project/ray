@@ -591,6 +591,26 @@ def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
         np.testing.assert_array_equal(arr, combined_iterations)
 
 
+def test_iter_jax_batches_with_collate_fn(ray_start_regular_shared):
+    from ray.data.collate_fn import NumpyBatchCollateFn
+
+    class CustomCollateFn(NumpyBatchCollateFn):
+        def __call__(self, batch):
+            # Combine "one" and "two" columns into a single "features" tensor
+            return np.stack((batch["one"], batch["two"]), axis=1)
+
+    ds = ray.data.from_items([{"one": i, "two": i + 1} for i in range(10)])
+    iterations = []
+    for batch in ds.iter_jax_batches(batch_size=2, collate_fn=CustomCollateFn()):
+        # The output of collate_fn is now a single numpy array (sharded as jax.Array)
+        iterations.append(batch)
+
+    combined_iterations = np.concatenate(iterations)
+    # Expected shape: (10, 2)
+    expected = np.stack((np.arange(10), np.arange(10) + 1), axis=1)
+    np.testing.assert_array_equal(expected, combined_iterations)
+
+
 def test_get_internal_block_refs(ray_start_regular_shared):
     blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
     assert len(blocks) == 10

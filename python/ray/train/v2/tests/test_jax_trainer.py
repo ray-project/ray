@@ -473,7 +473,7 @@ def train_func_with_data_multi_host():
         side_effect=mock_process_allgather,
     ):
         # Each batch has 4 rows. iter_jax_batches should combine the batches from all workers and return a batch of size 4 * num_workers.
-        for batch in ds_shard.iter_jax_batches(batch_size=4):
+        for batch in ds_shard.iter_jax_batches(batch_size=4, synchronize_batches=True):
             batches.append(batch["id"].shape)
 
     train.report(
@@ -747,6 +747,83 @@ def test_scaling_config_validation():
             accelerator_type="TPU-V4",
             label_selector={"subcluster": "my_subcluster"},
         )
+
+
+def train_func_with_collate_fn(config):
+    import numpy as np
+
+    from ray import train
+    from ray.data.collate_fn import NumpyBatchCollateFn
+
+    class CustomCollateFn(NumpyBatchCollateFn):
+        def __call__(self, batch):
+            # Combine "col1" and "col2" columns into a single "features" tensor
+            return np.stack((batch["col1"], batch["col2"]), axis=1)
+
+    ds_shard = train.get_dataset_shard("train")
+
+    batches = []
+    for batch in ds_shard.iter_jax_batches(
+        batch_size=16,
+        collate_fn=CustomCollateFn(),
+    ):
+        # The output of collate_fn is now a single jax.Array (global sharding)
+        # Check a specific value: it should be [1.0, 2.0] at the first position
+        assert np.array_equal(batch[0], np.array([1.0, 2.0]))
+        batches.append(batch.shape)
+
+    train.report(
+        {
+            "batches": batches,
+        }
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_single_host_data_iterator_collate_fn(ray_tpu_single_host, tmp_path):
+    actor_name = "test_single_host_data_iterator_collate_fn"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    import ray
+
+    # Create 32 rows. Each row has "col1" (ones) and "col2" (twos).
+    ds = ray.data.from_items([{"col1": 1.0, "col2": 2.0} for _ in range(32)])
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_with_collate_fn,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=8",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 1
+
+    for r in reports:
+        # We expect 2 batches (32 rows / 16 batch_size)
+        # Each batch should have shape (16, 2)
+        assert len(r["batches"]) == 2
+        for batch_shape in r["batches"]:
+            assert batch_shape == (16, 2)
 
 
 if __name__ == "__main__":
