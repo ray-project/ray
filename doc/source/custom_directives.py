@@ -503,6 +503,7 @@ class Framework(ExampleEnum):
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
     PANDAS = "Pandas"
+    TRL = "trl"
     ANY = "Any"
     UNSTRUCTURED = "Unstructured"
 
