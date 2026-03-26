@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -131,12 +132,12 @@ def test_dataset_setup_callback(ray_start_4_cpus):
 
     # The callback should have excluded the resources reserved for training.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+        processed_train_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources.zero()
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+        processed_valid_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources.zero()
     )
 
 
@@ -291,6 +292,395 @@ def test_data_config_resource_limits(ray_start_4_cpus, resource_limits):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
+
+
+def test_per_dataset_execution_options_single(ray_start_4_cpus):
+    """Test that a single ExecutionOptions object applies to all datasets."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+
+    # Create execution options with specific settings
+    execution_options = ExecutionOptions()
+    execution_options.preserve_order = True
+    execution_options.verbose_progress = True
+
+    data_config = ray.train.DataConfig(execution_options=execution_options)
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+
+        # Verify both datasets have the same execution options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is True
+        assert val_shard.get_context().execution_options.verbose_progress is True
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds, "val": val_ds},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_per_dataset_execution_options_dict(ray_start_4_cpus):
+    """Test that a dict of ExecutionOptions maps to specific datasets, and datasets not in the dict get default ingest options. Also tests resource limits."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(NUM_ROWS)
+    val_ds = ray.data.range(NUM_ROWS)
+    test_ds = ray.data.range(NUM_ROWS)
+    test_ds_2 = ray.data.range(NUM_ROWS)
+
+    # Create different execution options for different datasets
+    train_options = ExecutionOptions()
+    train_options.preserve_order = True
+    train_options.verbose_progress = True
+    train_options.resource_limits = train_options.resource_limits.copy(cpu=4, gpu=2)
+
+    val_options = ExecutionOptions()
+    val_options.preserve_order = False
+    val_options.verbose_progress = False
+    val_options.resource_limits = val_options.resource_limits.copy(cpu=2, gpu=1)
+
+    execution_options_dict = {
+        "train": train_options,
+        "val": val_options,
+    }
+
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
+
+    def train_fn():
+        train_shard = ray.train.get_dataset_shard("train")
+        val_shard = ray.train.get_dataset_shard("val")
+        test_shard = ray.train.get_dataset_shard("test")
+        test_shard_2 = ray.train.get_dataset_shard("test_2")
+
+        # Verify each dataset in the dict gets its specific options
+        assert train_shard.get_context().execution_options.preserve_order is True
+        assert train_shard.get_context().execution_options.verbose_progress is True
+        assert val_shard.get_context().execution_options.preserve_order is False
+        assert val_shard.get_context().execution_options.verbose_progress is False
+
+        # Verify resource limits
+        assert train_shard.get_context().execution_options.resource_limits.cpu == 4
+        assert train_shard.get_context().execution_options.resource_limits.gpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.cpu == 2
+        assert val_shard.get_context().execution_options.resource_limits.gpu == 1
+
+        # Verify dataset not in the dict gets default options
+        assert (
+            test_shard.get_context().execution_options.preserve_order
+            == test_shard_2.get_context().execution_options.preserve_order
+        )
+        assert (
+            test_shard.get_context().execution_options.verbose_progress
+            == test_shard_2.get_context().execution_options.verbose_progress
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.cpu
+            == test_shard_2.get_context().execution_options.resource_limits.cpu
+        )
+        assert (
+            test_shard.get_context().execution_options.resource_limits.gpu
+            == test_shard_2.get_context().execution_options.resource_limits.gpu
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={
+            "train": train_ds,
+            "val": val_ds,
+            "test": test_ds,
+            "test_2": test_ds_2,
+        },
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
+    """Test that user-defined per-dataset exclude_resources are preserved.
+    Under the V2 cluster autoscaler (default), training resources are NOT added
+    to exclude_resources (they are handled by the AutoscalingCoordinator), so
+    only the user-defined values should appear."""
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    # Create different execution options for different datasets
+    train_options = ExecutionOptions()
+    train_options.exclude_resources = train_options.exclude_resources.copy(cpu=2, gpu=1)
+
+    test_options = ExecutionOptions()
+    test_options.exclude_resources = test_options.exclude_resources.copy(cpu=1, gpu=0)
+
+    # val dataset not in dict, should get default options
+    execution_options_dict = {
+        "train": train_options,
+        "test": test_options,
+    }
+    data_config = ray.train.DataConfig(execution_options=execution_options_dict)
+
+    def train_fn():
+        # Under the V2 cluster autoscaler, only user-defined exclude_resources
+        # should be present. Training resources are NOT added to exclude_resources.
+
+        # Check train dataset — only user-defined exclude_resources
+        train_ds = ray.train.get_dataset_shard("train")
+        train_exec_options = train_ds.get_context().execution_options
+        assert train_exec_options.is_resource_limits_default()
+        assert train_exec_options.exclude_resources.cpu == 2
+        assert train_exec_options.exclude_resources.gpu == 1
+
+        # Check test dataset — only user-defined exclude_resources
+        test_ds = ray.train.get_dataset_shard("test")
+        test_exec_options = test_ds.get_context().execution_options
+        assert test_exec_options.is_resource_limits_default()
+        assert test_exec_options.exclude_resources.cpu == 1
+        assert test_exec_options.exclude_resources.gpu == 0
+
+        # Check val dataset — no user-defined exclude_resources, so zero
+        val_ds = ray.train.get_dataset_shard("val")
+        val_exec_options = val_ds.get_context().execution_options
+        assert val_exec_options.is_resource_limits_default()
+        default_options = ray.train.DataConfig.default_ingest_options()
+        assert (
+            val_exec_options.exclude_resources.cpu
+            == default_options.exclude_resources.cpu
+        )
+        assert (
+            val_exec_options.exclude_resources.gpu
+            == default_options.exclude_resources.gpu
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={
+            "train": ray.data.range(NUM_ROWS),
+            "test": ray.data.range(NUM_ROWS),
+            "val": ray.data.range(NUM_ROWS),
+        },
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
+def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypatch):
+    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
+    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V1")
+
+    NUM_WORKERS = 2
+
+    train_ds = ray.data.range(1000)
+    valid_ds = ray.data.range(1000)
+
+    data_config = ray.train.DataConfig(datasets_to_split=["train"])
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
+    )
+
+    worker_group_context = WorkerGroupContext(
+        run_attempt_id="attempt_1",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=scaling_config.num_workers,
+        resources_per_worker=scaling_config.resources_per_worker,
+    )
+    train_run_context = create_dummy_run_context(
+        dataset_config=data_config,
+        scaling_config=scaling_config,
+    )
+    worker_group = DummyWorkerGroup(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+    worker_group._start()
+
+    callback = DatasetsSetupCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
+
+    # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
+    assert (
+        processed_train_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+    )
+    assert (
+        processed_valid_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
+    )
+
+
+def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
+    """Regression test: under the V2 cluster autoscaler, exclude_resources is not set,
+    so the scenario that previously caused negative global limits (small cluster,
+    multiple datasets, large training reservation) no longer fails.
+
+    Before the fix, with 4 CPUs, 2 datasets (2 executors), and 3 CPUs for training:
+    each executor gets 4 // 2 = 2 CPUs, minus 3 exclude_resources = -1 CPU -> assertion error.
+    """
+    NUM_WORKERS = 3
+
+    train_ds = ray.data.range(100)
+    valid_ds = ray.data.range(100)
+
+    data_config = ray.train.DataConfig(datasets_to_split=["train"])
+    # 3 workers * 1 CPU each = 3 CPUs for training, leaving 1 CPU for data.
+    # With 2 datasets, each data executor gets 4 // 2 = 2 CPUs from coordinator.
+    # If exclude_resources were set to 3, that would give 2 - 3 = -1 -> crash.
+    scaling_config = ray.train.ScalingConfig(num_workers=NUM_WORKERS)
+
+    worker_group_context = WorkerGroupContext(
+        run_attempt_id="attempt_1",
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        num_workers=scaling_config.num_workers,
+        resources_per_worker=scaling_config.resources_per_worker,
+    )
+    train_run_context = create_dummy_run_context(
+        dataset_config=data_config,
+        scaling_config=scaling_config,
+    )
+    worker_group = DummyWorkerGroup(
+        train_run_context=train_run_context,
+        worker_group_context=worker_group_context,
+    )
+    worker_group._start()
+
+    callback = DatasetsSetupCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
+    dataset_manager_for_each_worker = callback.before_init_train_context(
+        worker_group.get_workers()
+    )["dataset_shard_provider"]
+
+    dataset_manager = dataset_manager_for_each_worker[0]
+    processed_train_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="train")
+    )
+    processed_valid_ds = dataset_manager.get_dataset_shard(
+        DatasetShardMetadata(dataset_name="valid")
+    )
+
+    # Under the V2 cluster autoscaler (default), exclude_resources should be
+    # zero regardless of how many training resources are reserved.
+    assert (
+        processed_train_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources.zero()
+    )
+    assert (
+        processed_valid_ds.get_context().execution_options.exclude_resources
+        == ExecutionResources.zero()
+    )
+
+
+def test_fixed_scaling_policy_coordinator_lifecycle():
+    """Test that FixedScalingPolicy registers training resources with the
+    AutoscalingCoordinator on start, periodically re-requests to keep
+    the reservation alive, and cancels on shutdown/abort."""
+    from unittest.mock import patch
+
+    from freezegun import freeze_time
+
+    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+        ResourceRequestPriority,
+    )
+    from ray.train.v2._internal.execution.scaling_policy import (
+        AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+        AUTOSCALING_REQUESTS_INTERVAL_S,
+    )
+    from ray.train.v2._internal.execution.scaling_policy.fixed import (
+        FixedScalingPolicy,
+    )
+
+    resources_per_worker = {"CPU": 4, "GPU": 1}
+    num_workers = 2
+    scaling_config = ray.train.ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=True,
+        resources_per_worker=resources_per_worker,
+    )
+
+    mock_coordinator = MagicMock()
+    expected_request_kwargs = dict(
+        requester_id="train-test-run-123",
+        resources=[resources_per_worker] * num_workers,
+        expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+        priority=ResourceRequestPriority.HIGH,
+    )
+
+    with patch(
+        "ray.get",
+        side_effect=lambda x, **_: x,
+    ):
+        policy = FixedScalingPolicy(scaling_config)
+        # Inject mock coordinator
+        policy.__dict__["_autoscaling_coordinator"] = mock_coordinator
+
+        with freeze_time() as frozen_time:
+            # Simulate controller start
+            mock_run_context = MagicMock()
+            mock_run_context.run_id = "test-run-123"
+            policy.after_controller_start(mock_run_context)
+
+            assert policy._requester_id == "train-test-run-123"
+
+            # Verify request_resources was called with the correct arguments
+            mock_coordinator.request_resources.remote.assert_called_once_with(
+                **expected_request_kwargs
+            )
+
+            # Calling make_decision immediately should NOT re-request (interval not passed)
+            worker_group_state = MagicMock()
+            worker_group_status = MagicMock()
+            policy.make_decision_for_running_worker_group(
+                worker_group_state=worker_group_state,
+                worker_group_status=worker_group_status,
+            )
+            assert mock_coordinator.request_resources.remote.call_count == 1
+
+            # Advance past the interval — should re-request
+            frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S)
+            policy.make_decision_for_running_worker_group(
+                worker_group_state=worker_group_state,
+                worker_group_status=worker_group_status,
+            )
+            assert mock_coordinator.request_resources.remote.call_count == 2
+            mock_coordinator.request_resources.remote.assert_called_with(
+                **expected_request_kwargs
+            )
+
+        # Simulate controller shutdown
+        asyncio.run(policy.before_controller_shutdown())
+        mock_coordinator.cancel_request.remote.assert_called_once_with(
+            requester_id="train-test-run-123",
+        )
+
+        # Reset and test abort path
+        mock_coordinator.cancel_request.remote.reset_mock()
+        policy.before_controller_abort()
+        mock_coordinator.cancel_request.remote.assert_called_once_with(
+            requester_id="train-test-run-123",
+        )
 
 
 if __name__ == "__main__":
