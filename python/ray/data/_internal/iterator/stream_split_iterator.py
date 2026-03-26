@@ -156,7 +156,7 @@ class SplitCoordinator:
         self._dataset_state_lock = threading.Lock()
         self._schema = None
         self._current_executor = None
-  
+
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
@@ -181,7 +181,7 @@ class SplitCoordinator:
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:
-            if self._executor is not None and self._executor.is_alive():
+            if self._current_executor is not None and self._current_executor.is_alive():
                 raise RuntimeError(
                     "Cannot call schema() during active dataset execution. "
                     "Call schema() before or after iterating over the dataset, or call "
