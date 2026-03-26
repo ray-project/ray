@@ -71,8 +71,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
                               placement_group->GetSoftTargetNodeID());
-  auto scheduling_result =
-      cluster_resource_scheduler_.SchedulePlacementGroup(resource_request_list, scheduling_options);
+  auto scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
+      resource_request_list, scheduling_options);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
