@@ -305,8 +305,9 @@ class BlockMetadata(BlockStats):
 
 def _make_hashable_schema(schema: Schema) -> Tuple[Tuple[str, ...], Tuple]:
     # NOTE: Pyarrow < 23 schemas metadata contains dicts and therefore
-    #       isn't hashable
-    return (tuple(schema.names), tuple(schema.types))
+    #       isn't hashable. Therefore we simply drop metadata when trying
+    #       to hash the schemas
+    return schema.remove_metadata()
 
 
 @DeveloperAPI(stability="alpha")
