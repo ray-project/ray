@@ -346,7 +346,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# NOTE: This has to be compatible with pyarrow.lib.schema
+# NOTE: This has to be compatible with Pyarrow ``Schema``
 @dataclass(frozen=True, init=False)
 class PandasBlockSchema:
     # Stored as tuples for hash-ability.
@@ -356,6 +356,12 @@ class PandasBlockSchema:
     def __init__(self, names, types):
         object.__setattr__(self, "names", tuple(names))
         object.__setattr__(self, "types", tuple(types))
+
+    def equals(self, other, check_metadata: bool = False):
+        """NOTE: This method exists for sole purpose of making it compatible
+                 with Pyarrow's ``Schema``
+        """
+        return self == other
 
 
 class PandasBlockAccessor(TableBlockAccessor):
