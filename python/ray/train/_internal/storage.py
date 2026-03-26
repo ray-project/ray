@@ -185,6 +185,12 @@ def _download_from_fs_path(
         _local_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _pyarrow_fs_include_copy_files():
+        path_info = fs.get_file_info(fs_path)
+        if path_info.type != pyarrow.fs.FileType.Directory:
+            raise IOError(
+                f"Using an include ({include}) must point to a directory, {fs_path} is actually {path_info}"
+            )
+
         # Filter the files based on the `include` list of glob patterns,
         # matched against each file's relative path within the checkpoint directory.
         selector = pyarrow.fs.FileSelector(fs_path, recursive=True)

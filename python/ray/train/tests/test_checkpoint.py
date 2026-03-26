@@ -56,6 +56,26 @@ def checkpoint(request, tmp_path):
         yield Checkpoint(path="mock_bucket/ckpt_dir", filesystem=custom_storage_fs)
 
 
+def test_download_from_fs_path_for_file(checkpoint: Checkpoint, tmp_path):
+    local_path = tmp_path / _CHECKPOINT_CONTENT_FILE
+
+    with pytest.raises(IOError):
+        # Using download_from_fs_path with a path to a file and any include isn't possible
+        ray.train._internal.storage._download_from_fs_path(
+            fs=checkpoint.filesystem,
+            fs_path=os.path.join(checkpoint.path, _CHECKPOINT_CONTENT_FILE),
+            local_path=str(local_path),
+            include=[_CHECKPOINT_CONTENT_FILE],
+        )
+
+    ray.train._internal.storage._download_from_fs_path(
+        fs=checkpoint.filesystem,
+        fs_path=os.path.join(checkpoint.path, _CHECKPOINT_CONTENT_FILE),
+        local_path=str(local_path),
+    )
+    assert local_path.exists()
+
+
 def test_to_directory(checkpoint: Checkpoint):
     checkpoint_path = Path(checkpoint.to_directory())
 
