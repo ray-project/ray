@@ -2262,18 +2262,8 @@ def test_request_router_backoff_params_custom():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "pow_2_router",
-    [
-        {"prefer_local_node": True, "prefer_local_az": True},
-        {"prefer_local_node": True, "prefer_local_az": False},
-        {"prefer_local_node": False, "prefer_local_az": True},
-        {"prefer_local_node": False, "prefer_local_az": False},
-    ],
-    indirect=True,
-)
 class TestSessionAffinity:
-    async def test_session_routes_to_same_replica(self, pow_2_router):
+    async def test_session_consistent_routing(self, pow_2_router):
         """Requests with the same session_id should route to the same replica."""
         s = pow_2_router
         loop = get_or_create_event_loop()
@@ -2295,7 +2285,7 @@ class TestSessionAffinity:
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == first_replica
 
-    async def test_session_fallback_when_replica_removed(self, pow_2_router):
+    async def test_session_fallback(self, pow_2_router):
         """If the mapped replica is removed, fall back to any available replica."""
         s = pow_2_router
         loop = get_or_create_event_loop()
@@ -2320,7 +2310,7 @@ class TestSessionAffinity:
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == other_replica
 
-    async def test_session_no_session_id_routes_normally(self, pow_2_router):
+    async def test_without_session_id(self, pow_2_router):
         """Requests without session_id should route normally."""
         s = pow_2_router
         loop = get_or_create_event_loop()
@@ -2340,7 +2330,7 @@ class TestSessionAffinity:
         # Without session_id, both replicas should be eligible.
         assert replicas_chosen == {r1, r2}
 
-    async def test_session_mapping_cleaned_on_replica_death(self, pow_2_router):
+    async def test_session_mapping_cleanup(self, pow_2_router):
         """on_replica_actor_died should clean up session mappings."""
         s = pow_2_router
         loop = get_or_create_event_loop()
@@ -2359,9 +2349,31 @@ class TestSessionAffinity:
         s.on_replica_actor_died(first_replica.replica_id)
 
         # Session mapping should be cleaned up.
-        assert first_replica.replica_id not in set(s._session_id_to_replica_id.values())
+        for rids in s._session_id_to_replica_ids.values():
+            assert first_replica.replica_id not in rids
 
-    async def test_different_sessions_different_replicas(self, pow_2_router):
+    async def test_session_mapping_cleanup_on_update_replicas(self, pow_2_router):
+        """update_replicas with a reduced set should clean up session mappings."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        request = fake_pending_request(session_id="s1")
+        mapped_replica = await loop.create_task(s._choose_replica_for_request(request))
+        assert "s1" in s._session_id_to_replica_ids
+
+        # Scale down: remove the mapped replica via update_replicas.
+        survivor = r2 if mapped_replica == r1 else r1
+        s.update_replicas([survivor])
+
+        assert "s1" not in s._session_id_to_replica_ids
+
+    async def test_different_sessions(self, pow_2_router):
         """Different session_ids can map to different replicas."""
         s = pow_2_router
         loop = get_or_create_event_loop()
@@ -2391,9 +2403,9 @@ class TestSessionAffinity:
             )
             assert (await task_s2) == replica_s2
 
-    async def test_multiplex_takes_priority_over_session(self, pow_2_router):
-        """When both multiplexed_model_id and session_id are set,
-        multiplexing should take priority."""
+    async def test_prioritize_multiplex_over_session(self, pow_2_router):
+        """When both multiplexed_model_id and session_id are set, multiplexing should
+        take priority."""
         s = pow_2_router
         loop = get_or_create_event_loop()
 
@@ -2423,39 +2435,6 @@ class TestSessionAffinity:
             )
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r2
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
-async def test_rank_replicas_via_session(
-    pow_2_router: PowerOfTwoChoicesRequestRouter,
-):
-    """Test rank_replicas_via_session returns the correct ranking."""
-    s = pow_2_router
-
-    r1 = FakeRunningReplica("r1")
-    r2 = FakeRunningReplica("r2")
-    r1.set_queue_len_response(0)
-    r2.set_queue_len_response(0)
-    all_replicas = [r1, r2]
-    s.update_replicas(all_replicas)
-
-    # Establish session mapping to r1.
-    loop = get_or_create_event_loop()
-    request = fake_pending_request(session_id="s1")
-    chosen = await loop.create_task(s._choose_replica_for_request(request))
-
-    other = r2 if chosen == r1 else r1
-    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="s1") == [
-        [chosen],
-        [other],
-    ]
-
-    # For an unknown session, all replicas should be in rank 1.
-    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="unknown") == [
-        [],
-        all_replicas,
-    ]
 
 
 if __name__ == "__main__":

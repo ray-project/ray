@@ -83,7 +83,9 @@ class ChatRequest:
         self.messages = messages
 
 
-def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
+def fake_pending_request(
+    prompt=None, messages=None, session_id="", model_id=""
+) -> PendingRequest:
     if prompt is not None:
         args = [PromptRequest(prompt)]
     elif messages is not None:
@@ -97,7 +99,8 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         metadata=RequestMetadata(
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
-            multiplexed_model_id="",
+            multiplexed_model_id=model_id,
+            session_id=session_id,
         ),
         created_at=time.time(),
     )
@@ -499,6 +502,54 @@ class TestMultiDeploymentIsolation:
         # Cleanup
         ray.kill(prefill_router._tree_actor)
         ray.kill(decode_router._tree_actor)
+
+
+class TestSessionAffinity:
+    @pytest.mark.asyncio
+    async def test_session_takes_priority_over_prefix_cache(
+        self, prefix_request_router
+    ):
+        """Session affinity should be preferred over prefix cache optimization."""
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+
+        # Establish session mapping.
+        request = fake_pending_request(prompt="hello", session_id="s1")
+        session_replica = await loop.create_task(
+            prefix_request_router._choose_replica_for_request(request)
+        )
+
+        prefix_request_router.on_request_routed(
+            request, session_replica.replica_id, None
+        )
+        other_replica = r2 if session_replica == r1 else r1
+
+        # Insert a long matching prefix on the other replica so prefix cache
+        # would prefer it.
+        ray.get(
+            prefix_request_router._tree_actor.insert.remote(
+                "hello world this is a long prefix",
+                other_replica.replica_id.to_full_id_str(),
+                time.time(),
+            )
+        )
+
+        # Despite the better prefix match on other_replica, session affinity
+        # should win.
+        for _ in range(10):
+            request = fake_pending_request(
+                prompt="hello world this is a long prefix continued",
+                session_id="s1",
+            )
+            chosen = await loop.create_task(
+                prefix_request_router._choose_replica_for_request(request)
+            )
+            assert chosen == session_replica
 
 
 if __name__ == "__main__":

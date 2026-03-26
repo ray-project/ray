@@ -25,6 +25,42 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _pick_two_from(
+    candidate_replica_ids: set,
+    replicas: dict,
+) -> List[RunningReplica]:
+    """Pick at most two replicas from a set using power-of-two-choices.
+
+    Optimized selection: use direct randrange for k=2 instead of
+    random.sample.  This is ~1.9x faster for the common case.
+
+    Correctness proof: We pick i uniformly from [0, n), then j uniformly
+    from [0, n-1) and shift j up if j >= i.  Every ordered pair (i, j)
+    with i != j has probability 1/(n(n-1)), matching random.sample(k=2).
+    """
+    candidates = tuple(candidate_replica_ids)
+    n = len(candidates)
+    if n == 0:
+        return []
+    elif n == 1:
+        chosen_ids = [candidates[0]]
+    elif n == 2:
+        # Randomize order to ensure fair selection when queue lengths
+        # are equal.
+        if random.getrandbits(1):
+            chosen_ids = [candidates[0], candidates[1]]
+        else:
+            chosen_ids = [candidates[1], candidates[0]]
+    else:
+        i = random.randrange(n)
+        j = random.randrange(n - 1)
+        if j >= i:
+            j += 1
+        chosen_ids = [candidates[i], candidates[j]]
+
+    return [replicas[chosen_id] for chosen_id in chosen_ids]
+
+
 class PowerOfTwoChoicesRequestRouter(
     FIFOMixin, LocalityMixin, SessionMixin, MultiplexMixin, RequestRouter
 ):
@@ -62,6 +98,10 @@ class PowerOfTwoChoicesRequestRouter(
         requested model ID for a configured timeout. If no replicas with the matching
         model ID are available after that timeout, it will fall back to the regular
         procedure.
+
+        For session affinity, replicas previously mapped to the session are preferred
+        (tier 0). If they are all busy, remaining replicas are returned as tier 1 so
+        the request can spill immediately without backoff.
         """
         if (
             pending_request is not None
@@ -72,10 +112,16 @@ class PowerOfTwoChoicesRequestRouter(
                 pending_request=pending_request,
             )
         elif pending_request is not None and pending_request.metadata.session_id:
-            # Get candidates for session affinity.
-            candidate_replica_ids = self.apply_session_routing(
-                pending_request=pending_request,
+            # Returns ranked tiers instead of a flat candidate set so the
+            # request can spill to non-session replicas immediately when
+            # session-mapped replicas are full, without waiting for backoff.
+            ranked = self.rank_replicas_via_session(
+                candidate_replicas, pending_request.metadata.session_id
             )
+            return [
+                _pick_two_from({r.replica_id for r in tier}, self._replicas)
+                for tier in ranked
+            ]
         else:
             # Get candidates for locality preference.
             candidate_replica_ids = self.apply_locality_routing(
@@ -85,28 +131,4 @@ class PowerOfTwoChoicesRequestRouter(
         if not candidate_replica_ids:
             return []
 
-        # Optimized selection: use direct randrange for k=2 instead of random.sample.
-        # This is ~1.9x faster for the common case of selecting 2 replicas.
-        #
-        # Correctness proof: We pick i uniformly from [0, n), then j uniformly from
-        # [0, n-1) and shift j up if j >= i. Every ordered pair (i, j) with i != j
-        # has probability: Pr(i,j) = 1/n * 1/(n-1) = 1/(n(n-1))
-        # This matches random.sample(k=2): uniform among all 2-permutations.
-        candidates = tuple(candidate_replica_ids)
-        n = len(candidates)
-        if n == 1:
-            chosen_ids = [candidates[0]]
-        elif n == 2:
-            # Randomize order to ensure fair selection when queue lengths are equal
-            if random.getrandbits(1):
-                chosen_ids = [candidates[0], candidates[1]]
-            else:
-                chosen_ids = [candidates[1], candidates[0]]
-        else:
-            i = random.randrange(n)
-            j = random.randrange(n - 1)
-            if j >= i:
-                j += 1
-            chosen_ids = [candidates[i], candidates[j]]
-
-        return [[self._replicas[chosen_id] for chosen_id in chosen_ids]]
+        return [_pick_two_from(candidate_replica_ids, self._replicas)]

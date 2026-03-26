@@ -380,14 +380,18 @@ class SessionMixin:
     """Mixin for session affinity routing.
 
     This mixin routes requests to replicas that previously handled
-    requests with the same session_id. Mappings are tracked at the
-    router level. When the mapped replica is no longer available,
-    the request falls back to all replicas.
+    requests with the same session_id. A session can be mapped to
+    multiple replicas: when the initially mapped replica is at capacity,
+    requests spill to other replicas and those are added to the session's
+    replica set. Mappings are tracked at the router level. When a mapped
+    replica is removed, it is dropped from the session's set.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._session_id_to_replica_id: Dict[str, ReplicaID] = {}
+        self._session_id_to_replica_ids: DefaultDict[str, Set[ReplicaID]] = defaultdict(
+            set
+        )
 
     def _get_pending_request_matching_session_id(
         self,
@@ -411,19 +415,19 @@ class SessionMixin:
         return None
 
     def _update_session_mappings_on_replica_removed(self, replica_id: ReplicaID):
-        """Remove all session mappings pointing to a removed replica."""
-        to_remove = [
-            sid
-            for sid, rid in self._session_id_to_replica_id.items()
-            if rid == replica_id
-        ]
-        for sid in to_remove:
-            del self._session_id_to_replica_id[sid]
+        """Remove a replica from all session mappings."""
+        empty_sessions = []
+        for sid, rids in self._session_id_to_replica_ids.items():
+            rids.discard(replica_id)
+            if not rids:
+                empty_sessions.append(sid)
+        for sid in empty_sessions:
+            del self._session_id_to_replica_ids[sid]
 
     def _record_session_assignment(self, session_id: str, replica_id: ReplicaID):
         """Record that a session was routed to a specific replica."""
         if session_id:
-            self._session_id_to_replica_id[session_id] = replica_id
+            self._session_id_to_replica_ids[session_id].add(replica_id)
 
     def apply_session_routing(
         self,
@@ -431,8 +435,8 @@ class SessionMixin:
     ) -> Set[ReplicaID]:
         """Apply session affinity routing.
 
-        If the session_id has a mapped replica that still exists,
-        return just that replica. Otherwise return all replicas.
+        If the session_id has mapped replicas that still exist,
+        return those replicas. Otherwise return all replicas.
 
         Args:
             pending_request: The pending request to be routed based on
@@ -449,9 +453,11 @@ class SessionMixin:
         if not session_id:
             return self._replica_id_set
 
-        mapped_replica_id = self._session_id_to_replica_id.get(session_id)
-        if mapped_replica_id and mapped_replica_id in self._replica_id_set:
-            return {mapped_replica_id}
+        mapped_replica_ids = self._session_id_to_replica_ids.get(session_id)
+        if mapped_replica_ids:
+            alive = mapped_replica_ids & self._replica_id_set
+            if alive:
+                return alive
 
         return self._replica_id_set
 
@@ -462,13 +468,13 @@ class SessionMixin:
     ) -> List[List[RunningReplica]]:
         """Rank replicas based on session affinity.
 
-        Rank 0: the previously mapped replica for this session.
-        Rank 1: all other replicas.
+        Tier 0: replicas previously mapped to this session.
+        Tier 1: all other replicas.
         """
-        mapped_replica_id = self._session_id_to_replica_id.get(session_id)
+        mapped_replica_ids = self._session_id_to_replica_ids.get(session_id, set())
         ranked_replicas = [[] for _ in range(2)]
         for replica in replicas:
-            if replica.replica_id == mapped_replica_id:
+            if replica.replica_id in mapped_replica_ids:
                 ranked_replicas[0].append(replica)
             else:
                 ranked_replicas[1].append(replica)
@@ -1035,7 +1041,7 @@ class RequestRouter(ABC):
         removed_ids = self._replica_id_set - new_replica_id_set
         replicas_to_ping = [new_replicas.get(id) for id in new_ids]
 
-        # Clean up session mappings for removed replicas (before updating _replica_id_set).
+        # Clean up session mappings for removed replicas
         if hasattr(self, "_update_session_mappings_on_replica_removed"):
             for removed_id in removed_ids:
                 self._update_session_mappings_on_replica_removed(removed_id)

@@ -32,12 +32,15 @@ from ray.serve._private.request_router.request_router import (
     LocalityMixin,
     MultiplexMixin,
     RequestRouter,
+    SessionMixin,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
+class PrefixCacheAffinityRouter(
+    LocalityMixin, SessionMixin, MultiplexMixin, RequestRouter
+):
     """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
     This request router optimizes replica selection by considering input text prefixes:
@@ -366,6 +369,11 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
+        elif pending_request is not None and pending_request.metadata.session_id:
+            # Get candidates for session affinity.
+            candidate_replica_ids = self.apply_session_routing(
+                pending_request=pending_request,
+            )
         else:
             # Get candidates for locality preference.
             candidate_replica_ids = self.apply_locality_routing(
@@ -402,6 +410,13 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         This is used as a callback to update the state of the request router
         after a response is generated.
         """
+        # Record session assignment so future requests with the same session_id
+        # are routed to the same replica.
+        if pending_request is not None and pending_request.metadata.session_id:
+            self._record_session_assignment(
+                pending_request.metadata.session_id, replica_id
+            )
+
         # Right now this only inserts the prompt into the prefix tree, not the response (streaming response makes things complicated)
         if (
             pending_request is not None
