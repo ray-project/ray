@@ -10,6 +10,8 @@
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -316,6 +318,10 @@
   variations:
     - __suffix__: regular
     - __suffix__: chaos
+      cluster:
+        byod:
+          runtime_env:
+            - RAYTEST_FAIL_ON_DEAD_NODES=0
       run:
         prepare: >
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
@@ -502,6 +508,9 @@
   working_dir: nightly_tests
 
   cluster:
+    byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
   run:
@@ -538,6 +547,9 @@
   frequency: manual
 
   cluster:
+    byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
   run:
@@ -601,6 +613,8 @@
 
   cluster:
     byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
@@ -651,23 +665,29 @@
       case: []
       cluster_type: []
       args: []
+      fail_on_dead_nodes: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
+          fail_on_dead_nodes: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 100
+          fail_on_dead_nodes: 1
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
+          fail_on_dead_nodes: 0
 
   cluster:
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
-
+    byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
   run:
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
@@ -684,17 +704,20 @@
       cluster_type: []
       args: []
       frequency: []
+      fail_on_dead_nodes: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
           frequency: weekly
+          fail_on_dead_nodes: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 40
           frequency: weekly
+          fail_on_dead_nodes: 1
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
@@ -702,10 +725,13 @@
           # This release test is run on a 'manual' frequency because it's expected to
           # fail.
           frequency: manual
+          fail_on_dead_nodes: 0
 
   cluster:
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
       post_build_script: byod_install_pybase64.sh
 
   run:
@@ -722,23 +748,29 @@
       case: []
       cluster_type: []
       args: []
+      fail_on_dead_nodes: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
+          fail_on_dead_nodes: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
           args: --inference-concurrency 1 100
+          fail_on_dead_nodes: 1
       - with:
           case: fixed_size_chaos
           cluster_type: fixed_size
           args: --inference-concurrency 100 100 --chaos
+          fail_on_dead_nodes: 0
 
   cluster:
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
       type: cu123
       post_build_script: byod_install_text_embedding.sh
 
