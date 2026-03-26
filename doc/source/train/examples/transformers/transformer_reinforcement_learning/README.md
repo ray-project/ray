@@ -248,15 +248,19 @@ Finally, call the `fit` method to start training with Ray Train. Save the `Resul
 
 
 ```python
-result = trainer.fit()
+results = trainer.fit()
 ```
 
 You can use the returned `Result` object to access metrics and the Ray Train `Checkpoint` associated with the last iteration.
 
 
 ```python
-print(f"Best reward: {result.metrics['reward']}")
-print(f"Best checkpoint: {result.checkpoint}")
+print(results.metrics_dataframe)
+```
+
+
+```python
+print(results.get_best_checkpoint("reward", "max"))
 ```
 
 ## 4. Scaling to more GPUs or a larger model
