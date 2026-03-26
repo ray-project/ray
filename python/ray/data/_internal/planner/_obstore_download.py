@@ -337,9 +337,7 @@ async def _download_uris_with_obstore(
             max_conc,
         )
         range_threshold = 0
-    sem = (
-        asyncio.Semaphore(max_conc) if (range_threshold > 0 and max_conc > 0) else None
-    )
+    sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
 
     # obstore's reqwest client rejects http:// by default. Auto-enable it
     # to maintain parity with PyArrow (which accepts http:// via fsspec),
@@ -424,8 +422,8 @@ async def _fetch_whole(
         if semaphore is not None:
             async with semaphore:
                 return await _fetch(uri, registry)
-        # No semaphore, so not using range splitting.
-        # Concurrency is controlled by the PartitionActor batch size.
+        # No semaphore (RAY_DATA_OBSTORE_MAX_CONCURRENCY=0).
+        # Concurrency is bounded only by the PartitionActor batch size.
         return await _fetch(uri, registry)
     except OSError as e:
         logger.debug(
