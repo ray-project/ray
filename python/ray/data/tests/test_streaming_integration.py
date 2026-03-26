@@ -402,17 +402,39 @@ def test_streaming_split_schema_before_execution(ray_start_10_cpus_shared):
 
 def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
     """Test schema retrieval from splits during execution."""
-    ds = ray.data.range(20, override_num_blocks=20)
+    from ray._common.test_utils import SignalActor
+
+    # Use two signals to coordinate: `started` confirms the executor is running,
+    # `blocker` keeps map tasks alive so the executor stays active.
+    started = SignalActor.remote()
+    blocker = SignalActor.remote()
+
+    def blocking_fn(row):
+        ray.get(started.send.remote())
+        ray.get(blocker.wait.remote())
+        return row
+
+    ds = ray.data.range(20, override_num_blocks=20).map(blocking_fn)
     i1, i2 = ds.streaming_split(2, equal=True)
 
     @ray.remote
-    def consume_and_check_schema(x):
+    def consume(x):
         for _ in x.iter_rows():
-            with pytest.raises(RuntimeError, match="Cannot call schema()"):
-                x.schema()
-            break
+            pass
 
-    ray.get([consume_and_check_schema.remote(i1), consume_and_check_schema.remote(i2)])
+    # Start consumers — this triggers the executor on the coordinator.
+    refs = [consume.remote(i1), consume.remote(i2)]
+
+    # Wait until a map task has started, guaranteeing the executor is alive.
+    ray.get(started.wait.remote())
+
+    # schema() should raise because execution is active.
+    with pytest.raises(ray.exceptions.RayTaskError, match="Cannot call schema()"):
+        i1.schema()
+
+    # Unblock map tasks so consumers can finish.
+    ray.get(blocker.send.remote())
+    ray.get(refs)
 
 
 def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
