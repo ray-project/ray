@@ -377,7 +377,8 @@ class RefBundle:
     def __hash__(self) -> int:
         return hash(
             (
-                *self.blocks,
+                # Only hash block refs
+                *[b for b, _ in self.blocks],
                 *self.slices,
                 # Check out comment in ``__eq__``
                 id(self.schema),
