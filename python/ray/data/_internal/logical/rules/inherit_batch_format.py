@@ -2,6 +2,7 @@ import copy
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import AbstractAllToAll, MapBatches
+from ray.data.context import DataContext
 
 __all__ = [
     "InheritBatchFormatRule",
@@ -14,6 +15,9 @@ class InheritBatchFormatRule(Rule):
     the entire DAG."""
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
+        if DataContext.get_current().batch_to_block_arrow_format:
+            return plan
+
         optimized_dag: LogicalOperator = self._apply(plan.dag)
         new_plan = LogicalPlan(dag=optimized_dag, context=plan.context)
         return new_plan
