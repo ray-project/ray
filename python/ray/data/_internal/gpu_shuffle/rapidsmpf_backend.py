@@ -16,8 +16,9 @@
 
 from __future__ import annotations
 
-from packaging.version import parse as parse_version
 from typing import TYPE_CHECKING, Any, Literal
+
+from packaging.version import parse as parse_version
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,8 +54,8 @@ def lazy_load() -> type[Any]:
     This is necessary because the BulkRapidsMPFShuffler inherits from BaseShufflingActor.
     """
     import cudf
-    import rmm.mr
     import rapidsmpf
+    import rmm.mr
     from rapidsmpf.integrations.cudf.partition import (
         partition_and_pack,
         unpack_and_concat,
@@ -67,11 +68,13 @@ def lazy_load() -> type[Any]:
 
     if parse_version(rapidsmpf.__version__) >= parse_version("26.2.0"):
         from rapidsmpf.memory.buffer import MemoryType
-        from rapidsmpf.memory.buffer_resource import BufferResource, LimitAvailableMemory
+        from rapidsmpf.memory.buffer_resource import (
+            BufferResource,
+            LimitAvailableMemory,
+        )
     else:
         from rapidsmpf.buffer.buffer import MemoryType
         from rapidsmpf.buffer.resource import BufferResource, LimitAvailableMemory
-
 
     # Exempt this class from coverage is it's indirectly tested by the ShuffleStage which coverage tools don't pick up.
     class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
