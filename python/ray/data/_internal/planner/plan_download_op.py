@@ -26,7 +26,7 @@ from ray.data._internal.planner._obstore_download import (
     _log_fallback_warning,
     download_bytes_async,
 )
-from ray.data._internal.util import RetryingPyFileSystem, make_async_gen
+from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher, make_async_gen
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -164,16 +164,6 @@ def uri_to_path(uri: str) -> str:
     if parsed.scheme == "file":
         return parsed.path
     return parsed.netloc + parsed.path
-
-
-def _arrow_batcher(table: pa.Table, output_batch_size: int):
-    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
-    num_rows = table.num_rows
-    for i in range(0, num_rows, output_batch_size):
-        end_idx = min(i + output_batch_size, num_rows)
-        # Use PyArrow's zero-copy slice operation
-        batch_table = table.slice(i, end_idx - i)
-        yield batch_table
 
 
 def download_bytes_threaded(

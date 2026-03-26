@@ -1010,6 +1010,16 @@ class _InterruptibleQueue(Queue):
                 pass
 
 
+def _arrow_batcher(table: "pyarrow.Table", output_batch_size: int):
+    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
+    num_rows = table.num_rows
+    for i in range(0, num_rows, output_batch_size):
+        end_idx = min(i + output_batch_size, num_rows)
+        # Use PyArrow's zero-copy slice operation
+        batch_table = table.slice(i, end_idx - i)
+        yield batch_table
+
+
 def make_async_gen(
     base_iterator: Iterator[T],
     fn: Callable[[Iterator[T]], Iterator[U]],

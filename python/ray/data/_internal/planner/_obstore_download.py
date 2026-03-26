@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 import pyarrow as pa
 import pyarrow.fs
 
-from ray.data._internal.util import RetryingPyFileSystem
+from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
 from ray.data.block import BlockAccessor
 from ray.data.datasource.path_util import _split_uri
 
@@ -182,15 +182,6 @@ class StoreRegistry:
         return self._cache[store_url]
 
 
-# Block utilities
-def _arrow_batcher(table: pa.Table, output_batch_size: int):
-    """Batch a PyArrow table into smaller tables using zero-copy slicing."""
-    num_rows = table.num_rows
-    for i in range(0, num_rows, output_batch_size):
-        end_idx = min(i + output_batch_size, num_rows)
-        yield table.slice(i, end_idx - i)
-
-
 # Public entry point
 def download_bytes_async(
     block: pa.Table,
@@ -343,6 +334,11 @@ async def _download_uris_with_obstore(
     registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
     if range_threshold <= 0:
+        logger.debug(
+            "Range splitting disabled (threshold=%d); downloading %d URIs via simple GET.",
+            range_threshold,
+            len(uris),
+        )
         tasks = [_fetch_whole(uri, registry, uri_column_name, sem) for uri in uris]
         return list(await asyncio.gather(*tasks))
 
