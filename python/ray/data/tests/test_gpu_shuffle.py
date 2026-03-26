@@ -47,6 +47,7 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
     op_mock = MagicMock(PhysicalOperator)
     op_mock._output_dependencies = []
     op_mock._logical_operators = [logical_mock]
+    op_mock.num_output_splits.return_value = 1
     return op_mock
 
 

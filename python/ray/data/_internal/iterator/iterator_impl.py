@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
@@ -6,10 +6,9 @@ from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 
 if TYPE_CHECKING:
-    import pyarrow
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 
 class DataIteratorImpl(DataIterator):
@@ -40,7 +39,7 @@ class DataIteratorImpl(DataIterator):
     def stats(self) -> str:
         return self._base_dataset.stats()
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> Optional["Schema"]:
         return self._base_dataset.schema()
 
     def get_context(self) -> DataContext:
