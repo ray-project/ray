@@ -468,12 +468,8 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[
-            int, datetime, Literal["earliest"], PerPartitionOffsets
-        ] = "earliest",
-        end_offset: Union[
-            int, datetime, Literal["latest"], PerPartitionOffsets
-        ] = "latest",
+        start_offset: Union[int, datetime, Literal["earliest"]],
+        end_offset: Union[int, datetime, Literal["latest"]],
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         consumer_config: Optional[Dict[str, Any]] = None,
         timeout_ms: Optional[int] = None,
