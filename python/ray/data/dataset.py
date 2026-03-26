@@ -607,7 +607,7 @@ class Dataset:
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
-    def set_name(self, name: Optional[str]):
+    def set_name(self, name: Optional[str]) -> None:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -1746,7 +1746,7 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
         """Rename columns in the dataset.
 
         Examples:
@@ -6230,7 +6230,7 @@ class Dataset:
         *,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
-    ):
+    ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
 
         Examples:
@@ -8070,7 +8070,7 @@ class Dataset:
         return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self) -> None:
         """Show the logical plan and physical plan of the dataset.
 
         Examples:
