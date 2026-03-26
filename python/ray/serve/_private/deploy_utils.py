@@ -24,6 +24,7 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     serialized_autoscaling_policy_def: Optional[bytes] = None,
     serialized_request_router_cls: Optional[bytes] = None,
+    serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -33,7 +34,7 @@ def get_deploy_args(
         deployment_config = {}
 
     if isinstance(deployment_config, dict):
-        deployment_config = DeploymentConfig.parse_obj(deployment_config)
+        deployment_config = DeploymentConfig.model_validate(deployment_config)
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
@@ -48,6 +49,7 @@ def get_deploy_args(
         "ingress": ingress,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
+        "serialized_deployment_actors": serialized_deployment_actors,
     }
 
     return controller_deploy_args
@@ -99,8 +101,9 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Args:
         app_config: The application config.
 
-    Returns: a hash of the import path and (application level) runtime env representing
-            the code version of the application.
+    Returns:
+        str: A hash of the import path and (application level) runtime env
+            representing the code version of the application.
     """
     request_router_configs = [
         deployment.request_router_config
@@ -112,6 +115,12 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         for deployment_config in app_config.deployments
         if isinstance(deployment_config.autoscaling_config, dict)
     ]
+    deployment_actors_configs = [
+        deployment.deployment_actors
+        for deployment in app_config.deployments
+        if isinstance(deployment.deployment_actors, list)
+    ]
+
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
@@ -123,7 +132,8 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "autoscaling_policy": app_config.autoscaling_policy,
             "deployment_autoscaling_policies": deployment_autoscaling_policies,
             "request_router_configs": request_router_configs,
+            "deployment_actors": deployment_actors_configs,
         },
         sort_keys=True,
     ).encode("utf-8")
-    return hashlib.sha1(encoded).hexdigest()
+    return hashlib.sha256(encoded).hexdigest()

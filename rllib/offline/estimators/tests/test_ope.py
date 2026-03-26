@@ -110,7 +110,7 @@ class TestOPE(unittest.TestCase):
         np.random.seed(seed)
 
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
+        train_data = os.path.join(rllib_dir, "offline/tests/data/cartpole/small.json")
 
         env_name = "CartPole-v1"
         cls.gamma = 0.99

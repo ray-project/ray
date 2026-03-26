@@ -1,6 +1,6 @@
 - name: DEFAULTS
   python: "3.10"
-  group: multimodal-inference-benchmarks
+  group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
   frequency: manual
@@ -19,6 +19,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python image_classification/ray_data_main.py
 
@@ -39,6 +40,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python large_image_embedding/ray_data_main.py
 
@@ -59,6 +61,7 @@
 
   variations:
   - __suffix__: ray
+    frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
 
@@ -81,6 +84,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python audio_transcription/ray_data_main.py
 
@@ -100,6 +104,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
 

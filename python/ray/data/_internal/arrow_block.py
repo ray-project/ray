@@ -17,17 +17,16 @@ from typing import (
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.ray_constants import env_integer
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import (
+from ray._common.utils import env_integer
+from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
+from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
+from ray.data._internal.row import row_repr, row_repr_pretty, row_str
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
-from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
-from ray.data._internal.row import TableRow
-from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -85,10 +84,13 @@ def get_concat_and_sort_transform(context: DataContext) -> Callable:
         return transform_pyarrow.concat_and_sort
 
 
-class ArrowRow(TableRow):
+class ArrowRow(Mapping):
     """
     Row of a tabular Dataset backed by a Arrow Table block.
     """
+
+    def __init__(self, row: Any):
+        self._row = row
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import get_arrow_extension_tensor_types
@@ -101,7 +103,9 @@ class ArrowRow(TableRow):
                 # Build a tensor row.
                 return tuple(
                     [
-                        ArrowBlockAccessor._build_tensor_row(self._row, col_name=key)
+                        ArrowBlockAccessor._build_tensor_row(
+                            self._row, col_name=key, row_idx=0
+                        )
                         for key in keys
                     ]
                 )
@@ -141,6 +145,15 @@ class ArrowRow(TableRow):
 
     def as_pydict(self) -> Dict[str, Any]:
         return dict(self.items())
+
+    def __str__(self):
+        return row_str(self)
+
+    def __repr__(self):
+        return row_repr(self)
+
+    def _repr_pretty_(self, p, cycle):
+        return row_repr_pretty(self, p, cycle)
 
 
 class ArrowBlockBuilder(TableBlockBuilder):
@@ -203,6 +216,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
+        self._max_chunk_size: Optional[int] = None
+
+    def _get_row(self, index: int) -> ArrowRow:
+        base_row = self.slice(index, index + 1, copy=False)
+        return ArrowRow(base_row)
 
     def column_names(self) -> List[str]:
         return self._table.column_names
@@ -230,11 +248,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def _build_tensor_row(
-        row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
-    ) -> np.ndarray:
+    def _build_tensor_row(row: ArrowRow, row_idx: int, col_name: str) -> np.ndarray:
 
-        element = row[col_name][0]
+        element = row[col_name][row_idx]
         arr = element.as_py()
 
         assert isinstance(arr, np.ndarray), type(arr)
@@ -253,14 +269,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         # We specify ignore_metadata=True because pyarrow will use the metadata
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
         df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
         if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df)
+            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
         return df
 
     def to_numpy(
@@ -434,7 +450,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
@@ -444,16 +462,32 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            if not hasattr(self, "_max_chunk_size"):
+            from ray.data._internal.utils.transform_pyarrow import (
+                _is_native_tensor_type,
+            )
+
+            if self._max_chunk_size is None:
                 # Calling _get_max_chunk_size in constructor makes it slow, so we
                 # are calling it here only when needed.
                 self._max_chunk_size = _get_max_chunk_size(
-                    self._table, ARROW_MAX_CHUNK_SIZE_BYTES
+                    table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
+            contains_native_tensor_columns = any(
+                _is_native_tensor_type(column.type) for column in table.columns
+            )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-                yield from batch.to_pylist()
+
+                if contains_native_tensor_columns:
+                    # HACK: For v1 and v2 tensors, we can control what is returned
+                    # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).
+                    # For pyarrow native FixedShapeTensorArrays we cannot, so we
+                    # use _iter_rows_from_batch_with_tensors to handle conversion.
+                    yield from _iter_rows_from_batch_with_tensors(batch)
+                else:
+                    yield from batch.to_pylist()
         else:
-            for i in range(self.num_rows()):
+            num_rows = self.num_rows()
+            for i in range(num_rows):
                 yield self._get_row(i)
 
     def filter(self, predicate_expr: "Expr") -> "pyarrow.Table":
@@ -470,6 +504,36 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Use PyArrow's built-in filter method
         return self._table.filter(mask)
+
+
+def _iter_rows_from_batch_with_tensors(
+    batch: "pyarrow.RecordBatch",
+) -> Iterator[Dict[str, Any]]:
+    """Iterate over rows in a batch that may contain native tensor columns.
+
+    For pyarrow native FixedShapeTensorArrays, we must manually convert them
+    to ndarrays which preserve shape/ndim. Without this, FixedShapeTensorArrays
+    would be translated to contiguous 1d arrays.
+
+    See: https://arrow.apache.org/docs/python/generated/pyarrow.FixedShapeTensorArray.html
+
+    Args:
+        batch: A PyArrow RecordBatch that may contain tensor columns.
+
+    Yields:
+        Dict[str, Any]: Dictionaries mapping column names to values for each row.
+    """
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    col_values = []
+    for column in batch.columns:
+        if _is_native_tensor_type(column.type):
+            col_values.append(column.to_numpy_ndarray())
+        else:
+            col_values.append(column.to_pylist())
+
+    for idx in range(batch.num_rows):
+        yield {name: col[idx] for name, col in zip(batch.column_names, col_values)}
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):
@@ -536,6 +600,14 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     def unique(self) -> BlockColumn:
         import pyarrow.compute as pac
 
+        if self.is_composed_of_lists():
+            # NOTE: Arrow doesn't provide unique kernels for `ListArray`s and
+            #       such, so we rely on Polars to encode and compute unique
+            #       values instead
+            import polars
+
+            return polars.from_arrow(self._column).unique().to_arrow()
+
         return pac.unique(self._column)
 
     def value_counts(self) -> Optional[Dict[str, List]]:
@@ -566,9 +638,8 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return pac.drop_null(self._column)
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        if not types:
-            types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
+    def is_composed_of_lists(self) -> bool:
+        types = (pyarrow.lib.ListType, pyarrow.lib.LargeListType)
         return isinstance(self._column.type, types)
 
     def to_pylist(self) -> List[Any]:
@@ -585,5 +656,5 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
         return self._column.to_numpy(zero_copy_only=zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self._column

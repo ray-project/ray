@@ -33,6 +33,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
+    copy_class_metadata,
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
@@ -40,6 +41,8 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
+    GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -47,6 +50,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import (
     ReplicaContext,
+    _get_deployment_actor,
     _get_global_client,
     _get_internal_replica_context,
     _set_global_client,
@@ -177,6 +181,59 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
+@DeveloperAPI
+def get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Must be called from within a running Serve replica. The actor must be
+    declared in the deployment's deployment_actors config.
+
+    Args:
+        actor_name: Name of the deployment-scoped actor (as specified in
+            deployment_actors list).
+
+    Returns:
+        Ray ActorHandle to the deployment-scoped actor.
+
+    Raises:
+        RayServeException: If not called from within a replica, or if the
+            actor is not found.
+        ValueError: If the actor is not found.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+                def insert(self, text: str):
+                    self.max_depth += 1
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+    """
+    return _get_deployment_actor(actor_name)
+
+
 @PublicAPI(stability="stable")
 def ingress(app: Union[ASGIApp, Callable]) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.
@@ -292,9 +349,12 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            def __init__(self, *args, **kwargs):
+            async def __init__(self, *args, **kwargs):
                 # Call user-defined constructor.
-                cls.__init__(self, *args, **kwargs)
+                if inspect.iscoroutinefunction(cls.__init__):
+                    await cls.__init__(self, *args, **kwargs)
+                else:
+                    cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
@@ -309,7 +369,7 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
                     else:
                         cls.__del__(self)
 
-        ASGIIngressWrapper.__name__ = cls.__name__
+        copy_class_metadata(ASGIIngressWrapper, cls)
 
         return ASGIIngressWrapper
 
@@ -326,6 +386,9 @@ def deployment(
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
+    placement_group_bundle_label_selector: Default[
+        List[Dict[str, str]]
+    ] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -340,6 +403,12 @@ def deployment(
         Union[Dict, RequestRouterConfig, None]
     ] = DEFAULT.VALUE,
     max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+    gang_scheduling_config: Default[
+        Union[Dict, GangSchedulingConfig, None]
+    ] = DEFAULT.VALUE,
+    deployment_actors: Default[
+        Optional[List[Union[Dict, DeploymentActorConfig]]]
+    ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -365,7 +434,7 @@ def deployment(
         route_prefix: Route prefix for HTTP requests. Defaults to '/'. Deprecated.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
-            `num_cpus`, `num_gpus`, `resources`, and `runtime_env`.
+            `num_cpus`, `num_gpus`, `resources`, `runtime_env`, and `label_selector`.
         placement_group_bundles: Defines a set of placement group bundles to be
             scheduled *for each replica* of this deployment. The replica actor will
             be scheduled in the first bundle provided, so the resources specified in
@@ -376,6 +445,9 @@ def deployment(
             This cannot be set together with max_replicas_per_node.
         placement_group_strategy: Strategy to use for the replica placement group
             specified via `placement_group_bundles`. Defaults to `PACK`.
+        placement_group_bundle_label_selector: A list of label selectors to apply to the
+            placement group on a per-bundle level. If a single label selector is provided,
+            it is applied to all bundles. Otherwise, the length must match `placement_group_bundles`.
         max_replicas_per_node: The max number of replicas of this deployment that can
             run on a single node. Valid values are None (default, no limit)
             or an integer in the range of [1, 100].
@@ -407,6 +479,14 @@ def deployment(
         request_router_config: Config for the request router used for this deployment.
         max_constructor_retry_count: Maximum number of times to retry the deployment
             constructor. Defaults to 20.
+        gang_scheduling_config: Configuration for gang scheduling of deployment replicas.
+            Gang scheduling ensures that groups of replicas are scheduled together
+            atomically, which is essential for distributed workloads that require
+            coordination between replicas. See `GangSchedulingConfig` for options.
+        deployment_actors: List of deployment-scoped Ray actors managed by the controller.
+            Each actor is shared across all replicas of this deployment. Use
+            `serve.get_deployment_actor(actor_name)` from within a replica to get
+            the actor handle. See `DeploymentActorConfig` for options.
     Returns:
         `Deployment`
     """
@@ -419,6 +499,24 @@ def deployment(
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
+    if gang_scheduling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ] and max_replicas_per_node not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided. Please set max_replicas_per_node "
+            "to None."
+        )
+    if gang_scheduling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ] and placement_group_strategy not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided. Use "
+            "gang_scheduling_config.gang_placement_strategy instead."
+        )
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
@@ -458,7 +556,7 @@ def deployment(
         )
 
     if isinstance(logging_config, LoggingConfig):
-        logging_config = logging_config.dict()
+        logging_config = logging_config.model_dump()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
@@ -473,6 +571,8 @@ def deployment(
         logging_config=logging_config,
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,
+        gang_scheduling_config=gang_scheduling_config,
+        deployment_actors=deployment_actors,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -494,6 +594,13 @@ def deployment(
                 if placement_group_strategy is not DEFAULT.VALUE
                 else None
             ),
+            placement_group_bundle_label_selector=(
+                placement_group_bundle_label_selector
+                if placement_group_bundle_label_selector is not DEFAULT.VALUE
+                else None
+            ),
+            # TODO(ryanaoleary@): add placement_group_fallback_strategy when
+            # fallback_strategy support is added to placement group options.
             max_replicas_per_node=(
                 max_replicas_per_node
                 if max_replicas_per_node is not DEFAULT.VALUE
@@ -523,6 +630,7 @@ class RunTarget:
     name: str = SERVE_DEFAULT_APP_NAME
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
+    external_scaler_enabled: bool = False
 
 
 @DeveloperAPI
@@ -570,6 +678,7 @@ def _run_many(
                 default_runtime_env=ray.get_runtime_context().runtime_env
                 if not _local_testing_mode
                 else None,
+                external_scaler_enabled=t.external_scaler_enabled,
             )
         )
 
@@ -616,6 +725,7 @@ def _run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -629,6 +739,7 @@ def _run(
                 name=name,
                 route_prefix=route_prefix,
                 logging_config=logging_config,
+                external_scaler_enabled=external_scaler_enabled,
             )
         ],
         wait_for_applications_running=_blocking,
@@ -685,6 +796,7 @@ def run(
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
+    external_scaler_enabled: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -708,6 +820,8 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        external_scaler_enabled: Whether external autoscaling is enabled for
+            this application.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -718,6 +832,7 @@ def run(
         route_prefix=route_prefix,
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
+        external_scaler_enabled=external_scaler_enabled,
     )
 
     if blocking:
@@ -881,6 +996,11 @@ def get_multiplexed_model_id() -> str:
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
 
+    When called from within a batched function (decorated with `@serve.batch`),
+    this returns the multiplexed model ID that is common to all requests in
+    the current batch. This works because batches are automatically split
+    by model ID to ensure all requests in a batch target the same model.
+
     .. code-block:: python
 
             import ray
@@ -902,6 +1022,14 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
+    # First check if we're inside a batch context. If so, get the model ID
+    # from the batch request context. All requests in a batch are guaranteed
+    # to have the same multiplexed_model_id (batches are split by model ID).
+    batch_request_context = ray.serve.context._get_serve_batch_request_context()
+    if batch_request_context:
+        return batch_request_context[0].multiplexed_model_id
+
+    # Fall back to the regular request context
     _request_context = ray.serve.context._get_serve_request_context()
     return _request_context.multiplexed_model_id
 

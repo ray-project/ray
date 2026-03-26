@@ -153,13 +153,13 @@ export const AdvancedProgressBarSegment = ({
               link.type === "actor" ? (
                 <Box
                   component="button"
-                  sx={{
+                  sx={(theme) => ({
                     border: "none",
                     cursor: "pointer",
-                    color: "#036DCF",
+                    color: theme.palette.primary.main,
                     textDecoration: "underline",
                     background: "none",
-                  }}
+                  })}
                   onClick={(event) => {
                     onClickLink?.(link);
                     event.stopPropagation();
@@ -170,13 +170,13 @@ export const AdvancedProgressBarSegment = ({
               ) : (
                 <Link
                   component={RouterLink}
-                  sx={{
+                  sx={(theme) => ({
                     border: "none",
                     cursor: "pointer",
-                    color: "#036DCF",
+                    color: theme.palette.primary.main,
                     textDecoration: "underline",
                     background: "none",
-                  }}
+                  })}
                   to={`tasks/${link.id}`}
                 >
                   {name}

@@ -13,43 +13,6 @@ suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
 }
 
-# Calls the provided command with set -x temporarily suppressed
-suppress_xtrace() {
-  {
-    local restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x"; fi
-  } 2> /dev/null
-  local status=0
-  "$@" || status=$?
-  ${restore_shell_state}
-  { return "${status}"; } 2> /dev/null
-}
-
-# Idempotent environment loading
-reload_env() {
-  # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
-  # e.g. for CI cross-compatibility.
-  # Normal environment variables should be set up at software installation time, not here.
-
-  if [ -n "${GITHUB_PULL_REQUEST-}" ]; then
-    case "${GITHUB_PULL_REQUEST}" in
-      [1-9]*) TRAVIS_PULL_REQUEST="${GITHUB_PULL_REQUEST}";;
-      *) TRAVIS_PULL_REQUEST=false;;
-    esac
-    export TRAVIS_PULL_REQUEST
-  fi
-
-  if [ "${GITHUB_ACTIONS-}" = true ] && [ -z "${TRAVIS_BRANCH-}" ]; then
-    # Define TRAVIS_BRANCH to make Travis scripts run on GitHub Actions.
-    TRAVIS_BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF}}"  # For pull requests, the base branch name
-    TRAVIS_BRANCH="${TRAVIS_BRANCH#refs/heads/}"  # Remove refs/... prefix
-    # TODO(mehrdadn): Make TRAVIS_BRANCH be a named ref (e.g. 'master') like it's supposed to be.
-    # For now we use a hash because GitHub Actions doesn't clone refs the same way as Travis does.
-    TRAVIS_BRANCH="${GITHUB_HEAD_SHA:-${TRAVIS_BRANCH}}"
-    export TRAVIS_BRANCH
-  fi
-}
-
 compile_pip_dependencies() {
   # Compile boundaries
   TARGET="${1-requirements_compiled.txt}"
@@ -167,9 +130,9 @@ _install_npm_project() {
 }
 
 build_dashboard_front_end() {
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == msys ]]; then
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
-  elif [ "${NO_DASHBOARD-}" = "1" ]; then
+  elif [[ "${NO_DASHBOARD-}" == "1" ]]; then
     echo "Skipping dashboard build"
   else
     (
@@ -196,7 +159,7 @@ build_sphinx_docs() {
 
   (
     cd "${WORKSPACE_DIR}"/doc
-    if [ "${OSTYPE}" = msys ]; then
+    if [[ "${OSTYPE}" == msys ]]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
@@ -208,7 +171,7 @@ build_sphinx_docs() {
 check_sphinx_links() {
   (
     cd "${WORKSPACE_DIR}"/doc
-    if [ "${OSTYPE}" = msys ]; then
+    if [[ "${OSTYPE}" == msys ]]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make linkcheck
@@ -345,15 +308,7 @@ build() {
   install_ray
 }
 
-_main() {
-  if [ "${GITHUB_ACTIONS-}" = true ]; then
-    exec 2>&1  # Merge stdout and stderr to prevent out-of-order buffering issues
-    reload_env
-  fi
-  "$@"
-}
-
-_main "$@"
+"$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

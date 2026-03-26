@@ -34,6 +34,7 @@ from ray._raylet import (
     PythonFunctionDescriptor,
 )
 from ray.remote_function import RemoteFunction
+from ray.util.tracing.tracing_helper import _inject_tracing_into_class
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -53,6 +54,36 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode()])
     else:
         return b":".join([key_type, job_id.hex().encode(), key])
+
+
+def build_setup_hook_export_entry(
+    setup_func: Callable, job_id: JobID
+) -> tuple[bytes, bytes, bytes]:
+    """Compute the exported payload and GCS key for a setup hook callable.
+
+    Args:
+        setup_func: The setup hook function to export.
+        job_id: The job ID to export the setup hook for.
+
+    Returns:
+        A tuple of (pickled_function, function_id, key).
+    """
+    pickled_function = pickle_dumps(
+        setup_func,
+        "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
+    )
+    function_to_run_id = hashlib.shake_128(pickled_function).digest(
+        ray_constants.ID_SIZE
+    )
+    key = make_function_table_key(
+        # This value should match with gcs_function_manager.h.
+        # Otherwise, it won't be GC'ed.
+        WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
+        # b"FunctionsToRun",
+        job_id,
+        function_to_run_id,
+    )
+    return pickled_function, function_to_run_id, key
 
 
 class FunctionActorManager:
@@ -131,7 +162,7 @@ class FunctionActorManager:
         collision_identifier = function_or_class.__name__ + ":" + string_file.getvalue()
 
         # Return a hash of the identifier in case it is too large.
-        return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
+        return hashlib.sha256(collision_identifier.encode("utf-8")).digest()
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
@@ -149,21 +180,8 @@ class FunctionActorManager:
         self, setup_func: Callable, timeout: Optional[int] = None
     ) -> bytes:
         """Export the setup hook function and return the key."""
-        pickled_function = pickle_dumps(
-            setup_func,
-            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
-        )
-
-        function_to_run_id = hashlib.shake_128(pickled_function).digest(
-            ray_constants.ID_SIZE
-        )
-        key = make_function_table_key(
-            # This value should match with gcs_function_manager.h.
-            # Otherwise, it won't be GC'ed.
-            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
-            # b"FunctionsToRun",
-            self._worker.current_job_id.binary(),
-            function_to_run_id,
+        pickled_function, function_to_run_id, key = build_setup_hook_export_entry(
+            setup_func, self._worker.current_job_id.binary()
         )
 
         check_oversized_function(
@@ -544,6 +562,16 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
+
+            # Re-inject tracing into the loaded class. This is necessary because
+            # cloudpickle doesn't preserve __signature__ attributes on module-level
+            # functions. When a class is pickled and unpickled, user-defined methods
+            # are looked up from the module, losing the __signature__ that was set by
+            # _inject_tracing_into_class during actor creation. Re-injecting tracing
+            # ensures the method signatures include _ray_trace_ctx when tracing is
+            # enabled, matching the behavior expected by _tracing_actor_method_invocation.
+            _inject_tracing_into_class(actor_class)
+
             # Save the loaded actor class in cache.
             self._loaded_actor_classes[function_id] = actor_class
 
@@ -592,7 +620,7 @@ class FunctionActorManager:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
-                return object
+                return ray.actor._modify_class(object)
         else:
             return None
 

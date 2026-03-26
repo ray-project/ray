@@ -1,12 +1,12 @@
 .. _joining-data:
 
-================
-Joining datasets
-================
+============
+Joining Data
+============
 
 .. note:: This is a new feature released in Ray 2.46. Note that this is an experimental feature and some things might not work as expected.
 
-Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types (inner, outer, semi, anti) based on the provided key columns as follows:
+Ray Data allows multiple :class:`~ray.data.dataset.Dataset` instances to be joined using different join types based on the provided key columns as follows:
 
 .. testcode::
 
@@ -57,7 +57,7 @@ Ray Data provides the following levers to allow tuning the performance of joins 
 .. note:: Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all
     Ray Data workloads, but especially so for ones utilizing joins.
 
-To configure Object Store to be 50% add to your image:
+To configure Object Store to be 50%, add to your image:
 
 .. testcode::
 
@@ -82,11 +82,11 @@ Configuring number of Aggregators
 
 Following are important considerations for successfully configuring number of aggregators in your pool:
 
-    - Defaults to 64 or `num_partitions` (in cases when there are less than 64 partitions)
-    - Individual Aggregators might be assigned to handle more than one partition (partitions are evenly split in round-robin fashion among the aggregators)
-    - Aggregators are stateful components that hold the state (partitions) during shuffling **in memory**
+- Defaults to 64 or `num_partitions` (in cases when there are less than 64 partitions)
+- Individual Aggregators might be assigned to handle more than one partition (partitions are evenly split in round-robin fashion among the aggregators)
+- Aggregators are stateful components that hold the state (partitions) during shuffling **in memory**
 
-.. note:: *Rule of thumb* is to *avoid setting `num_partitions` >> number of aggregators as it might create bottlenecks*
+.. note:: The rule of thumb is to avoid setting `num_partitions` >> number of aggregators as it might create bottlenecks
 
 1.  Setting `DataContext.max_hash_shuffle_aggregators` caps the number of aggregators
 2.  Setting it to large enough value has an effect of allocating 1 partition to 1 aggregator (when `max_hash_shuffle_aggregators >= num_partitions`)

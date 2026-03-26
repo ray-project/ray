@@ -15,3 +15,5 @@ Examples
    ./object-detection/README.ipynb
    ./e2e-rag/README.ipynb
    ./mcp-ray-serve/README.ipynb
+   ./langchain_agent_ray_serve/content/README.ipynb
+   ./multi_agent_a2a/content/README.ipynb

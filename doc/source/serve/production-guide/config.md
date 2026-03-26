@@ -40,7 +40,8 @@ applications:
 - name: ...
   route_prefix: ...
   import_path: ...
-  runtime_env: ... 
+  runtime_env: ...
+  external_scaler_enabled: ...
   deployments:
   - name: ...
     num_replicas: ...
@@ -59,6 +60,13 @@ The `proxy_location` field configures where to run proxies to handle traffic to 
 - EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
 - HeadOnly: Only run a single proxy on the head node.
 - Disabled: Don't run proxies at all. Set this value if you are only making calls to your applications using deployment handles.
+
+You can also configure proxy health checks and lifecycle behavior with the following environment variables:
+
+- `RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S`: How often (in seconds) the Serve controller checks if each proxy is healthy. Default is `10.0`.
+- `RAY_SERVE_PROXY_HEALTH_CHECK_TIMEOUT_S`: How long (in seconds) the controller waits for a proxy to respond to a health check before considering it failed. If a proxy fails 3 consecutive health checks, the controller marks it unhealthy and restarts it. Default is `10.0`.
+- `RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S`: How long (in seconds) to wait for a proxy to become ready during startup. Default is `5.0`.
+- `RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S`: The minimum time (in seconds) a proxy stays in the draining state before termination. During draining: (1) the proxy fails health checks, causing the load balancer to stop routing new traffic(because it sees the unhealthy health checks for that proxy), (2) ongoing requests complete normally, and (3) the proxy waits at least this period before terminating. Default is `30.0`.
 
 (http-config)=
 
@@ -99,6 +107,7 @@ These are the fields per `application`:
 - **`route_prefix`**: An application can be called via HTTP at the specified route prefix. It defaults to `/`. The route prefix for each application must be unique.
 - **`import_path`**: The path to your top-level Serve deployment (or the same path passed to `serve run`). The most minimal config file consists of only an `import_path`.
 - **`runtime_env`**: Defines the environment that the application runs in. Use this parameter to package application dependencies such as `pip` packages (see {ref}`Runtime Environments <runtime-environments>` for supported fields). The `import_path` must be available _within_ the `runtime_env` if it's specified. The Serve config's `runtime_env` can only use [remote URIs](remote-uris) in its `working_dir` and `py_modules`; it can't use local zip files or directories. [More details on runtime env](serve-runtime-env).
+- **`external_scaler_enabled`**: Enables the external scaling API, which lets you scale deployments from outside the Ray cluster using a REST API. When enabled, you can't use built-in autoscaling (`autoscaling_config`) for any deployment in this application. Defaults to `False`. See [External Scaling API](serve-external-scale-api) for details.
 - **`deployments (optional)`**: A list of deployment options that allows you to override the `@serve.deployment` settings specified in the deployment graph code. Each entry in this list must include the deployment `name`, which must match one in the code. If this section is omitted, Serve launches all deployments in the graph with the parameters specified in the code. See how to [configure serve deployment options](serve-configure-deployment).
 - **`args`**: Arguments that are passed to the [application builder](serve-app-builder-guide).
 

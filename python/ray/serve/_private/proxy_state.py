@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple, Type
 import ray
 from ray import ObjectRef
 from ray._common.network_utils import build_address
+from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
@@ -20,16 +21,16 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
-    RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
+    REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
 )
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.utils import (
-    Timer,
-    TimerBase,
     format_actor_name,
     is_grpc_enabled,
 )
@@ -40,6 +41,7 @@ from ray.serve.schema import (
     ProxyStatus,
     Target,
 )
+from ray.util import metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -162,7 +164,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             addr = build_address(http_options.host, http_options.port)
             logger.info(
-                f"Starting proxy on node '{node_id}' listening on '{addr}'.",
+                f"Starting proxy '{name}' on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
             )
 
@@ -312,7 +314,15 @@ class ActorProxyWrapper(ProxyWrapper):
                 future.cancel()
 
     def kill(self):
-        """Kill the proxy actor."""
+        """Kills the proxy actor after graceful shutdown."""
+        # Prevent multiple concurrent kill attempts
+        if self.is_shutdown():
+            return
+
+        shutdown_ref = self._actor_handle.shutdown.remote()
+        ray.get(shutdown_ref, timeout=5)
+
+        # Shutdown completed successfully, now kill the actor
         ray.kill(self._actor_handle, no_restart=True)
 
 
@@ -330,6 +340,7 @@ class ProxyState:
         self._actor_proxy_wrapper = actor_proxy_wrapper
         self._actor_name = actor_name
         self._node_id = node_id
+        self._node_ip = node_ip
         self._status = ProxyStatus.STARTING
         self._timer = timer
         self._shutting_down = False
@@ -346,6 +357,30 @@ class ProxyState:
             actor_name=self._actor_name,
             status=self._status,
         )
+
+        # Metric to track proxy status as a numeric value
+        # 1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED (0=UNKNOWN reserved)
+        self._status_gauge = metrics.Gauge(
+            "serve_proxy_status",
+            description=(
+                "The current status of the proxy. "
+                "1=STARTING, 2=HEALTHY, 3=UNHEALTHY, 4=DRAINING, 5=DRAINED."
+            ),
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        # Set initial status (STARTING = 1)
+        self._status_gauge.set(ProxyStatus.STARTING.to_numeric())
+
+        # Metric to track proxy shutdown duration
+        self._shutdown_duration_histogram = metrics.Histogram(
+            "serve_proxy_shutdown_duration_ms",
+            description=(
+                "The time it takes for the proxy to shut down in milliseconds."
+            ),
+            boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags({"node_id": node_id, "node_ip_address": node_ip})
+        self._shutdown_start_time: Optional[float] = None
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -379,6 +414,8 @@ class ProxyState:
         """
         self._status = status
         self.update_actor_details(status=self._status)
+        # Update the status gauge with the numeric value of the status
+        self._status_gauge.set(status.to_numeric())
 
     def try_update_status(self, status: ProxyStatus):
         """Try update with the new status and only update when the conditions are met.
@@ -415,7 +452,7 @@ class ProxyState:
 
     def update_actor_details(self, **kwargs) -> None:
         """Updates _actor_details with passed in kwargs."""
-        details_kwargs = self._actor_details.dict()
+        details_kwargs = self._actor_details.model_dump()
         details_kwargs.update(kwargs)
         self._actor_details = ProxyDetails(**details_kwargs)
 
@@ -526,6 +563,7 @@ class ProxyState:
 
     def shutdown(self):
         self._shutting_down = True
+        self._shutdown_start_time = self._timer.time()
         self._actor_proxy_wrapper.kill()
 
     def is_ready_for_shutdown(self) -> bool:
@@ -537,7 +575,14 @@ class ProxyState:
         if not self._shutting_down:
             return False
 
-        return self._actor_proxy_wrapper.is_shutdown()
+        is_shutdown = self._actor_proxy_wrapper.is_shutdown()
+        if is_shutdown and self._shutdown_start_time is not None:
+            shutdown_duration_ms = (
+                self._timer.time() - self._shutdown_start_time
+            ) * 1000
+            self._shutdown_duration_histogram.observe(shutdown_duration_ms)
+            self._shutdown_start_time = None  # Prevent recording multiple times
+        return is_shutdown
 
 
 class ProxyStateManager:
@@ -557,6 +602,7 @@ class ProxyStateManager:
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
+        running_native_proxies: bool = False,
     ):
         self.logging_config = logging_config
         self._http_options = http_options or HTTPOptions()
@@ -567,6 +613,14 @@ class ProxyStateManager:
         self._proxy_actor_class = proxy_actor_class
         self._actor_proxy_wrapper_class = actor_proxy_wrapper_class
         self._timer = timer
+        self._running_native_proxies = running_native_proxies
+
+        # The fallback proxy is a Serve proxy specifically used when Serve is running native proxies
+        # and there are no ingress replicas for the native proxies to route requests to. This can
+        # happen in the scale from zero case, in which requests will be routed to the fallback proxy,
+        # which eventaully triggers upscaling.
+        self._fallback_proxy_state: Optional[ProxyState] = None
+        self._fallback_proxy_restart_count: int = 0
 
         self._cluster_node_info_cache = cluster_node_info_cache
 
@@ -579,12 +633,21 @@ class ProxyStateManager:
         for proxy_state in self._proxy_states.values():
             proxy_state.shutdown()
 
+        if self._fallback_proxy_state:
+            self._fallback_proxy_state.shutdown()
+
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all proxies are shutdown.
 
         Iterate through all proxy states and check if all their proxy actors
         are shutdown.
         """
+        if (
+            self._fallback_proxy_state
+            and not self._fallback_proxy_state.is_ready_for_shutdown()
+        ):
+            return False
+
         return all(
             proxy_state.is_ready_for_shutdown()
             for proxy_state in self._proxy_states.values()
@@ -596,21 +659,65 @@ class ProxyStateManager:
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
 
-    def get_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
-        return {
+    def get_proxy_handles(self) -> Dict[str, ActorHandle]:
+        handles = {
             node_id: state.actor_handle for node_id, state in self._proxy_states.items()
         }
+        if self._fallback_proxy_state:
+            handles[
+                f"fallback-{self._head_node_id}"
+            ] = self._fallback_proxy_state.actor_handle
 
-    def get_proxy_names(self) -> Dict[NodeId, str]:
-        return {
+        return handles
+
+    def get_proxy_names(self) -> Dict[str, str]:
+        names = {
             node_id: state.actor_name for node_id, state in self._proxy_states.items()
         }
+        if self._fallback_proxy_state:
+            names[
+                f"fallback-{self._head_node_id}"
+            ] = self._fallback_proxy_state.actor_name
+
+        return names
 
     def get_proxy_details(self) -> Dict[NodeId, ProxyDetails]:
         return {
             node_id: state.actor_details
             for node_id, state in self._proxy_states.items()
         }
+
+    def started_fallback_proxy_at_least_once(self) -> bool:
+        return (
+            self._fallback_proxy_state
+            and self._fallback_proxy_state.status != ProxyStatus.STARTING
+        )
+
+    def get_fallback_proxy_targets(self) -> Dict[RequestProtocol, Target]:
+        """
+        Return the protocol specific fallback targets available.
+        """
+        state = self._fallback_proxy_state
+        if not state or state.status != ProxyStatus.HEALTHY:
+            return {}
+
+        targets = {
+            RequestProtocol.HTTP: Target(
+                ip=state.actor_details.node_ip,
+                port=RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
+                instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
+            ),
+        }
+        if is_grpc_enabled(self._grpc_options):
+            targets[RequestProtocol.GRPC] = Target(
+                ip=state.actor_details.node_ip,
+                port=RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+                instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
+            )
+
+        return targets
 
     def get_targets(self, protocol: RequestProtocol) -> List[Target]:
         """In Ray Serve, every proxy is responsible for routing requests to the
@@ -643,7 +750,11 @@ class ProxyStateManager:
         return targets
 
     def get_alive_proxy_actor_ids(self) -> Set[str]:
-        return {state.actor_id for state in self._proxy_states.values()}
+        proxy_ids = {state.actor_id for state in self._proxy_states.values()}
+        if self._fallback_proxy_state:
+            proxy_ids.add(self._fallback_proxy_state.actor_id)
+
+        return proxy_ids
 
     def update(self, proxy_nodes: Set[NodeId] = None) -> Set[str]:
         """Update the state of all proxies.
@@ -655,16 +766,17 @@ class ProxyStateManager:
         if proxy_nodes is None:
             proxy_nodes = set()
 
-        # Ensure head node always has a proxy (unless FF'd off).
-        if RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE:
-            proxy_nodes.add(self._head_node_id)
-
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _, _ in target_nodes}
 
         for node_id, proxy_state in self._proxy_states.items():
             draining = node_id not in target_node_ids
             proxy_state.reconcile(draining)
+
+        if self._fallback_proxy_state:
+            # The fallback proxy always runs on the head node.
+            draining = self._head_node_id not in target_node_ids
+            self._fallback_proxy_state.reconcile(draining)
 
         self._stop_proxies_if_needed()
         self._start_proxies_if_needed(target_nodes)
@@ -705,6 +817,9 @@ class ProxyStateManager:
         name: str,
         node_id: str,
         node_ip_address: str,
+        http_options: Optional[HTTPOptions] = None,
+        grpc_options: Optional[gRPCOptions] = None,
+        proxy_actor_class: Optional[Type[ProxyActor]] = None,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy and wrap in the proxy actor wrapper.
 
@@ -712,8 +827,8 @@ class ProxyStateManager:
         port based on `TEST_WORKER_NODE_GRPC_PORT` env var. Passed all the required
         variables into the proxy actor wrapper class and return the proxy actor wrapper.
         """
-        http_options = self._http_options
-        grpc_options = self._grpc_options
+        http_options = http_options or self._http_options
+        grpc_options = grpc_options or self._grpc_options
 
         if (
             node_id != self._head_node_id
@@ -745,13 +860,53 @@ class ProxyStateManager:
             name=name,
             node_id=node_id,
             node_ip_address=node_ip_address,
-            proxy_actor_class=self._proxy_actor_class,
+            proxy_actor_class=proxy_actor_class or self._proxy_actor_class,
         )
+
+    def _start_fallback_proxy_if_needed(
+        self, node_id: str, node_ip_address: str, node_instance_id: str
+    ) -> None:
+        """Start a Serve proxy on the head node if it doesn't already exist."""
+        if (
+            node_id == self._head_node_id
+            and self._running_native_proxies
+            and self._fallback_proxy_state is None
+        ):
+            name = self._generate_actor_name(node_id=f"fallback-{node_id}")
+
+            http_options = deepcopy(self._http_options)
+            http_options.port = RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+
+            grpc_options = deepcopy(self._grpc_options)
+            grpc_options.port = RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
+
+            fallback_proxy_wrapper = self._start_proxy(
+                name=name,
+                node_id=node_id,
+                node_ip_address=node_ip_address,
+                http_options=http_options,
+                grpc_options=grpc_options,
+                proxy_actor_class=ProxyActor,
+            )
+
+            self._fallback_proxy_state = ProxyState(
+                actor_proxy_wrapper=fallback_proxy_wrapper,
+                actor_name=name,
+                node_id=node_id,
+                node_ip=node_ip_address,
+                node_instance_id=node_instance_id,
+                proxy_restart_count=self._fallback_proxy_restart_count,
+                timer=self._timer,
+            )
 
     def _start_proxies_if_needed(self, target_nodes) -> None:
         """Start a proxy on every node if it doesn't already exist."""
 
         for node_id, node_ip_address, node_instance_id in target_nodes:
+            self._start_fallback_proxy_if_needed(
+                node_id, node_ip_address, node_instance_id
+            )
+
             if node_id in self._proxy_states:
                 continue
 
@@ -771,6 +926,34 @@ class ProxyStateManager:
                 proxy_restart_count=self._proxy_restart_counts.get(node_id, 0),
                 timer=self._timer,
             )
+
+    def _stop_fallback_proxy_if_needed(self, alive_node_ids: Set[str]) -> None:
+        """Stop the fallback proxy if it exists and is not needed."""
+        if not self._fallback_proxy_state:
+            return
+
+        stop_proxy = False
+        if self._head_node_id not in alive_node_ids:
+            logger.info(
+                f"Stopping fallback proxy on removed head node '{self._head_node_id}'."
+            )
+            stop_proxy = True
+        elif self._fallback_proxy_state.status == ProxyStatus.UNHEALTHY:
+            logger.info(
+                f"Fallback proxy on head node '{self._head_node_id}' is unhealthy. Shutting down "
+                "the unhealthy proxy and starting a new one."
+            )
+            stop_proxy = True
+        elif self._fallback_proxy_state.status == ProxyStatus.DRAINED:
+            logger.info(
+                f"Removing drained fallback proxy on head node '{self._head_node_id}'."
+            )
+            stop_proxy = True
+
+        if stop_proxy:
+            self._fallback_proxy_state.shutdown()
+            self._fallback_proxy_state = None
+            self._fallback_proxy_restart_count += 1
 
     def _stop_proxies_if_needed(self) -> bool:
         """Removes proxy actors.
@@ -797,6 +980,8 @@ class ProxyStateManager:
             proxy_state = self._proxy_states.pop(node_id)
             self._proxy_restart_counts[node_id] = proxy_state.proxy_restart_count + 1
             proxy_state.shutdown()
+
+        self._stop_fallback_proxy_if_needed(alive_node_ids)
 
 
 def _try_set_exception(fut: asyncio.Future, e: Exception):

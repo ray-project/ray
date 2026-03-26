@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
+#include "ray/observability/metric_interface.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -40,6 +41,13 @@ enum WorkFootprint {
 // WorkFootprints are not, such as leased workers on a node.
 using WorkArtifact = std::variant<WorkFootprint, scheduling::ResourceID>;
 
+/// Tracks idle state for a work artifact, including optional saved state
+/// for speculative busy marking (used only for WorkFootprints).
+struct IdleTimeState {
+  std::optional<absl::Time> current;  // Current idle time (nullopt = busy)
+  std::optional<absl::Time> saved;    // Saved time for speculative marking
+};
+
 using rpc::autoscaler::DrainNodeReason;
 
 /// Class manages the resources of the local node.
@@ -55,7 +63,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      std::function<void(const NodeResources &)> resource_change_subscriber);
+      std::function<void(const NodeResources &)> resource_change_subscriber,
+      ray::observability::MetricInterface &resource_usage_gauge,
+      std::function<absl::Time()> now_fn = nullptr);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -119,6 +129,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Removes idle time for a WorkFootprint, thereby marking it busy.
   void MarkFootprintAsBusy(WorkFootprint item);
+  // Speculatively marks a footprint as busy, saving the previous idle time.
+  // Use this for eager/speculative busy marking where the footprint might
+  // return to idle without actual work happening (e.g., task queued for
+  // argument pulling but later spilled to another node).
+  // When MarkFootprintAsIdle is called, the saved time will be restored.
+  void MaybeMarkFootprintAsBusy(WorkFootprint item);
   // Sets the idle time for a WorkFootprint to now.
   void MarkFootprintAsIdle(WorkFootprint item);
 
@@ -220,8 +236,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
 
-  /// A map storing when the resource was last idle.
-  absl::flat_hash_map<WorkArtifact, std::optional<absl::Time>> last_idle_times_;
+  /// A map storing idle state for resources and work footprints.
+  /// Each entry tracks the current idle time (or nullopt if busy) and optionally
+  /// a saved time for speculative busy marking (used only for WorkFootprints).
+  absl::flat_hash_map<WorkArtifact, IdleTimeState> idle_time_states_;
+  /// Function to get current time. Defaults to absl::Now() if not provided.
+  std::function<absl::Time()> now_fn_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
@@ -238,6 +258,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// The draining request this node received.
   std::optional<rpc::DrainRayletRequest> drain_request_;
 
+  ray::observability::MetricInterface &resource_usage_gauge_;
+
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest);
@@ -253,6 +275,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
   FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
   FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
+  FRIEND_TEST(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime);
+  FRIEND_TEST(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime);
+  FRIEND_TEST(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime);
 };
 
 }  // end namespace ray

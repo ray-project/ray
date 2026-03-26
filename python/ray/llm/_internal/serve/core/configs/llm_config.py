@@ -40,7 +40,7 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 transformers = try_import("transformers")
 
@@ -84,7 +84,7 @@ class LoraConfig(BaseModelExtended):
     )
     max_num_adapters_per_replica: PositiveInt = Field(
         default=16,
-        description="The maximum number of adapters load on each replica.",
+        description="The maximum number of adapters to load on each replica.",
     )
     download_timeout_s: Optional[float] = Field(
         DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -162,14 +162,20 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Additional keyword arguments for the engine. In case of vLLM, "
             "this will include all the configuration knobs they provide out "
-            "of the box, except for tensor-parallelism which is set "
-            "automatically from Ray Serve configs."
+            "of the box"
         ),
     )
 
     accelerator_type: Optional[str] = Field(
         default=None,
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+    )
+
+    use_cpu: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+        ),
     )
 
     placement_group_config: Optional[Dict[str, Any]] = Field(
@@ -200,6 +206,18 @@ class LLMConfig(BaseModelExtended):
             For more details, see the `Ray Serve Documentation <https://docs.ray.io/en/latest/serve/configure-serve-deployment.html>`_.
         """,
     )
+
+    server_cls: Optional[Union[str, Any]] = Field(
+        default=None,
+        description="The serve class to use.(e.g., LLMServer, SGLangServer or other Server backends).",
+    )
+
+    @field_validator("server_cls")
+    @classmethod
+    def validate_server_cls(cls, value):
+        if isinstance(value, str):
+            return load_class(value)
+        return value
 
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
@@ -377,7 +395,17 @@ class LLMConfig(BaseModelExtended):
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
         try:
-            DeploymentConfig(**value)
+            # Resolve "auto" for num_replicas before validating against DeploymentConfig
+            if value.get("num_replicas") == "auto":
+                resolved = {**value, "num_replicas": None}
+                _, autoscaling_config = handle_num_replicas_auto(
+                    resolved.get("max_ongoing_requests"),
+                    resolved.get("autoscaling_config"),
+                )
+                resolved["autoscaling_config"] = autoscaling_config
+                DeploymentConfig(**resolved)
+            else:
+                DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 

@@ -132,8 +132,10 @@ class TrainingData:
                 for ref in episode_refs:
                     try:
                         episodes.extend(ray.get(ref))
-                    except ray.exceptions.OwnerDiedError:
-                        pass
+                    except ray.exceptions.OwnerDiedError as e:
+                        ray.logger.warning(
+                            f"episode-ref {ref} died and can't be collected with error: {e}. This can happen if an EnvRunner is lost (for example because of a node failure) and is not critical in such cases."
+                        )
             self.episodes = episodes
             self.episodes_refs = None
 

@@ -40,6 +40,17 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
         # Encoder embeddings.
         encoder_outs = self._encoder(batch)
         # Action dist inputs.
-        return {
-            Columns.ACTION_DIST_INPUTS: self._pi_head(encoder_outs[ENCODER_OUT]),
-        }
+        outputs = {Columns.ACTION_DIST_INPUTS: self._pi_head(encoder_outs[ENCODER_OUT])}
+
+        # Add the state if the encoder is stateful.
+        if Columns.STATE_OUT in encoder_outs:
+            outputs[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
+        # Return the outputs.
+        return outputs
+
+    @override(RLModule)
+    def get_initial_state(self) -> dict:
+        if hasattr(self._encoder, "get_initial_state"):
+            return self._encoder.get_initial_state()
+        else:
+            return {}

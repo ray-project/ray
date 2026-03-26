@@ -14,7 +14,9 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
 )
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
@@ -56,7 +58,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
     def initialize_state(
         self,
-        imbalanced_threshold: Optional[int] = 10,
+        imbalanced_threshold: Optional[float] = float("inf"),
         match_rate_threshold: Optional[float] = 0.1,
         do_eviction: Optional[bool] = False,
         eviction_threshold_chars: Optional[int] = 400_000,
@@ -101,10 +103,31 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self._eviction_interval_secs = eviction_interval_secs
 
         if tree_actor is None:
-            # Use a detached actor to avoid issues with actor lifetime since this is shared between routers
+            # Create deployment-specific detached actor to avoid replica ID conflicts
+            # in multi-deployment scenarios (e.g., PD disaggregation with DP)
+            deployment_name = self._deployment_id.name if self._deployment_id else None
+            app_name = self._deployment_id.app_name if self._deployment_id else None
+            actor_name = "LlmPrefixTreeActor"
+            actor_namespace_components = [SERVE_NAMESPACE]
+
+            if app_name:
+                actor_namespace_components.append(app_name)
+            if deployment_name:
+                actor_namespace_components.append(deployment_name)
+            actor_namespace = "::".join(actor_namespace_components)
+
             self._tree_actor = PrefixTreeActor.options(
-                name="LlmPrefixTreeActor", get_if_exists=True, lifetime="detached"
+                name=actor_name,
+                namespace=actor_namespace,
+                get_if_exists=True,
+                lifetime="detached",
             ).remote()
+
+            # Register the actor with the controller for cleanup on serve.shutdown()
+            controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+            ray.get(
+                controller._register_shutdown_cleanup_actor.remote(self._tree_actor)
+            )
         else:
             self._tree_actor = tree_actor
 

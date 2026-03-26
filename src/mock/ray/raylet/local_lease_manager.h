@@ -15,6 +15,7 @@
 #pragma once
 
 #include "gmock/gmock.h"
+#include "ray/raylet/metrics.h"
 #include "ray/raylet/scheduling/local_lease_manager_interface.h"
 
 namespace ray::raylet {
@@ -73,8 +74,8 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               ReturnCpuResourcesToUnblockedWorker,
               (std::shared_ptr<WorkerInterface> worker),
               (override));
-  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
+  MOCK_METHOD(SchedulerMetrics &, GetSchedulerMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));
   MOCK_METHOD(size_t, GetNumLeaseSpilled, (), (const, override));
   MOCK_METHOD(size_t, GetNumWaitingLeaseSpilled, (), (const, override));

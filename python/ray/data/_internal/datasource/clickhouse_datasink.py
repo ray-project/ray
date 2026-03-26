@@ -10,6 +10,7 @@ from typing import (
 )
 
 import pyarrow
+import pyarrow as pa
 import pyarrow.types as pat
 
 from ray.data._internal.execution.interfaces import TaskContext
@@ -300,7 +301,7 @@ class ClickHouseDatasink(Datasink):
     def supports_distributed_writes(self) -> bool:
         return True
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         client = None
         try:
             client = self._init_client()

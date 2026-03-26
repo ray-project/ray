@@ -27,14 +27,16 @@ from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
-    DatasetsSetupCallback,
-    TPUReservationCallback,
+    DatasetsCallback,
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.env_callback import _initialize_env_callbacks
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
+)
+from ray.train.v2._internal.callbacks.placement_group_callback import (
+    PlacementGroupCleanerCallback,
 )
 from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
@@ -54,6 +56,7 @@ from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
+from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -82,9 +85,11 @@ class DataParallelTrainer:
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        validation_config: Optional[ValidationConfig] = None,
     ):
         self.run_config = run_config or RunConfig()
         self.train_loop_per_worker = train_loop_per_worker
+        self.validation_config = validation_config
         self.train_loop_config = train_loop_config
         self.scaling_config = scaling_config or ScalingConfig()
         self.backend_config = backend_config or BackendConfig()
@@ -98,7 +103,6 @@ class DataParallelTrainer:
             train_loop_config=self.train_loop_config,
             scaling_config=self.scaling_config,
             backend_config=self.backend_config,
-            datasets=self.datasets,
             dataset_config=self.data_config,
         )
 
@@ -112,6 +116,10 @@ class DataParallelTrainer:
 
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+        if self.scaling_config.elasticity_enabled:
+            usage_lib.record_extra_usage_tag(
+                usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED, "1"
+            )
 
     def _validate_configs(self):
         if not is_v2_enabled():
@@ -174,6 +182,7 @@ class DataParallelTrainer:
                 failure_policy=create_failure_policy(self.run_config.failure_config),
                 train_run_context=self.train_run_context,
                 callbacks=self._create_default_callbacks(),
+                validation_config=self.validation_config,
             )
 
             if result.error:
@@ -200,16 +209,17 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_setup_callback = DatasetsSetupCallback(
-            train_run_context=self.train_run_context
+        datasets_callback = DatasetsCallback(
+            train_run_context=self.train_run_context,
+            datasets=self.datasets,
         )
-        tpu_reservation_setup_callback = TPUReservationCallback()
+        placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
                 accelerator_setup_callback,
-                tpu_reservation_setup_callback,
                 backend_setup_callback,
-                datasets_setup_callback,
+                placement_group_cleaner_callback,
+                datasets_callback,
             ]
         )
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
@@ -221,7 +231,7 @@ class DataParallelTrainer:
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback())
+            callbacks.append(StateManagerCallback(datasets=self.datasets))
 
         run_config_callbacks = (
             self.run_config.callbacks if self.run_config.callbacks is not None else []
@@ -298,7 +308,7 @@ class DataParallelTrainer:
             if sigint_count <= 1:
                 try:
                     ray.get(controller.abort.remote())
-                except ray.exceptions.ActorDiedError:
+                except ray.exceptions.RayActorError:
                     # We catch the error and exit 0 to indicate graceful termination.
                     # However, for some reason the process still exits with 1.
                     sys.exit(0)

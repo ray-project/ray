@@ -11,6 +11,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.rllib.examples.envs.classes.ten_step_error_env import TenStepErrorEnv
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 
@@ -133,7 +134,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             episodes = env_runner.sample(
                 num_episodes=expected_episodes, random_actions=True
             )
-            self.assertTrue(len(episodes) == expected_episodes)
+            self.assertGreaterEqual(len(episodes), expected_episodes)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
             self.assertTrue(all(e.is_done for e in episodes))
@@ -197,6 +198,53 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             num_timesteps=expected_timesteps, random_actions=True, force_reset=False
         )
         self.assertTrue(any(e.t_started > 0 for e in episodes))
+
+    def test_sample_with_env_error(self):
+        config = (
+            AlgorithmConfig()
+            .environment(TenStepErrorEnv)
+            # Vectorize x2 and by default, rollout 64 timesteps per individual env.
+            .env_runners(num_envs_per_env_runner=2, rollout_fragment_length=64)
+            .fault_tolerance(restart_failed_sub_environments=True)
+        )
+        env_runner = SingleAgentEnvRunner(config=config)
+
+        # Sample first episode.
+        # Since both environments are reset at the same step, we should get 2 episodes.
+        episodes = env_runner.sample(num_episodes=2, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 10)
+        self.assertListEqual(
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 11
+        )
+
+        # Sample second episode.
+        # This should reset the env under the hood and the sample from a new env.
+        episodes = env_runner.sample(num_episodes=2, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 10)
+        self.assertListEqual(
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 11
+        )
+
+        # Sample timesteps
+        episodes = env_runner.sample(num_timesteps=10, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 5)
+        self.assertEqual(len(episodes[1]), 5)
+        # Because both envs have been reset, last_eps_errored should be true
+        self.assertListEqual(
+            [info["last_eps_errored"] for info in episodes[0].infos], [True] * 6
+        )
+
+        # Sample timesteps
+        episodes = env_runner.sample(num_timesteps=10, random_actions=True)
+        self.assertEqual(len(episodes), 2)
+        self.assertEqual(len(episodes[0]), 5)
+        self.assertEqual(len(episodes[1]), 5)
+        self.assertListEqual(
+            [info["last_eps_errored"] for info in episodes[0].infos], [False] * 6
+        )
 
     @patch(target="ray.rllib.env.env_runner.logger")
     def test_step_failed_reset_required(self, mock_logger):

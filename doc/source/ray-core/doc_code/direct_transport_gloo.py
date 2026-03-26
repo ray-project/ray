@@ -140,12 +140,13 @@ with pytest.raises(ValueError) as e:
     ray.get(tensor)
 
 assert (
-    "Currently ray.get() only supports OBJECT_STORE and NIXL tensor transport, got TensorTransportEnum.GLOO, please specify the correct tensor transport in ray.get()"
+    "Trying to use two-sided tensor transport: GLOO for ray.get. This is only supported for one-sided transports such as NIXL or the OBJECT_STORE."
     in str(e.value)
 )
 
-# Correct example of ray.get(), explicitly setting the tensor transport to use the Ray object store.
-print(ray.get(tensor, _tensor_transport="object_store"))
+# Correct example of ray.get(), using the object store to fetch the RDT object because the caller
+# is not part of the collective group.
+print(ray.get(tensor, _use_object_store=True))
 # torch.Tensor(...)
 # __gloo_get_end__
 

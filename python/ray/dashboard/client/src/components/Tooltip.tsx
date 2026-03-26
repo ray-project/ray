@@ -9,7 +9,7 @@ export const StyledTooltip = (props: TooltipProps) => {
         tooltip: {
           sx: (theme) => ({
             backgroundColor: theme.palette.background.paper,
-            border: "1px solid #dadde9",
+            border: `1px solid ${theme.palette.divider}`,
             color: theme.palette.text.primary,
             padding: 1,
           }),
@@ -32,7 +32,7 @@ export const HelpInfo = ({ children, className, sx }: HelpInfoProps) => {
       <HelpOutlineIcon
         fontSize="small"
         sx={[
-          { color: (theme) => theme.palette.grey[500] },
+          { color: (theme) => theme.palette.text.secondary },
           ...(Array.isArray(sx) ? sx : [sx]),
         ]}
       />

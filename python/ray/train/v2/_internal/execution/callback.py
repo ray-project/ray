@@ -62,6 +62,10 @@ class WorkerGroupCallback(RayTrainCallback):
         should catch and handle exceptions if attempting to execute tasks."""
         pass
 
+    def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
+        """Called after the worker group is shut down."""
+        pass
+
     def after_worker_group_poll_status(
         self, worker_group_status: "WorkerGroupPollStatus"
     ):
@@ -69,6 +73,10 @@ class WorkerGroupCallback(RayTrainCallback):
 
     def before_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
         """Called before the worker group is aborted."""
+        pass
+
+    def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
+        """Called after the worker group is aborted."""
         pass
 
 
@@ -80,7 +88,7 @@ class ControllerCallback(RayTrainCallback):
         pass
 
     # TODO(matthewdeng): Revisit this callback interface for better extensibility.
-    # This hook was added for the specific use case of setting a `bundle_label_selector`
+    # This hook was added for the specific use case of setting a `label_selector`
     # for new worker groups (e.g., for TPU reservations). The current interface is
     # tightly coupled to this purpose and limits its reuse for other use-cases.
     def on_controller_start_worker_group(
@@ -96,12 +104,12 @@ class ControllerCallback(RayTrainCallback):
             num_workers: The number of workers to be started.
 
         Returns:
-            An optional dictionary defining a `bundle_label_selector`
+            An optional dictionary defining a `label_selector`
             to gang schedule the worker group on the reserved TPU slice.
         """
         return None
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Called before `TrainController.run` exits,
         after the control loop has exited."""
         pass
@@ -134,6 +142,10 @@ class ControllerCallback(RayTrainCallback):
         Args:
             result: The final training result containing metrics and checkpoint.
         """
+        pass
+
+    def before_controller_abort(self):
+        """Called during `TrainController.abort` before the actor process exits."""
         pass
 
 

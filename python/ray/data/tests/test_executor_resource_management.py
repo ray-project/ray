@@ -208,32 +208,60 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     )
     op.start(ExecutionOptions())
 
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     op.add_input(input_op.get_next(), 0)
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(1600, rel=0.5)
-    assert op.metrics.obj_store_mem_pending_task_outputs == pytest.approx(
-        2  # Number of active tasks
-        * ctx._max_num_blocks_in_streaming_gen_buffer
-        * ctx.target_max_block_size,
-        rel=0.5,
-    )
+    # No sample available yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     run_op_tasks_sync(op)
 
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(3200, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
+
+
+def test_task_pool_resource_reporting_with_dynamic_remote_args(
+    ray_start_10_cpus_shared,
+):
+    """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
+    not just the statically defined ray_remote_args."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
+    # ray_remote_args set 1 CPU, but ray_remote_args_fn overrides memory to 500
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"memory": 500},
+    )
+    op.start(ExecutionOptions())
+
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
+
+    op.add_input(input_op.get_next(), 0)
+    op.add_input(input_op.get_next(), 0)
+    # Should reflect actual dynamic resources: 2 tasks * (1 cpu, 500 memory)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=1000)
+
+    run_op_tasks_sync(op)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
 
 
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
@@ -252,43 +280,44 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     )
     op.start(ExecutionOptions())
 
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(800, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # No tasks submitted yet due to bundling.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(1600, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # No tasks running yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
     op.add_input(input_op.get_next(), 0)
     # Task has now been submitted since we've met the minimum bundle size.
-    assert op.current_processor_usage() == ExecutionResources(cpu=1, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=1, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(2400, rel=0.5)
-    assert op.metrics.obj_store_mem_pending_task_outputs == pytest.approx(
-        1  # Number of active tasks
-        * ctx._max_num_blocks_in_streaming_gen_buffer
-        * ctx.target_max_block_size,
-        rel=0.5,
-    )
+    # No sample available yet, so pending task outputs is None.
+    assert op.metrics.obj_store_mem_pending_task_outputs is None
 
 
-def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
+def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
+    # TODO move to test_actor_pool_map_operator.py
+
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
     # Block AP until all actors have fully started up
@@ -299,6 +328,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
+        min_rows_per_bundle=None,
         input_op=input_op,
         data_context=DataContext.get_current(),
         name="TestMapper",
@@ -306,58 +336,60 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
             min_size=2, max_size=10, max_tasks_in_flight_per_actor=2
         ),
     )
+
+    # NOTE: This is blocking, until actors are fully started up
     op.start(ExecutionOptions())
 
-    data_context = ray.data.DataContext.get_current()
-    inc_obj_store_mem = (
-        data_context._max_num_blocks_in_streaming_gen_buffer
-        * data_context.target_max_block_size
-    )
     min_resource_usage, _ = op.min_max_resource_requirements()
-    assert min_resource_usage == ExecutionResources(
-        cpu=2, gpu=0, object_store_memory=2 * inc_obj_store_mem
-    )
+    assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
-        cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+        cpu=0, gpu=0, object_store_memory=0
     )
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
+
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # assert op.metrics.obj_store_mem_pending_task_outputs == 0
+
+    # NOTE: Until actors start up, we should not be adding the inputs to the
+    #       operator to avoid queuing up inside of it
+    assert not op.can_add_input()
+
+    # Finalize operator initialization sequence and make it schedulable
+    run_op_tasks_sync(op, only_existing=True)
 
     # Add inputs.
     for i in range(4):
         assert op.incremental_resource_usage() == ExecutionResources(
-            cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+            cpu=0, gpu=0, object_store_memory=0
         )
+
+        # Should be able to add inputs now
+        assert op.can_add_input()
+
         op.add_input(input_op.get_next(), 0)
-        assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
-        assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
-            (i + 1) * 800, rel=0.5
-        )
+
+        assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
+        # NOTE: No queueing is happening, tasks are dispatched right away
+        assert op.metrics.obj_store_mem_internal_inqueue == 0
         assert op.metrics.obj_store_mem_internal_outqueue == 0
-        assert op.metrics.obj_store_mem_pending_task_inputs == 0
-        assert op.metrics.obj_store_mem_pending_task_outputs == 0
+        assert op.metrics.obj_store_mem_pending_task_inputs > 0
+        # assert op.metrics.obj_store_mem_pending_task_outputs > 0
 
-    # Wait for actors to start.
-    assert op.num_active_tasks() == 0
-    assert op._actor_pool.num_pending_actors() == 2
-    run_op_tasks_sync(op, only_existing=True)
+    # Assert there are 4 running tasks now
+    assert op.num_active_tasks() == 4
 
-    # Actors have now started and the pool is actively running tasks.
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+    assert op._actor_pool.num_pending_actors() == 0
+    assert op._actor_pool.num_running_actors() == 2
+
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == pytest.approx(3200, rel=0.5)
-    assert op.metrics.obj_store_mem_pending_task_outputs == pytest.approx(
-        2  # We launched 4 tasks across 2 actor, but only 2 tasks run at a time
-        * ctx._max_num_blocks_in_streaming_gen_buffer
-        * ctx.target_max_block_size,
-        rel=0.5,
-    )
+    # assert op.metrics.obj_store_mem_pending_task_outputs > 0
 
     # Indicate that no more inputs will arrive.
     op.all_inputs_done()
@@ -379,7 +411,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
             pool.per_actor_resource_usage().scale(pool.min_size())
         )
 
-    assert op.current_processor_usage() == min_usage
+    assert op.current_logical_usage() == min_usage
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(
         6400,
@@ -406,11 +438,18 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
 
-def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
+def test_actor_pool_scheduling_with_bundling(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    # TODO move to test_actor_pool_map_operator.py
+
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
+    MIN_ROWS_PER_BUNDLE = 5
+
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for _ in range(100)])
     )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
@@ -418,61 +457,112 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
-        min_rows_per_bundle=2,
+        min_rows_per_bundle=MIN_ROWS_PER_BUNDLE,
     )
+
+    # NOTE: This is blocking, until actor pool is fully started up
     op.start(ExecutionOptions())
 
-    data_context = ray.data.DataContext.get_current()
-    inc_obj_store_mem = (
-        data_context._max_num_blocks_in_streaming_gen_buffer
-        * data_context.target_max_block_size
-    )
     min_resource_usage, _ = op.min_max_resource_requirements()
-    assert min_resource_usage == ExecutionResources(
-        cpu=2, gpu=0, object_store_memory=2 * inc_obj_store_mem
-    )
+    assert min_resource_usage == ExecutionResources(cpu=2, gpu=0, object_store_memory=0)
     # `incremental_resource_usage` should always report 0 CPU and GPU, as
     # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
-        cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+        cpu=0, gpu=0, object_store_memory=0
     )
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+
+    # Pool is idle while waiting for actors to start.
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
-    # Add inputs.
-    for i in range(4):
+    # NOTE: Until actors start up, we should not be adding the inputs to the
+    #       operator to avoid queuing up inside of it
+    assert not op.can_add_input()
+
+    # Finalize operator initialization sequence and make it schedulable
+    run_op_tasks_sync(op, only_existing=True)
+
+    # Assert all actors are running
+    assert op._actor_pool.num_pending_actors() == 0
+    assert op._actor_pool.num_running_actors() == 2
+
+    # Add inputs
+    for i in range(MIN_ROWS_PER_BUNDLE - 1):
         assert op.incremental_resource_usage() == ExecutionResources(
-            cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
+            cpu=0, gpu=0, object_store_memory=0
         )
+
+        # Should be able to add inputs now
+        assert op.can_add_input()
+
         op.add_input(input_op.get_next(), 0)
-        assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+
+        assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
+
+        # While bundling, no tasks are scheduled
+        assert op.num_active_tasks() == 0
+        assert op.metrics.obj_store_mem_pending_task_inputs == 0
+        # assert op.metrics.obj_store_mem_pending_task_outputs == 0
+
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
             (i + 1) * 800, rel=0.5
         )
         assert op.metrics.obj_store_mem_internal_outqueue == 0
-        assert op.metrics.obj_store_mem_pending_task_inputs == 0
-        assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
-    # Pool is still idle while waiting for actors to start.
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
-    assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(3200, rel=0.5)
+    # Adding 1 more input triggers task scheduling
+    op.add_input(input_op.get_next(), 0)
+
+    assert op.num_active_tasks() == 1
+    # Queue is now empty
+    assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
-    assert op.metrics.obj_store_mem_pending_task_inputs == 0
-    assert op.metrics.obj_store_mem_pending_task_outputs == 0
+    # Running task has pending inputs/outputs
+    single_task_pending_inputs = op.metrics.obj_store_mem_pending_task_inputs
+    single_task_pending_outputs = op.metrics.obj_store_mem_pending_task_outputs
+    assert single_task_pending_inputs > 0
+    # assert single_task_pending_outputs > 0
 
-    # Wait for actors to start.
-    assert op.num_active_tasks() == 0
-    assert op._actor_pool.num_pending_actors() == 2
-    run_op_tasks_sync(op, only_existing=True)
+    # Add more inputs, but less than necessary to launch another task
+    for i in range(MIN_ROWS_PER_BUNDLE - 1):
+        assert op.incremental_resource_usage() == ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=0, memory=0
+        )
 
-    # Actors have now started and the pool is actively running tasks.
-    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
+        # Should be able to add inputs now
+        assert op.can_add_input()
 
-    # Indicate that no more inputs will arrive.
+        op.add_input(input_op.get_next(), 0)
+
+        assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=0)
+
+        # While bundling, no *new* tasks are scheduled
+        assert op.num_active_tasks() == 1
+
+        assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
+            (i + 1) * 800, rel=0.5
+        )
+        assert op.metrics.obj_store_mem_internal_outqueue == 0
+        assert (
+            op.metrics.obj_store_mem_pending_task_inputs == single_task_pending_inputs
+        )
+        assert (
+            op.metrics.obj_store_mem_pending_task_outputs == single_task_pending_outputs
+        )
+
+    # Mark inputs as completed
     op.all_inputs_done()
+
+    # Bundler should be drained and 1 more task launched
+    assert op.num_active_tasks() == 2
+    assert op._block_ref_bundler.num_blocks() == 0
+
+    assert op.metrics.obj_store_mem_internal_inqueue == 0
+    assert op.metrics.obj_store_mem_internal_outqueue == 0
+    assert op.metrics.obj_store_mem_pending_task_inputs > 0
+    # assert op.metrics.obj_store_mem_pending_task_outputs > 0
 
     # Wait until tasks are done.
     run_op_tasks_sync(op)
@@ -486,7 +576,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         assert num_scaled_down == pool.current_size() - pool.min_size()
 
     assert op.metrics.obj_store_mem_internal_inqueue == 0
-    assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(6400, rel=0.5)
+    assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(12000, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
@@ -508,7 +598,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
             pool.per_actor_resource_usage().scale(pool.min_size())
         )
 
-    assert op.current_processor_usage() == min_usage
+    assert op.current_logical_usage() == min_usage
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -523,8 +613,8 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
     op = LimitOperator(3, input_op, DataContext.get_current())
     op.start(ExecutionOptions())
 
-    assert op.current_processor_usage() == ExecutionResources(
-        cpu=0, gpu=0, object_store_memory=0
+    assert op.current_logical_usage() == ExecutionResources(
+        cpu=0, gpu=0, object_store_memory=0, memory=0
     )
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
@@ -556,8 +646,8 @@ def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
     )
     op.start(ExecutionOptions(actor_locality_enabled=True))
 
-    assert op.current_processor_usage() == ExecutionResources(
-        cpu=0, gpu=0, object_store_memory=0
+    assert op.current_logical_usage() == ExecutionResources(
+        cpu=0, gpu=0, object_store_memory=0, memory=0
     )
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0

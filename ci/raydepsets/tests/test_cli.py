@@ -20,6 +20,8 @@ from ci.raydepsets.cli import (
     _override_uv_flags,
     _uv_binary,
     build,
+    parse_lock_file,
+    write_lock_file,
 )
 from ci.raydepsets.tests.utils import (
     append_to_file,
@@ -98,7 +100,7 @@ class TestCli(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         assert result.returncode == 0
-        assert "uv 0.8.17" in result.stdout.decode("utf-8")
+        assert "uv 0.9.26" in result.stdout.decode("utf-8")
         assert result.stderr.decode("utf-8") == ""
 
     def test_compile(self):
@@ -112,7 +114,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -137,7 +139,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
@@ -147,7 +149,8 @@ class TestCli(unittest.TestCase):
             output_text_valid = output_file_valid.read_text()
             assert output_text == output_text_valid
 
-    def test_compile_with_append_and_override_flags(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_compile_with_append_and_override_flags(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -155,23 +158,14 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
                 append_flags=["--no-annotate", "--python-version 3.10"],
-                override_flags=[
-                    "--extra-index-url https://download.pytorch.org/whl/cu124"
-                ],
+                override_flags=["--index-strategy first-index"],
                 name="ray_base_test_depset",
                 output="requirements_compiled.txt",
             )
-            output_file = Path(tmpdir) / "requirements_compiled.txt"
-            output_text = output_file.read_text()
-            assert "--python-version 3.10" in output_text
-            assert (
-                "--extra-index-url https://download.pytorch.org/whl/cu124"
-                in output_text
-            )
-            assert (
-                "--extra-index-url https://download.pytorch.org/whl/cu128"
-                not in output_text
-            )
+            stdout = mock_stdout.getvalue()
+            assert "--python-version 3.10" in stdout
+            assert "--index-strategy first-index" in stdout
+            assert "--index-strategy unsafe-best-match" not in stdout
 
     def test_compile_by_depset_name(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -199,7 +193,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -207,7 +201,7 @@ class TestCli(unittest.TestCase):
             manager.subset(
                 source_depset="general_depset__py311_cpu",
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="subset_general_depset__py311_cpu",
                 output="requirements_compiled_subset_general.txt",
             )
@@ -230,7 +224,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt", "requirements_test_subset.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -239,7 +233,7 @@ class TestCli(unittest.TestCase):
                 manager.subset(
                     source_depset="general_depset__py311_cpu",
                     requirements=["requirements_compiled_test.txt"],
-                    append_flags=["--no-annotate", "--no-header"],
+                    append_flags=["--no-annotate"],
                     name="subset_general_depset__py311_cpu",
                     output="requirements_compiled_subset_general.txt",
                 )
@@ -250,7 +244,7 @@ class TestCli(unittest.TestCase):
 
     def test_subset_with_expanded_depsettest_subset_with_expanded_depset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
             compile_depset = Depset(
                 name="compile_depset",
                 operation="compile",
@@ -328,7 +322,8 @@ class TestCli(unittest.TestCase):
                 == Path(tmpdir) / "requirements_test.txt"
             )
 
-    def test_append_uv_flags_exist_in_output(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_append_uv_flags_exist_in_output(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -339,11 +334,11 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 append_flags=["--python-version=3.10"],
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--python-version=3.10" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--python-version=3.10" in stdout
 
-    def test_append_uv_flags_with_space_in_flag(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_append_uv_flags_with_space_in_flag(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -354,9 +349,8 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 append_flags=["--python-version 3.10"],
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--python-version 3.10" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--python-version 3.10" in stdout
 
     def test_include_setuptools(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -373,7 +367,8 @@ class TestCli(unittest.TestCase):
             output_text = output_file.read_text()
             assert "--unsafe-package setuptools" not in output_text
 
-    def test_ignore_setuptools(self):
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_ignore_setuptools(self, mock_stdout):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
             manager = _create_test_manager(tmpdir)
@@ -384,9 +379,8 @@ class TestCli(unittest.TestCase):
                 output="requirements_compiled_general.txt",
                 include_setuptools=False,
             )
-            output_file = Path(tmpdir) / "requirements_compiled_general.txt"
-            output_text = output_file.read_text()
-            assert "--unsafe-package setuptools" in output_text
+            stdout = mock_stdout.getvalue()
+            assert "--unsafe-package setuptools" in stdout
 
     def test_override_uv_flag_single_flag(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
@@ -403,12 +397,12 @@ class TestCli(unittest.TestCase):
 
     def test_override_uv_flag_multiple_flags(self):
         expected_flags = DEFAULT_UV_FLAGS.copy()
-        expected_flags.remove("--index-url")
-        expected_flags.remove("https://pypi.org/simple")
-        expected_flags.extend(["--index-url", "https://dummyurl.com"])
+        expected_flags.remove("--index-strategy")
+        expected_flags.remove("unsafe-best-match")
+        expected_flags.extend(["--index-strategy", "first-index"])
         assert (
             _override_uv_flags(
-                ["--index-url https://dummyurl.com"],
+                ["--index-strategy first-index"],
                 DEFAULT_UV_FLAGS.copy(),
             )
             == expected_flags
@@ -423,12 +417,12 @@ class TestCli(unittest.TestCase):
             [
                 "--no-annotate",
                 "--no-header",
-                "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index https://download.pytorch.org/whl/cu128",
             ]
         ) == [
             "--no-annotate",
             "--no-header",
-            "--extra-index-url",
+            "--index",
             "https://download.pytorch.org/whl/cu128",
         ]
 
@@ -504,6 +498,57 @@ class TestCli(unittest.TestCase):
                 in str(e.exception)
             )
 
+    def test_build_graph_subset_missing_source_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_subset",
+                operation="subset",
+                source_depset="nonexistent_depset",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_bad_subset.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
+
+    def test_build_graph_expand_missing_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_expand",
+                operation="expand",
+                depsets=["nonexistent_depset"],
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_bad_expand.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
+
+    def test_build_graph_relax_missing_source_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            depset = Depset(
+                name="bad_relax",
+                operation="relax",
+                source_depset="nonexistent_depset",
+                packages=["emoji"],
+                output="requirements_compiled_bad_relax.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            with self.assertRaises(ValueError) as e:
+                _create_test_manager(tmpdir)
+            assert "nonexistent_depset" in str(e.exception)
+            assert "does not exist" in str(e.exception)
+
     def test_execute(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             copy_data_to_tmpdir(tmpdir)
@@ -546,21 +591,21 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
             manager.compile(
                 constraints=[],
                 requirements=["requirements_expanded.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="expanded_depset__py311_cpu",
                 output="requirements_compiled_expanded.txt",
             )
             manager.expand(
                 depsets=["general_depset__py311_cpu", "expanded_depset__py311_cpu"],
                 constraints=["requirement_constraints_expand.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 requirements=[],
                 name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
@@ -590,7 +635,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="general_depset__py311_cpu",
                 output="requirements_compiled_general.txt",
             )
@@ -598,7 +643,7 @@ class TestCli(unittest.TestCase):
                 depsets=["general_depset__py311_cpu"],
                 requirements=["requirements_expanded.txt"],
                 constraints=["requirement_constraints_expand.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="expand_general_depset__py311_cpu",
                 output="requirements_compiled_expand_general.txt",
             )
@@ -672,7 +717,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -697,7 +742,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -732,7 +777,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="check_depset",
                 output="requirements_compiled_test.txt",
             )
@@ -749,7 +794,7 @@ class TestCli(unittest.TestCase):
             manager.compile(
                 constraints=["requirement_constraints_test.txt"],
                 packages=["emoji==2.9.0", "pyperclip==1.6.0"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="packages_test_depset",
                 output="requirements_compiled_test_packages.txt",
             )
@@ -771,7 +816,7 @@ class TestCli(unittest.TestCase):
                 constraints=["requirement_constraints_test.txt"],
                 packages=["emoji==2.9.0", "pyperclip==1.6.0"],
                 requirements=["requirements_test.txt"],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="packages_test_depset",
                 output="requirements_compiled_test_packages.txt",
             )
@@ -801,7 +846,7 @@ class TestCli(unittest.TestCase):
                     "requirements_expanded.txt",
                     "requirements_compiled_test_expand.txt",
                 ],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="requirements_ordering_test_depset",
                 output="requirements_compiled_requirements_ordering.txt",
             )
@@ -831,7 +876,7 @@ class TestCli(unittest.TestCase):
                     "requirements_expanded.txt",
                     "requirements_compiled_test_expand.txt",
                 ],
-                append_flags=["--no-annotate", "--no-header"],
+                append_flags=["--no-annotate"],
                 name="constraints_ordering_test_depset",
                 output="requirements_compiled_constraints_ordering.txt",
             )
@@ -888,6 +933,342 @@ class TestCli(unittest.TestCase):
             assert manager.build_graph is not None
             assert len(manager.build_graph.nodes) == 12
             assert len(manager.build_graph.edges) == 8
+
+    def test_parse_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" in names
+            assert "pyperclip" in names
+            assert len(rf.requirements) == 2
+
+    def test_parse_lock_file_with_index_url(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "--index-url https://pypi.org/simple\n"
+                "\n"
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 1
+            assert rf.requirements[0].name == "emoji"
+
+    def test_parse_lock_file_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text("")
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 0
+
+    def test_parse_lock_file_comments_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text("# This is a comment\n# Another comment\n")
+            rf = parse_lock_file(str(lock_file))
+            assert len(rf.requirements) == 0
+
+    def test_write_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+
+            output_text = output_file.read_text()
+            assert "emoji==2.9.0" in output_text
+            assert "pyperclip==1.6.0" in output_text
+
+    def test_write_lock_file_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "empty.txt"
+            lock_file.write_text("")
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+            assert output_file.read_text().strip() == ""
+
+    def test_roundtrip_preserves_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+                "pyperclip==1.6.0 \\\n"
+                "    --hash=sha256:def456\n"
+            )
+            rf = parse_lock_file(str(lock_file))
+
+            output_file = Path(tmpdir) / "output.txt"
+            write_lock_file(rf, str(output_file))
+
+            rf2 = parse_lock_file(str(output_file))
+            assert rf.dumps() == rf2.dumps()
+
+    def test_parse_large_lock_file(self):
+        """Parse a large lock file with many packages, multiple hashes,
+        environment markers, extra index URLs, and comment annotations."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            lock_file = Path(tmpdir) / "requirements_compiled_large_test.txt"
+            rf = parse_lock_file(str(lock_file))
+
+            # Verify total package count (40 packages)
+            names = sorted([req.name for req in rf.requirements])
+            assert len(rf.requirements) == 40
+
+            # Verify all expected packages are present
+            expected_packages = [
+                "absl-py",
+                "aiohappyeyeballs",
+                "aiohttp",
+                "aiohttp-cors",
+                "aiosignal",
+                "attrs",
+                "cachetools",
+                "certifi",
+                "charset-normalizer",
+                "click",
+                "cloudpickle",
+                "colorama",
+                "cupy-cuda12x",
+                "dm-tree",
+                "fastrlock",
+                "filelock",
+                "frozenlist",
+                "google-auth",
+                "grpcio",
+                "idna",
+                "jinja2",
+                "jsonschema",
+                "markupsafe",
+                "msgpack",
+                "multidict",
+                "numpy",
+                "packaging",
+                "protobuf",
+                "psutil",
+                "pyarrow",
+                "pydantic",
+                "pyyaml",
+                "requests",
+                "six",
+                "smart-open",
+                "torch",
+                "typing-extensions",
+                "urllib3",
+                "wrapt",
+                "yarl",
+            ]
+            for pkg in expected_packages:
+                assert pkg in names, f"Expected package {pkg} not found"
+
+            # Verify options (--index-url and --index)
+            assert len(rf.options) >= 1
+
+            # Verify packages with environment markers are parsed
+            marker_packages = {req.name: req for req in rf.requirements if req.marker}
+            assert "cupy-cuda12x" in marker_packages
+            assert "fastrlock" in marker_packages
+            assert "jinja2" in marker_packages
+            assert "torch" in marker_packages
+
+            # Verify specific version pinning
+            versions = {req.name: str(req.specifier) for req in rf.requirements}
+            assert versions["numpy"] == "==2.2.3"
+            assert versions["aiohttp"] == "==3.13.3"
+            assert versions["protobuf"] == "==5.29.4"
+
+            # Round-trip: parse -> write -> parse preserves all packages
+            output_file = Path(tmpdir) / "large_output.txt"
+            write_lock_file(rf, str(output_file))
+            rf2 = parse_lock_file(str(output_file))
+            names2 = sorted([req.name for req in rf2.requirements])
+            assert names == names2
+            assert len(rf2.requirements) == len(rf.requirements)
+
+    def test_expand_with_relaxed_depset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            compiled_depset = Depset(
+                name="general_depset__py311_cpu",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                constraints=["requirement_constraints_test.txt"],
+                output="requirements_compiled_general.txt",
+                config_name="test.depsets.yaml",
+            )
+            relaxed_depset = Depset(
+                name="relaxed_depset",
+                operation="relax",
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                output="requirements_compiled_relaxed.txt",
+                config_name="test.depsets.yaml",
+            )
+            expanded_depset = Depset(
+                name="expand_relaxed_depset",
+                operation="expand",
+                depsets=["relaxed_depset"],
+                output="requirements_compiled_expand_relaxed.txt",
+                config_name="test.depsets.yaml",
+                append_flags=["--no-annotate"],
+            )
+            write_to_config_file(
+                tmpdir,
+                [compiled_depset, relaxed_depset, expanded_depset],
+                "test.depsets.yaml",
+            )
+            manager = _create_test_manager(tmpdir)
+            manager.execute()
+            output_file = Path(tmpdir) / "requirements_compiled_expand_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" in names
+
+    def test_relax(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            # First compile a depset to create the source lock file
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Relax by removing emoji from the lock file
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" in names
+
+    def test_relax_multiple_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Relax by removing both packages
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji", "pyperclip"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" not in names
+            assert len(rf.requirements) == 0
+
+    def test_relax_package_not_found(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            with self.assertRaises(RuntimeError) as e:
+                manager.relax(
+                    source_depset="general_depset__py311_cpu",
+                    packages=["nonexistent-package"],
+                    name="relaxed_depset",
+                    output="requirements_compiled_relaxed.txt",
+                )
+            assert "Package nonexistent-package not found in lock file" in str(
+                e.exception
+            )
+
+    def test_relax_preserves_options(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Verify the source has an index URL option
+            source_rf = parse_lock_file(
+                str(Path(tmpdir) / "requirements_compiled_general.txt")
+            )
+            assert len(source_rf.options) >= 1
+
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_rf = parse_lock_file(
+                str(Path(tmpdir) / "requirements_compiled_relaxed.txt")
+            )
+            # Options (like --index-url) should be preserved
+            assert len(output_rf.options) >= 1
+
+    def test_relax_large_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            # Use the large lock file as source by creating a depset that points to it
+            depset = Depset(
+                name="large_depset",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_large_test.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            manager = _create_test_manager(tmpdir)
+            # Relax by removing numpy and torch
+            manager.relax(
+                source_depset="large_depset",
+                packages=["numpy", "torch"],
+                name="relaxed_large_depset",
+                output="requirements_compiled_relaxed_large.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed_large.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "numpy" not in names
+            assert "torch" not in names
+            assert len(rf.requirements) == 38  # 40 - 2 removed
 
 
 if __name__ == "__main__":

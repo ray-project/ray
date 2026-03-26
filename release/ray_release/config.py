@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import jsonschema
 import yaml
 
-from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -30,6 +29,10 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
     "RELEASE_DEFAULT_CLOUD_ID",
     "cld_kvedZWag2qA8i5BjxUevf5i7",  # anyscale_v2_default_cloud
 )
+DEFAULT_CLOUD_NAME = DeferredEnvVar(
+    "RELEASE_DEFAULT_CLOUD_NAME",
+    "anyscale_v2_default_cloud",
+)
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_6rfevmf12tbsbd6g3al5f6zssh",
@@ -45,7 +48,45 @@ RELEASE_TEST_CONFIG_FILES = [
     "release/release_multimodal_inference_benchmarks_tests.yaml",
 ]
 
-ALLOWED_BYOD_TYPES = ["gpu", "cpu", "cu123", "llm-cu128"]
+ALLOWED_BYOD_TYPES = ["gpu", "gpu-cu130", "cpu", "cu123", "llm-cu128", "llm-cu130"]
+
+NEW_COMPUTE_CONFIG_KEYS = {
+    "cloud",
+    "head_node",
+    "worker_nodes",
+    "advanced_instance_config",
+}
+# All fields accepted by the anyscale.compute_config.models.ComputeConfig
+# dataclass. Used to filter the cluster compute dict before constructing the
+# model (to strip keys like idle_termination_minutes that are not part of it).
+COMPUTE_CONFIG_MODEL_FIELDS = NEW_COMPUTE_CONFIG_KEYS | {
+    "cloud_resource",
+    "min_resources",
+    "max_resources",
+    "zones",
+    "enable_cross_zone_scaling",
+    "flags",
+    "auto_select_worker_config",
+}
+LEGACY_COMPUTE_CONFIG_KEYS = {
+    "aws",
+    "cloud_id",
+    "head_node_type",
+    "worker_node_types",
+    "aws_advanced_configurations",
+    "advanced_configurations_json",
+    "gcp_advanced_configurations_json",
+}
+
+CLOUD_ID_TO_NAME = {
+    "cld_kvedZWag2qA8i5BjxUevf5i7": "anyscale_v2_default_cloud",
+    "cld_wy5a6nhazplvu32526ams61d98": "serve_release_tests_cloud",
+    "cld_HSrCZdMCYDe1NmMCJhYRgQ4p": "aioa_aws_735219725452_us_west_2_0000",
+    "cld_5nnv7pt2jn2312x2e5v72z53n2": "anyscale_aks_public_default_cloud_us_west_2",
+    "cld_vy7xqacrvddvbuy95auinvuqmt": "oss_release_tests_gce",
+    "cld_k8WcxPgjUtSE8RVmfZpTLuKM": "anyscale_k8s_gcp_cloud",
+    "cld_tPsS3nQz8p5cautbyWgEdr4y": "anyscale_gce_cloud",
+}
 
 
 def read_and_validate_release_test_collection(
@@ -262,12 +303,15 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
 def validate_byod_type(byod_type: str, python_version: str) -> None:
     if byod_type not in ALLOWED_BYOD_TYPES:
         raise Exception(f"Invalid BYOD type: {byod_type}")
-    if byod_type == "gpu" and python_version not in ["3.9", "3.10"]:
-        raise Exception("GPU BYOD tests must use Python 3.9 or 3.10")
-    if byod_type == "llm-cu124" and python_version != "3.11":
-        raise Exception("LLM BYOD tests must use Python 3.11")
+    if byod_type == "gpu" and python_version != "3.10":
+        raise Exception("GPU BYOD tests must use Python 3.10")
+    if byod_type == "gpu-cu130" and python_version != "3.12":
+        raise Exception("GPU cu130 BYOD tests must use Python 3.12")
+    if byod_type == "llm-cu128" and python_version != "3.11":
+        raise Exception("LLM cu128 BYOD tests must use Python 3.11")
+    if byod_type == "llm-cu130" and python_version != "3.12":
+        raise Exception("LLM cu130 BYOD tests must use Python 3.12")
     if byod_type in ["cpu", "cu123"] and python_version not in [
-        "3.9",
         "3.10",
         "3.11",
         "3.12",
@@ -283,21 +327,57 @@ def validate_test_cluster_compute(
 ) -> Optional[str]:
     from ray_release.template import load_test_cluster_compute
 
+    is_new_schema = test.uses_anyscale_sdk_2026()
     cluster_compute = load_test_cluster_compute(test, test_definition_root)
-    return validate_cluster_compute(cluster_compute)
+    return validate_cluster_compute(cluster_compute, is_new_schema=is_new_schema)
 
 
-def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
-    aws = cluster_compute.get("aws", {})
-    head_node_aws = cluster_compute.get("head_node_type", {}).get(
-        "aws_advanced_configurations", {}
-    )
+def validate_cluster_compute(
+    cluster_compute: Dict[str, Any], is_new_schema: bool = False
+) -> Optional[str]:
+    compute_keys = set(cluster_compute.keys())
+    found_legacy_keys = compute_keys & LEGACY_COMPUTE_CONFIG_KEYS
+    found_new_keys = compute_keys & NEW_COMPUTE_CONFIG_KEYS
 
-    configs_to_check = [aws, head_node_aws]
-
-    for worker_node in cluster_compute.get("worker_node_types", []):
-        worker_node_aws = worker_node.get("aws_advanced_configurations", {})
-        configs_to_check.append(worker_node_aws)
+    if is_new_schema:
+        # New schema: must not contain legacy keys
+        if found_legacy_keys:
+            return (
+                f"Compute config has legacy schema keys ({found_legacy_keys}) "
+                f"but test expects new schema (anyscale_sdk_2026=true)"
+            )
+        # Validate EBS DeleteOnTermination in new-schema fields
+        head_node_aws = cluster_compute.get("head_node", {}).get(
+            "advanced_instance_config", {}
+        )
+        configs_to_check = [
+            cluster_compute.get("advanced_instance_config", {}),
+            head_node_aws,
+        ]
+        for worker_node in cluster_compute.get("worker_nodes", []):
+            worker_aws = worker_node.get("advanced_instance_config", {})
+            configs_to_check.append(worker_aws)
+    else:
+        # Legacy schema: must contain legacy keys and must not contain new keys
+        if found_new_keys:
+            return (
+                f"Compute config has new schema keys ({found_new_keys}) "
+                f"but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        if not found_legacy_keys:
+            return (
+                "Compute config does not have legacy schema keys "
+                "but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        # Validate EBS DeleteOnTermination in legacy-schema fields
+        aws = cluster_compute.get("aws", {})
+        head_node_aws = cluster_compute.get("head_node_type", {}).get(
+            "aws_advanced_configurations", {}
+        )
+        configs_to_check = [aws, head_node_aws]
+        for worker_node in cluster_compute.get("worker_node_types", []):
+            worker_node_aws = worker_node.get("aws_advanced_configurations", {})
+            configs_to_check.append(worker_node_aws)
 
     for config in configs_to_check:
         error = validate_aws_config(config)
@@ -348,21 +428,20 @@ def parse_python_version(version: str) -> Tuple[int, int]:
 
 
 def get_test_cloud_id(test: Test) -> str:
-    cloud_id = test["cluster"].get("cloud_id", None)
-    cloud_name = test["cluster"].get("cloud_name", None)
-    if cloud_id and cloud_name:
-        raise RuntimeError(
-            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
-            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
-            f"Please provide only one."
+    return test.get("cluster", {}).get("cloud_id", str(DEFAULT_CLOUD_ID))
+
+
+def get_test_cloud_name(test: Test) -> str:
+    cloud_name = test.get("cluster", {}).get("cloud")
+    if cloud_name:
+        return cloud_name
+    cloud_id = get_test_cloud_id(test)
+    name = CLOUD_ID_TO_NAME.get(cloud_id)
+    if name is None:
+        raise ReleaseTestConfigError(
+            f"Cloud ID '{cloud_id}' not found in CLOUD_ID_TO_NAME mapping."
         )
-    elif cloud_name and not cloud_id:
-        cloud_id = find_cloud_by_name(cloud_name)
-        if not cloud_id:
-            raise RuntimeError(f"Couldn't find cloud with name `{cloud_name}`.")
-    else:
-        cloud_id = cloud_id or str(DEFAULT_CLOUD_ID)
-    return cloud_id
+    return name
 
 
 def get_test_project_id(test: Test, default_project_id: Optional[str] = None) -> str:

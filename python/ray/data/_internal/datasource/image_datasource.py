@@ -1,6 +1,7 @@
 import io
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
@@ -100,8 +101,8 @@ class ImageDatasource(FileBasedDatasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_size in self._file_sizes():
-            # NOTE: check if file size is not None, because some metadata provider
-            # such as FastFileMetadataProvider does not provide file size information.
+            # NOTE: check if file size is not None, because some metadata providers
+            # may not provide file size information.
             if file_size is not None:
                 total_size += file_size
         return total_size * self._encoding_ratio
@@ -170,5 +171,7 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
             paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
-            metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)
+            metadata = replace(
+                metadata, size_bytes=int(metadata.size_bytes * self._encoding_ratio)
+            )
         return metadata

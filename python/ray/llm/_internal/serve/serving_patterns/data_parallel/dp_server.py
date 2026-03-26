@@ -1,37 +1,128 @@
+import asyncio
+import json
 import logging
+import os
 import time
+from typing import List, Tuple
 
-from ray.experimental.collective.util import get_address_and_port
+from ray import serve
+from ray.experimental.internal_kv import (
+    _internal_kv_del,
+    _internal_kv_get,
+    _internal_kv_put,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.runtime_context import get_runtime_context
-from ray.serve.handle import DeploymentHandle
+from ray.llm._internal.serve.utils.pg_utils import get_bundle_indices_sorted_by_node
+from ray.serve.config import (
+    AutoscalingConfig,
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
+)
+from ray.util.collective.collective import get_address_and_port
+from ray.util.placement_group import get_placement_group
 
 logger = logging.getLogger(__name__)
+
+TIMEOUT_SECONDS = 120
+POLL_INTERVAL_SECONDS = 0.5
+
+
+class GangMasterInfoRegistry:
+    """Registry for gang DP master info using GCS KV store."""
+
+    _KEY_PREFIX = "LLMServeRegistry:serve_global:gang_dp_master/"
+
+    @classmethod
+    def _make_key(cls, gang_id: str) -> bytes:
+        return (cls._KEY_PREFIX + gang_id).encode("utf-8")
+
+    @classmethod
+    def register(cls, gang_id: str, address: str, port: int) -> None:
+        """Store the DP master info in GCS KV store."""
+        key = cls._make_key(gang_id)
+        value = json.dumps({"address": address, "port": port}).encode("utf-8")
+        _internal_kv_put(key, value, overwrite=True)
+
+    @classmethod
+    def unregister(cls, gang_id: str) -> None:
+        """Remove the DP master info from GCS KV store."""
+        key = cls._make_key(gang_id)
+        try:
+            _internal_kv_del(key)
+        except Exception:
+            logger.warning(
+                f"Failed to unregister gang master info for gang {gang_id}.",
+                exc_info=True,
+            )
+
+    @classmethod
+    async def get(
+        cls,
+        gang_id: str,
+        timeout: float = TIMEOUT_SECONDS,
+        poll_interval: float = POLL_INTERVAL_SECONDS,
+    ) -> Tuple[str, int]:
+        """Retrieve the DP master info for gang_id, polling until available.
+
+        Args:
+            gang_id: The ID of the gang.
+            timeout: The timeout in seconds.
+            poll_interval: The poll interval in seconds.
+
+        Returns:
+            A tuple of (address, port).
+
+        Raises:
+            TimeoutError: If the info is not available within timeout_seconds seconds.
+        """
+        key = cls._make_key(gang_id)
+        deadline = time.monotonic() + timeout
+        while True:
+            data = _internal_kv_get(key)
+            if data is not None:
+                info = json.loads(data)
+                return info["address"], info["port"]
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for DP master info for gang {gang_id} "
+                    f"after {timeout}s."
+                )
+            await asyncio.sleep(poll_interval)
 
 
 class DPServer(LLMServer):
     """
-    Data Parallel LLM Server.
+    Gang-scheduled Data Parallel LLM Server.
 
-    This class is used to serve data parallel attention (DP Attention)
-    deployment paradigm, where the attention layers are replicated and
-    the MoE layers are sharded. DP Attention is typically used for models
-    like DeepSeek-V3.
+    Uses Ray Serve's gang scheduling so that if any replica in a DP group deployment
+    fails, the entire group is restarted atomically.
     """
 
-    async def __init__(self, llm_config: LLMConfig, dp_rank_assigner: DeploymentHandle):
-        self.dp_rank_assigner = dp_rank_assigner
+    async def __init__(self, llm_config: LLMConfig):
+        ctx = serve.get_replica_context()
+        gang_context = ctx.gang_context
 
-        node_id = get_runtime_context().get_node_id()
-        self.dp_rank = await self.dp_rank_assigner.register.remote(node_id)
+        if gang_context is None:
+            raise RuntimeError(
+                "DPServer requires gang scheduling to be enabled. "
+                "Set gang_scheduling_config in the deployment options."
+            )
 
-        logger.info(f"DP rank {self.dp_rank} registered with rank assigner")
+        self.dp_rank = gang_context.rank
+        self.gang_id = gang_context.gang_id
+        self.dp_size = gang_context.world_size
+
+        logger.info(
+            f"DPServer replica initialized: dp_rank={self.dp_rank}, "
+            f"dp_size={self.dp_size}, gang_id={self.gang_id}"
+        )
 
         if self.dp_rank == 0:
             self.dp_address, self.dp_rpc_port = get_address_and_port()
-            await self.dp_rank_assigner.set_dp_master_info.remote(
-                self.dp_address, self.dp_rpc_port
+            GangMasterInfoRegistry.register(
+                self.gang_id, self.dp_address, self.dp_rpc_port
             )
             logger.info(
                 f"DP rank {self.dp_rank} has set DP master info: "
@@ -40,10 +131,9 @@ class DPServer(LLMServer):
             )
         else:
             timestamp = time.time()
-            (
-                self.dp_address,
-                self.dp_rpc_port,
-            ) = await self.dp_rank_assigner.get_dp_master_info.remote()
+            self.dp_address, self.dp_rpc_port = await GangMasterInfoRegistry.get(
+                self.gang_id
+            )
             logger.info(
                 f"DP rank {self.dp_rank} got DP master info: "
                 f"data_parallel_address={self.dp_address}, "
@@ -58,7 +148,59 @@ class DPServer(LLMServer):
             data_parallel_rpc_port=self.dp_rpc_port,
         )
 
+        engine_config = llm_config.get_engine_config()
+
+        # Direct vLLM to use this replica's bundles within the gang placement group.
+        # Gang placement group concatenates per-replica bundles for all ranks, so
+        # rank i owns bundles [i*B, i*B+1, ..., i*B+B-1] where B is the number of
+        # bundles per DP replica.
+        #
+        # However, adjacent bundle indices in a placement group don't necessarily
+        # map to adjacent physical ranks. We use get_bundle_indices_sorted_by_node
+        # to reorder bundle indices so that same-node bundles are adjacent and the
+        # driver node's bundles come first. This prevents us from scattering adjacent
+        # TP ranks in the same DP rank across nodes.
+        #
+        # Example: dp_size=2, tp_size=2, 2 GPUs per node for simplicity
+        #   Gang placement group = [{GPU: 1}, {GPU: 1}, {GPU: 1}, {GPU: 1}]
+        #   Physical rank location: ^^N0R0^^  ^^N1R1^^  ^^N0R1^^  ^^N1R0^^
+        #   DP placement:           ^^DP0^^^  ^^DP1^^^  ^^DP0^^^  ^^DP1^^^
+        #
+        # placement_bundles below is the gang placement group, and therefore
+        # get_current_placement_group from the actor yields the gang placement group,
+        # not the per-replica placement group.
+        bundles_per_replica = len(engine_config.placement_bundles)
+        pg = get_placement_group(gang_context.pg_name)
+        sorted_indices = get_bundle_indices_sorted_by_node(pg)
+        os.environ["VLLM_RAY_BUNDLE_INDICES"] = self._compute_bundle_indices(
+            self.dp_rank, bundles_per_replica, sorted_indices
+        )
+
         await super().__init__(llm_config)
+
+    @staticmethod
+    def _compute_bundle_indices(
+        dp_rank: int, bundles_per_replica: int, sorted_indices: List[int]
+    ) -> str:
+        """Return the VLLM_RAY_BUNDLE_INDICES value for a given DP rank.
+
+        Slices into sorted_indices (bundle indices reordered so that
+        same-node bundles are adjacent) to pick the bundles that belong to
+        this DP rank.
+
+        Args:
+            dp_rank: This replica's data-parallel rank.
+            bundles_per_replica: Number of placement-group bundles each DP
+                replica owns.
+            sorted_indices: Bundle indices sorted by node.
+
+        Returns:
+            Comma-separated bundle indices, e.g. "0,2".
+        """
+        start = dp_rank * bundles_per_replica
+        return ",".join(
+            str(sorted_indices[start + i]) for i in range(bundles_per_replica)
+        )
 
     @classmethod
     def get_deployment_options(cls, llm_config: "LLMConfig"):
@@ -67,26 +209,51 @@ class DPServer(LLMServer):
         dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
         if not (isinstance(dp_size, int) and dp_size > 0):
             raise ValueError(
-                f"Invalid data_parallel_size: {dp_size}, expecting " "positive integer."
+                f"Invalid data_parallel_size: {dp_size}, expecting positive integer."
             )
         if dp_size != 1:
-            if "num_replicas" in deployment_options:
-                raise ValueError(
-                    "num_replicas should not be specified for DP deployment, "
-                    f"use engine_kwargs.data_parallel_size={dp_size} instead."
-                )
-            if "autoscaling_config" in deployment_options:
-                raise ValueError(
-                    "autoscaling_config is not supported for DP deployment, "
-                    "remove autoscaling_config instead. The `num_replicas` "
-                    "will be set to `data_parallel_size`."
-                )
-            deployment_options["num_replicas"] = dp_size
-            if deployment_options["placement_group_strategy"] != "STRICT_PACK":
+            num_replicas = deployment_options.get("num_replicas")
+            has_autoscaling = num_replicas == "auto" or (
+                num_replicas is None and "autoscaling_config" in deployment_options
+            )
+            if has_autoscaling:
+                autoscaling_config = AutoscalingConfig.default().dict()
+                user_config = deployment_options.get("autoscaling_config")
+                if user_config is not None:
+                    autoscaling_config.update(user_config)
+
                 logger.warning(
-                    f"DP deployment with placement_strategy={deployment_options['placement_group_strategy']} "
-                    "is not supported. Using STRICT_PACK instead."
+                    "In DP deployment, a replica refers to a DP group. "
+                    "Multiplying autoscaling_config's min_replicas, max_replicas, and "
+                    f"initial_replicas by data_parallel_size ({dp_size})."
                 )
-                deployment_options["placement_group_strategy"] = "STRICT_PACK"
+                for key in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    if autoscaling_config.get(key) is not None:
+                        autoscaling_config[key] *= dp_size
+
+                deployment_options["autoscaling_config"] = autoscaling_config
+            elif num_replicas is not None:
+                logger.warning(
+                    "In DP deployment, num_replicas refers to the number of DP groups. "
+                    f"Multiplying num_replicas ({num_replicas}) by data_parallel_size ({dp_size}) "
+                    f"to get the total number of serve replicas ({num_replicas * dp_size})."
+                )
+                deployment_options["num_replicas"] = num_replicas * dp_size
+            else:
+                deployment_options["num_replicas"] = dp_size
+
+            deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
+                gang_size=dp_size,
+                gang_placement_strategy=GangPlacementStrategy.PACK,
+                runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
+            )
+            # Remove per-replica placement_group_strategy. Ray Serve raises an error
+            # if both placement_group_strategy and gang_scheduling_config are provided.
+            if "placement_group_strategy" in deployment_options:
+                logger.warning(
+                    "placement_group_strategy configured in the deployment config is ignored. "
+                    "DP deployment uses PACK strategy for scheduling DP groups."
+                )
+                deployment_options.pop("placement_group_strategy", None)
 
         return deployment_options

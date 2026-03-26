@@ -20,12 +20,12 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
 from ray._common.network_utils import build_address, is_localhost
+from ray._common.tls_utils import add_port_to_grpc_server
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
-from ray._private.tls_utils import add_port_to_grpc_server
 from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -270,6 +270,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 )
                 ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
+                ctx.session_name = rtc.get_session_name()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -885,6 +886,13 @@ def main():
         default=None,
         help="The port to use for connecting to the runtime_env_agent.",
     )
+    parser.add_argument(
+        "--node-id",
+        required=False,
+        type=str,
+        default=None,
+        help="The hex ID of this node.",
+    )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
@@ -905,6 +913,7 @@ def main():
             redis_username=args.redis_username,
             redis_password=args.redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
+            node_id=args.node_id,
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)

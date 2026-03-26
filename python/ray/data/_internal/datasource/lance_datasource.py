@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
@@ -19,16 +19,10 @@ logger = logging.getLogger(__name__)
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 
-    # Errors to retry when reading Lance fragments.
-    READ_FRAGMENTS_ERRORS_TO_RETRY = ["LanceError(IO)"]
-    # Maximum number of attempts to read Lance fragments.
-    READ_FRAGMENTS_MAX_ATTEMPTS = 10
-    # Maximum backoff seconds between attempts to read Lance fragments.
-    READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS = 32
-
     def __init__(
         self,
         uri: str,
+        version: Optional[Union[int, str]] = None,
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
@@ -45,20 +39,27 @@ class LanceDatasource(Datasource):
         if filter is not None:
             self.scanner_options["filter"] = filter
         self.storage_options = storage_options
-        self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+        self.lance_ds = lance.dataset(
+            uri=uri, version=version, storage_options=storage_options
+        )
 
+        data_context = DataContext.get_current()
+        lance_config = data_context.lance_config
         match = []
-        match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
-        match.extend(DataContext.get_current().retried_io_errors)
+        match.extend(lance_config.read_fragments_errors_to_retry)
+        match.extend(data_context.retried_io_errors)
         self._retry_params = {
             "description": "read lance fragments",
             "match": match,
-            "max_attempts": self.READ_FRAGMENTS_MAX_ATTEMPTS,
-            "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
+            "max_attempts": lance_config.read_fragments_max_attempts,
+            "max_backoff_s": lance_config.read_fragments_retry_max_backoff_s,
         }
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         read_tasks = []
         ds_fragments = self.scanner_options.get("fragments")

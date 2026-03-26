@@ -8,6 +8,7 @@
 Deploy Ray Serve Apps <user-guides/rayservice>
 user-guides/rayservice-no-ray-serve-replica
 user-guides/rayservice-high-availability
+user-guides/rayservice-incremental-upgrade
 user-guides/observability
 user-guides/upgrade-guide
 user-guides/k8s-cluster-setup
@@ -28,9 +29,11 @@ user-guides/tls
 user-guides/k8s-autoscaler
 user-guides/kubectl-plugin
 user-guides/kuberay-auth
+user-guides/kuberay-auth-rbac
 user-guides/reduce-image-pull-latency
 user-guides/uv
 user-guides/kuberay-dashboard
+user-guides/resource-isolation-with-writable-cgroups
 ```
 
 
@@ -42,6 +45,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-rayservice`
 * {ref}`kuberay-rayservice-no-ray-serve-replica`
 * {ref}`kuberay-rayservice-ha`
+* {ref}`kuberay-rayservice-incremental-upgrade`
 * {ref}`kuberay-observability`
 * {ref}`kuberay-upgrade-guide`
 * {ref}`kuberay-k8s-setup`
@@ -61,6 +65,8 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`kubectl-plugin`
 * {ref}`kuberay-auth`
+* {ref}`kuberay-auth-rbac`
 * {ref}`reduce-image-pull-latency`
 * {ref}`kuberay-uv`
 * {ref}`kuberay-dashboard`
+* {ref}`resource-isolation-with-writable-cgroups`

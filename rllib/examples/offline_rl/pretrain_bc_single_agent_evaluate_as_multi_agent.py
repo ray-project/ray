@@ -59,15 +59,15 @@ from ray import tune
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_TRAINED,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import register_env
 from ray.tune.result import TIME_TOTAL_S, TRAINING_ITERATION
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     rllib_dir = Path(__file__).parent.parent.parent
     print(f"rllib dir={rllib_dir}")
-    offline_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+    offline_file = os.path.join(rllib_dir, "offline/tests/data/cartpole/large.json")
 
     base_config = (
         BCConfig()

@@ -3,9 +3,12 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 import ray
 from ray.data._internal.datasource import bigquery_datasource
@@ -38,7 +41,7 @@ class BigQueryDatasink(Datasink[None]):
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         from google.api_core import exceptions
 
         if self.project_id is None or self.dataset is None:
@@ -110,12 +113,12 @@ class BigQueryDatasink(Datasink[None]):
                 if retry_cnt > self.max_retry_cnt:
                     logger.info(
                         f"Maximum ({self.max_retry_cnt}) retry count exceeded. Ray"
-                        + " will attempt to retry the block write via fault tolerance."
+                        " will attempt to retry the block write via fault tolerance."
                     )
                     raise RuntimeError(
                         f"Write failed due to {retry_cnt}"
-                        + " repeated API rate limit exceeded responses. Consider"
-                        + " specifiying the max_retry_cnt kwarg with a higher value."
+                        " repeated API rate limit exceeded responses. Consider"
+                        " specifying the max_retry_cnt kwarg with a higher value."
                     )
 
         _write_single_block = cached_remote_fn(_write_single_block)

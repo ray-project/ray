@@ -23,7 +23,7 @@ from ray.util.state import list_tasks
 
 @ray.remote
 def do_request():
-    # Set a timeout to 10 because some test use RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 5
+    # Set a timeout to 10 because some tests use request_timeout_s = 5
     # and httpx default timeout is 5 seconds.
     return httpx.get(get_application_url(use_localhost=True), timeout=10)
 
@@ -34,9 +34,6 @@ def shutdown_serve():
     serve.shutdown()
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
-)
 def test_normal_operation(ray_instance, shutdown_serve):
     """
     Verify that a moderate timeout doesn't affect normal operation.
@@ -46,6 +43,7 @@ def test_normal_operation(ray_instance, shutdown_serve):
     def f(*args):
         return "Success!"
 
+    serve.start(http_options={"request_timeout_s": 5})
     serve.run(f.bind())
 
     assert all(
@@ -54,9 +52,6 @@ def test_normal_operation(ray_instance, shutdown_serve):
     )
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"}], indirect=True
-)
 def test_request_hangs_in_execution(ray_instance, shutdown_serve):
     """
     Verify that requests are timed out if they take longer than the timeout to execute.
@@ -89,6 +84,7 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
 
             return "Success!"
 
+    serve.start(http_options={"request_timeout_s": 0.1})
     serve.run(HangsOnFirstRequest.bind())
 
     response = httpx.get(get_application_url(use_localhost=True))
@@ -153,9 +149,6 @@ def test_with_rest_api(ray_instance, shutdown_serve):
     ServeSubmissionClient("http://localhost:8265").delete_applications()
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"}], indirect=True
-)
 def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     """
     Verify that requests are timed out if they take longer than the timeout while
@@ -172,6 +165,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
             await signal_actor.wait.remote()
             return "Success!"
 
+    serve.start(http_options={"request_timeout_s": 0.5})
     serve.run(HangsOnFirstRequest.bind())
 
     # First request will hang executing, second pending assignment.
@@ -185,9 +179,6 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     assert ray.get(do_request.remote()).status_code == 200
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"}], indirect=True
-)
 def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_serve):
     """
     Verify that streaming requests are timed out even if some chunks have already
@@ -206,6 +197,7 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
+    serve.start(http_options={"request_timeout_s": 5})
     serve.run(BlockOnSecondChunk.bind())
 
     def health_check():
@@ -233,7 +225,6 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     "ray_instance",
     [
         {
-            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
             "RAY_SERVE_ENABLE_TASK_EVENTS": "1",
         }
     ],
@@ -250,6 +241,7 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
         async def __call__(self):
             await asyncio.sleep(1000000)
 
+    serve.start(http_options={"request_timeout_s": 0.5})
     serve.run(Hang.bind())
 
     def get_num_running_tasks():
@@ -274,9 +266,6 @@ def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
     wait_for_condition(lambda: get_num_running_tasks() == 0)
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"}], indirect=True
-)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 def test_cancel_on_http_timeout_during_execution(
     ray_instance, shutdown_serve, use_fastapi: bool
@@ -317,6 +306,7 @@ def test_cancel_on_http_timeout_during_execution(
                 async with send_signal_on_cancellation(outer_signal_actor):
                     pass
 
+    serve.start(http_options={"request_timeout_s": 0.5})
     serve.run(Ingress.bind(inner.bind()))
 
     # Request should time out, causing the handler and handle call to be cancelled.
@@ -325,9 +315,6 @@ def test_cancel_on_http_timeout_during_execution(
     ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"}], indirect=True
-)
 def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
@@ -343,6 +330,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
 
             return self._num_requests
 
+    serve.start(http_options={"request_timeout_s": 0.5})
     h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
@@ -361,9 +349,6 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
         assert h.remote().result() == i
 
 
-@pytest.mark.parametrize(
-    "ray_instance", [{"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"}], indirect=True
-)
 def test_timeout_error_in_child_deployment_of_fastapi(ray_instance, shutdown_serve):
     """Test that timeout error in child deployment returns 408 with FastAPI ingress."""
     app = FastAPI()
@@ -385,6 +370,7 @@ def test_timeout_error_in_child_deployment_of_fastapi(ray_instance, shutdown_ser
         async def root(self):
             return await self.child.remote()
 
+    serve.start(http_options={"request_timeout_s": 0.5})
     serve.run(Parent.bind(Child.bind()))
 
     r = httpx.get(get_application_url(use_localhost=True))

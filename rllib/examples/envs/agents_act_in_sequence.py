@@ -43,7 +43,7 @@ at some negative values due to the misplacement penalty of our (simplified) TicT
 game.
 """
 from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

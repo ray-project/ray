@@ -19,4 +19,5 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     patterns/index.rst
     direct-transport
     compiled-graph/ray-compiled-graph
+    resource-isolation-with-cgroupv2
     advanced-topics

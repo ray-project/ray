@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/stats/metric_defs.h"
 #include "ray/stats/tag_defs.h"
 
 namespace ray {
@@ -188,16 +188,23 @@ bool LocalObjectManager::TryToSpillObjects() {
     return false;
   }
 
-  RAY_LOG(DEBUG) << "Choosing objects to spill with minimum total size "
-                 << min_spilling_size_
-                 << " or with total # of objects = " << max_fused_object_count_;
   int64_t bytes_to_spill = 0;
   std::vector<ObjectID> objects_to_spill;
   int64_t num_to_spill = 0;
   size_t idx = 0;
   for (const auto &[object_id, ray_object] : pinned_objects_) {
     if (is_plasma_object_spillable_(object_id)) {
-      bytes_to_spill += ray_object->GetSize();
+      const int64_t object_size = ray_object->GetSize();
+
+      // If the max file size limit is enabled, avoid fusing more objects once we'd exceed
+      // it. Always allow spilling at least one object, even if it's larger than the
+      // limit.
+      if (max_spilling_file_size_bytes_ > 0 && !objects_to_spill.empty() &&
+          bytes_to_spill + object_size > max_spilling_file_size_bytes_) {
+        break;
+      }
+
+      bytes_to_spill += object_size;
       objects_to_spill.push_back(object_id);
       ++num_to_spill;
       if (num_to_spill == max_fused_object_count_) {
@@ -621,37 +628,42 @@ void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) con
 void LocalObjectManager::RecordMetrics() const {
   /// Record Metrics.
   if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
-        spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_, "Spilled");
+    spill_manager_metrics_.spill_manager_throughput_mb_gauge.Record(
+        spilled_bytes_total_ / 1024 / 1024 / spill_time_total_s_, {{"Type", "Spilled"}});
   }
   if (restored_bytes_total_ != 0 && restore_time_total_s_ != 0) {
-    ray::stats::STATS_spill_manager_throughput_mb.Record(
-        restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_, "Restored");
+    spill_manager_metrics_.spill_manager_throughput_mb_gauge.Record(
+        restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_,
+        {{"Type", "Restored"}});
   }
-  ray::stats::STATS_spill_manager_objects.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_restore_.size(),
-                                                 "PendingRestore");
-  ray::stats::STATS_spill_manager_objects.Record(objects_pending_spill_.size(),
-                                                 "PendingSpill");
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(pinned_objects_.size(),
+                                                            {{"State", "Pinned"}});
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(
+      objects_pending_restore_.size(), {{"State", "PendingRestore"}});
+  spill_manager_metrics_.spill_manager_objects_gauge.Record(objects_pending_spill_.size(),
+                                                            {{"State", "PendingSpill"}});
 
-  ray::stats::STATS_spill_manager_objects_bytes.Record(pinned_objects_size_, "Pinned");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_spill_,
-                                                       "PendingSpill");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_restore_,
-                                                       "PendingRestore");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_, "Spilled");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(restored_objects_total_,
-                                                       "Restored");
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(pinned_objects_size_,
+                                                                  {{"State", "Pinned"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      num_bytes_pending_spill_, {{"State", "PendingSpill"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      num_bytes_pending_restore_, {{"State", "PendingRestore"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(spilled_bytes_total_,
+                                                                  {{"State", "Spilled"}});
+  spill_manager_metrics_.spill_manager_objects_bytes_gauge.Record(
+      restored_objects_total_, {{"State", "Restored"}});
 
-  ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
-  ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
-                                                       "Restored");
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(spilled_objects_total_,
+                                                                  {{"Type", "Spilled"}});
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(restored_objects_total_,
+                                                                  {{"Type", "Restored"}});
 
   object_store_memory_gauge_.Record(spilled_bytes_current_,
                                     {{stats::LocationKey, "SPILLED"}});
 
-  ray::stats::STATS_spill_manager_request_total.Record(num_failed_deletion_requests_,
-                                                       "FailedDeletion");
+  spill_manager_metrics_.spill_manager_request_total_gauge.Record(
+      num_failed_deletion_requests_, {{"Type", "FailedDeletion"}});
 }
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {

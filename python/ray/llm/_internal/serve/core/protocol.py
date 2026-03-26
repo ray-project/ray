@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -9,6 +10,8 @@ from typing import (
     Union,
 )
 
+from starlette.requests import Request
+
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -16,8 +19,57 @@ if TYPE_CHECKING:
         ChatCompletionResponse,
         CompletionRequest,
         CompletionResponse,
+        DetokenizeRequest,
+        DetokenizeResponse,
         ErrorResponse,
+        TokenizeRequest,
+        TokenizeResponse,
     )
+
+
+@dataclass
+class RawRequestInfo:
+    """A serializable representation of important fields from a Starlette Request.
+
+    This dataclass captures key request data that needs to be passed through
+    RPC boundaries (e.g., from ingress to LLMServer). The Starlette Request
+    object itself is not serializable, so we extract the needed fields here.
+
+    Usage:
+        raw_request = RawRequestInfo.from_starlette_request(starlette_request)
+        # Pass raw_request through RPC...
+        starlette_request = raw_request.to_starlette_request()
+    """
+
+    headers: Dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_starlette_request(cls, request: Request) -> "RawRequestInfo":
+        """Create a RawRequestInfo from a Starlette Request object."""
+        return cls(headers=dict(request.headers))
+
+    def to_starlette_request(self) -> Request:
+        """Create a minimal Starlette Request from this RawRequestInfo."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "headers": [
+                (k.lower().encode(), (v or "").encode())
+                for k, v in self.headers.items()
+            ],
+            "query_string": b"",
+        }
+        return Request(scope)
+
+    @classmethod
+    def to_starlette_request_optional(
+        cls, raw_request_info: Optional["RawRequestInfo"] = None
+    ) -> Optional[Request]:
+        """Convert RawRequestInfo to Starlette Request, or return None if input is None."""
+        if raw_request_info is not None:
+            return raw_request_info.to_starlette_request()
+        return None
 
 
 class DeploymentProtocol(Protocol):
@@ -43,14 +95,18 @@ class LLMServerProtocol(DeploymentProtocol):
         """
 
     async def chat(
-        self, request: "ChatCompletionRequest"
+        self,
+        request: "ChatCompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, "ChatCompletionResponse", "ErrorResponse"], None]:
         """
         Inferencing to the engine for chat, and return the response.
         """
 
     async def completions(
-        self, request: "CompletionRequest"
+        self,
+        request: "CompletionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[
         Union[List[Union[str, "ErrorResponse"]], "CompletionResponse"], None
     ]:
@@ -72,6 +128,80 @@ class LLMServerProtocol(DeploymentProtocol):
 
     async def stop_profile(self) -> None:
         """Stop profiling"""
+
+    async def sleep(self, **kwargs: Any) -> None:
+        """Put the engine to sleep.
+
+        Args:
+            **kwargs: Engine-specific sleep options. Passed through to the engine.
+        """
+
+    async def wakeup(self, **kwargs: Any) -> None:
+        """Wake up the engine from sleep mode.
+
+        Args:
+            **kwargs: Engine-specific wakeup options. Passed through to the engine.
+        """
+
+    async def is_sleeping(self) -> bool:
+        """Check whether the engine is currently sleeping.
+
+        Returns:
+            True if the engine is sleeping, False otherwise.
+        """
+
+    async def pause(self, **kwargs: Any) -> None:
+        """Pause the engine.
+
+        Args:
+            **kwargs: Engine-specific pause options. Passed through to the engine.
+        """
+
+    async def resume(self, **kwargs: Any) -> None:
+        """Resume the engine.
+
+        Args:
+            **kwargs: Engine-specific resume options. Passed through to the engine.
+        """
+
+    async def is_paused(self) -> bool:
+        """Check whether the engine is currently paused.
+
+        Returns:
+            True if the engine is paused, False otherwise.
+        """
+
+    async def tokenize(
+        self,
+        request: "TokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["TokenizeResponse", "ErrorResponse"], None]:
+        """Tokenize the input text.
+
+        Args:
+            request: The tokenize request containing the text to tokenize.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator yielding TokenizeResponse or ErrorResponse objects.
+        """
+
+    async def detokenize(
+        self,
+        request: "DetokenizeRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["DetokenizeResponse", "ErrorResponse"], None]:
+        """Detokenize the input token IDs.
+
+        Args:
+            request: The detokenize request containing the token IDs.
+            raw_request_info: Optional RawRequestInfo containing data from the original
+                HTTP request.
+
+        Returns:
+            An AsyncGenerator yielding DetokenizeResponse or ErrorResponse objects.
+        """
 
     # TODO (Kourosh): This does not belong here.
     async def llm_config(self) -> Optional["LLMConfig"]:

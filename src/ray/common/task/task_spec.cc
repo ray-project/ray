@@ -289,11 +289,11 @@ const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   return message_->args(arg_index).object_ref();
 }
 
-rpc::TensorTransport TaskSpecification::ArgTensorTransport(size_t arg_index) const {
+std::optional<std::string> TaskSpecification::ArgTensorTransport(size_t arg_index) const {
   if (message_->args(arg_index).has_tensor_transport()) {
     return message_->args(arg_index).tensor_transport();
   }
-  return rpc::TensorTransport::OBJECT_STORE;
+  return std::nullopt;
 }
 
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
@@ -474,9 +474,9 @@ ActorID TaskSpecification::ActorId() const {
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
 }
 
-uint64_t TaskSpecification::SequenceNumber() const {
+uint64_t TaskSpecification::ConcurrencyGroupSequenceNumber() const {
   RAY_CHECK(IsActorTask());
-  return message_->actor_task_spec().sequence_number();
+  return message_->actor_task_spec().concurrency_group_sequence_number();
 }
 
 ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
@@ -495,11 +495,11 @@ const std::string &TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
-const rpc::TensorTransport TaskSpecification::TensorTransport() const {
-  if (IsActorTask()) {
+std::optional<std::string> TaskSpecification::TensorTransport() const {
+  if (message_->has_tensor_transport()) {
     return message_->tensor_transport();
   }
-  return rpc::TensorTransport::OBJECT_STORE;
+  return std::nullopt;
 }
 
 bool TaskSpecification::AllowOutOfOrderExecution() const {
@@ -551,7 +551,8 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId() << ", seq_no=" << SequenceNumber()
+           << ", actor_caller_id=" << CallerId()
+           << ", seq_no=" << ConcurrencyGroupSequenceNumber()
            << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 

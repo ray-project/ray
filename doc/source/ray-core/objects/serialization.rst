@@ -79,6 +79,69 @@ Serialization notes
 
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
+Zero-Copy Serialization for Read-Only Tensors
+----------------------------------------------
+Ray provides optional zero-copy serialization for read-only PyTorch tensors. 
+Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing. 
+This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors.
+However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
+
+When the feature is enabled, Ray won't copy and allow a write to shared memory.
+One process changing a tensor after `ray.get()` could be reflected in another process if both processes are colocated on the same node.
+This feature works best under the following conditions:
+
+- The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
+
+- The tensor is contiguous in memory (`tensor.is_contiguous()`).
+
+- Performance benefits from this are larger if the tensor resides in CPU memory.
+
+- You are not using Ray Direct Transport.
+
+This feature is disabled by default.
+You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS`.
+Set this variable externally before running your script to enable zero-copy serialization in the driver process:
+
+.. code-block:: bash
+
+    export RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1
+
+The following example calculates the sum of a 1GiB tensor using `ray.get()`, leveraging zero-copy serialization:
+
+.. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
+
+    import ray
+    import torch
+    import time
+
+    ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
+
+    @ray.remote
+    def process(tensor):
+        return tensor.sum()
+
+    x = torch.ones(1024, 1024, 256)
+    start_time = time.perf_counter()
+    result = ray.get(process.remote(x))
+    elapsed_time = time.perf_counter() - start_time
+    print(f"Elapsed time: {elapsed_time}s")
+
+    assert result == x.sum()
+
+In this example, enabling zero-copy serialization reduces end-to-end latency by **66.3%**:
+
+.. code-block:: bash
+
+    # Without Zero-Copy Serialization
+    Elapsed time: 23.53883756196592s
+    # With Zero-Copy Serialization
+    Elapsed time: 7.933729998010676s
+
 Customized Serialization
 ------------------------
 

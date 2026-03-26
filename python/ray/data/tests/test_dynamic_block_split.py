@@ -2,7 +2,7 @@ import os
 import sys
 import time
 from dataclasses import astuple, dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,6 +23,9 @@ from ray.data.tests.conftest import (
     get_initial_core_execution_metrics_snapshot,
 )
 from ray.tests.conftest import *  # noqa
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 # Data source generates random bytes data
@@ -49,7 +52,10 @@ class RandomBytesDatasource(Datasource):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def _blocks_generator():
             for _ in range(self.num_batches_per_task):
@@ -537,7 +543,7 @@ def test_dynamic_block_split_deterministic(
     # ~800 bytes per block
     ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
     data = [
-        ray.get(block) for block in ds.materialize()._plan._snapshot_bundle.block_refs
+        ray.get(block) for block in ds.materialize()._plan._cache._bundle.block_refs
     ]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}
@@ -545,8 +551,7 @@ def test_dynamic_block_split_deterministic(
     # and check that blocks were split in the same way
     for _ in range(TEST_ITERATIONS):
         data = [
-            ray.get(block)
-            for block in ds.materialize()._plan._snapshot_bundle.block_refs
+            ray.get(block) for block in ds.materialize()._plan._cache._bundle.block_refs
         ]
         for block in data:
             assert block_map[block["id"][0]] == block

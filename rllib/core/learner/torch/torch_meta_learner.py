@@ -166,8 +166,6 @@ class TorchMetaLearner(TorchLearner):
         if not others_training_data:
             others_training_data = cycle([training_data])
 
-        self.metrics.activate_tensor_mode()
-
         # Perform the actual looping through the minibatches or the given data iterator.
         for iteration, tensor_minibatch in enumerate(batch_iter):
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -228,12 +226,11 @@ class TorchMetaLearner(TorchLearner):
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED),
                 iteration + 1,
                 reduce="sum",
-                clear_on_reduce=True,
             )
             self.metrics.log_value(
                 (ALL_MODULES, DATASET_NUM_ITERS_TRAINED_LIFETIME),
                 iteration + 1,
-                reduce="sum",
+                reduce="lifetime_sum",
             )
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -252,8 +249,6 @@ class TorchMetaLearner(TorchLearner):
         # gradient steps inside the iterator loop above (could be a complete epoch)
         # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
-
-        self.metrics.deactivate_tensor_mode()
 
         # Reduce results across all minibatch update steps.
         if not _no_metrics_reduce:

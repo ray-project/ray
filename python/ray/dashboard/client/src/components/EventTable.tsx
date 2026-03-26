@@ -140,7 +140,12 @@ const EventTable = (props: EventTableProps) => {
         }}
       >
         <Autocomplete
-          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
+          sx={{
+            margin: 1,
+            display: "inline-block",
+            fontSize: 12,
+            "& .MuiSvgIcon-root": { color: "text.secondary" },
+          }}
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -151,7 +156,12 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
+          sx={{
+            margin: 1,
+            display: "inline-block",
+            fontSize: 12,
+            "& .MuiSvgIcon-root": { color: "text.secondary" },
+          }}
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -162,7 +172,12 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
+          sx={{
+            margin: 1,
+            display: "inline-block",
+            fontSize: 12,
+            "& .MuiSvgIcon-root": { color: "text.secondary" },
+          }}
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -173,7 +188,12 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
+          sx={{
+            margin: 1,
+            display: "inline-block",
+            fontSize: 12,
+            "& .MuiSvgIcon-root": { color: "text.secondary" },
+          }}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -192,7 +212,9 @@ const EventTable = (props: EventTableProps) => {
             },
             endAdornment: (
               <InputAdornment position="end">
-                <SearchOutlined />
+                <SearchOutlined
+                  sx={(theme) => ({ color: theme.palette.text.secondary })}
+                />
               </InputAdornment>
             ),
           }}

@@ -103,7 +103,16 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     gcs_client_->Nodes().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        [&node_table_data, &promise](
+            const Status &status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
+          RAY_CHECK_OK(status);
+          for (const auto &node_info : results->first) {
+            node_table_data.push_back(node_info.SerializeAsString());
+          }
+          promise.set_value(true);
+        },
         /*timeout_ms=*/-1);
   }
   promise.get_future().get();
@@ -415,9 +424,10 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id_hex_str,
       absl::ReaderMutexLock lock(&mutex_);
       auto timeout_ms =
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
-      RAY_ASSIGN_OR_RETURN(node_infos,
-                           gcs_client_->Nodes().GetAllNoCache(
-                               timeout_ms, rpc::GcsNodeInfo::ALIVE, std::move(selector)));
+      RAY_ASSIGN_OR_RETURN(
+          node_infos,
+          gcs_client_->Nodes().GetAllNoCache(
+              timeout_ms, rpc::GcsNodeInfo::ALIVE, {std::move(selector)}));
     }
     if (!node_infos.empty()) {
       *node_info = node_infos[0].SerializeAsString();
@@ -451,7 +461,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
           std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
       RAY_ASSIGN_OR_RETURN(node_infos,
                            gcs_client_->Nodes().GetAllNoCache(
-                               timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
+                               timeout_ms, rpc::GcsNodeInfo::ALIVE, {selector}));
     }
     if (!node_infos.empty()) {
       *node_to_connect = node_infos[0].SerializeAsString();
@@ -470,7 +480,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       auto timeout_ms = end_time_point - current_time_ms();
       RAY_ASSIGN_OR_RETURN(node_infos,
                            gcs_client_->Nodes().GetAllNoCache(
-                               timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
+                               timeout_ms, rpc::GcsNodeInfo::ALIVE, {selector}));
     }
     if (node_infos.empty() && node_ip_address == gcs_address) {
       selector.set_node_ip_address("127.0.0.1");
@@ -480,7 +490,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
             std::max(end_time_point - current_time_ms(), static_cast<int64_t>(0));
         RAY_ASSIGN_OR_RETURN(node_infos,
                              gcs_client_->Nodes().GetAllNoCache(
-                                 timeout_ms, rpc::GcsNodeInfo::ALIVE, selector));
+                                 timeout_ms, rpc::GcsNodeInfo::ALIVE, {selector}));
       }
     }
     if (!node_infos.empty()) {

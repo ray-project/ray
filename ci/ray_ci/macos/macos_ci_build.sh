@@ -3,15 +3,16 @@
 set -ex
 
 export CI="true"
-export PYTHON="3.9"
+export PYTHON="3.10"
+export RAY_BUILD_ENV="macos-py${PYTHON}"
 export RAY_USE_RANDOM_PORTS="1"
 export RAY_DEFAULT_BUILD="1"
 export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
-export TORCH_VERSION=2.0.1
-export TORCHVISION_VERSION=0.15.2
+export TORCH_VERSION=2.3.0
+export TORCHVISION_VERSION=0.18.0
 
 
 build() {

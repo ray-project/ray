@@ -107,7 +107,7 @@ class MemoryMonitor:
     The environment variable `RAY_MEMORY_MONITOR_ERROR_THRESHOLD` can be used
     to overwrite the default error_threshold setting.
 
-    Used by test only. For production code use memory_monitor.cc
+    Used by test only. For production code use memory_monitor_interface.cc
     """
 
     def __init__(self, error_threshold=0.95, check_interval=1):

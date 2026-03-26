@@ -18,7 +18,9 @@ _proxy_bypass = {
 
 def start_service(service_name, host, port):
     moto_svr_path = shutil.which("moto_server")
-    args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
+    # moto 5.x no longer accepts a service name argument - all services
+    # are served on a single endpoint
+    args = [moto_svr_path, "-H", host, "-p", str(port)]
     process = sp.Popen(
         args, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL
     )  # shell=True

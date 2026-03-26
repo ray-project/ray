@@ -73,7 +73,10 @@ struct RayEventsTuple {
 class TaskEvent {
  public:
   /// Constructor for Profile events
-  explicit TaskEvent(TaskID task_id, JobID job_id, int32_t attempt_number);
+  explicit TaskEvent(TaskID task_id,
+                     JobID job_id,
+                     int32_t attempt_number,
+                     const NodeID &node_id = NodeID::Nil());
 
   virtual ~TaskEvent() = default;
 
@@ -108,6 +111,8 @@ class TaskEvent {
   JobID job_id_ = JobID::Nil();
   /// Attempt number
   int32_t attempt_number_ = -1;
+  /// Node ID.
+  NodeID node_id_ = NodeID::Nil();
 };
 
 /// TaskStatusEvent is generated when a task changes its status.
@@ -161,6 +166,7 @@ class TaskStatusEvent : public TaskEvent {
       int64_t timestamp,
       bool is_actor_task_event,
       std::string session_name,
+      const NodeID &node_id,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
       std::optional<const TaskStateUpdate> state_update = std::nullopt);
 
@@ -224,7 +230,8 @@ class TaskProfileEvent : public TaskEvent {
                    std::string node_ip_address,
                    std::string event_name,
                    int64_t start_time,
-                   std::string session_name);
+                   std::string session_name,
+                   const NodeID &node_id);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -371,6 +378,9 @@ class TaskEventBuffer {
 
   /// Return the current Ray session name.
   virtual std::string GetSessionName() const = 0;
+
+  /// Return the node ID.
+  virtual NodeID GetNodeID() const = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -388,7 +398,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   explicit TaskEventBufferImpl(
       std::unique_ptr<gcs::GcsClient> gcs_client,
       std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client,
-      std::string session_name);
+      std::string session_name,
+      const NodeID &node_id);
 
   TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
   TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
@@ -418,6 +429,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::string DebugString() override;
 
   std::string GetSessionName() const override { return session_name_; }
+
+  NodeID GetNodeID() const override { return node_id_; }
 
  private:
   /// Add a task status event to be reported.
@@ -581,13 +594,22 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Stats counter map.
   CounterMapThreadSafe<TaskEventBufferCounter> stats_counter_;
 
-  /// True if there's a pending gRPC call. It's a simple way to prevent overloading
+  /// Number of in-flight gRPC calls to GCS. It's a simple way to prevent overloading
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
-  std::atomic<bool> gcs_grpc_in_progress_ = false;
+  std::atomic<int> gcs_grpc_in_progress_ = 0;
 
-  /// True if there's a pending gRPC call to the event aggregator.
-  std::atomic<bool> event_aggregator_grpc_in_progress_ = false;
+  /// Number of in-flight gRPC calls to the event aggregator.
+  std::atomic<int> event_aggregator_grpc_in_progress_ = 0;
+
+  /// Mutex and condition variable for waiting on gRPC completion during shutdown.
+  absl::Mutex grpc_completion_mutex_;
+  absl::CondVar grpc_completion_cv_;
+
+  /// True during shutdown to allow final flush without re-enabling event ingestion.
+  /// This prevents the race where new events could be added during the brief window
+  /// when enabled_ would otherwise be set back to true for flushing.
+  std::atomic<bool> stopping_ = false;
 
   /// If true, task events are exported for Export API
   bool export_event_write_enabled_ = false;
@@ -600,6 +622,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// The current Ray session name. Passed in from the core worker
   std::string session_name_ = "";
+
+  /// The node id of the worker.
+  const NodeID node_id_;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend);
@@ -616,6 +641,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTest, TestCreateRayEventsDataWithProfileEvents);
   FRIEND_TEST(TaskEventBufferTestDifferentDestination,
               TestMixedStatusAndProfileEventsToRayEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination, TestStopFlushesEvents);
+  FRIEND_TEST(TaskEventBufferTestDifferentDestination,
+              TestStopWaitsForInflightThenFlushes);
+  FRIEND_TEST(TaskEventBufferTestDroppedAttemptsOnly,
+              TestFlushSendsDroppedAttemptsWithoutEvents);
 };
 
 }  // namespace worker

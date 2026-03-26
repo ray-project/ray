@@ -23,8 +23,6 @@ enum MessageType {
 message CommandsSyncMessage {
   // Whether this node manager is requesting global GC.
   bool should_global_gc = 1;
-  // Whether this node has detected a resource deadlock (full of actors).
-  bool cluster_full_of_actors_detected = 2;
 }
 
 message ResourceViewSyncMessage {
@@ -60,6 +58,11 @@ message RaySyncMessage {
   bytes node_id = 4;
 }
 
+message RaySyncMessageBatch {
+  // Batch of RaySyncMessages.
+  repeated RaySyncMessage messages = 1;
+}
+
 service RaySyncer {
-  rpc StartSync(stream RaySyncMessage) returns (stream RaySyncMessage);
+  rpc StartSync(stream RaySyncMessageBatch) returns (stream RaySyncMessageBatch);
 }

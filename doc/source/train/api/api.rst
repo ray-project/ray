@@ -131,6 +131,7 @@ Ray Train Configuration
     ~train.FailureConfig
     ~train.RunConfig
     ~train.ScalingConfig
+    ~train.ValidationConfig
 
 .. _train-loop-api:
 
@@ -145,7 +146,10 @@ Ray Train Utilities
 
     ~train.Checkpoint
     ~train.CheckpointUploadMode
+    ~train.CheckpointConsistencyMode
     ~train.TrainContext
+    ~train.ValidationFn
+    ~train.ValidationTaskConfig
 
 **Functions**
 
@@ -177,6 +181,7 @@ Ray Train Output
     :toctree: doc/
 
     ~train.ReportedCheckpoint
+    ~train.ReportedCheckpointStatus
     ~train.Result
 
 Ray Train Errors

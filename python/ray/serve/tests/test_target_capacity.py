@@ -4,10 +4,10 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application
@@ -291,9 +291,9 @@ def test_controller_recover_target_capacity(
         "downscaling_factor": 4,
         "metrics_interval_s": 1,
         # The default look_back_period_s is 30, which means the test assertions will be
-        # slow to respond to changes in metrics. Setting it to 1 makes the test assertions
+        # slow to respond to changes in metrics. Setting it to 2 makes the test assertions
         # more responsive to changes in metrics, hence reducing flakiness.
-        "look_back_period_s": 1,
+        "look_back_period_s": 2,
     },
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=0,

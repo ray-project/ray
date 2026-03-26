@@ -412,7 +412,10 @@ class JobInfoStorageClient:
             job_info = await self.get_info(job_id, timeout)
             return job_id, job_info
 
-        return dict(await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids]))
+        results = await asyncio.gather(*[get_job_info(job_id) for job_id in job_ids])
+        return {
+            job_id: job_info for job_id, job_info in results if job_info is not None
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
@@ -463,6 +466,8 @@ class JobSubmitRequest:
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
     entrypoint_resources: Optional[Dict[str, float]] = None
+    # Label selector for the entrypoint command.
+    entrypoint_label_selector: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -545,6 +550,25 @@ class JobSubmitRequest:
                     if not isinstance(v, (int, float)):
                         raise TypeError(
                             "entrypoint_resources values must be numbers, "
+                            f"got {type(v)}"
+                        )
+
+        if self.entrypoint_label_selector is not None:
+            if not isinstance(self.entrypoint_label_selector, dict):
+                raise TypeError(
+                    "entrypoint_label_selector must be a dict, "
+                    f"got {type(self.entrypoint_label_selector)}"
+                )
+            else:
+                for k, v in self.entrypoint_label_selector.items():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            "entrypoint_label_selector keys must be strings, "
+                            f"got {type(k)}"
+                        )
+                    if not isinstance(v, str):
+                        raise TypeError(
+                            "entrypoint_label_selector values must be strings, "
                             f"got {type(v)}"
                         )
 

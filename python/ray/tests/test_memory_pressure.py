@@ -6,14 +6,17 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    wait_for_condition,
+)
 from ray._common.utils import get_system_memory
 from ray._private import (
     ray_constants,
 )
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import PrometheusTimeseries, raw_metric_timeseries
+from ray._private.test_utils import raw_metric_timeseries
 from ray._private.utils import get_used_memory
 from ray.util.state.state_manager import StateDataSourceClient
 
@@ -21,7 +24,7 @@ memory_usage_threshold = 0.5
 task_oom_retries = 1
 memory_monitor_refresh_ms = 100
 expected_worker_eviction_message = (
-    "Task was killed due to the node running low on memory"
+    "worker(s) were killed due to the node running low on memory"
 )
 
 
@@ -131,7 +134,7 @@ def has_metric_tagged_with_value(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 @pytest.mark.parametrize("restartable", [False, True])
 def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable: bool):
@@ -171,7 +174,7 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_restartable_actor_oom_retry_off_throws_oom_error(
     ray_with_memory_monitor_no_oom_retry,
@@ -208,7 +211,7 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     ray_with_memory_monitor,
@@ -241,7 +244,7 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
@@ -263,7 +266,7 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     ray_with_memory_monitor,
@@ -290,7 +293,7 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 async def test_actor_oom_logs_error(ray_with_memory_monitor):
     first_actor = Leaker.options(name="first_random_actor", max_restarts=0).remote()
@@ -334,7 +337,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
@@ -360,7 +363,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
         verify_failed_task,
         name="allocate_memory",
         error_type="OUT_OF_MEMORY",
-        error_message="Task was killed due to the node running low on memory",
+        error_message="worker(s) were killed due to the node running low on memory",
     )
 
     # TODO(clarng): verify log info once state api can dump log info
@@ -368,7 +371,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_task_oom_no_oom_retry_fails_immediately(
     ray_with_memory_monitor_no_oom_retry,
@@ -406,7 +409,7 @@ def test_task_oom_no_oom_retry_fails_immediately(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_task_oom_only_uses_oom_retry(
     ray_with_memory_monitor,
@@ -448,7 +451,7 @@ def test_task_oom_only_uses_oom_retry(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_newer_task_not_retriable_kill_older_retriable_task_first(
     ray_with_memory_monitor,
@@ -471,7 +474,7 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_put_object_task_usage_slightly_below_limit_does_not_crash():
     with ray.init(
@@ -483,7 +486,6 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
         },
     ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.9)
-        print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(
                 allocate_bytes=bytes_to_alloc,
@@ -496,7 +498,6 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
         ray.get(obj_ref)
 
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.9)
-        print(bytes_to_alloc)
         ray.get(
             allocate_memory.options(max_retries=0).remote(
                 allocate_bytes=bytes_to_alloc,
@@ -507,7 +508,7 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_last_task_of_the_group_fail_immediately():
     @ray.remote(max_retries=-1)
@@ -536,7 +537,7 @@ def test_last_task_of_the_group_fail_immediately():
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_one_actor_max_lifo_kill_next_actor(shutdown_only):
     with ray.init(

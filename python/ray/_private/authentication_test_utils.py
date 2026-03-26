@@ -36,8 +36,9 @@ def set_auth_token_path(token: str, path: Path) -> None:
     """Write the authentication token to a specific path and point the loader to it."""
 
     token_path = Path(path)
-    token_path.parent.mkdir(parents=True, exist_ok=True)
-    token_path.write_text(token)
+    if token is not None:
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(token)
     os.environ["RAY_AUTH_TOKEN_PATH"] = str(token_path)
     os.environ.pop("RAY_AUTH_TOKEN", None)
 
@@ -112,6 +113,12 @@ class AuthenticationEnvSnapshot:
 
     def restore(self) -> None:
         """Restore the captured environment, HOME, and default token file state."""
+        # delete any custom token files that may have been created during the test
+        custom_token_path = os.environ.get("RAY_AUTH_TOKEN_PATH")
+        if custom_token_path is not None:
+            custom_token_path = Path(custom_token_path)
+            if custom_token_path.exists():
+                custom_token_path.unlink(missing_ok=True)
 
         for var, value in self.original_env.items():
             if value is None:

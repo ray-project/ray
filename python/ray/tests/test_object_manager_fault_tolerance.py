@@ -1,14 +1,15 @@
+import json
 import sys
 
 import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
-    wait_for_condition,
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -17,10 +18,11 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 def test_free_objects_idempotent(
     monkeypatch, shutdown_only, deterministic_failure, ray_start_cluster
 ):
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"ObjectManagerService.grpc_client.FreeObjects=1:{failure}",
+        json.dumps({"ObjectManagerService.grpc_client.FreeObjects": failure}),
     )
 
     @ray.remote

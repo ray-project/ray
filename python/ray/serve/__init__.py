@@ -11,6 +11,7 @@ try:
         delete,
         deployment,
         get_app_handle,
+        get_deployment_actor,
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
@@ -25,6 +26,7 @@ try:
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
+    from ray.serve.utils import get_trace_context
 
 except ModuleNotFoundError as e:
     e.msg += (
@@ -47,6 +49,8 @@ __all__ = [
     "start",
     "HTTPOptions",
     "get_replica_context",
+    "get_deployment_actor",
+    "get_trace_context",
     "shutdown",
     "shutdown_async",
     "ingress",

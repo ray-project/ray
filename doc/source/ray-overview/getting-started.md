@@ -29,10 +29,10 @@ Select the guide that matches your needs:
 
 Use individual libraries for ML workloads. Each library specializes in a specific part of the ML workflow, from data processing to model serving. Click on the dropdowns for your workload below.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Data Processing for AI Workloads
 :animate: fade-in-slide-down
 
-[Ray Data](data_quickstart) provides distributed data processing optimized for machine learning and AI workloads. It efficiently streams data through data pipelines.
+[Ray Data](data_quickstart) provides distributed data processing capabilities for AI workloads. It efficiently streams data through data pipelines.
 
 Here's an example of how to scale offline inference and training ingest with Ray Data.
 

@@ -65,6 +65,9 @@ class SchedulingRequest:
     )
     # The current instances.
     current_instances: List[AutoscalerInstance] = field(default_factory=list)
+    # The cloud resource availability score. A low score indicates that resource
+    # allocation for this node type has recently failed.
+    cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -100,6 +103,76 @@ class IResourceScheduler(ABC):
         nodes.
         """
         pass
+
+
+class NodeStateCache:
+    """
+    Caches the scheduling states of nodes to avoid redundant try_schedule calls
+    for identical nodes.
+    """
+
+    def __init__(self, source: "ResourceRequestSource"):
+        self.seen_states = set()
+        self.source = source
+
+    def was_seen_or_mark(self, node: "SchedulingNode") -> bool:
+        """
+        Generates a deterministic signature of the node's scheduling capacity.
+        Returns True if this exact state has already been seen, otherwise adds it
+        to the cache and returns False.
+
+        We intentionally skip caching for running nodes because their resource states
+        may be highly fragmented and they contain unique injected resources like node ID.
+        """
+        # Evaluate online nodes individually since they may contain dummy resources.
+        if node.im_instance_status == Instance.RAY_RUNNING:
+            return False
+
+        avail_res = node.get_available_resources(self.source)
+        state_key = (
+            node.node_type,
+            node.node_kind,
+            frozenset(node.total_resources.items()),
+            frozenset(avail_res.items()),
+            frozenset(node.labels.items()),
+        )
+
+        if state_key in self.seen_states:
+            return True
+
+        self.seen_states.add(state_key)
+        return False
+
+
+class UnschedulableRequestCache:
+    """
+    Caches resource requests that have failed to schedule on a node.
+    """
+
+    def __init__(self):
+        self.shapes = set()
+        self.last_r_id = None
+        self.last_shape_key = None
+
+    def contains(self, request: ResourceRequest) -> bool:
+        current_id = id(request)
+        if current_id == self.last_r_id:
+            shape_key = self.last_shape_key
+        else:
+            shape_key = request.SerializeToString(deterministic=True)
+            self.last_r_id = current_id
+            self.last_shape_key = shape_key
+
+        return shape_key in self.shapes
+
+    def add(self, request: ResourceRequest) -> None:
+        assert self.last_r_id == id(request)
+        self.shapes.add(self.last_shape_key)
+
+    def clear(self) -> None:
+        self.shapes.clear()
+        self.last_r_id = None
+        self.last_shape_key = None
 
 
 class SchedulingNodeStatus(Enum):
@@ -426,10 +499,27 @@ class SchedulingNode:
         # Track the resource requests that cannot be scheduled on this node.
         unschedulable_requests = []
 
+        # Cache to prevent O(N^2 * M) iteration by returning early for identical requests.
+        unfittable_cache = UnschedulableRequestCache()
+
         # Sort the requests and try schedule them one by one.
         for r in requests:
-            if not self._try_schedule_one(r, resource_request_source):
+            if unfittable_cache.contains(r):
                 unschedulable_requests.append(r)
+                continue
+
+            # Record the label count to detect if this node's state mutates.
+            # This is to support requests becoming schedulable due to anti-affinity.
+            num_labels_before = len(self.labels)
+
+            if not self._try_schedule_one(r, resource_request_source):
+                unfittable_cache.add(r)
+                unschedulable_requests.append(r)
+            else:
+                # If the request successfully scheduled and added a label to the node,
+                # it might have expanded feasibility so we invalidate the unavailable cache.
+                if len(self.labels) > num_labels_before:
+                    unfittable_cache.clear()
 
         score = self._compute_score(resource_request_source)
 
@@ -725,11 +815,18 @@ class ResourceDemandScheduler(IResourceScheduler):
         # number of workers in the config. This takes into account any pending/running
         # nodes.
         _node_type_available: Dict[NodeType, int] = field(default_factory=dict)
+        # The availability scores of cloud resource. A low score suggests that
+        # this type of resource has historically experienced allocation failures,
+        # and the weight of this type should be reduced during scheduling.
+        _cloud_resource_availabilities: Dict[NodeType, float] = field(
+            default_factory=dict
+        )
 
         def __init__(
             self,
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
+            cloud_resource_availabilities: Dict[NodeType, float],
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
@@ -742,6 +839,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
+            self._cloud_resource_availabilities = cloud_resource_availabilities
 
         @classmethod
         def from_schedule_request(
@@ -771,6 +869,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             return cls(
                 nodes=nodes,
                 node_type_configs=node_type_configs,
+                cloud_resource_availabilities=req.cloud_resource_availabilities,
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
@@ -852,6 +951,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
+
+        def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
+            return copy.deepcopy(self._cloud_resource_availabilities)
 
         def update(self, new_nodes: List[SchedulingNode]) -> None:
             """
@@ -1468,7 +1570,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 existing_nodes,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, existing_nodes, resource_request_source
+                requests_to_sched,
+                existing_nodes,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities(),
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1504,7 +1609,10 @@ class ResourceDemandScheduler(IResourceScheduler):
                 requests_to_sched,
                 node_pools,
             ) = ResourceDemandScheduler._sched_best_node(
-                requests_to_sched, node_pools, resource_request_source
+                requests_to_sched,
+                node_pools,
+                resource_request_source,
+                ctx.get_cloud_resource_availabilities(),
             )
             if best_node is None:
                 break
@@ -1529,12 +1637,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         requests: List[ResourceRequest],
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
+        cloud_resource_availabilities: Dict[NodeType, float],
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
-            2. Sort the nodes by a score
+            2. Sort the nodes by a score. The sorting includes:
+                2.1. UtilizationScore: to maximize resource utilization.
+                2.2. Cloud resource availabilities: prioritize node types with
+                the most available cloud resources, in order to minimize allocation
+                failures.
             3. Return the node with the highest score.
 
         The highest score node is updated with the scheduled requests, and the node is
@@ -1547,6 +1660,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 removed from the list.
             resource_request_source: The source of the resource request, i.e.
                 pending demands from ray actors/tasks or cluster resource constraints.
+            cloud_resource_availabilities: The cloud resource availability score. A low
+                score indicates that allocation for this node type has recently failed.
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1568,18 +1683,27 @@ class ResourceDemandScheduler(IResourceScheduler):
             # the score of the scheduling node to compare with others.
             score: UtilizationScore
 
-        nodes_copy = copy.deepcopy(nodes)
+        # Track node states we've already simulated in this pass. Since we only
+        # select one best node to return, we skip the heavy deepcopy/simulation
+        # overhead for duplicates
+        node_cache = NodeStateCache(resource_request_source)
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
-        for idx, node in enumerate(nodes_copy):
-            remaining, score = node.try_schedule(requests, resource_request_source)
+        for idx, node in enumerate(nodes):
+            # Skip this node if we've already evaluated its exact state.
+            if node_cache.was_seen_or_mark(node):
+                continue
+
+            node_copy = copy.deepcopy(node)
+
+            remaining, score = node_copy.try_schedule(requests, resource_request_source)
 
             if len(remaining) == len(requests):
                 # The node cannot schedule any of the requests.
                 continue
 
-            results.append(ScheduleResult(node, remaining, idx, score))
+            results.append(ScheduleResult(node_copy, remaining, idx, score))
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:
@@ -1591,9 +1715,16 @@ class ResourceDemandScheduler(IResourceScheduler):
             return None, requests, nodes
 
         # Sort the results by score.
-        results = sorted(results, key=lambda r: r.score, reverse=True)
-        best_result = results[0]
+        results = sorted(
+            results,
+            key=lambda r: (
+                r.score,
+                cloud_resource_availabilities.get(r.node.node_type, 1),
+            ),
+            reverse=True,
+        )
 
+        best_result = results[0]
         # Remove the best node from the nodes.
         nodes.pop(best_result.idx)
         logger.debug(

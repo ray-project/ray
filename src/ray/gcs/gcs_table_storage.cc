@@ -19,9 +19,9 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/postable.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/gcs/postable/postable.h"
 
 namespace ray {
 namespace gcs {

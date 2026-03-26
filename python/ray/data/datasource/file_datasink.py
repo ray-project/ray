@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._common.retry import call_with_retry
-from ray._private.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
@@ -13,12 +12,13 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
 )
+from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
-    _DefaultFilenameProvider,
+    _split_base_and_ext,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI
@@ -61,7 +61,7 @@ class _FileDatasink(Datasink[None]):
             open_stream_args = {}
 
         if filename_provider is None:
-            filename_provider = _DefaultFilenameProvider(
+            filename_provider = FilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
             )
 
@@ -81,23 +81,32 @@ class _FileDatasink(Datasink[None]):
         self.file_format = file_format
         self.mode = mode
         self.has_created_dir = False
+        self._skip_write = False
+        self._write_started = False
 
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
+        # Make idempotent - if already called, return early.
+        if self._write_started:
+            return
+        self._write_started = True
+
         from pyarrow.fs import FileType
 
         dir_exists = (
             self.filesystem.get_file_info(self.path).type is not FileType.NotFound
         )
         if dir_exists:
-            if self.mode == SaveMode.ERROR:
+            if self.mode in {SaveMode.ERROR, SaveMode.CREATE}:
                 raise ValueError(
-                    f"Path {self.path} already exists. If this is unexpected, use mode='ignore' to ignore those files"
+                    f"Path {self.path} already exists. "
+                    "If this is unexpected, use mode='ignore' to ignore those files"
                 )
             if self.mode == SaveMode.IGNORE:
                 logger.warning(f"[SaveMode={self.mode}] Skipping {self.path}")
+                self._skip_write = True
                 return
             if self.mode == SaveMode.OVERWRITE:
                 logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
@@ -206,14 +215,13 @@ class RowBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
+        task_filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME],
+            ctx.task_idx,
+        )
+        base, ext = _split_base_and_ext(task_filename)
         for row_index, row in enumerate(block.iter_rows(public_row_format=False)):
-            filename = self.filename_provider.get_filename_for_row(
-                row,
-                ctx.kwargs[WRITE_UUID_KWARG_NAME],
-                ctx.task_idx,
-                block_index,
-                row_index,
-            )
+            filename = f"{base}_{block_index:06}_{row_index:06}{ext}"
             write_path = posixpath.join(self.path, filename)
             logger.debug(f"Writing {write_path} file.")
 
@@ -264,8 +272,8 @@ class BlockBasedFileDatasink(_FileDatasink):
         raise NotImplementedError
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
-        filename = self.filename_provider.get_filename_for_block(
-            block, ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, block_index
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_path = posixpath.join(self.path, filename)
 

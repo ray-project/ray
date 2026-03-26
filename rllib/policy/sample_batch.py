@@ -1813,7 +1813,7 @@ def _concat_values(*values, time_major=None) -> TensorType:
 
 @DeveloperAPI
 def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
-    """Converts a MultiAgentBatch to a SampleBatch if neccessary.
+    """Converts a MultiAgentBatch to a SampleBatch if necessary.
 
     Args:
         batch: The SampleBatchType to convert.

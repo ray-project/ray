@@ -111,7 +111,8 @@ class NumpyToTensor(ConnectorV2):
                     )
                 else:
                     raise ValueError(
-                        "`NumpyToTensor`does NOT support frameworks other than torch!"
+                        "`NumpyToTensor`does NOT support frameworks other than torch! "
+                        f"Your current framework is {rl_module.framework}"
                     )
                 if infos is not None:
                     module_data[Columns.INFOS] = infos

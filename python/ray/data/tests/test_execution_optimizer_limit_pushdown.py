@@ -6,7 +6,9 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.logical.interfaces import LogicalOperator, Plan
+from ray.data._internal.logical.operators import Download, Limit
+from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -34,56 +36,122 @@ def _check_valid_plan_and_result(
         assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
 
 
-def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
-    """Test limit pushdown behavior - pushes through safe operations."""
+class _DummyLogicalOperator(LogicalOperator):
+    @property
+    def num_outputs(self):
+        return self._num_outputs
+
+
+def test_limit_pushdown_recreates_frozen_download():
+    input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
+    download_op = Download(
+        input_op=input_op,
+        uri_column_names=["uri"],
+        output_bytes_column_names=["bytes"],
+    )
+    limit_op = Limit(download_op, 1)
+
+    result = LimitPushdownRule()._push_limit_down(limit_op)
+
+    assert isinstance(result, Download)
+    assert isinstance(result.input_dependency, Limit)
+    assert result.input_dependency.limit == 1
+    assert result.input_dependency.input_dependency is input_op
+
+
+def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
+    """Test basic Limit -> Limit fusion."""
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = ray.data.range(100, override_num_blocks=1).limit(5).limit(100)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_limit_fusion_reversed(ray_start_regular_shared_2_cpus):
+    """Test Limit fusion with reversed order."""
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = ray.data.range(100, override_num_blocks=1).limit(100).limit(5)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_multiple_limit_fusion(ray_start_regular_shared_2_cpus):
+    """Test multiple Limit operations fusion."""
+    # Use override_num_blocks=1 for deterministic row ordering.
+    ds = (
+        ray.data.range(100, override_num_blocks=1)
+        .limit(50)
+        .limit(80)
+        .limit(5)
+        .limit(20)
+    )
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=5]",
+        [{"id": i} for i in range(5)],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_through_maprows(ray_start_regular_shared_2_cpus):
+    """Test that Limit pushes through MapRows operations."""
 
     def f1(x):
         return x
 
+    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
+    _check_valid_plan_and_result(
+        ds,
+        "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]",
+        [{"id": 0}],
+        check_ordering=False,
+    )
+
+
+def test_limit_pushdown_through_mapbatches(ray_start_regular_shared_2_cpus):
+    """Test that Limit pushes through MapBatches operations."""
+
     def f2(x):
         return x
 
-    # Test 1: Basic Limit -> Limit fusion (should still work)
-    ds = ray.data.range(100).limit(5).limit(100)
-    _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .map_batches(f2, udf_modifying_row_count=False)
+        .limit(1)
     )
-
-    ds = ray.data.range(100).limit(100).limit(5)
-    _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
-    )
-
-    ds = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
-    _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
-    )
-
-    # Test 2: Limit should push through MapRows operations (safe)
-    ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1)
-    _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
-    )
-
-    # Test 3: Limit should push through MapBatches operations
-    ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
         [{"id": 0}],
+        check_ordering=False,
     )
 
-    # Test 4: Limit should NOT push through Filter operations (conservative)
+
+def test_limit_pushdown_stops_at_filter(ray_start_regular_shared_2_cpus):
+    """Test that Limit does NOT push through Filter operations (conservative)."""
     ds = (
         ray.data.range(100, override_num_blocks=100)
         .filter(lambda x: x["id"] < 50)
         .limit(1)
     )
     _check_valid_plan_and_result(
-        ds, "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]", [{"id": 0}]
+        ds,
+        "Read[ReadRange] -> Filter[Filter(<lambda>)] -> Limit[limit=1]",
+        [{"id": 0}],
+        check_ordering=False,
     )
 
-    # Test 5: Limit should push through Project operations (safe)
+
+def test_limit_pushdown_through_project(ray_start_regular_shared_2_cpus):
+    """Test that Limit pushes through Project operations."""
     ds = ray.data.range(100, override_num_blocks=100).select_columns(["id"]).limit(5)
     _check_valid_plan_and_result(
         ds,
@@ -92,7 +160,9 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         check_ordering=False,
     )
 
-    # Test 6: Limit should stop at Sort operations (AllToAll)
+
+def test_limit_pushdown_stops_at_sort(ray_start_regular_shared_2_cpus):
+    """Test that Limit stops at Sort operations (AllToAll)."""
     ds = ray.data.range(100).sort("id").limit(5)
     _check_valid_plan_and_result(
         ds,
@@ -100,7 +170,16 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         [{"id": i} for i in range(5)],
     )
 
-    # Test 7: More complex interweaved case.
+
+def test_limit_pushdown_complex_interweaved_operations(ray_start_regular_shared_2_cpus):
+    """Test Limit pushdown with complex interweaved operations."""
+
+    def f1(x):
+        return x
+
+    def f2(x):
+        return x
+
     ds = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
     _check_valid_plan_and_result(
         ds,
@@ -109,12 +188,22 @@ def test_limit_pushdown_conservative(ray_start_regular_shared_2_cpus):
         [{"id": i} for i in range(5)],
     )
 
-    # Test 8: Test limit pushdown between two Map operators.
+
+def test_limit_pushdown_between_two_map_operators(ray_start_regular_shared_2_cpus):
+    """Test Limit pushdown between two Map operators."""
+
+    def f1(x):
+        return x
+
+    def f2(x):
+        return x
+
     ds = ray.data.range(100, override_num_blocks=100).map(f1).limit(1).map(f2)
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
+        check_ordering=False,
     )
 
 
@@ -285,7 +374,9 @@ def test_limit_pushdown_union(ray_start_regular_shared_2_cpus):
     ds = ds1.union(ds2).limit(5)
 
     expected_plan = "Read[ReadRange] -> Limit[limit=5], Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
-    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+    _check_valid_plan_and_result(
+        ds, expected_plan, [{"id": i} for i in range(5)], check_ordering=False
+    )
 
 
 def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
@@ -300,7 +391,9 @@ def test_limit_pushdown_union_with_maprows(ray_start_regular_shared_2_cpus):
         "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> "
         "Limit[limit=5] -> MapRows[Map(<lambda>)]"
     )
-    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+    _check_valid_plan_and_result(
+        ds, expected_plan, [{"id": i} for i in range(5)], check_ordering=False
+    )
 
 
 def test_limit_pushdown_union_with_sort(ray_start_regular_shared_2_cpus):
@@ -334,7 +427,9 @@ def test_limit_pushdown_multiple_unions(ray_start_regular_shared_2_cpus):
         "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5], "
         "Read[ReadRange] -> Limit[limit=5] -> Union[Union] -> Limit[limit=5]"
     )
-    _check_valid_plan_and_result(ds, expected_plan, [{"id": i} for i in range(5)])
+    _check_valid_plan_and_result(
+        ds, expected_plan, [{"id": i} for i in range(5)], check_ordering=False
+    )
 
 
 def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
@@ -401,7 +496,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Left branch.
     left = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"]})
         .select_columns(["id"])
     )
@@ -409,7 +504,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Right branch with shifted ids.
     right = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"] + 100})
         .select_columns(["id"])
     )
@@ -427,7 +522,9 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
 
     expected_result = [{"id": i} for i in range(3)]  # First 3 rows from left branch.
 
-    _check_valid_plan_and_result(ds, expected_plan, expected_result)
+    _check_valid_plan_and_result(
+        ds, expected_plan, expected_result, check_ordering=False
+    )
 
 
 def test_limit_pushdown_map_per_block_limit_applied(ray_start_regular_shared_2_cpus):
@@ -529,6 +626,30 @@ def test_limit_pushdown_udf_modifying_row_count_with_map_batches(
         expected_plan,
         [{"id": i} for i in range(10)],
     )
+
+
+def test_does_not_pushdown_limit_past_map_batches_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).map_batches(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
+
+
+def test_does_not_pushdown_limit_past_map_groups_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).groupby("id").map_groups(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
 
 
 if __name__ == "__main__":

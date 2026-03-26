@@ -8,6 +8,7 @@ from starlette.types import Scope
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatus as DeploymentStatusProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -15,14 +16,35 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
 @dataclass(frozen=True)
 class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
+
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.name, self.app_name))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"name": self.name, "app_name": self.app_name}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "name", state["name"])
+        object.__setattr__(self, "app_name", state["app_name"])
 
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
@@ -44,6 +66,25 @@ class ReplicaID:
 
     deployment_id: DeploymentID
     """The deployment this replica belongs to."""
+
+    def __hash__(self):
+        # Lazy hash caching: compute on first access, cache for subsequent calls.
+        # The _hash attribute is excluded from pickling via __getstate__, so after
+        # deserialization it gets recomputed with the correct per-process hash seed.
+        try:
+            return self._hash
+        except AttributeError:
+            h = hash((self.unique_id, self.deployment_id))
+            object.__setattr__(self, "_hash", h)
+            return h
+
+    def __getstate__(self):
+        # Exclude _hash from pickling - it must be recomputed per-process
+        return {"unique_id": self.unique_id, "deployment_id": self.deployment_id}
+
+    def __setstate__(self, state):
+        object.__setattr__(self, "unique_id", state["unique_id"])
+        object.__setattr__(self, "deployment_id", state["deployment_id"])
 
     def to_full_id_str(self) -> str:
         s = f"{self.deployment_id.name}#{self.unique_id}"
@@ -124,8 +165,11 @@ class EndpointInfo:
         app_is_cross_language: Whether the deployment uses a different language
             than the proxy (e.g., Java deployment with Python proxy). This affects
             how the proxy serializes/deserializes requests.
-        route_patterns: List of all ASGI route patterns for this deployment
-            (e.g., ["/", "/users/{user_id}", "/items/{item_id}/details"]).
+        route_patterns: List of RoutePattern objects for ASGI route patterns.
+            Each RoutePattern has methods (list of HTTP methods or None) and path.
+            Examples: [RoutePattern(methods=["GET", "POST"], path="/"),
+                      RoutePattern(methods=["PUT"], path="/users/{id}"),
+                      RoutePattern(methods=None, path="/websocket")]
             Used by proxies to match incoming requests to specific route patterns
             for accurate metrics tagging. This avoids high cardinality by using
             parameterized patterns instead of individual request paths.
@@ -134,7 +178,7 @@ class EndpointInfo:
 
     route: str
     app_is_cross_language: bool = False
-    route_patterns: Optional[List[str]] = None
+    route_patterns: Optional[List["RoutePattern"]] = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -155,6 +199,24 @@ class DeploymentStatus(str, Enum):
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
+    def to_numeric(self) -> int:
+        """Convert status to numeric value for metrics, it serves state
+        progression order on the dashboard.
+
+        0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
+        0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=UPDATING,
+        4=UPSCALING, 5=DOWNSCALING, 6=HEALTHY
+        """
+        mapping = {
+            DeploymentStatus.DEPLOY_FAILED: 1,
+            DeploymentStatus.UNHEALTHY: 2,
+            DeploymentStatus.UPDATING: 3,
+            DeploymentStatus.UPSCALING: 4,
+            DeploymentStatus.DOWNSCALING: 5,
+            DeploymentStatus.HEALTHY: 6,
+        }
+        return mapping.get(self, 0)
+
 
 class DeploymentStatusTrigger(str, Enum):
     """Explains how a deployment reached its current DeploymentStatus."""
@@ -166,6 +228,7 @@ class DeploymentStatusTrigger(str, Enum):
     DOWNSCALE_COMPLETED = "DOWNSCALE_COMPLETED"
     AUTOSCALING = "AUTOSCALING"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DELETING = "DELETING"
@@ -183,6 +246,7 @@ class DeploymentStatusInternalTrigger(str, Enum):
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
     DELETE = "DELETE"
@@ -344,6 +408,12 @@ class DeploymentStatusInfo:
                 return self._updated_copy(
                     status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
                     message=message,
                 )
 
@@ -546,6 +616,12 @@ class DeploymentStatusInfo:
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
+            elif trigger == DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+                    message=message,
+                )
 
         # If it's any other transition, ignore it.
         return self
@@ -660,6 +736,21 @@ class gRPCRequest:
     user_request_proto: Any
 
 
+@dataclass
+class gRPCStreamingRequest:
+    """Sent from the GRPC proxy to replicas for client/bidirectional streaming.
+
+    This class carries metadata about the streaming session. The actual request
+    messages are delivered through a separate channel/callback mechanism.
+    """
+
+    # Session ID for tracking this streaming session
+    session_id: str
+
+    # Name of the proxy actor to call back for receiving messages
+    proxy_actor_name: str
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
@@ -699,13 +790,28 @@ class RequestMetadata:
 
     _http_method: str = ""
 
+    # The client address in "host:port" format, if available.
+    _client: str = ""
+
     # The protocol to serve this request
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
 
+    # Tracing context
+    tracing_context: Optional[Dict[str, str]] = None
+
+    # Whether it is a direct ingress request
+    is_direct_ingress: bool = False
+
+    # By reference or value
     _by_reference: bool = True
+    _on_separate_loop: bool = True
+
+    # gRPC serialization options
+    request_serialization: str = "cloudpickle"
+    response_serialization: str = "cloudpickle"
 
     @property
     def is_http_request(self) -> bool:
@@ -782,6 +888,46 @@ class CreatePlacementGroupRequest:
     target_node_id: str
     name: str
     runtime_env: Optional[str] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None
+
+
+@dataclass
+class GangPlacementGroupRequest:
+    """Request to reserve gang placement groups for a deployment."""
+
+    deployment_id: DeploymentID
+    gang_size: int
+    gang_placement_strategy: str
+    num_replicas_to_add: int
+    replica_resource_dict: Dict[str, float]
+    """Actor-level resource requirements derived from ray_actor_options.
+    Used as the bundle template for every bundle in the gang placement group
+    when per-replica placement group bundle is not set.
+    Example: {"CPU": 4, "GPU": 1}."""
+
+    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    """Per-replica placement group bundles.  When set, each replica occupies
+    len(bundles) consecutive bundles in the gang placement group instead
+    of a single flat bundle derived from replica_resource_dict."""
+
+    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    """Label selector for per-replica placement group bundles."""
+
+    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    """Fallback strategy for per-replica placement group bundles."""
+
+
+@dataclass
+class GangReservationResult:
+    """Result of gang placement group reservation."""
+
+    success: bool
+    """True when all gang PGs were created successfully."""
+    error_message: Optional[str] = None
+    gang_pgs: Optional[List[PlacementGroup]] = None
+    gang_ids: Optional[List[str]] = None
+    gang_pg_names: Optional[List[str]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -824,10 +970,11 @@ class HandleMetricReport:
             handle over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
         aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the handle for each replica.
+            look_back_period_s seconds at the handle for each replica. Replica keys
+            use ReplicaID.to_full_id_str() for efficient controller-side lookups.
         metrics: A map of metric name to the list of values running at that handle for each replica
-            over the past look_back_period_s seconds. This is a list because
-            we take multiple measurements over time.
+            over the past look_back_period_s seconds. Replica keys use to_full_id_str().
+            This is a list because we take multiple measurements over time.
         timestamp: The time at which this report was created.
     """
 
@@ -837,8 +984,12 @@ class HandleMetricReport:
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
     queued_requests: TimeSeries
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
+    aggregated_metrics: Dict[
+        str, Dict[str, float]
+    ]  # replica key = ReplicaID.to_full_id_str()
+    metrics: Dict[
+        str, Dict[str, TimeSeries]
+    ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
 
     @property
@@ -881,3 +1032,18 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+@dataclass
+class AsyncInferenceTaskQueueMetricReport:
+    """Metric report from QueueMonitor to controller for async inference.
+
+    Args:
+        deployment_id: The deployment ID this queue belongs to.
+        queue_length: The number of pending tasks in the broker queue.
+        timestamp_s: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    queue_length: int
+    timestamp_s: float

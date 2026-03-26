@@ -149,42 +149,13 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
   resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
 
   // Update resource usage from resource view.
-  {
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-    gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
-                                                  resource_view_sync_message);
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    ASSERT_FALSE(gcs_resource_manager_->NodeResourceReportView()
-                     .at(NodeID::FromBinary(node->node_id()))
-                     .cluster_full_of_actors_detected());
-  }
-
-  // Update from syncer COMMANDS will not update the resources, but the
-  // cluster_full_of_actors_detected flag. (This is how NodeManager currently
-  // updates potential resources deadlock).
-  {
-    gcs_resource_manager_->UpdateClusterFullOfActorsDetected(
-        NodeID::FromBinary(node->node_id()), true);
-
-    // Still 5 because the syncer COMMANDS message is ignored.
-    ASSERT_EQ(
-        cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
-            .total.GetResourceMap()
-            .at("CPU"),
-        5);
-
-    // The flag is updated.
-    ASSERT_TRUE(gcs_resource_manager_->NodeResourceReportView()
-                    .at(NodeID::FromBinary(node->node_id()))
-                    .cluster_full_of_actors_detected());
-  }
+  gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
+                                                resource_view_sync_message);
+  ASSERT_EQ(
+      cluster_resource_manager_.GetNodeResources(scheduling::NodeID(node->node_id()))
+          .total.GetResourceMap()
+          .at("CPU"),
+      5);
 }
 
 TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
@@ -254,6 +225,45 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   gcs_resource_manager_->HandleGetDrainingNodes(request, &reply, send_reply_callback);
   ASSERT_EQ(reply.draining_nodes_size(), 1);
   ASSERT_EQ(reply.draining_nodes(0).node_id(), node1->node_id());
+}
+
+// Verify SetNodeDraining() immediately updates ClusterResourceManager.
+TEST_F(GcsResourceManagerTest, DrainStateImmediatelyVisibleToScheduler) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 10});
+  gcs_resource_manager_->OnNodeAdd(*node);
+
+  auto node_id = NodeID::FromBinary(node->node_id());
+  auto scheduling_node_id = scheduling::NodeID(node_id.Binary());
+
+  UpdateFromResourceViewSync(node_id,
+                             {{"CPU", 10}},
+                             {{"CPU", 10}},
+                             /*idle_ms=*/0,
+                             /*is_draining=*/false);
+
+  ASSERT_FALSE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
+
+  gcs_node_manager_->AddNodeDrainingListener(
+      [this](const NodeID &node_id, bool is_draining, int64_t deadline_timestamp_ms) {
+        cluster_resource_manager_.SetNodeDraining(
+            scheduling::NodeID(node_id.Binary()), is_draining, deadline_timestamp_ms);
+      });
+
+  auto drain_request = std::make_shared<rpc::autoscaler::DrainNodeRequest>();
+  drain_request->set_node_id(node_id.Binary());
+  drain_request->set_reason(rpc::autoscaler::DRAIN_NODE_REASON_IDLE_TERMINATION);
+  drain_request->set_reason_message("idle termination");
+
+  gcs_node_manager_->AddNode(std::make_shared<rpc::GcsNodeInfo>(*node));
+  drain_request->set_deadline_timestamp_ms(12345);
+  gcs_node_manager_->SetNodeDraining(node_id, drain_request);
+
+  ASSERT_TRUE(cluster_resource_manager_.IsNodeDraining(scheduling_node_id));
+  const auto &node_resources =
+      cluster_resource_manager_.GetNodeResources(scheduling_node_id);
+  ASSERT_EQ(node_resources.draining_deadline_timestamp_ms,
+            drain_request->deadline_timestamp_ms());
 }
 
 }  // namespace ray

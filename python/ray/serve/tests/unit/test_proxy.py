@@ -16,13 +16,14 @@ from ray.serve._private.proxy import (
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ProxyRequest
+from ray.serve._private.proxy_request_response import ProxyRequest, gRPCStreamingType
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -177,6 +178,9 @@ class FakeProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self._is_health_request
+
+    def populate_tracing_context(self):
+        pass
 
 
 class FakeHTTPHandle:
@@ -373,6 +377,61 @@ class TestgRPCProxy:
             assert response.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
 
     @pytest.mark.asyncio
+    async def test_receive_grpc_messages_missing_session_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled tuple for missing session.
+
+        When a streaming session is cleaned up (due to timeout, error, or completion),
+        calling receive_grpc_messages again should return (False, None, True) instead
+        of raising KeyError. This provides consistent graceful termination behavior.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+
+        # Call receive_grpc_messages with a non-existent session ID
+        # Before the fix, this would raise KeyError
+        # After the fix, it should return (False, None, True)
+        result = await grpc_proxy.receive_grpc_messages("non-existent-session-id")
+        has_more, message_bytes, is_cancelled = result
+
+        # Should indicate stream is done and was cancelled (graceful termination)
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
+    async def test_receive_grpc_messages_after_cleanup_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled after session cleanup.
+
+        After _cleanup_streaming_session is called, subsequent calls to
+        receive_grpc_messages should return (False, None, True) instead of KeyError.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+        session_id = "test-session-123"
+
+        # Simulate creating a streaming session
+        cancel_event = asyncio.Event()
+
+        async def mock_iterator():
+            yield "message1"
+            yield "message2"
+
+        grpc_proxy._streaming_sessions[session_id] = (mock_iterator(), cancel_event)
+
+        # Cleanup the session (simulates timeout, error, or completion)
+        grpc_proxy._cleanup_streaming_session(session_id)
+
+        # Verify session was removed
+        assert session_id not in grpc_proxy._streaming_sessions
+
+        # Now calling receive_grpc_messages should return cancelled tuple
+        # instead of raising KeyError
+        result = await grpc_proxy.receive_grpc_messages(session_id)
+        has_more, message_bytes, is_cancelled = result
+
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
     async def test_service_handler_factory(self):
         """Test gRPCProxy service_handler_factory returns the correct entrypoints."""
 
@@ -380,7 +439,8 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=False
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_UNARY,
         )
         assert unary_entrypoint.__name__ == "unary_unary"
 
@@ -401,7 +461,8 @@ class TestgRPCProxy:
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=True
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_STREAM,
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
 
@@ -829,9 +890,9 @@ class TestProxyRouterMatchRoutePattern:
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
                     route_patterns=[
-                        "/api/",
-                        "/api/users/{user_id}",
-                        "/api/items/{item_id}/details",
+                        RoutePattern(methods=None, path="/api/"),
+                        RoutePattern(methods=None, path="/api/users/{user_id}"),
+                        RoutePattern(methods=None, path="/api/items/{item_id}/details"),
                     ],
                 )
             }
@@ -859,7 +920,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )
@@ -885,7 +948,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )
@@ -899,7 +964,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/items/{item_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/items/{item_id}")
+                    ],
                 )
             }
         )
@@ -927,7 +994,9 @@ class TestProxyRouterMatchRoutePattern:
             {
                 DeploymentID("api", "default"): EndpointInfo(
                     route="/api",
-                    route_patterns=["/api/users/{user_id}"],
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
                 )
             }
         )

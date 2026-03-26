@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 class ResourceBudgetBackpressurePolicy(BackpressurePolicy):
     """A backpressure policy based on resource budgets in ResourceManager."""
 
+    @property
+    def name(self) -> str:
+        return "ResourceBudget"
+
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         if self._resource_manager._op_resource_allocator is not None:
             return self._resource_manager._op_resource_allocator.can_submit_new_task(op)

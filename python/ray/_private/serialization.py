@@ -1,17 +1,18 @@
 import logging
 import threading
 import traceback
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-if TYPE_CHECKING:
-    import torch
+import warnings
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import google.protobuf.message
 
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
-from ray._private import ray_constants
+from ray._private import (
+    ray_constants,
+    tensor_serialization_utils,
+)
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -35,8 +36,6 @@ from ray.exceptions import (
     ObjectFreedError,
     ObjectLostError,
     ObjectReconstructionFailedError,
-    ObjectReconstructionFailedLineageEvictedError,
-    ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectRefStreamEndOfStreamError,
     OutOfDiskError,
     OutOfMemoryError,
@@ -66,7 +65,7 @@ class DeserializationError(Exception):
 
 
 def _object_ref_deserializer(
-    binary, call_site, owner_address, object_status, tensor_transport_val
+    binary, call_site, owner_address, object_status, tensor_transport
 ):
     # NOTE(suquark): This function should be a global function so
     # cloudpickle can access it directly. Otherwise cloudpickle
@@ -77,7 +76,7 @@ def _object_ref_deserializer(
     # that the ref count for the ObjectRef is greater than 0 by the
     # time the core worker resolves the value of the object.
     obj_ref = ray.ObjectRef(
-        binary, owner_address, call_site, tensor_transport_val=tensor_transport_val
+        binary, owner_address, call_site, tensor_transport=tensor_transport
     )
 
     # TODO(edoakes): we should be able to just capture a reference
@@ -98,36 +97,36 @@ def _object_ref_deserializer(
     return obj_ref
 
 
-def _gpu_object_ref_deserializer(
-    binary,
-    call_site,
-    owner_address,
-    object_status,
-    tensor_transport_val,
-    gpu_object_meta,
-):
+def _rdt_ref_deserializer(
+    binary: bytes,
+    call_site: str,
+    owner_address: bytes,
+    object_status: bytes,
+    tensor_transport: str,
+    rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
+) -> "ray.ObjectRef":
     """
-    Deserialize a GPU object ref. When the GPU object ref is deserialized,
-    it firstly deserialize the normal object ref, and then add metadata of
-    the GPU object to the GPU object manager, which will be used to fetch
-    the GPU object later.
+    Deserialize an RDT object ref. When the RDT object ref is deserialized,
+    it firstly deserializes the normal object ref, and then adds metadata of
+    the RDT object to the RDT manager, which will be used to fetch
+    the RDT object later.
 
     Args:
         binary: The binary data of the object ref.
         call_site: The call site of the object ref.
         owner_address: The owner address of the object ref.
         object_status: The object status of the object ref.
-        tensor_transport_val: The tensor transport value of the GPU object ref.
-        gpu_object_meta: The GPU object metadata. This is used to fetch the GPU object later.
+        tensor_transport: The tensor transport value of the RDT object ref.
+        rdt_meta: The RDT metadata. This is used to fetch the RDT object later.
 
     Returns:
-        The deserialized GPU object ref.
+        The deserialized RDT object ref.
     """
     obj_ref = _object_ref_deserializer(
-        binary, call_site, owner_address, object_status, tensor_transport_val
+        binary, call_site, owner_address, object_status, tensor_transport
     )
-    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_metadata(obj_ref, gpu_object_meta)
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+    rdt_manager.set_rdt_metadata(obj_ref.hex(), rdt_meta)
 
     return obj_ref
 
@@ -152,12 +151,35 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
-        # This flag is to mark whether the custom serializer for torch.Tensor has
-        # been registered. If the method is decorated with
-        # `@ray.method(tensor_transport="xxx")`, it will use external transport
-        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+
+        # These flags are to mark whether the custom serializer for a rdt type
+        # (e.g. torch.Tensor or jax.Array) has been registered.
+        # If the method is decorated with `@ray.method(tensor_transport="xxx")`,
+        # it will use external transport to move this type between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
-        self._torch_custom_serializer_registered = False
+        self._rdt_custom_serializer_registered: Dict[type, bool] = {}
+
+        # Enable zero-copy serialization of tensors if the environment variable is set.
+        self._zero_copy_tensors_enabled = (
+            ray_constants.RAY_ENABLE_ZERO_COPY_TORCH_TENSORS
+        )
+        if self._zero_copy_tensors_enabled:
+            try:
+                import torch
+
+                self._register_cloudpickle_reducer(
+                    torch.Tensor, tensor_serialization_utils.zero_copy_tensors_reducer
+                )
+            except ImportError:
+                # Warn and disable zero-copy tensor serialization when PyTorch is missing,
+                # even if RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.
+                warnings.warn(
+                    "PyTorch is not installed. Disabling zero-copy tensor serialization "
+                    "even though RAY_ENABLE_ZERO_COPY_TORCH_TENSORS is set.",
+                    tensor_serialization_utils.ZeroCopyTensorsWarning,
+                    stacklevel=3,
+                )
+                self._zero_copy_tensors_enabled = False
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
@@ -194,23 +216,29 @@ class SerializationContext:
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
-            # Check if this is a GPU ObjectRef being serialized inside a collection
-            if (
-                self.is_in_band_serialization()
-                and worker.gpu_object_manager.is_managed_object(obj.hex())
+            # Check if this is an RDT ObjectRef being serialized inside a collection
+            if self.is_in_band_serialization() and worker.rdt_manager.is_managed_object(
+                obj.hex()
             ):
 
-                gpu_object_manager = (
-                    ray._private.worker.global_worker.gpu_object_manager
-                )
-                gpu_object_meta = gpu_object_manager._get_gpu_object_metadata(obj)
-                return _gpu_object_ref_deserializer, (
+                rdt_manager = ray._private.worker.global_worker.rdt_manager
+                rdt_meta = rdt_manager.get_rdt_metadata(obj.hex())
+                if rdt_meta.tensor_transport_meta is None:
+                    raise NotImplementedError(
+                        f"Tensor transport metadata is not available for object id: {obj.hex()} at the time of borrowing. "
+                        "This is likely because the object you're trying to borrow an object that was not created on the "
+                        "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
+                    )
+                # We don't want to send over any target buffers the user set
+                if rdt_meta.target_buffers:
+                    rdt_meta = rdt_meta._replace(target_buffers=None)
+                return _rdt_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
                     owner_address,
                     object_status,
                     obj.tensor_transport(),
-                    gpu_object_meta,
+                    rdt_meta,
                 )
 
             return _object_ref_deserializer, (
@@ -307,7 +335,7 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
         """
 
@@ -320,12 +348,9 @@ class SerializationContext:
         Returns:
             Any: The deserialized object.
         """
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
-        enable_gpu_objects = out_of_band_tensors is not None
-        if enable_gpu_objects:
-            ctx.reset_out_of_band_tensors(out_of_band_tensors)
+        enable_rdt = out_of_band_tensors is not None
+        if enable_rdt:
+            self._thread_local.rdt_tensors = out_of_band_tensors
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -337,15 +362,15 @@ class SerializationContext:
         except pickle.pickle.PicklingError:
             raise DeserializationError()
         finally:
-            if enable_gpu_objects:
-                ctx.reset_out_of_band_tensors([])
+            if enable_rdt:
+                self._thread_local.rdt_tensors = []
         return obj
 
     def _deserialize_msgpack_data(
         self,
         data,
         metadata_fields,
-        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
+        out_of_band_tensors: Optional[List[Any]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
@@ -395,7 +420,7 @@ class SerializationContext:
         data,
         metadata,
         object_ref,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -412,9 +437,7 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(
-                    data, metadata_fields, out_of_band_tensors
-                )
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 # The last character is a 1 if weak_ref=True and 0 else.
                 serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
                 return _actor_handle_deserializer(serialized, weak_ref)
@@ -431,9 +454,7 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(
-                    data, metadata_fields, out_of_band_tensors
-                )
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
@@ -456,9 +477,7 @@ class SerializationContext:
                 except google.protobuf.message.DecodeError:
                     # Deserialization from Python. The TaskCancelledError is
                     # serialized and returned directly.
-                    obj = self._deserialize_msgpack_data(
-                        data, metadata_fields, out_of_band_tensors
-                    )
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
                     return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
@@ -490,22 +509,6 @@ class SerializationContext:
                 return OwnerDiedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectReconstructionFailedError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"
-            ):
-                return ObjectReconstructionFailedMaxAttemptsExceededError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"
-            ):
-                return ObjectReconstructionFailedLineageEvictedError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 # TODO(sang): Assert instead once actor also reports error messages.
@@ -532,6 +535,13 @@ class SerializationContext:
                 else:
                     actor_id = None
                 return ActorUnavailableError(error_info.error_message, actor_id)
+            elif ErrorType.Name(error_type).startswith("OBJECT_UNRECONSTRUCTABLE_"):
+                return ObjectReconstructionFailedError(
+                    object_ref.hex(),
+                    reason=error_type,
+                    owner_address=object_ref.owner_address(),
+                    call_site=object_ref.call_site(),
+                )
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:
@@ -547,14 +557,14 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, List["torch.Tensor"]],
+        rdt_objects: Dict[str, List[Any]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, transport) in zip(
+        for object_ref, (data, metadata, _transport) in zip(
             object_refs, serialized_ray_objects
         ):
             try:
@@ -564,8 +574,8 @@ class SerializationContext:
                 object_tensors = None
                 if object_ref is not None:
                     object_id = object_ref.hex()
-                    if object_id in gpu_objects:
-                        object_tensors = gpu_objects[object_id]
+                    if object_id in rdt_objects:
+                        object_tensors = rdt_objects[object_id]
                 obj = self._deserialize_object(
                     data,
                     metadata,
@@ -655,52 +665,105 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize_gpu_objects(
+    def serialize_rdt_objects(
         self,
         value: Any,
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+        tensor_transport: str,
+    ) -> Tuple[MessagePackSerializedObject, List[Any]]:
         """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
 
         Args:
             value: The value to serialize.
-
+            tensor_transport: The transport with which the RDT object will be transferred.
         Returns:
             Serialized value.
         """
+        from ray.experimental.rdt.util import get_transport_data_type
 
-        if not self._torch_custom_serializer_registered:
-            # Register a custom serializer for torch.Tensor. If the method is
-            # decorated with `@ray.method(tensor_transport="xxx")`, it will
-            # use external transport (e.g. gloo, nccl, etc.) for tensor
-            # communication between actors, instead of the normal serialize ->
-            # object store -> deserialize codepath.
-            from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        def serialize(tensor):
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if getattr(ctx._thread_local, "use_external_transport", False):
+                # Store the tensor in the thread-local array for RDT and store the index
+                # in the serialized object.
+                ctx._thread_local.rdt_tensors.append(tensor)
+                return len(ctx._thread_local.rdt_tensors) - 1
 
-            TorchTensorType().register_custom_serializer()
-            self._torch_custom_serializer_registered = True
+            # If the custom rdt serializer is already registered for this type
+            # but this method is not an rdt method, we'll try to serialize with
+            # the default pickle serializer to avoid registering and deregistering
+            # serializers per function call.
+            import pickle
 
-        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+            return pickle.dumps(tensor)
+
+        def deserialize(val):
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if isinstance(val, int):
+                # Index into the thread-local array based on the index stored
+                # during serialization.
+                assert val < len(ctx._thread_local.rdt_tensors)
+                return ctx._thread_local.rdt_tensors[val]
+
+            import pickle
+
+            assert isinstance(val, bytes)
+            return pickle.loads(val)
+
+        data_type = get_transport_data_type(tensor_transport)
+
+        # Register a custom serializer for torch.Tensor or jax.Array. If the method is
+        # decorated with `@ray.method(tensor_transport="xxx")`, it will use external
+        # transport (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
+        if not self._rdt_custom_serializer_registered.get(data_type, False):
+            ray.util.serialization.register_serializer(
+                data_type,
+                serializer=serialize,
+                deserializer=deserialize,
+            )
+
+            self._rdt_custom_serializer_registered[data_type] = True
+
+        # Pull the tensors out during serialization and store the array indices in the serialized object.
+        # Then resets to the original state for future method calls.
+        self._thread_local.use_external_transport = True
+        self._thread_local.rdt_tensors = []
+        try:
+            serialized_val = self._serialize_to_msgpack(value)
+            tensors = self._thread_local.rdt_tensors
+        finally:
+            self._thread_local.use_external_transport = False
+            self._thread_local.rdt_tensors = []
 
         return serialized_val, tensors
 
-    def store_gpu_objects(self, obj_id: str, tensors: List["torch.Tensor"]):
+    def store_rdt_objects(
+        self, obj_id: str, tensors: List[Any], tensor_transport: str
+    ) -> bytes:
         """
-        Store GPU objects in the GPU object store.
+        Store RDT objects in the RDT store.
 
         Args:
-            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
-                will be stored in the GPU object store with the key `obj_id`.
-            tensors: The tensors to store in the GPU object store.
+            obj_id: The object ID of the value. `obj_id` is required, and the RDT data (e.g. tensors) in `value`
+                will be stored in the RDT store with the key `obj_id`.
+            tensors: The tensors to store in the RDT store.
+            tensor_transport: The transport with which the RDT object will be transferred.
+
+        Returns:
+            The serialized tensor transport metadata
         """
         assert (
             obj_id is not None
-        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
-        # Regardless of whether `tensors` is empty, we always store the GPU object
-        # in the GPU object store. This ensures that `get_tensor_transport_metadata` is not
+        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the RDT store."
+        # Regardless of whether `tensors` is empty, we always store the RDT object in
+        # the RDT store. This ensures that direct transport system tasks are not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
-        gpu_object_manager = worker.gpu_object_manager
-        gpu_object_manager.gpu_object_store.add_object(obj_id, tensors, is_primary=True)
+        rdt_manager = worker.rdt_manager
+        tensor_transport_meta = rdt_manager.rdt_store.add_object_primary(
+            obj_id, tensors, tensor_transport
+        )
+        return pickle.dumps(tensor_transport_meta)
 
     def serialize(
         self, value: Any
@@ -720,23 +783,3 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
-
-    def _serialize_and_retrieve_tensors(
-        self, value: Any
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
-        """
-        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
-        This is only used for GPU objects.
-        """
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
-        prev_use_external_transport = ctx.use_external_transport
-        ctx.set_use_external_transport(True)
-        try:
-            serialized_val = self._serialize_to_msgpack(value)
-        finally:
-            ctx.set_use_external_transport(prev_use_external_transport)
-
-        tensors, _ = ctx.reset_out_of_band_tensors([])
-        return serialized_val, tensors

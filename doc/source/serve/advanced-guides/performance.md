@@ -74,7 +74,59 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
+### Set timeouts while probing replicas for queue length
 
+Ray Serve's request router probes replicas for their queue lengths to make intelligent load balancing decisions. You can tune the following environment variables to optimize this behavior for your workload:
+
+- `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The initial timeout (in seconds) for waiting for replicas to respond with their queue length information. Default is `0.1`.
+- `RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The maximum timeout (in seconds) for queue length responses. When retrying with exponential backoff, the deadline increases but is capped at this value. Default is `1.0`.
+- `RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S`: How long (in seconds) cached queue length information from replicas is considered valid. After this timeout, the cache entry expires and the router must probe the replica again. Default is `10.0`.
+
+### Configure locality-based routing
+
+Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).
+
+#### Routing priority
+
+When locality routing is enabled, the system selects replicas in the following priority order:
+
+1. **Same node**: Replicas running on the same node as the caller (lowest latency)
+2. **Same availability zone**: Replicas in the same availability zone as the caller
+3. **Any replica**: All available replicas (fallback when local replicas are busy)
+
+If replicas at a higher priority level are busy or unavailable, the system automatically falls back to the next level.
+
+#### Proxy-to-replica routing
+
+You can configure proxy routing behavior through environment variables:
+
+- `RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING`: When enabled, the proxy prefers routing requests to replicas on the same node. Default is `1` (enabled).
+- `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING`: When enabled, the proxy prefers routing requests to replicas in the same availability zone. Default is `1` (enabled).
+
+#### Inter-deployment routing
+
+When one deployment calls another through a `DeploymentHandle`, you can enable locality routing to reduce latency between deployments.
+
+**Same-node routing**: By default, inter-deployment calls don't prefer same-node replicas. To enable same-node routing, initialize the handle with the `_prefer_local_routing` option:
+
+```python
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+@serve.deployment
+class Caller:
+    def __init__(self, target_handle: DeploymentHandle):
+        # Enable same-node routing for this handle
+        self._handle = target_handle.options(_prefer_local_routing=True)
+
+    async def call_target(self):
+        # Requests prefer replicas on the same node as this Caller replica
+        return await self._handle.remote()
+```
+
+**Same-AZ routing**: The `RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING` environment variable controls availability zone routing for both proxy and inter-deployment communication. You can't configure AZ routing per-handle.
+
+(serve-high-throughput)=
 ### Enable throughput-optimized serving
 
 :::{note}
@@ -154,12 +206,106 @@ You can also configure each option individually. The following table details the
 
 You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
+(serve-haproxy)=
+### Use HAProxy load balancing
+
+By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+
+When HAProxy mode is enabled:
+- An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
+- Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely.
+- Live traffic flows through the HAProxy subprocess, not through any Python actor.
+
+#### Prerequisites
+
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The [official Ray Docker images](https://hub.docker.com/r/rayproject/ray) (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+
+#### Enabling HAProxy
+
+Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes before starting Ray:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+```
+
+This environment variable must be set on all nodes in the ray cluster.
+
+::::{tab-set}
+
+:::{tab-item} KubeRay
+```yaml
+# In the Ray container spec for head and worker groups:
+env:
+  - name: RAY_SERVE_ENABLE_HA_PROXY
+    value: "1"
+```
+:::
+
+:::{tab-item} VM cluster
+```bash
+# On every node (head and workers)
+export RAY_SERVE_ENABLE_HA_PROXY=1
+ray start --head  # or ray start --address=<head-ip>:6379 on workers
+```
+:::
+
+::::
+
+#### Installing HAProxy manually (example)
+
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. These steps are provided as an example only. In the future, HAProxy will be bundled with the `ray` Python package.
+
+The following steps are for Ubuntu/Debian:
+```bash
+# Install build dependencies
+apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl libc6-dev \
+    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
+
+# Build HAProxy from source
+export HAPROXY_VERSION="2.8.12"
+curl -sSfL -o /tmp/haproxy.tar.gz \
+  "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
+make -C /tmp/haproxy-build TARGET=linux-glibc \
+  USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
+rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
+
+# Install runtime dependencies
+apt-get install -y --no-install-recommends socat liblua5.3-0
+
+# Create required directories
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+```
+
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+
+(serve-interdeployment-grpc)=
+### Use gRPC for interdeployment communication
+
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+
+#### When not to use gRPC
+
+1. Since gRPC is required to serialize every payload, it should not be used for large payloads (greater than ~1 MB). If gRPC was enabled by default, individual handles' transport mechanism can be manually set to actor RPC with `handle.options(_by_reference=True)`, and passes larger objects by reference.
+
+2. When passing a `DeploymentResponse` from one deployment into another (i.e., without `await`-ing it first), gRPC resolves the value at the caller and serializes it over the wire. With actor RPC, the underlying `ObjectRef` is forwarded without materializing the data. If your pipeline chains `DeploymentResponse` objects through multiple deployments with payload sizes >100KB, avoid using gRPC for those handles.
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __start_grpc_override__
+:end-before: __end_grpc_override__
+:language: python
+```
+
 ## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
 including receiving autoscaling metrics from other Ray Serve components.
 If the Serve Controller becomes overloaded
 (symptoms might include high CPU usage and a large number of pending `ServeController.record_autoscaling_metrics_from_handle` tasks),
-you can increase the interval between cycles of the control loop
-by setting the `RAY_SERVE_CONTROL_LOOP_INTERVAL_S` environment variable (defaults to `0.1` seconds).
-This setting gives the Controller more time to process requests and may help alleviate the overload.
+you can tune the following environment variables:
+
+- `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: The interval between cycles of the control loop (defaults to `0.1` seconds). Increasing this value gives the Controller more time to process requests and may help alleviate overload.
+- `RAY_SERVE_CONTROLLER_MAX_CONCURRENCY`: The maximum number of concurrent requests the Controller can handle (defaults to `15000`). The Controller accepts one long poll request per handle, so its concurrency needs scale with the number of handles. Increase this value if you have a large number of deployment handles.
+- `RAY_SERVE_MAX_CACHED_HANDLES`: The maximum number of cached deployment handles (defaults to `100`). Each handle maintains a long poll connection to the controller, so limiting the cache size reduces controller overhead. Decrease this value if you're experiencing controller overload due to many handles.

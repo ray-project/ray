@@ -24,7 +24,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/postable.h"
+#include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/gcs/store_client/store_client.h"
 
@@ -140,7 +140,7 @@ class RedisStoreClient : public StoreClient {
 
   void AsyncGet(const std::string &table_name,
                 const std::string &key,
-                ToPostable<OptionalItemCallback<std::string>> callback) override;
+                ToPostable<rpc::OptionalItemCallback<std::string>> callback) override;
 
   void AsyncGetAll(
       const std::string &table_name,

@@ -84,6 +84,10 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -91,11 +95,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    check,
-    run_rllib_example_script_experiment,
-)
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args(

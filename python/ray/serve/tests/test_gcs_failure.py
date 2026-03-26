@@ -125,6 +125,7 @@ def router_populated_with_replicas(
     handle: Optional[DeploymentHandle] = None,
     get_replicas_func: Optional[Callable] = None,
     check_cache_populated: bool = False,
+    get_cache_func: Optional[Callable] = None,
 ):
     """Either get router's replica set from `handle` directly, or use
     `get_replicas_func` to get replica set. Then check that the number
@@ -143,12 +144,19 @@ def router_populated_with_replicas(
     if not check_cache_populated:
         return True
 
-    router = handle._router._asyncio_router
-    cache = router._request_router.replica_queue_len_cache
-    for replica_id in replicas:
-        assert (
-            cache.get(replica_id) is not None
-        ), f"{replica_id} missing from cache {cache._cache}"
+    if handle:
+        router = handle._router._asyncio_router
+        cache = router._request_router.replica_queue_len_cache
+        for replica_id in replicas:
+            assert (
+                cache.get(replica_id) is not None
+            ), f"{replica_id} missing from cache {cache._cache}"
+    elif get_cache_func:
+        cached_replicas = get_cache_func()
+        assert len(cached_replicas) >= threshold, (
+            f"Expected at least {threshold} replicas in cache, "
+            f"got {len(cached_replicas)}: {cached_replicas}"
+        )
 
     return True
 
@@ -291,6 +299,10 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
         get_replicas_func=lambda: ray.get(
             proxy_handle._dump_ingress_replicas_for_testing.remote("/")
         ),
+        check_cache_populated=True,
+        get_cache_func=lambda: ray.get(
+            proxy_handle._dump_ingress_cache_for_testing.remote("/")
+        ),
     )
 
     # Kill GCS server before router gets to send request to second replica
@@ -298,7 +310,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
     returned_pids = set()
     for _ in range(20):
-        r = httpx.post("http://localhost:8000")
+        r = httpx.post("http://localhost:8000", timeout=3.0)
         assert r.status_code == 200
         returned_pids.add(int(r.text))
 

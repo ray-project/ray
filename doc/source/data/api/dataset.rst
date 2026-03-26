@@ -22,7 +22,12 @@ Schema
 .. autoclass:: Schema
     :members:
 
+DatasetSummary
+--------------
+.. currentmodule:: ray.data.stats
 
+.. autoclass:: DatasetSummary
+    :members:
 
 Developer API
 -------------
@@ -41,6 +46,7 @@ Developer API
   block.BlockExecStats
   block.BlockMetadata
   block.BlockAccessor
+  RandomSeedConfig
 
 Deprecated API
 --------------

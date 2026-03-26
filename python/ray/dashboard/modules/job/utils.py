@@ -303,3 +303,72 @@ async def find_jobs_by_job_ids(
             for job_info, submission_id in zip(job_infos, job_submission_ids)
         },
     }
+
+
+def fast_tail_last_n_lines(
+    path: str,
+    num_lines: int,
+    max_chars: int,
+    block_size: int = 8192,
+) -> str:
+    """Return the last ``num_lines`` lines from a large log file efficiently.
+
+    This function avoids scanning the entire file. It seeks to the end of
+    the file and reads backwards in fixed-size blocks until enough lines are
+    collected. This is much faster for large files compared to using
+    ``file_tail_iterator()``, which performs a full sequential scan.
+
+    Args:
+        path: The file path to read.
+        num_lines: Number of lines to return.
+        max_chars: Maximum number of characters in the returned string.
+        block_size: Read size for each backward block.
+
+    Returns:
+        A string containing at most ``num_lines`` of the last lines in the file,
+        truncated to ``max_chars`` characters.
+    """
+    if num_lines < 0:
+        raise ValueError(f"num_lines must be non-negative, got {num_lines}")
+    if num_lines == 0:
+        return ""
+    if max_chars < 0:
+        raise ValueError(f"max_chars must be non-negative, got {max_chars}")
+    if max_chars == 0:
+        return ""
+    if block_size <= 0:
+        raise ValueError(f"block_size must be positive, got {block_size}")
+
+    logger.debug(
+        f"Start reading log file {path} with num_lines={num_lines} max_chars={max_chars} block_size={block_size}"
+    )
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        file_size = f.tell()
+        if file_size == 0:
+            return ""
+
+        chunks = []
+        position = file_size
+        newlines_found = 0
+
+        # We read backwards in chunks until we have enough newlines for num_lines.
+        # We may need one more newline to capture the content before the first newline.
+        while position > 0 and newlines_found < num_lines + 1:
+            read_size = min(block_size, position)
+            position -= read_size
+            f.seek(position)
+
+            chunk = f.read(read_size)
+            newlines_found += chunk.count(b"\n")
+            chunks.insert(0, chunk)
+
+    buffer = b"".join(chunks)
+    lines = buffer.decode("utf-8", errors="replace").splitlines(keepends=True)
+
+    if len(lines) <= num_lines:
+        result = "".join(lines)
+    else:
+        result = "".join(lines[-num_lines:])
+
+    return result[-max_chars:]

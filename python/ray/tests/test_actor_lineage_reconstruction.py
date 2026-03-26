@@ -1,4 +1,5 @@
 import gc
+import json
 import os
 import signal
 import sys
@@ -6,10 +7,10 @@ import sys
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
-    wait_for_condition,
 )
 from ray.core.generated import common_pb2, gcs_pb2
 
@@ -25,11 +26,16 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
     # This test also injects network failure to make sure relevant rpcs are retried.
-    failure = RPC_FAILURE_MAP[deterministic_failure]
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        f"ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction=1:{failure},"
-        f"ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope=1:{failure}",
+        json.dumps(
+            {
+                "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction": failure,
+                "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope": failure,
+            }
+        ),
     )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})

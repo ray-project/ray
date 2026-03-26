@@ -17,10 +17,10 @@ def test_simple_split_tokenizer():
 
 def test_simple_hash():
     # Tests simple_hash determinism.
-    assert simple_hash(1, 100) == 83
-    assert simple_hash("a", 100) == 52
-    assert simple_hash("banana", 100) == 16
-    assert simple_hash([1, 2, "apple"], 100) == 37
+    assert simple_hash(1, 100) == 15
+    assert simple_hash("a", 100) == 99
+    assert simple_hash("banana", 100) == 10
+    assert simple_hash([1, 2, "apple"], 100) == 58
 
 
 if __name__ == "__main__":

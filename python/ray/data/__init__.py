@@ -3,7 +3,7 @@
 import pandas  # noqa
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
@@ -13,8 +13,16 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.context import DataContext, DatasetContext
-from ray.data.dataset import Dataset, Schema, SinkMode, ClickHouseTableSettings
+from ray.data.dataset import (
+    Dataset,
+    Schema,
+    SinkMode,
+    ClickHouseTableSettings,
+    SaveMode,
+)
+from ray.data.stats import DatasetSummary
 from ray.data.datasource import (
     BlockBasedFileDatasink,
     Datasink,
@@ -22,11 +30,11 @@ from ray.data.datasource import (
     FileShuffleConfig,
     ReadTask,
     RowBasedFileDatasink,
-    SaveMode,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
+    KafkaAuthConfig,  # noqa: F401
     from_arrow,
     from_arrow_refs,
     from_blocks,
@@ -55,6 +63,7 @@ from ray.data.read_api import (  # noqa: F401
     read_datasource,
     read_delta,
     read_delta_sharing_tables,
+    read_kafka,
     read_hudi,
     read_iceberg,
     read_images,
@@ -64,7 +73,6 @@ from ray.data.read_api import (  # noqa: F401
     read_mongo,
     read_numpy,
     read_parquet,
-    read_parquet_bulk,
     read_snowflake,
     read_sql,
     read_text,
@@ -84,7 +92,7 @@ try:
     import pyarrow as pa
 
     # Import these arrow extension types to ensure that they are registered.
-    from ray.air.util.tensor_extensions.arrow import (  # noqa
+    from ray.data._internal.tensor_extensions.arrow import (  # noqa
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
@@ -99,7 +107,7 @@ try:
     if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
     else:
-        from ray._private.ray_constants import env_bool
+        from ray._common.utils import env_bool
 
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
             "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
@@ -122,6 +130,7 @@ __all__ = [
     "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
+    "DatasetSummary",
     "DataIterator",
     "DatasetIterator",  # Backwards compatibility alias.
     "Datasink",
@@ -130,11 +139,12 @@ __all__ = [
     "ExecutionResources",
     "FileShuffleConfig",
     "NodeIdStr",
+    "RandomSeedConfig",
     "ReadTask",
     "RowBasedFileDatasink",
-    "SaveMode",
     "Schema",
     "SinkMode",
+    "SaveMode",
     "TaskPoolStrategy",
     "from_daft",
     "from_dask",
@@ -162,6 +172,7 @@ __all__ = [
     "read_datasource",
     "read_delta",
     "read_delta_sharing_tables",
+    "read_kafka",
     "read_hudi",
     "read_iceberg",
     "read_images",
@@ -171,13 +182,13 @@ __all__ = [
     "read_numpy",
     "read_mongo",
     "read_parquet",
-    "read_parquet_bulk",
     "read_snowflake",
     "read_sql",
     "read_tfrecords",
     "read_unity_catalog",
     "read_videos",
     "read_webdataset",
+    "KafkaAuthConfig",
     "Preprocessor",
     "TFXReadOptions",
 ]

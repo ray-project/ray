@@ -19,10 +19,9 @@ This example:
     - shows how to extract this temporary data again when the episode is done in order
     to further process the data into a single, reportable metric.
     - explains how to use the `MetricsLogger` API to create and log different metrics
-    to the final Algorithm's iteration output. These include - but are not limited to -
-    a 2D heatmap (image) per episode, an average per-episode metric (over a sliding
-    window of 200 episodes), a maximum per-episode metric (over a sliding window of 100
-    episodes), and an EMA-smoothed metric.
+    to the final Algorithm's iteration output.
+    - shows how to add a custom stats class to the MetricsLogger and use it to reduce
+    metrics across parallel components.
 
 In this script, we define a custom `RLlibCallback` class and then override some of
 its methods in order to define custom behavior during episode sampling. In particular,
@@ -80,16 +79,46 @@ from typing import Optional, Sequence
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from matplotlib.colors import Normalize
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.utils.images import resize
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.images import resize
+from ray.rllib.utils.metrics.metrics_logger import DEFAULT_STATS_CLS_LOOKUP
+from ray.rllib.utils.metrics.stats.max import MaxStats
 from ray.tune.registry import get_trainable_cls, register_env
+
+
+class MinOfMaxStats(MaxStats):
+    """A Stats object that tracks the min of the max of a series of values.
+
+    This lets us keep track of min of the max of a metric across parallel components.
+    """
+
+    stats_cls_identifier = "min_of_max"
+
+    def _np_reduce_fn(self, values):
+        # If this is a root stat (where we aggregate all values), return the min of the max of the values.
+        if self.is_root:
+            return np.nanmin(values, axis=0)
+        return np.nanmax(values)
+
+    def _torch_reduce_fn(self, values):
+        """Reduce function for torch tensors (stays on GPU)."""
+        # torch.nanmax not available, use workaround
+        clean_values = values[~torch.isnan(values)]
+        if len(clean_values) == 0:
+            return torch.tensor(float("nan"), device=values.device)
+        # If this is a root stat (where we aggregate all values), return the min of the max of the values.
+        if self.is_root:
+            return torch.min(clean_values.float())
+        # Cast to float32 to avoid errors from Long tensors
+        return torch.max(clean_values.float())
 
 
 class MsPacmanHeatmapCallback(RLlibCallback):
@@ -227,7 +256,7 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         metrics_logger.log_value(
             "pacman_heatmap",
             heatmap_rgb,
-            reduce=None,
+            reduce="item_series",
             window=10,  # Log 10 images at most per EnvRunner/training iteration.
         )
 
@@ -236,19 +265,18 @@ class MsPacmanHeatmapCallback(RLlibCallback):
 
         # Log the max. dist travelled in this episode (window=100).
         metrics_logger.log_value(
-            "pacman_max_dist_travelled",
+            "pacman_dist_travelled_percentiles",
             dist_travelled,
-            # For future reductions (e.g. over n different episodes and all the
-            # data coming from other env runners), reduce by max.
-            reduce=None,
-            # Always keep the last 100 values and max over this window.
-            # Note that this means that over time, if the values drop to lower
-            # numbers again, the reported `pacman_max_dist_travelled` might also
-            # decrease again (meaning `window=100` makes this not a "lifetime max").
-            window=100,
+            reduce="percentiles",
             # Some percentiles to compute
             percentiles=[75, 95, 99],
-            clear_on_reduce=True,
+        )
+
+        # Log the max. dist travelled in this episode (window=100).
+        metrics_logger.log_value(
+            "pacman_dist_travelled_min_of_max",
+            dist_travelled,
+            reduce="min_of_max",
         )
 
         # Log the average dist travelled per episode (window=200).
@@ -264,14 +292,18 @@ class MsPacmanHeatmapCallback(RLlibCallback):
         metrics_logger.log_value(
             "pacman_lifes",
             episode.get_infos(-1)["lives"],
-            reduce="mean",  # <- default (must be "mean" for EMA smothing)
-            ema_coeff=0.01,  # <- default EMA coefficient (`window` must be None)
+            reduce="ema",
+            ema_coeff=0.05,
         )
 
     def on_train_result(self, *, result: dict, **kwargs) -> None:
         print(
-            "Max distance travelled per episode (percentiles) for this training iteration: ",
-            result["env_runners"]["pacman_max_dist_travelled"],
+            "Percentiles of distance travelled per episode: ",
+            result["env_runners"]["pacman_dist_travelled_percentiles"],
+        )
+        print(
+            "Min of max distance travelled per episode in each parallel component: ",
+            result["env_runners"]["pacman_dist_travelled_min_of_max"],
         )
 
     def _get_pacman_yx_pos(self, env):
@@ -307,6 +339,9 @@ parser = add_rllib_example_script_args(default_reward=450.0)
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    custom_stats_lookup = DEFAULT_STATS_CLS_LOOKUP.copy()
+    custom_stats_lookup["min_of_max"] = MinOfMaxStats
+
     # Register our environment with tune.
     register_env(
         "env",
@@ -319,6 +354,7 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
+        .reporting(custom_stats_cls_lookup=custom_stats_lookup)
         .environment(
             "env",
             env_config={

@@ -132,6 +132,12 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void,
+      ResizeLocalResourceInstances,
+      ((google::protobuf::Map<std::string, double>)resources,
+       const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback),
+      (override));
+  MOCK_METHOD(
+      void,
       CancelLeasesWithResourceShapes,
       ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
        const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback),
@@ -156,6 +162,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
               (override));
   MOCK_METHOD(int64_t, GetPinsInFlight, (), (const, override));
+  MOCK_METHOD(void,
+              CancelLocalTask,
+              (const rpc::CancelLocalTaskRequest &request,
+               const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback),
+              (override));
 };
 
 }  // namespace ray

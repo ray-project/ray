@@ -24,15 +24,15 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
-// Maps from resource name to its allocation.
-using ResourceMappingType =
-    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
-
 namespace grpc {
 class Channel;
 }
 
 namespace ray {
+
+// Maps from resource name to its allocation.
+using ResourceMappingType =
+    std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 
 // Forward declarations.
 class Status;
@@ -197,6 +197,10 @@ class RayletClientInterface {
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void ResizeLocalResourceInstances(
+      google::protobuf::Map<std::string, double> resources,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) = 0;
+
   virtual void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,
       const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback) = 0;
@@ -216,6 +220,10 @@ class RayletClientInterface {
       const rpc::ClientCallback<rpc::KillLocalActorReply> &callback) = 0;
 
   virtual int64_t GetPinsInFlight() const = 0;
+
+  virtual void CancelLocalTask(
+      const rpc::CancelLocalTaskRequest &request,
+      const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback) = 0;
 
   virtual ~RayletClientInterface() = default;
 };
