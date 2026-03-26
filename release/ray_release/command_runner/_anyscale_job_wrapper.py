@@ -310,6 +310,20 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
 
+            # Fail if any OOM kills occurred
+            if return_code == 0:
+                metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+                if metrics_path and Path(metrics_path).exists():
+                    with open(metrics_path) as f:
+                        metrics = json.load(f)
+                    oom_kills = metrics.get("worker_oom_kills", [])
+                    if oom_kills:
+                        logger.error(
+                            "Test failed: OOM worker kills detected. "
+                            f"Details: {oom_kills}"
+                        )
+                        return_code = 1
+
         uploaded_artifact = run_storage_cp(
             artifact_path,
             os.path.join(
