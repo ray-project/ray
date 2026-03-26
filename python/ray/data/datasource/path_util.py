@@ -409,10 +409,6 @@ def _unwrap_protocol(path):
     return netloc + parsed_path + params + query
 
 
-def _is_url(path) -> bool:
-    return urlparse(path).scheme != ""
-
-
 def _is_http_url(path) -> bool:
     parsed = urlparse(path)
     return parsed.scheme in ("http", "https")

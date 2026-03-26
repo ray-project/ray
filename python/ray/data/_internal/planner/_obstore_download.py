@@ -48,10 +48,10 @@ _FILE_SIZE_COLUMN_PREFIX = "__ray_file_size__"
 _fallback_warned = False
 
 
-def _log_fallback_warning(use_obstore: bool) -> None:
+def _log_fallback_warning() -> None:
     """Log a one-time warning when falling back to the PyArrow download path."""
     global _fallback_warned
-    if _fallback_warned or use_obstore:
+    if _fallback_warned:
         return
     _fallback_warned = True
     if not RAY_DATA_USE_OBSTORE:

@@ -2,7 +2,6 @@ import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterator, List, Optional
-from urllib.parse import urlparse
 
 import pyarrow as pa
 
@@ -119,7 +118,7 @@ def plan_download_op(
         logger.debug("Using obstore async download path.")
     else:
         download_fn = download_bytes_threaded
-        _log_fallback_warning(use_obstore=False)
+        _log_fallback_warning()
 
     fn, init_fn = _get_udf(
         download_fn,
@@ -156,15 +155,6 @@ def plan_download_op(
     )
 
     return download_map_operator
-
-
-def uri_to_path(uri: str) -> str:
-    """Convert a URI to a filesystem path."""
-    # TODO(mowen): urlparse might be slow. in the future we could use a faster alternative.
-    parsed = urlparse(uri)
-    if parsed.scheme == "file":
-        return parsed.path
-    return parsed.netloc + parsed.path
 
 
 def download_bytes_threaded(
@@ -308,9 +298,6 @@ class PartitionActor:
                     "exist. Is the specified download column correct?"
                 )
 
-        if self._batch_size_estimate is None and block.num_rows > 0:
-            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
-
         if (
             block.num_rows > 0
             and OBSTORE_AVAILABLE
@@ -320,15 +307,22 @@ class PartitionActor:
             if _is_obstore_supported_url(first_uri):
                 block = self._attach_file_sizes(block)
 
+        if self._batch_size_estimate is None and block.num_rows > 0:
+            self._batch_size_estimate = self._estimate_nrows_per_partition(block)
+
         yield from _arrow_batcher(block, self._batch_size_estimate or 1)
 
     def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
         sampled_file_sizes_by_column = {}
         for uri_column_name in self._uri_column_names:
-            # Extract URIs from PyArrow table for sampling
-            uris = block.column(uri_column_name).to_pylist()
-            sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
-            sampled_file_sizes = self._sample_sizes(sample_uris)
+            size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+            if size_col in block.column_names:
+                all_sizes = block.column(size_col).to_pylist()
+                sampled_file_sizes = all_sizes[: self.INIT_SAMPLE_BATCH_SIZE]
+            else:
+                uris = block.column(uri_column_name).to_pylist()
+                sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
+                sampled_file_sizes = self._sample_sizes(sample_uris)
             sampled_file_sizes_by_column[uri_column_name] = sampled_file_sizes
 
         # If we sample HTTP URIs, or if an error occurs during sampling, then the file
@@ -384,11 +378,11 @@ class PartitionActor:
         downstream download function falls back to HEAD via obstore.
         """
         for uri_column_name in self._uri_column_names:
-            col_name = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
+            size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
             uris = block.column(uri_column_name).to_pylist()
             # Fetches all file sizes (not just a sample).
             sizes = self._sample_sizes(uris)
-            block = block.append_column(col_name, pa.array(sizes, type=pa.int64()))
+            block = block.append_column(size_col, pa.array(sizes, type=pa.int64()))
         return block
 
     def _sample_sizes(self, uris: List[str]) -> List[int]:
