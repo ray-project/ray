@@ -57,16 +57,16 @@ NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
 class _SerializationFormat(Enum):
-    # JSON format is legacy and inefficient, only kept for backward compatibility
     JSON = 0
     CLOUDPICKLE = 1
 
 
 # Set the default serialization format for Arrow extension types.
+# JSON is the default (safe). Cloudpickle is opt-in for backward compatibility.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.JSON  # default
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
-    else _SerializationFormat.CLOUDPICKLE
+    _SerializationFormat.CLOUDPICKLE
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_CLOUDPICKLE", 0) == 1
+    else _SerializationFormat.JSON
 )
 
 _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
@@ -137,7 +137,7 @@ def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
     """
     try:
         return json.loads(serialized)
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
         if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
             # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
             # WARNING: Do not enable this for files from untrusted sources.
