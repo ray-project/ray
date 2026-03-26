@@ -6,6 +6,7 @@ srcs:
   - .bazelrc
   - WORKSPACE
   - BUILD.bazel
+  - maven_install.json
   - bazel/
   - thirdparty/
   - src/
