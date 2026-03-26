@@ -8,7 +8,6 @@ import io
 import uuid
 from benchmark import Benchmark
 
-NUM_GPU_NODES = 8
 YOLO_MODEL = "yolo11n.pt"
 INPUT_PATH = "s3://anonymous@ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -17,7 +16,7 @@ IMAGE_WIDTH = 640
 # This was a change made: Alter batch size accordingly
 # batch_size = 32 for 1x large
 # batch_size = 100 for 2x, 4x, and 8x large
-BATCH_SIZE = 32
+BATCH_SIZE = 100
 
 ray.init()
 
@@ -95,7 +94,6 @@ def run_pipeline():
         ExtractImageFeatures,
         batch_size=BATCH_SIZE,
         num_gpus=1.0,
-        concurrency=NUM_GPU_NODES,
     )
     ds = ds.flat_map(explode_features)
     ds = ds.map(crop_image)
