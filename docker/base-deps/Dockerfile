@@ -5,36 +5,6 @@
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
 
-# --- HAProxy Build Stage ---
-FROM ${BASE_IMAGE} AS haproxy-builder
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    curl \
-    libc6-dev \
-    liblua5.3-dev \
-    libpcre3-dev \
-    libssl-dev \
-    zlib1g-dev
-
-# Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
-HAPROXY_BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
-tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
-make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
-make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${HAPROXY_BUILD_DIR}"
-
-EOF
-
-# --- Main image ---
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
@@ -60,6 +30,9 @@ ARG PYTHON_DEPSET="python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.l
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
+
+ARG HAPROXY_REPO="https://www.haproxy.com/download/haproxy/performance/ubuntu/ha32"
+ARG HAPROXY_KEY_URL="https://pks.haproxy.com/linux/community/RPM-GPG-KEY-HAProxy"
 
 RUN <<EOF
 #!/bin/bash
@@ -89,10 +62,18 @@ APT_PKGS=(
 
     # For HAProxy
     socat
-    liblua5.3-0
 )
 
-apt-get install -y "${APT_PKGS[@]}"
+apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
+
+# Install HAProxy 3.2 performance package (haproxy-awslc) from HAProxy repo
+install -d -m 0755 /usr/share/keyrings
+wget -qO /usr/share/keyrings/HAPROXY-key-community.asc "${HAPROXY_KEY_URL}"
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/HAPROXY-key-community.asc] ${HAPROXY_REPO} jammy main" \
+    > /etc/apt/sources.list.d/haproxy.list
+apt-get update -y
+apt-get install -y --no-install-recommends haproxy-awslc
+ln -s /usr/sbin/haproxy /usr/local/bin/haproxy
 
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
@@ -102,8 +83,6 @@ mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
 
 EOF
-
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
