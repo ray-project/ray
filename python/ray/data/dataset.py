@@ -426,7 +426,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -3616,8 +3616,8 @@ class Dataset:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        on: Tuple[str] = ("id",),
-        right_on: Optional[Tuple[str]] = None,
+        on: Tuple[str, ...] = ("id",),
+        right_on: Optional[Tuple[str, ...]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
@@ -6226,7 +6226,7 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
