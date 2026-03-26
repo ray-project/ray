@@ -3,6 +3,7 @@ import os
 import sys
 import threading
 import time
+from dataclasses import dataclass, field
 
 import aiohttp
 import pytest
@@ -20,32 +21,46 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.handle import DeploymentHandle
 
-APP_NAME = "autoscaling-with-streaming"
-BACKEND_NAME = "Backend"
-ROUTE_PREFIX = "/app"
 
-N_INGRESS = 4
-MIN_REPLICAS = 1
-MAX_REPLICAS = 2
-NUM_CHUNKS = 20
-CHUNK_DELAY_S = 0.15
+@dataclass(frozen=True)
+class AutoscalingWithStreamingTestConfig:
+    """Configuration for the autoscaling-with-streaming tests."""
 
-# (qps, duration (s)), total = 112 requests
-LOAD_PROFILE = [
-    (1.0, 6),
-    (8.0, 12),
-    (1.0, 10),
-]
+    app_name: str = "autoscaling-with-streaming"
+    backend_name: str = "Backend"
+    route_prefix: str = "/app"
 
-RAY_SERVE_ENV_OVERRIDES = {
-    "RAY_SERVE_LOG_TO_STDERR": "0",
-    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
-    "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
-}
+    n_ingress: int = 4
+    min_replicas: int = 1
+    max_replicas: int = 2
+    num_chunks: int = 20
+    chunk_delay_s: float = 0.15
 
-THROUGHPUT_OPTIMIZED_ENV_VARS = {
-    "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
-}
+    # (qps, duration (s)), total = 112 requests
+    load_profile: list = field(
+        default_factory=lambda: [
+            (1.0, 6),
+            (8.0, 12),
+            (1.0, 10),
+        ]
+    )
+
+    ray_serve_env_overrides: dict = field(
+        default_factory=lambda: {
+            "RAY_SERVE_LOG_TO_STDERR": "0",
+            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
+            "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
+        }
+    )
+
+    throughput_optimized_env_vars: dict = field(
+        default_factory=lambda: {
+            "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
+        }
+    )
+
+
+test_cfg = AutoscalingWithStreamingTestConfig()
 
 
 @ray.remote
@@ -68,10 +83,10 @@ class RequestCounter:
 
 
 @serve.deployment(
-    name=BACKEND_NAME,
+    name=test_cfg.backend_name,
     autoscaling_config={
-        "min_replicas": MIN_REPLICAS,
-        "max_replicas": MAX_REPLICAS,
+        "min_replicas": test_cfg.min_replicas,
+        "max_replicas": test_cfg.max_replicas,
         "target_ongoing_requests": 2,
         "upscale_delay_s": 2,
         "downscale_delay_s": 8,
@@ -88,22 +103,22 @@ class Backend:
     async def stream(self):
         await self._counter.on_start.remote()
         try:
-            for i in range(NUM_CHUNKS):
+            for i in range(test_cfg.num_chunks):
                 yield f"{i}\n".encode()
-                await asyncio.sleep(CHUNK_DELAY_S)
+                await asyncio.sleep(test_cfg.chunk_delay_s)
         finally:
             await self._counter.on_finish.remote()
 
     async def __call__(self):
         await self._counter.on_start.remote()
         try:
-            await asyncio.sleep(NUM_CHUNKS * CHUNK_DELAY_S)
+            await asyncio.sleep(test_cfg.num_chunks * test_cfg.chunk_delay_s)
             return {"ok": True}
         finally:
             await self._counter.on_finish.remote()
 
 
-@serve.deployment(num_replicas=N_INGRESS, max_ongoing_requests=1000)
+@serve.deployment(num_replicas=test_cfg.n_ingress, max_ongoing_requests=1000)
 class Ingress:
     def __init__(self, backend: DeploymentHandle, stream: bool):
         self._stream = stream
@@ -161,7 +176,7 @@ async def _send_load(url: str, stream: bool):
     counters = {"sent": 0, "ok": 0, "errors": 0}
 
     async with aiohttp.ClientSession() as session:
-        for qps, duration_s in LOAD_PROFILE:
+        for qps, duration_s in test_cfg.load_profile:
             await _run_phase(session, url, stream, qps, duration_s, inflight, counters)
 
         await asyncio.sleep(20)
@@ -192,10 +207,10 @@ def _send_load_in_thread(url: str, stream: bool):
 @pytest.mark.parametrize(
     "ray_instance, stream",
     [
-        (RAY_SERVE_ENV_OVERRIDES, True),
-        (RAY_SERVE_ENV_OVERRIDES, False),
-        (THROUGHPUT_OPTIMIZED_ENV_VARS, True),
-        (THROUGHPUT_OPTIMIZED_ENV_VARS, False),
+        (test_cfg.ray_serve_env_overrides, True),
+        (test_cfg.ray_serve_env_overrides, False),
+        (test_cfg.throughput_optimized_env_vars, True),
+        (test_cfg.throughput_optimized_env_vars, False),
     ],
     ids=[
         "env_overrides_stream",
@@ -210,7 +225,7 @@ def test_autoscaling_with_streaming(ray_instance, stream):
 
     # 1) Deploy
     app, counter = _build_app(stream)
-    serve.run(app, name=APP_NAME, route_prefix=ROUTE_PREFIX)
+    serve.run(app, name=test_cfg.app_name, route_prefix=test_cfg.route_prefix)
     tlog(
         f"Deployed app with configuration: "
         f"{stream=} "
@@ -219,16 +234,16 @@ def test_autoscaling_with_streaming(ray_instance, stream):
 
     wait_for_condition(
         check_deployment_status,
-        name=BACKEND_NAME,
+        name=test_cfg.backend_name,
         expected_status=DeploymentStatus.HEALTHY,
-        app_name=APP_NAME,
+        app_name=test_cfg.app_name,
         timeout=30,
     )
     wait_for_condition(
         check_num_replicas_eq,
-        name=BACKEND_NAME,
-        target=MIN_REPLICAS,
-        app_name=APP_NAME,
+        name=test_cfg.backend_name,
+        target=test_cfg.min_replicas,
+        app_name=test_cfg.app_name,
         timeout=30,
     )
     tlog("Deployment healthy with 1 replica.")
@@ -238,16 +253,16 @@ def test_autoscaling_with_streaming(ray_instance, stream):
     time.sleep(10)
 
     # 3) Send load
-    url = f"http://localhost:8000{ROUTE_PREFIX}"
+    url = f"http://localhost:8000{test_cfg.route_prefix}"
     load_thread, load_counters, load_error = _send_load_in_thread(url, stream)
     tlog("Load generation started.")
 
     # 4) Assert replicas scale from 1 -> 2 during load
     wait_for_condition(
         check_num_replicas_eq,
-        name=BACKEND_NAME,
-        target=MAX_REPLICAS,
-        app_name=APP_NAME,
+        name=test_cfg.backend_name,
+        target=test_cfg.max_replicas,
+        app_name=test_cfg.app_name,
         timeout=60,
         retry_interval_ms=1000,
     )
@@ -269,15 +284,15 @@ def test_autoscaling_with_streaming(ray_instance, stream):
     # 6) Assert replicas scale from 2 -> 1 after drain
     wait_for_condition(
         check_num_replicas_eq,
-        name=BACKEND_NAME,
-        target=MIN_REPLICAS,
-        app_name=APP_NAME,
+        name=test_cfg.backend_name,
+        target=test_cfg.min_replicas,
+        app_name=test_cfg.app_name,
         timeout=60,
     )
     tlog("Replicas scaled back down to 1. Test passed.")
 
     # Cleanup
-    serve.delete(APP_NAME)
+    serve.delete(test_cfg.app_name)
     ray.kill(ray.get_actor("request_counter"))
 
 
