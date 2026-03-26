@@ -526,7 +526,7 @@ def test_uv_run_worker_startup_failed(shutdown_only, monkeypatch):
 
         # The task should raise RaySystemError
         with pytest.raises(RaySystemError) as exc_info:
-            ray.get(failing_task.remote())
+            ray.get(failing_task.remote(), timeout=30)
 
         # Assert that the exception was actually raised and contains expected message
         assert exc_info.type is RaySystemError
