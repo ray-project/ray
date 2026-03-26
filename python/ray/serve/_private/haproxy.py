@@ -941,6 +941,7 @@ class HAProxyManager(ProxyActorInterface):
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
             # HAProxyManager is not on the request path, so we can disable
             # the buffer to ensure logs are immediately flushed.
             log_buffer_size=1,
