@@ -70,14 +70,14 @@ def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     def check_status_metrics():
         # Check deployment status metrics
         deployment_metrics = get_metric_dictionaries(
-            "ray_serve_deployment_status", timeseries=timeseries
+            "ray_serve_deployment_status", timeseries=timeseries, wait=False
         )
         if len(deployment_metrics) < 2:
             return False
 
         # Check application status metrics
         app_metrics = get_metric_dictionaries(
-            "ray_serve_application_status", timeseries=timeseries
+            "ray_serve_application_status", timeseries=timeseries, wait=False
         )
         if len(app_metrics) < 2:
             return False
@@ -183,7 +183,8 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
     # Assert that 2 metrics are recorded (one per replica)
     def check_metrics_count():
         metrics = get_metric_dictionaries(
-            "ray_serve_replica_initialization_latency_ms_count"
+            "ray_serve_replica_initialization_latency_ms_count",
+            wait=False,
         )
         assert len(metrics) == 2, f"Expected 2 metrics, got {len(metrics)}"
         # All metrics should have same deployment and application
@@ -593,6 +594,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                 "ray_serve_autoscaling_handle_metrics_delay_ms",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -616,6 +618,7 @@ def test_autoscaling_metrics(metrics_start_shutdown):
                 "ray_serve_autoscaling_replica_metrics_delay_ms",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -637,6 +640,10 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Async Inference feature testing is flaky on Windows.",
+)
 def test_async_inference_task_queue_metrics_delay(
     metrics_start_shutdown, external_redis  # noqa: F811
 ):
@@ -701,6 +708,7 @@ def test_async_inference_task_queue_metrics_delay(
                 "ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -782,6 +790,7 @@ def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
                 "ray_serve_user_autoscaling_stats_latency_ms_sum",
                 timeout=5,
                 timeseries=timeseries,
+                wait=False,
             )
             for m in metrics_dicts:
                 if (
@@ -834,6 +843,7 @@ def test_user_autoscaling_stats_failure_metrics(metrics_start_shutdown):
             "ray_serve_record_autoscaling_stats_failed_total",
             timeout=5,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics_dicts:
             if (
@@ -1098,6 +1108,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "proxy" and m.get("loop_type") == "main":
@@ -1115,6 +1126,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "proxy" and m.get("loop_type") == "router":
@@ -1135,6 +1147,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "main":
@@ -1157,6 +1170,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "user_code":
@@ -1182,6 +1196,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_monitoring_iterations_total",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         for m in metrics:
             if m.get("component") == "replica" and m.get("loop_type") == "router":
@@ -1203,6 +1218,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_scheduling_latency_ms_count",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         # Should have metrics for proxy main, replica main, replica user_code, router
         component_loop_pairs = set()
@@ -1232,6 +1248,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
             "ray_serve_event_loop_tasks",
             timeout=10,
             timeseries=timeseries,
+            wait=False,
         )
         # Should have metrics for proxy main, replica main, replica user_code, router
         component_loop_pairs = set()

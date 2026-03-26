@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
@@ -72,7 +73,9 @@ def check_sum_metric_eq(
         timeseries = PrometheusTimeseries()
 
     metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
@@ -808,7 +811,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+            get_metric_dictionaries(
+                "ray_serve_deployment_request_counter_total", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -840,7 +845,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries(
+                "ray_serve_deployment_processing_latency_ms_count", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -859,7 +866,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
+        )
         == 2
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
@@ -877,7 +886,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_deployment_error_counter_total", wait=False
+            )
+        )
         == 1,
         timeout=40,
     )
@@ -889,10 +902,14 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["deployment"],
         err_requests[0]["application"],
     ) == expected_output
+    assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+        )
         == 3,
+        timeout=40,
     )
     health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {
@@ -904,6 +921,34 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
     } == expected_output
+
+
+def test_deployment_error_counter_exception_type(metrics_start_shutdown):
+    """Test that ray_serve_deployment_error_counter_total captures exception_type tag."""
+
+    @serve.deployment
+    def raises_value_error():
+        raise ValueError("intentional test error")
+
+    serve.run(
+        raises_value_error.bind(), name="value_error_app", route_prefix="/value_error"
+    )
+    url = get_application_url("HTTP", "value_error_app") + "/value_error"
+    assert httpx.get(url).status_code == 500
+
+    def check_metric():
+        err_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_error_counter_total", wait=False
+        )
+        value_error_metrics = [
+            m for m in err_metrics if m.get("exception_type") == "ValueError"
+        ]
+        if len(value_error_metrics) == 1:
+            assert value_error_metrics[0]["exception_type"] == "ValueError"
+            return True
+        return False
+
+    wait_for_condition(check_metric, timeout=40)
 
 
 def test_queue_wait_time_metric(metrics_start_shutdown):
@@ -931,7 +976,9 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     def check_queue_wait_time_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            wait=False,
         )
         if not metrics:
             return False
@@ -987,7 +1034,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
         # Check that the router queue length metric appears with correct tags
         def check_router_queue_len():
             metrics = get_metric_dictionaries(
-                "ray_serve_request_router_queue_len", timeseries=timeseries
+                "ray_serve_request_router_queue_len", timeseries=timeseries, wait=False
             )
             if not metrics:
                 return False
@@ -1135,7 +1182,9 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
 
     # Wait for metrics to be updated
     def metrics_available():
-        metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
+        metrics = get_metric_dictionaries(
+            "ray_serve_num_http_requests_total", wait=False
+        )
         api_metrics = [m for m in metrics if m.get("application") == "api_app"]
         return len(api_metrics) >= 3
 
@@ -1232,7 +1281,7 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
     # This metric is recorded when the controller polls routing stats from replicas
     def check_routing_stats_delay_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries, wait=False
         )
         if not metrics:
             return False
@@ -1308,7 +1357,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="exception" is reported
     def check_exception_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1334,7 +1383,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="timeout" is reported
     def check_timeout_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1360,65 +1409,94 @@ def test_replica_utilization_metric(metrics_start_shutdown):
     2. It has the correct tags (deployment, application, replica)
     3. The value is within the expected range (0-100)
 
-    With window=1s, max_ongoing_requests=1, and 800ms sleep per request:
-    - Utilization = 800ms / (1000ms * 1) * 100 = 80%
+    The utilization window and report interval are configured via env vars in
+    BUILD.bazel (RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S, etc.).  With
+    max_ongoing_requests=1 and continuous 800ms-sleep requests the replica is
+    busy ~80% of the time in steady state.  We wait for one full window
+    duration so the window is saturated, then assert >= 70%.
     """
 
     @serve.deployment(name="UtilizationTest", max_ongoing_requests=1)
     class SlowDeployment:
         def __call__(self):
-            # Sleep for 800ms to generate 80% utilization in a 1s window
+            # Sleep for 800ms per request to generate ~80% utilization.
             time.sleep(0.8)
             return "ok"
 
     app_name = "utilization_app"
     handle = serve.run(SlowDeployment.bind(), name=app_name)
 
-    # Fire a request that takes 800ms (80% of 1s window)
-    handle.remote().result()
+    # Continuously send requests in a background thread to maintain utilization
+    # throughout the rolling window while we poll for the metric.
+    stop_sending = threading.Event()
 
-    timeseries = PrometheusTimeseries()
+    def _send_requests_forever():
+        while not stop_sending.is_set():
+            try:
+                handle.remote().result()
+            except Exception:
+                pass
 
-    # Wait for the utilization metric to be reported
-    def check_utilization_metric_exists():
-        metrics = get_metric_dictionaries(
-            "ray_serve_replica_utilization_percent", timeseries=timeseries
-        )
-        if not metrics:
+    sender = threading.Thread(target=_send_requests_forever, daemon=True)
+    sender.start()
+
+    try:
+        # Wait for the rolling window to fill up with continuous requests so
+        # we observe steady-state utilization rather than a ramp-up value.
+        window_s = float(os.environ.get("RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S", "5"))
+        time.sleep(window_s)
+
+        timeseries = PrometheusTimeseries()
+
+        # Wait for the utilization metric to be reported
+        def check_utilization_metric_exists():
+            metrics = get_metric_dictionaries(
+                "ray_serve_replica_utilization_percent",
+                timeseries=timeseries,
+                wait=False,
+            )
+            if not metrics:
+                return False
+
+            # Check that at least one metric has the expected tags
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "UtilizationTest"
+                    and metric.get("application") == app_name
+                    and "replica" in metric
+                ):
+                    return True
             return False
 
-        # Check that at least one metric has the expected tags
-        for metric in metrics:
-            if (
-                metric.get("deployment") == "UtilizationTest"
-                and metric.get("application") == app_name
-                and "replica" in metric
-            ):
-                return True
-        return False
+        wait_for_condition(check_utilization_metric_exists, timeout=30)
+        print("Replica utilization metric exists with correct tags.")
 
-    wait_for_condition(check_utilization_metric_exists, timeout=30)
-    print("Replica utilization metric exists with correct tags.")
+        # Verify the metric value is within expected range
+        def check_utilization_metric_value():
+            value = get_metric_float(
+                "ray_serve_replica_utilization_percent",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "UtilizationTest",
+                    "application": app_name,
+                },
+            )
+            # Value should be between 0 and 100
+            assert 0 <= value <= 100, f"Utilization should be 0-100, got {value}"
+            # With continuous 800ms requests and max_ongoing_requests=1 the
+            # theoretical steady-state utilization is ~80%.  After sleeping for
+            # one full window duration the window should be saturated.
+            assert (
+                value >= 70
+            ), f"Utilization should be >= 70 at steady state, got {value}"
+            print(f"Replica utilization value: {value}%")
+            return True
 
-    # Verify the metric value is within expected range
-    def check_utilization_metric_value():
-        value = get_metric_float(
-            "ray_serve_replica_utilization_percent",
-            timeseries=timeseries,
-            expected_tags={
-                "deployment": "UtilizationTest",
-                "application": app_name,
-            },
-        )
-        # Value should be between 0 and 100
-        assert 0 <= value <= 100, f"Utilization should be 0-100, got {value}"
-        # should be 80% but I am giving it some tolerance for the test to pass
-        assert value >= 70, f"Utilization should be >= 70 after requests, got {value}"
-        print(f"Replica utilization value: {value}%")
-        return True
-
-    wait_for_condition(check_utilization_metric_value, timeout=30)
-    print("Replica utilization metric value verified.")
+        wait_for_condition(check_utilization_metric_value, timeout=30)
+        print("Replica utilization metric value verified.")
+    finally:
+        stop_sending.set()
+        sender.join(timeout=10)
 
 
 if __name__ == "__main__":

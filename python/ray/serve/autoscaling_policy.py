@@ -25,6 +25,13 @@ def _apply_scaling_factors(
     The computation uses the difference between desired and current to scale.
 
     """
+    # When scaling from zero, the scaling factor is not meaningful: the
+    # entire desired count would be treated as the delta and amplified,
+    # creating a feedback loop that compounds every control-loop tick.
+    # Return the raw desired value and let bounds handle the rest.
+    if current_num_replicas == 0:
+        return math.ceil(desired_num_replicas)
+
     replicas_delta = desired_num_replicas - current_num_replicas
     scaling_factor = (
         autoscaling_config.get_upscaling_factor()
@@ -102,18 +109,6 @@ def _apply_delay_logic(
     return decision_num_replicas, policy_state
 
 
-def _apply_bounds(
-    num_replicas: int,
-    capacity_adjusted_min_replicas: int,
-    capacity_adjusted_max_replicas: int,
-) -> int:
-    """Clip replica count to be within capacity-adjusted min/max bounds."""
-    return max(
-        capacity_adjusted_min_replicas,
-        min(capacity_adjusted_max_replicas, num_replicas),
-    )
-
-
 def _apply_default_params(
     desired_num_replicas: Union[int, float],
     ctx: AutoscalingContext,
@@ -124,16 +119,16 @@ def _apply_default_params(
     desired_num_replicas = _apply_scaling_factors(
         desired_num_replicas, ctx.current_num_replicas, ctx.config
     )
-    # Apply bounds
-    bounded_num_replicas = _apply_bounds(
-        desired_num_replicas,
-        ctx.capacity_adjusted_min_replicas,
-        ctx.capacity_adjusted_max_replicas,
-    )
+
+    # If curr num replicas is 0 and the policy wants to scale up (e.g. based on internal
+    # signals like queue length), bypass the delay logic for immediate scale-up.
+    if ctx.current_num_replicas == 0 and desired_num_replicas > 0:
+        return desired_num_replicas, policy_state
+
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
     final_num_replicas, updated_state = _apply_delay_logic(
-        bounded_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+        max(0, desired_num_replicas), ctx.target_num_replicas, ctx.config, policy_state
     )
 
     return final_num_replicas, updated_state
@@ -185,13 +180,12 @@ def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """
     Returns the desired number of replicas if the cold start fast path applies, otherwise returns None.
     """
-    if ctx.current_num_replicas == 0:
-        if ctx.total_num_requests > 0 or ctx.total_pending_async_requests > 0:
-            return max(
-                math.ceil(1 * ctx.config.get_upscaling_factor()),
-                ctx.target_num_replicas,
-            )
-        return ctx.target_num_replicas
+    if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
+        return max(
+            math.ceil(1 * ctx.config.get_upscaling_factor()),
+            ctx.target_num_replicas,
+        )
+
     return None
 
 
@@ -298,25 +292,9 @@ def _core_replica_queue_length_policy(
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
     if num_running_replicas == 0:
-        raise ValueError("Number of replicas cannot be zero")
+        return ctx.target_num_replicas, {}
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
     error_ratio = ctx.total_num_requests / target_num_requests
-    desired_num_replicas = num_running_replicas * error_ratio
-    return desired_num_replicas, {}
-
-
-def _core_async_inference_policy(
-    ctx: AutoscalingContext,
-) -> Tuple[float, Dict[str, Any]]:
-    num_running_replicas = ctx.current_num_replicas
-
-    # Calculate total workload = queue tasks + HTTP requests
-    total_workload = ctx.total_num_requests + ctx.total_pending_async_requests
-    config = ctx.config
-    if num_running_replicas == 0:
-        raise ValueError("Number of replicas cannot be zero")
-    target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
-    error_ratio = total_workload / target_num_requests
     desired_num_replicas = num_running_replicas * error_ratio
     return desired_num_replicas, {}
 
@@ -341,22 +319,4 @@ def replica_queue_length_autoscaling_policy(
     return _core_replica_queue_length_policy(ctx)
 
 
-@PublicAPI(stability="beta")
-def async_inference_autoscaling_policy(
-    ctx: AutoscalingContext,
-) -> Tuple[Union[int, float], Dict[str, Any]]:
-    """Autoscaling policy for async inference workloads.
-
-    Scales replicas based on the total workload, which includes both
-    HTTP requests and the async inference task queue length.
-    """
-    cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
-    if cold_start_replicas is not None:
-        return cold_start_replicas, ctx.policy_state
-
-    return _core_async_inference_policy(ctx)
-
-
 default_autoscaling_policy = replica_queue_length_autoscaling_policy
-
-default_async_inference_autoscaling_policy = async_inference_autoscaling_policy

@@ -328,6 +328,7 @@ py_test_module_list(
         "test_ray_debugger.py",
         "test_ray_init.py",
         "test_ray_shutdown.py",
+        "test_resize_raylet.py",
         "test_resource_metrics.py",
         "test_runtime_context.py",
         "test_runtime_env_env_vars.py",
@@ -557,6 +558,7 @@ py_test_module_list(
         "test_runtime_env_fork_process.py",
         "test_runtime_env_get_wheel_names.py",
         "test_runtime_env_py_executable.py",
+        "test_state_api_manager.py",
         "test_state_api_summary.py",
         "test_streaming_generator_regression.py",
         "test_system_metrics.py",
@@ -618,13 +620,13 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
-        "gpu_objects/test_gpu_objects_custom.py",
-        "gpu_objects/test_gpu_objects_gloo.py",
+        "rdt/test_rdt_custom.py",
+        "rdt/test_rdt_gloo.py",
     ],
     tags = [
         "exclusive",
-        "gpu_objects",
         "no_windows",
+        "rdt",
         "team:core",
     ],
     deps = [
@@ -637,17 +639,17 @@ py_test_module_list(
     size = "medium",
     env = {"RAY_PYTEST_USE_GPU": "1"},
     files = [
-        "gpu_objects/test_gpu_objects_ipc.py",
-        "gpu_objects/test_gpu_objects_nccl.py",
-        "gpu_objects/test_gpu_objects_nixl.py",
+        "rdt/test_rdt_ipc.py",
+        "rdt/test_rdt_nccl.py",
+        "rdt/test_rdt_nixl.py",
         "test_gpu_tensor_zero_copy_serialization.py",
     ],
     tags = [
         "custom_setup",
         "exclusive",
-        "gpu_objects",
         "multi_gpu",
         "no_windows",
+        "rdt",
         "team:core",
     ],
     deps = [
@@ -909,6 +911,7 @@ py_test_module_list(
         "test_runtime_env_working_dir_uri.py",
         "test_serialization.py",
         "test_state_api.py",
+        "test_state_api_data_source_client_get.py",
         "test_task_events.py",
         "test_task_events_2.py",
     ],
@@ -1215,6 +1218,7 @@ py_test(
     size = "small",
     srcs = [
         "test_typing.py",
+        "typing_files/check_typing_actor_async.py",
         "typing_files/check_typing_bad.py",
         "typing_files/check_typing_good.py",
     ],
@@ -1280,6 +1284,23 @@ py_test(
     deps = [
         ":conftest",
         "//:ray_lib",
+    ],
+)
+
+sh_test(
+    name = "test_exported_symbols_unix",
+    size = "small",
+    srcs = ["test_exported_symbols_linux.sh"],
+    data = [
+        "raylet_exported_symbols_linux.txt",
+        "raylet_exported_symbols_macos.txt",
+        "//:_raylet",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
     ],
 )
 

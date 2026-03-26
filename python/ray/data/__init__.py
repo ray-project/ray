@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -106,7 +107,7 @@ try:
     if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
     else:
-        from ray._private.ray_constants import env_bool
+        from ray._common.utils import env_bool
 
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
             "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
@@ -138,6 +139,7 @@ __all__ = [
     "ExecutionResources",
     "FileShuffleConfig",
     "NodeIdStr",
+    "RandomSeedConfig",
     "ReadTask",
     "RowBasedFileDatasink",
     "Schema",
@@ -171,7 +173,6 @@ __all__ = [
     "read_delta",
     "read_delta_sharing_tables",
     "read_kafka",
-    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",
@@ -187,6 +188,7 @@ __all__ = [
     "read_unity_catalog",
     "read_videos",
     "read_webdataset",
+    "KafkaAuthConfig",
     "Preprocessor",
     "TFXReadOptions",
 ]

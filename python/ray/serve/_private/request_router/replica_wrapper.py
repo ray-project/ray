@@ -30,6 +30,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2_grpc import ASGIServiceStub
 from ray.util.annotations import PublicAPI
+from ray.util.tracing.tracing_helper import (
+    _DictPropagator,
+    _is_tracing_enabled,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -135,6 +139,13 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             request_serialization, response_serialization
         )
 
+        # When using gRPC transport, requests go over the network rather than through
+        # Ray's actor RPC. Ray's tracing decorators inject _ray_trace_ctx for actor
+        # calls, but that doesn't apply here. We must manually inject the current
+        # trace context so it propagates to the replica (matching the actor path).
+        if _is_tracing_enabled():
+            pr.kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
+
         asgi_request = ASGIRequest(
             pickled_request_metadata=pickle.dumps(pr.metadata),
             request_args=serializer.dumps_request(pr.args),
@@ -189,6 +200,24 @@ class RunningReplica:
         # Replica wrappers
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
+
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        """Update mutable fields from a new RunningReplicaInfo.
+
+        Called when reusing an existing wrapper in _update_running_replicas.
+        Replicas dynamically load/unload models via record_multiplexed_model_ids,
+        which triggers a broadcast with updated RunningReplicaInfo. Without this
+        update, the router would use stale multiplexed_model_ids and break
+        multiplexed model routing.
+
+        Because we reassign _replica_info, any property that reads from it
+        (including max_ongoing_requests, node_id, availability_zone, etc.)
+        will reflect the new values. Fields that are cached separately
+        (e.g., _actor_handle) are NOT refreshed here because they are tied
+        to the replica's identity and should never change for a live replica.
+        """
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
     @property
     def replica_id(self) -> ReplicaID:

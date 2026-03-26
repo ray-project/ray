@@ -7,8 +7,6 @@ import json
 import logging
 import os
 import pathlib
-import re
-import tempfile
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -186,11 +184,9 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment.trial import ExportFormat
-from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, _global_registry, get_trainable_cls
 from ray.tune.resources import Resources
 from ray.tune.result import TRAINING_ITERATION
@@ -406,15 +402,12 @@ class Algorithm(Checkpointable, Trainable):
         self,
         config: Optional[AlgorithmConfig] = None,
         env=None,  # deprecated arg
-        logger_creator: Optional[Callable[[], Logger]] = None,
         **kwargs,
     ):
         """Initializes an Algorithm instance.
 
         Args:
             config: Algorithm-specific configuration object.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
         # Translate possible dict into an AlgorithmConfig object, as well as,
@@ -475,9 +468,6 @@ class Algorithm(Checkpointable, Trainable):
         self._env_id, self.env_creator = self._get_env_id_and_creator(
             config.env, config
         )
-        env_descr = (
-            self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
-        )
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -491,42 +481,6 @@ class Algorithm(Checkpointable, Trainable):
         self.metrics: MetricsLogger = MetricsLogger(
             root=True, stats_cls_lookup=config.stats_cls_lookup
         )
-
-        # Create a default logger creator if no logger_creator is specified
-        if logger_creator is None:
-            # Default logdir prefix containing the agent's name and the
-            # env id.
-            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
-            logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
-
-            if not os.path.exists(DEFAULT_STORAGE_PATH):
-                # Possible race condition if dir is created several times on
-                # rollout workers
-                os.makedirs(DEFAULT_STORAGE_PATH, exist_ok=True)
-            logdir = tempfile.mkdtemp(prefix=logdir_prefix, dir=DEFAULT_STORAGE_PATH)
-
-            # Allow users to more precisely configure the created logger
-            # via "logger_config.type".
-            if config.logger_config and "type" in config.logger_config:
-
-                def default_logger_creator(config):
-                    """Creates a custom logger with the default prefix."""
-                    cfg = config["logger_config"].copy()
-                    cls = cfg.pop("type")
-                    # Provide default for logdir, in case the user does
-                    # not specify this in the "logger_config" dict.
-                    logdir_ = cfg.pop("logdir", logdir)
-                    return from_config(cls=cls, _args=[cfg], logdir=logdir_)
-
-            # If no `type` given, use tune's UnifiedLogger as last resort.
-            else:
-
-                def default_logger_creator(config):
-                    """Creates a Unified logger with the default prefix."""
-                    return UnifiedLogger(config, logdir, loggers=None)
-
-            logger_creator = default_logger_creator
 
         # Metrics-related properties.
         self._timers = defaultdict(_Timer)
@@ -582,7 +536,6 @@ class Algorithm(Checkpointable, Trainable):
 
         super().__init__(
             config=config,
-            logger_creator=logger_creator,
             **kwargs,
         )
 
@@ -1444,18 +1397,11 @@ class Algorithm(Checkpointable, Trainable):
                 return self._run_offline_evaluation_old_api_stack()
 
             if self.config.enable_env_runner_and_connector_v2:
-                if (
-                    self.env_runner_group is not None
-                    and self.env_runner_group.healthy_env_runner_ids()
-                ):
-                    # TODO (sven): Replace this with a new ActorManager API:
-                    #  try_remote_request_till_success("get_state") -> tuple(int,
-                    #  remoteresult)
-                    weights_src = self.env_runner_group._worker_manager._actors[
-                        self.env_runner_group.healthy_env_runner_ids()[0]
-                    ]
-                else:
-                    weights_src = self.learner_group
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult) and get results from EnvRunners.
+                # TODO (Artur): Use Ray Core's concurrency groups to give get_state a separate concurrency limit.
+                weights_src = self.learner_group
             else:
                 weights_src = self.env_runner
 
@@ -1569,7 +1515,7 @@ class Algorithm(Checkpointable, Trainable):
 
             if self.config.enable_env_runner_and_connector_v2:
                 if log_once("no_eval_results") and not self.metrics.peek(
-                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS), default={}
                 ):
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
@@ -2046,17 +1992,16 @@ class Algorithm(Checkpointable, Trainable):
                     for i in range(1, num_workers + 1)
                 ]
 
-                results = (
-                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
-                        func=_env_runner_remote,
-                        kwargs={
-                            "num": _num,
-                            "round": _round,
-                            "iter": algo_iteration,
-                            "_force_reset": force_reset,
-                        },
-                        tag="_env_runner_remote",
-                    )
+                results = self.eval_env_runner_group.foreach_env_runner(
+                    func=_env_runner_remote,
+                    kwargs={
+                        "num": _num,
+                        "round": _round,
+                        "iter": algo_iteration,
+                        "_force_reset": force_reset,
+                    },
+                    timeout_seconds=time_out,
+                    local_env_runner=False,
                 )
 
                 # Make sure we properly time out if we have not received any results
