@@ -210,9 +210,28 @@ def download_bytes_async(
     if not isinstance(block, pa.Table):
         block = BlockAccessor.for_block(block).to_arrow()
 
-    # Check first URI to determine if obstore supports this scheme.
     first_uris = block.column(uri_column_names[0]).to_pylist()
-    if not first_uris or not _is_obstore_supported_url(first_uris[0]):
+    if not first_uris:
+        yield block
+        return
+
+    # Fall back to PyArrow for URI schemes obstore doesn't handle.
+    if not _is_obstore_supported_url(first_uris[0]):
+        logger.debug(
+            "URI scheme not supported by obstore (first URI: %s); "
+            "falling back to PyArrow threaded download.",
+            first_uris[0],
+        )
+        # Drop any file-size columns the PartitionActor may have attached,
+        # since download_bytes_threaded doesn't know about them.
+        size_cols = [
+            f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+            for name in uri_column_names
+            if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
+        ]
+        if size_cols:
+            block = block.drop(size_cols)
+
         from ray.data._internal.planner.plan_download_op import (
             download_bytes_threaded,
         )
@@ -344,6 +363,7 @@ async def _download_uris_with_obstore(
 
     # --- Range-split path ---
     assert sem is not None
+    # 0 = unknown size; these will be resolved via HEAD below.
     sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
 
     # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
@@ -376,7 +396,11 @@ async def _resolve_size(
     registry: StoreRegistry,
     semaphore: asyncio.Semaphore,
 ) -> int:
-    """Return the file size in bytes via a HEAD request, or 0 on failure."""
+    """Return the file size in bytes via a HEAD request, or 0 on failure.
+
+    Returning 0 on failure is intentional: callers treat 0 as "unknown size",
+    which routes the file to a simple GET instead of ranged download.
+    """
     import obstore as obs
 
     try:
@@ -453,6 +477,8 @@ async def _fetch_ranged(
         try:
             await asyncio.gather(*tasks)
         except Exception:
+            # Cancel remaining chunk tasks to release semaphore permits
+            # and avoid wasted downloads into a bytearray we'll discard.
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)

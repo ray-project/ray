@@ -116,6 +116,7 @@ def plan_download_op(
 
     if OBSTORE_AVAILABLE:
         download_fn = download_bytes_async
+        logger.debug("Using obstore async download path.")
     else:
         download_fn = download_bytes_threaded
         _log_fallback_warning(use_obstore=False)
