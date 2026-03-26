@@ -16,6 +16,7 @@ TRANSCRIPTION_MODEL = "openai/whisper-tiny"
 SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
+BATCH_SIZE = 64
 
 ray.init()
 
@@ -96,6 +97,7 @@ def run_pipeline():
     ds = ds.map_batches(whisper_preprocess)
     ds = ds.map_batches(
         Transcriber,
+        batch_size=BATCH_SIZE,
         num_gpus=1,
     )
     ds = ds.map_batches(decoder)
