@@ -105,8 +105,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result1 =
-        cluster_resource_scheduler_->SchedulePlacementGroup(resource_request_list, scheduling_options);
+    const auto &result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result1.status.IsSuccess());
     ASSERT_EQ(result1.selected_nodes.size(), 3);
 
@@ -123,8 +123,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result2 =
-        cluster_resource_scheduler_->SchedulePlacementGroup(resource_request_list, scheduling_options);
+    const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result2.status.IsFailed());
     ASSERT_EQ(result2.selected_nodes.size(), 0);
 
@@ -178,8 +178,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    auto result =
-        cluster_resource_scheduler_->SchedulePlacementGroup(resource_request_list, scheduling_options);
+    auto result = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result.status.IsSuccess());
     ASSERT_EQ(result.selected_nodes.size(), resources_list.size());
   }
