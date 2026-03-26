@@ -1,4 +1,5 @@
 import sys
+import warnings
 
 import pytest
 
@@ -9,10 +10,11 @@ from ray.llm._internal.serve.core.ingress.builder import (
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
     PDServingArgs,
-    ProxyClsConfig,
     build_pd_openai_app,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    PDDecodeServer,
+    PDPrefillServer,
     PDProxyServer,
 )
 from ray.serve.llm import LLMConfig
@@ -49,12 +51,11 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
-        # Verify defaults
-        assert isinstance(args.proxy_cls_config, ProxyClsConfig)
-        assert args.proxy_cls_config.proxy_cls == PDProxyServer
+        # Verify defaults: proxy fields are None (deprecated)
+        assert args.proxy_cls_config is None
+        assert args.proxy_deployment_config is None
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
         assert args.ingress_cls_config.ingress_cls == OpenAiIngress
-        assert args.proxy_deployment_config == {}
         assert args.ingress_deployment_config == {}
 
     def test_flexible_input_types(self):
@@ -75,43 +76,44 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
-    def test_proxy_config_flexibility(self, pd_configs):
-        """Test proxy_cls_config: defaults, dict input, object input, and class loading."""
+    def test_proxy_config_deprecated(self, pd_configs):
+        """Test proxy_cls_config and proxy_deployment_config emit deprecation warnings."""
         prefill, decode = pd_configs
 
-        # Test defaults
-        args_default = PDServingArgs(prefill_config=prefill, decode_config=decode)
-        assert isinstance(args_default.proxy_cls_config, ProxyClsConfig)
-        assert args_default.proxy_cls_config.proxy_cls == PDProxyServer
-        assert args_default.proxy_cls_config.proxy_extra_kwargs == {}
+        # proxy_cls_config as dict should warn
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            PDServingArgs(
+                prefill_config=prefill,
+                decode_config=decode,
+                proxy_cls_config={"proxy_extra_kwargs": {"key": "value"}},
+            )
+            deprecation_msgs = [
+                str(warning.message)
+                for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert any(
+                "proxy_cls_config is deprecated" in msg for msg in deprecation_msgs
+            )
 
-        # Test as dict with custom kwargs
-        args_dict = PDServingArgs(
-            prefill_config=prefill,
-            decode_config=decode,
-            proxy_cls_config={"proxy_extra_kwargs": {"key": "value"}},
-        )
-        assert isinstance(args_dict.proxy_cls_config, ProxyClsConfig)
-        assert args_dict.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
-
-        # Test as object
-        args_obj = PDServingArgs(
-            prefill_config=prefill,
-            decode_config=decode,
-            proxy_cls_config=ProxyClsConfig(proxy_extra_kwargs={"key": "value"}),
-        )
-        assert isinstance(args_obj.proxy_cls_config, ProxyClsConfig)
-        assert args_obj.proxy_cls_config.proxy_extra_kwargs == {"key": "value"}
-
-        # Test class loading from string
-        args_str = PDServingArgs(
-            prefill_config=prefill,
-            decode_config=decode,
-            proxy_cls_config={
-                "proxy_cls": "ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server:PDProxyServer"
-            },
-        )
-        assert args_str.proxy_cls_config.proxy_cls == PDProxyServer
+        # proxy_deployment_config should warn
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            PDServingArgs(
+                prefill_config=prefill,
+                decode_config=decode,
+                proxy_deployment_config={"num_replicas": 2},
+            )
+            deprecation_msgs = [
+                str(warning.message)
+                for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert any(
+                "proxy_deployment_config is deprecated" in msg
+                for msg in deprecation_msgs
+            )
 
     def test_ingress_config_flexibility(self, pd_configs):
         """Test ingress_cls_config: defaults, dict input, object input, and class loading."""
@@ -255,56 +257,90 @@ class TestBuildPDOpenaiApp:
         decode = LLMConfig.model_validate(base_config)
         return prefill, decode
 
-    def test_deployment_config_merging(self, pd_configs):
-        """Test that deployment configs are properly merged with default options.
-
-        This test ensures that deep_merge_dicts return value is properly assigned
-        for both proxy and ingress deployments, and that nested dictionaries are
-        properly deep-merged without losing default values.
+    def test_3_tier_graph_structure(self, pd_configs):
+        """Test that build_pd_openai_app creates a 3-tier graph:
+        ingress -> PDDecodeServer -> PDPrefillServer.
         """
         prefill, decode = pd_configs
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
 
-        # Build app with custom configs for both proxy and ingress including nested options
+        # The app should have an ingress deployment bound to the decode deployment
+        ingress_deployment = app._bound_deployment
+        decode_app = ingress_deployment.init_kwargs["llm_deployments"][0]
+        decode_deployment = decode_app._bound_deployment
+
+        # Decode deployment should be PDDecodeServer (not PDProxyServer)
+        assert decode_deployment.func_or_class is PDDecodeServer
+
+        # Decode should have a prefill_server in its bind kwargs
+        assert "prefill_server" in decode_deployment.init_kwargs
+
+        # The prefill_server should be a PDPrefillServer Application
+        prefill_app = decode_deployment.init_kwargs["prefill_server"]
+        prefill_deployment = prefill_app._bound_deployment
+        assert prefill_deployment.func_or_class is PDPrefillServer
+
+    def test_ingress_deployment_config(self, pd_configs):
+        """Test that ingress deployment configs are properly applied."""
+        prefill, decode = pd_configs
         app = build_pd_openai_app(
             {
                 "prefill_config": prefill,
                 "decode_config": decode,
-                "proxy_deployment_config": {
-                    "num_replicas": 2,
-                    "ray_actor_options": {
-                        "num_cpus": 4,
-                        "memory": 2048,
-                    },
-                    "max_ongoing_requests": 150,  # Override default
-                },
                 "ingress_deployment_config": {
                     "num_replicas": 5,
                     "ray_actor_options": {
                         "num_cpus": 8,
                         "memory": 4096,
                     },
-                    "max_ongoing_requests": 300,  # Override default
+                    "max_ongoing_requests": 300,
                 },
             }
         )
 
-        # The app should have an ingress deployment bound to a proxy deployment
-        # The proxy is passed as an Application via llm_deployments in init_kwargs
         ingress_deployment = app._bound_deployment
-        proxy_app = ingress_deployment.init_kwargs["llm_deployments"][0]
-        proxy_deployment = proxy_app._bound_deployment
-
-        # Verify proxy config was applied with deep merge
-        assert proxy_deployment._deployment_config.num_replicas == 2
-        assert proxy_deployment.ray_actor_options["num_cpus"] == 4
-        assert proxy_deployment.ray_actor_options["memory"] == 2048
-        assert proxy_deployment._deployment_config.max_ongoing_requests == 150
-
-        # Verify ingress config was applied with deep merge
         assert ingress_deployment._deployment_config.num_replicas == 5
         assert ingress_deployment.ray_actor_options["num_cpus"] == 8
         assert ingress_deployment.ray_actor_options["memory"] == 4096
         assert ingress_deployment._deployment_config.max_ongoing_requests == 300
+
+    def test_deprecated_proxy_config_ignored(self, pd_configs):
+        """Test that deprecated proxy configs are accepted but ignored."""
+        prefill, decode = pd_configs
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            app = build_pd_openai_app(
+                {
+                    "prefill_config": prefill,
+                    "decode_config": decode,
+                    "proxy_deployment_config": {
+                        "num_replicas": 99,
+                    },
+                }
+            )
+            # App should still be valid — proxy config is just ignored
+            assert app is not None
+
+
+class TestPDProxyServerDeprecated:
+    """Test that PDProxyServer emits deprecation warnings."""
+
+    def test_proxy_server_warns_on_instantiation(self):
+        """PDProxyServer should emit DeprecationWarning on use."""
+        # Just importing is fine; instantiation should warn
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            class MyCustomProxy(PDProxyServer):
+                pass
+
+            deprecation_msgs = [
+                str(warning.message)
+                for warning in w
+                if issubclass(warning.category, DeprecationWarning)
+            ]
+            assert any("PDProxyServer is deprecated" in msg for msg in deprecation_msgs)
 
 
 if __name__ == "__main__":

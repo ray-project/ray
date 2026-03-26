@@ -1,3 +1,5 @@
+import warnings
+
 from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
@@ -5,6 +7,8 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer as _DPServer,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    PDDecodeServer as _PDDecodeServer,
+    PDPrefillServer as _PDPrefillServer,
     PDProxyServer as _PDProxyServer,
 )
 from ray.util.annotations import PublicAPI
@@ -70,19 +74,47 @@ class LLMServer(InternalLLMServer):
 
 
 @PublicAPI(stability="beta")
-class PDProxyServer(_PDProxyServer):
-    """A proxy server for prefill-decode disaggregation.
+class PDDecodeServer(_PDDecodeServer):
+    """Decode-side LLM server for prefill-decode disaggregation.
 
-    This server acts as a proxy in a prefill-decode disaggregated system.
-    For chat and completions, proxy sends the request to the prefill server
-    with max_tokens=1 and then sends the returned metadata to the decode server.
+    This deployment owns a real engine (decode config) and holds a handle
+    to the prefill deployment. For chat/completions it runs remote prefill
+    first, then local decode.
 
-    Args:
-        prefill_server: The prefill server deployment handle.
-        decode_server: The decode server deployment handle.
+    Use ``build_pd_openai_app`` to construct the full 3-tier PD graph.
     """
 
     pass
+
+
+@PublicAPI(stability="beta")
+class PDPrefillServer(_PDPrefillServer):
+    """Prefill-side LLM server for prefill-decode disaggregation.
+
+    A standard LLMServer with an additional ``prewarm_prefill`` method
+    used during the optional pre-warm handshake.
+    """
+
+    pass
+
+
+class PDProxyServer(_PDProxyServer):
+    """A proxy server for prefill-decode disaggregation.
+
+    .. deprecated::
+        ``PDProxyServer`` is deprecated. The PD graph now uses
+        ``PDDecodeServer`` (decode-as-orchestrator) instead of a separate
+        proxy deployment.  Use ``build_pd_openai_app`` to construct the
+        3-tier graph.
+    """
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        warnings.warn(
+            "PDProxyServer is deprecated. Use PDDecodeServer instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -130,4 +162,10 @@ class DPServer(_DPServer):
     pass
 
 
-__all__ = ["LLMServer", "PDProxyServer", "DPServer"]
+__all__ = [
+    "LLMServer",
+    "PDDecodeServer",
+    "PDPrefillServer",
+    "PDProxyServer",
+    "DPServer",
+]

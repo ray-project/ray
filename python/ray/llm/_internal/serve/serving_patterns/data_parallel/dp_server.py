@@ -100,7 +100,7 @@ class DPServer(LLMServer):
     fails, the entire group is restarted atomically.
     """
 
-    async def __init__(self, llm_config: LLMConfig):
+    async def __init__(self, llm_config: LLMConfig, **kwargs):
         ctx = serve.get_replica_context()
         gang_context = ctx.gang_context
 
@@ -176,7 +176,7 @@ class DPServer(LLMServer):
             self.dp_rank, bundles_per_replica, sorted_indices
         )
 
-        await super().__init__(llm_config)
+        await super().__init__(llm_config, **kwargs)
 
     @staticmethod
     def _compute_bundle_indices(

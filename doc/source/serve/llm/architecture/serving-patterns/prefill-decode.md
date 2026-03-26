@@ -10,13 +10,13 @@ Prefill-decode (PD) disaggregation is a serving pattern that separates the prefi
 width: 700px
 name: pd-architecture
 ---
-Prefill-decode disaggregation architecture with PDProxyServer coordinating prefill and decode deployments.
+Prefill-decode disaggregation architecture with PDDecodeServer orchestrating remote prefill and local decode.
 ```
 
 In prefill-decode disaggregation:
 
-- **Prefill deployment**: Processes input prompts and generates initial KV cache.
-- **Decode deployment**: Uses transferred KV cache to generate output tokens.
+- **Prefill deployment** (`PDPrefillServer`): Processes input prompts and generates initial KV cache.
+- **Decode deployment** (`PDDecodeServer`): Orchestrates the flow — calls prefill remotely, then runs decode locally on its own engine using the transferred KV cache.
 - **Independent scaling**: Each phase scales based on its own load.
 - **Resource optimization**: Different engine configurations for different phases.
 
@@ -45,57 +45,48 @@ Disaggregation enables:
 
 ## Components
 
-### PDProxyServer
+### PDDecodeServer
 
-`PDProxyServer` orchestrates the disaggregated serving:
+`PDDecodeServer` is the decode-side LLM server that orchestrates the disaggregated flow. It owns a real engine and holds a handle to the prefill deployment:
 
 ```python
-class PDProxyServer:
-    """Proxy server for prefill-decode disaggregation."""
-    
+class PDDecodeServer(PDOrchestratorMixin, LLMServer):
+    """Decode-side server with orchestration."""
+
     def __init__(
         self,
-        prefill_handle: DeploymentHandle,
-        decode_handle: DeploymentHandle,
+        llm_config: LLMConfig,
+        prefill_server: DeploymentHandle,
     ):
-        self.prefill_handle = prefill_handle
-        self.decode_handle = decode_handle
-    
+        self._prefill_handle = prefill_server
+        # Initialize real decode engine
+        super().__init__(llm_config)
+
     async def chat(
         self,
         request: ChatCompletionRequest,
     ) -> AsyncGenerator[str, None]:
         """Handle chat completion with PD flow.
-        
+
         Flow:
-        1. Send request to prefill deployment
-        2. Prefill processes prompt, transfers KV to decode
-        3. Decode generates tokens, streams to client
+        1. Send request to prefill deployment (remote)
+        2. Prefill processes prompt, returns KV metadata
+        3. Run decode locally on own engine with KV metadata
+        4. Stream tokens to client
         """
-        # Prefill phase
-        prefill_result = await self.prefill_handle.chat.remote(request)
-        
-        # Extract KV cache metadata
-        kv_metadata = prefill_result["kv_metadata"]
-        
-        # Decode phase with KV reference
-        async for chunk in self.decode_handle.chat.remote(
-            request, 
-            kv_metadata=kv_metadata
-        ):
-            yield chunk
+        ...
 ```
 
 Key responsibilities:
 
-- Route requests between prefill and decode.
+- Orchestrate remote prefill then local decode.
 - Handle KV cache metadata transfer.
-- Stream responses from decode to client.
+- Stream responses from local decode to client.
 - Manage errors in either phase per request.
 
-### Prefill LLMServer
+### PDPrefillServer
 
-Standard `LLMServer` configured for prefill:
+`PDPrefillServer` extends `LLMServer` for the prefill side. It is a standard LLM server with an additional `prewarm_prefill` method for optional connector warm-up:
 
 ```python
 prefill_config = LLMConfig(
@@ -104,7 +95,6 @@ prefill_config = LLMConfig(
         model_source="meta-llama/Llama-3.1-8B-Instruct"
     ),
     engine_kwargs=dict(
-        # Prefill-specific configuration
         kv_transfer_config={
             "kv_connector": "NixlConnector",
             "kv_role": "kv_both",
@@ -124,7 +114,6 @@ decode_config = LLMConfig(
         model_source="meta-llama/Llama-3.1-8B-Instruct"
     ),
     engine_kwargs=dict(
-        # Decode-specific configuration
         kv_transfer_config={
             "kv_connector": "NixlConnector",
             "kv_role": "kv_both",
@@ -147,16 +136,16 @@ Prefill-decode request flow showing KV cache transfer between phases.
 Detailed request flow:
 
 1. **Client request**: HTTP POST to `/v1/chat/completions`.
-2. **Ingress**: Routes to `PDProxyServer`.
-3. **Proxy → Prefill**: `PDProxyServer` calls prefill deployment.
+2. **Ingress**: Routes to `PDDecodeServer`.
+3. **Decode → Prefill (remote)**: `PDDecodeServer` calls prefill deployment.
    - Prefill server processes prompt.
    - Generates KV cache.
    - Transfers KV to storage backend.
    - Returns KV metadata (location, size, etc.).
-4. **Proxy → Decode**: `PDProxyServer` calls decode deployment with KV metadata.
-   - Decode server loads KV cache from storage.
+4. **Decode (local)**: `PDDecodeServer` runs decode on its own engine with the KV metadata.
+   - Decode engine loads KV cache from storage.
    - Begins token generation.
-   - Streams tokens back through proxy.
+   - Streams tokens back through ingress.
 5. **Response streaming**: Client receives generated tokens.
 
 :::{note}
@@ -205,4 +194,3 @@ Monitor both phases and adjust replica counts and autoscaling policies according
 - {doc}`../core` - Core components and protocols
 - {doc}`data-parallel` - Data parallel attention architecture
 - {doc}`../../user-guides/prefill-decode` - Practical deployment guide
-
