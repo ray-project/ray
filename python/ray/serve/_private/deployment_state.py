@@ -579,6 +579,10 @@ class ActorReplicaWrapper:
         self._last_health_check_failed: Optional[bool] = None
         self._initialization_latency_s: Optional[float] = None
         self._reconfigure_start_time: Optional[float] = None
+        # Tracks a pending non-blocking reconfigure obj ref so we can
+        # detect failures and record latency even when the replica stays
+        # in RUNNING state.
+        self._pending_nonblocking_reconfigure_ref: Optional[ObjectRef] = None
         self._internal_grpc_port: Optional[int] = None
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
@@ -822,6 +826,38 @@ class ActorReplicaWrapper:
         Returns None if no reconfigure operation has started.
         """
         return self._reconfigure_start_time
+
+    def set_pending_nonblocking_reconfigure(self):
+        """Mark the current _ready_obj_ref as a non-blocking reconfigure ref."""
+        self._pending_nonblocking_reconfigure_ref = self._ready_obj_ref
+
+    def check_pending_nonblocking_reconfigure(self) -> Optional[float]:
+        """Check if a pending non-blocking reconfigure has completed.
+
+        Returns:
+            The reconfigure latency in seconds if completed successfully,
+            None if still pending or no pending reconfigure.
+
+        Raises:
+            RuntimeError: if the reconfigure failed on the actor.
+        """
+        if self._pending_nonblocking_reconfigure_ref is None:
+            return None
+
+        if not check_obj_ref_ready_nowait(self._pending_nonblocking_reconfigure_ref):
+            return None
+
+        # Completed — clear the ref and compute latency.
+        try:
+            ray.get(self._pending_nonblocking_reconfigure_ref)
+        except Exception:
+            self._pending_nonblocking_reconfigure_ref = None
+            raise
+
+        self._pending_nonblocking_reconfigure_ref = None
+        if self._reconfigure_start_time is not None:
+            return time.time() - self._reconfigure_start_time
+        return 0.0
 
     @property
     def last_health_check_latency_ms(self) -> Optional[float]:
@@ -3413,6 +3449,11 @@ class DeploymentState:
                 )
                 if actor_updating and blocking_reconfigure:
                     self._replicas.add(ReplicaState.UPDATING, replica)
+                elif actor_updating and not blocking_reconfigure:
+                    # Non-blocking: keep serving but track the obj ref so
+                    # we can detect failures and record latency.
+                    replica._actor.set_pending_nonblocking_reconfigure()
+                    self._replicas.add(ReplicaState.RUNNING, replica)
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
             # We don't allow going from STARTING, PENDING_MIGRATION to UPDATING.
@@ -4183,6 +4224,24 @@ class DeploymentState:
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
         ):
+            # Check for completed non-blocking reconfigure operations.
+            # When blocking_reconfigure=False, replicas stay in RUNNING while
+            # reconfigure runs on the actor. We need to detect failures and
+            # record latency metrics here since _check_startup_replicas won't.
+            try:
+                latency_s = replica._actor.check_pending_nonblocking_reconfigure()
+                if latency_s is not None:
+                    metric_tags = {"replica": replica.replica_id.unique_id}
+                    self.replica_reconfigure_latency_histogram.observe(
+                        latency_s * 1000, tags=metric_tags
+                    )
+            except Exception:
+                logger.warning(
+                    f"Non-blocking reconfigure failed for {replica.replica_id}. "
+                    "The replica will continue serving with its previous config.",
+                    exc_info=True,
+                )
+
             is_healthy = replica.check_health()
 
             # Record health check latency and failure metrics.
