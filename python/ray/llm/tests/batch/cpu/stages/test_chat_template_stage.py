@@ -1,9 +1,11 @@
+import shutil
 import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.llm._internal.batch.stages.chat_template_stage import ChatTemplateUDF
+from ray.llm._internal.common.utils.download_utils import get_model_entrypoint
 
 
 @pytest.fixture
@@ -207,6 +209,20 @@ async def test_chat_template_udf_assistant_prefill(mock_tokenizer_setup):
     _, kwargs2 = call_args_list[1]
     assert kwargs2.get("add_generation_prompt")
     assert not kwargs2.get("continue_final_message")
+
+
+def test_trust_remote_code(model_internlm2_1_8b):
+    model_entry = get_model_entrypoint(model_internlm2_1_8b)
+    if model_entry != model_internlm2_1_8b:
+        shutil.rmtree(model_entry, ignore_errors=True)
+
+    udf = ChatTemplateUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model=model_internlm2_1_8b,
+        trust_remote_code=True,
+    )
+    assert udf.processor is not None
 
 
 if __name__ == "__main__":
