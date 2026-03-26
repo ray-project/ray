@@ -1,18 +1,4 @@
-"""Integration tests for deployment-scoped actors.
-
-Covers the full lifecycle: serialization, creation, access from replicas,
-redeployment, orphan cleanup, config-only actors, proto roundtrip, and
-fault tolerance (controller restart, deployment actor crash).
-
-Test plan for deployment actors:
-- Imperative/declarative deploy, multiple actors: test_imperative_*, test_declarative_*
-- Redeployment, orphan cleanup: test_redeployment_*, test_actors_cleaned_up_*
-- Controller restart: test_deployment_actor_survives_controller_restart
-- Deployment actor crash (Ray restarts): test_deployment_actor_restarts_on_crash
-- Gap: deployment actor killed with no_restart=True — controller does not detect
-  or recreate; replicas would get RayActorError. Consider adding health checks.
-"""
-
+import concurrent.futures
 import os
 import sys
 
@@ -108,23 +94,6 @@ class InitArgsActor:
 
     def get_value(self) -> str:
         return f"{self.prefix}:{self.suffix}"
-
-
-@ray.remote
-class BlockingCounter:
-    """Blocks in __init__ on signal.wait() until signal.send() is called.
-
-    Use for tests that need to pause actor creation (e.g. controller restart
-    during deployment actor creation). Pass signal via init_kwargs.
-    """
-
-    def __init__(self, start: int = 0, signal=None):
-        if signal is not None:
-            ray.get(signal.wait.remote())
-        self.count = start
-
-    def get(self):
-        return self.count
 
 
 @ray.remote
@@ -368,6 +337,16 @@ def test_declarative_deploy_with_deployment_actors(serve_instance):
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
+    actor_names = [
+        n
+        for n in _get_deployment_actor_names()
+        if "BasicDriver" in n and "counter" in n
+    ]
+    assert len(actor_names) == 1
+    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
+    assert ray.get(handle.get.remote()) == 0
+    assert ray.get(handle.increment.remote()) == 1
+
 
 def test_declarative_config_only_actors(serve_instance):
     """Config-only deployment actors: actors defined only in config YAML,
@@ -408,6 +387,16 @@ def test_declarative_config_only_actors(serve_instance):
     wait_for_condition(check_running)
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+    actor_names = [
+        n
+        for n in _get_deployment_actor_names()
+        if "BasicDriver" in n and "shared_counter" in n
+    ]
+    assert len(actor_names) == 1
+    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
+    assert ray.get(handle.get.remote()) == 42
+    assert ray.get(handle.increment.remote()) == 43
 
 
 def test_declarative_config_only_actors_no_version_change(serve_instance):
@@ -547,7 +536,6 @@ def test_incremental_rollout_version_isolation(serve_instance):
     rollout. New requests go to v2; blocked request proves v1 used v1 actor.
     get_deployment_actor resolves by code_version.
     """
-    import os
 
     signal = SignalActor.remote()
 
@@ -787,11 +775,6 @@ def test_redeployment_with_no_actors_cleans_up_old(serve_instance):
     wait_for_condition(lambda: httpx.get(url).text == "v2")
 
     wait_for_condition(_check_no_deployment_actors, timeout=15)
-
-
-# ---------------------------------------------------------------------------
-# Tests – Fault tolerance: controller restart, deployment actor crash
-# ---------------------------------------------------------------------------
 
 
 def test_deployment_actor_survives_controller_restart(serve_instance):
@@ -1220,7 +1203,7 @@ def test_autoscaling_deployment_with_deployment_actors(serve_instance):
     # All replicas share the same counter - values should be sequential
     values = [int(httpx.get(url).text) for _ in range(5)]
     assert values == sorted(values)
-    assert len(set(values)) <= len(values)
+    assert len(set(values)) == len(values)
 
 
 def test_multiple_replicas_share_deployment_actor(serve_instance):
@@ -1272,7 +1255,6 @@ def test_concurrent_requests_multiple_replicas_to_deployment_actor(serve_instanc
 
     serve.run(MyDeployment.bind())
     url = f"{get_application_url()}/"
-    import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         futures = [ex.submit(lambda: httpx.get(url).text) for _ in range(20)]
@@ -1473,7 +1455,6 @@ def test_controller_restart_preserves_mutated_actor_state(serve_instance):
 def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     """Redeploying adds deployment actors to a deployment that previously had none.
 
-    RFC redeployment table: 'Actor added → Create new actor'.
     Uses the declarative path (deploy_apps) so the controller diffs old vs.
     new config and exercises the actor-creation branch, unlike serve.run()
     which always creates a fresh deployment.
@@ -1535,7 +1516,7 @@ def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
 def test_redeployment_changes_actor_class(serve_instance):
     """Redeploying with a different actor class (same logical name) replaces the actor.
 
-    RFC redeployment table: 'Actor class changed → Kill old, create new'.
+    'Actor class changed → Kill old, create new'.
     Uses the declarative path so the controller diffs old vs. new actor class.
     SharedCounter.get() returns start; AltCounter.get() returns start * 10.
     """
@@ -1614,7 +1595,7 @@ def test_redeployment_changes_actor_class(serve_instance):
 def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance):
     """Changed init_kwargs with the same actor name kills and recreates the actor.
 
-    RFC redeployment table: 'init_args/kwargs changed → Kill and recreate
+    'init_args/kwargs changed → Kill and recreate
     (state loss expected)'. Uses the declarative path so the controller diffs
     old vs. new init_kwargs. Mutates actor state before redeploy and verifies
     the accumulated state is discarded.
@@ -1732,8 +1713,7 @@ def test_partial_actor_creation_failure(serve_instance):
 def test_deployment_actors_outlive_replicas_during_deletion(serve_instance):
     """Deployment actors remain alive while replicas are still stopping.
 
-    The RFC specifies that actors are killed only after all replicas have
-    stopped (STEP 9). This ensures replicas can still reach their deployment
+    Deployment actors are killed only after all replicas have stopped. This ensures replicas can still reach their deployment
     actors during graceful shutdown / request draining.
     """
     signal = SignalActor.remote()

@@ -1024,8 +1024,7 @@ def test_serve_shutdown_cleans_up_deployment_actors(ray_shutdown):
     """serve.shutdown() kills all deployment actors.
 
     Deployment actors are detached, so they must be explicitly killed during
-    shutdown. The RFC specifies that shutdown() → delete() → STEP 9 cleanup
-    handles this. Without explicit cleanup, actors would leak as orphans.
+    shutdown.
     """
 
     ray_context = ray.init(num_cpus=4, namespace="default_test_namespace")

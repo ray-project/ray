@@ -109,7 +109,11 @@ ALL_DEPLOYMENT_ACTOR_STATES = list(DeploymentActorState)
 
 
 class DeploymentActorWrapper:
-    """Lifecycle wrapper for a single deployment-scoped actor."""
+    """Lifecycle wrapper for a single deployment-scoped actor.
+
+    TODO(abrar): Gap: deployment actor killed with no_restart=True — controller does not detect
+    or recreate; replicas would get RayActorError. Consider adding health checks.
+    """
 
     def __init__(
         self,
