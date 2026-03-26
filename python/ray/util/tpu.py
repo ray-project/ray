@@ -348,6 +348,73 @@ def get_num_ready_tpu_slices(
 
 
 @PublicAPI(stability="alpha")
+def get_num_intact_tpu_slices(
+    topology: str,
+    accelerator_type: str,
+) -> int:
+    """
+    Checks the cluster state to determine how many full TPU slices of the
+    specified topology are physically intact (all hosts alive with the
+    expected chip count).
+
+    Unlike ``get_num_ready_tpu_slices``, this does NOT check whether the
+    slices are idle. A slice is counted as long as every host in it is alive
+    and the total chip count matches the topology. This avoids requiring the
+    old worker group to be fully shut down before querying for available
+    slices during elastic scaling.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_type: The accelerator type string (e.g. "TPU-V6E").
+
+    Returns:
+        The integer count of physically intact TPU slices.
+    """
+    if not ray.is_initialized():
+        return 0
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        if not pod_type:
+            return 0
+
+        total_chips_expected = get_num_chips_from_topology(topology)
+        if total_chips_expected <= 0:
+            return 0
+
+    except Exception as e:
+        logger.warning(f"Failed to parse TPU topology for integrity check: {e}")
+        return 0
+
+    slice_to_nodes = {}
+    for node in ray.nodes():
+        if node.get("Alive"):
+            labels = node.get("Labels", {})
+            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
+                slice_name = get_tpu_slice_name_from_node(node)
+                if slice_name:
+                    slice_to_nodes.setdefault(slice_name, []).append(node)
+
+    intact_slices = 0
+    for slice_name, nodes in slice_to_nodes.items():
+        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
+
+        if slice_tpu_chips != total_chips_expected:
+            continue
+
+        has_head = any(
+            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if not has_head:
+            continue
+
+        intact_slices += 1
+
+    return intact_slices
+
+
+@PublicAPI(stability="alpha")
 class SlicePlacementGroup:
     """
     A handle to a placement group reservation for a TPU slice.
