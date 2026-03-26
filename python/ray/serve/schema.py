@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
+from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
@@ -197,7 +197,7 @@ class LoggingConfig(BaseModel):
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
                     f"Unknown attribute '{attr}'. "
-                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                    f"Additional log standard attributes must be one of {set(LOGRECORD_STANDARD_ATTRS)}."
                 )
         return list(set(v))
 

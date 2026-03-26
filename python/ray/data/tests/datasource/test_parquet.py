@@ -347,7 +347,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -357,7 +357,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -866,7 +866,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
             self.filename_template = filename_template
             self.should_include_uuid = should_include_uuid
 
-        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+        def get_filename_for_task(self, write_uuid, task_index):
             if self.should_include_uuid:
                 # Replace {write_uuid} placeholder with actual write_uuid
                 return self.filename_template.format(write_uuid=write_uuid, i="{i}")
@@ -2256,7 +2256,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     def call_helper(paths, fs, kwargs):
         from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
 
-        return get_parquet_dataset(paths, fs, kwargs)
+        return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
     ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
     assert ds is not None
