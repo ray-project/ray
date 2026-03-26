@@ -14,8 +14,7 @@ OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 IMAGE_HEIGHT = 640
 IMAGE_WIDTH = 640
 # This was a change made: Alter batch size accordingly
-# batch_size = 32 for 1x large
-# batch_size = 100 for 2x, 4x, and 8x large
+# batch_size = 100 for 1x, 2x, 4x, and 8x large
 BATCH_SIZE = 100
 
 ray.init()
@@ -79,8 +78,7 @@ def crop_image(row):
     cropped_pil = pil_image.crop((x1, y1, x2, y2))
 
     buf = io.BytesIO()
-    # This was a change made: Use compress_level=2
-    cropped_pil.save(buf, format="PNG", compress_level=2)
+    cropped_pil.save(buf, format="PNG")
     cropped_pil_png = buf.getvalue()
 
     row["object"] = cropped_pil_png
