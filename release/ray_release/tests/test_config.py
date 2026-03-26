@@ -426,6 +426,124 @@ def test_compute_config_invalid_ebs():
     assert not validate_cluster_compute(compute_config)
 
 
+def test_validate_cluster_compute_new_schema_valid():
+    """New schema: empty config is valid (all fields optional)."""
+    assert not validate_cluster_compute({}, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_valid_with_fields():
+    """New schema: config with new-schema keys is valid."""
+    compute_config = {
+        "cloud": "my_cloud",
+        "head_node": {"instance_type": "m5.4xlarge"},
+        "worker_nodes": [{"instance_type": "m5.xlarge", "min_nodes": 1}],
+    }
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_rejects_legacy_keys():
+    """New schema: config with legacy keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node_type": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=True)
+    assert error is not None
+    assert "legacy schema keys" in error
+    assert "anyscale_sdk_2026=true" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_new_keys():
+    """Legacy schema: config with new-schema keys is rejected."""
+    compute_config = {
+        "cloud_id": "cld_123",
+        "head_node": {"instance_type": "m5.4xlarge"},
+    }
+    error = validate_cluster_compute(compute_config, is_new_schema=False)
+    assert error is not None
+    assert "new schema keys" in error
+    assert "anyscale_sdk_2026=false" in error
+
+
+def test_validate_cluster_compute_legacy_rejects_empty():
+    """Legacy schema: empty config is rejected (no legacy keys)."""
+    error = validate_cluster_compute({}, is_new_schema=False)
+    assert error is not None
+    assert "does not have legacy schema keys" in error
+
+
+def test_validate_cluster_compute_new_schema_ebs_top_level():
+    """New schema: EBS DeleteOnTermination is checked in top-level advanced_instance_config."""
+    compute_config = {
+        "advanced_instance_config": {
+            "BlockDeviceMappings": [
+                {
+                    "DeviceName": "/dev/sda1",
+                    "Ebs": {"VolumeSize": 1000},
+                }
+            ]
+        },
+    }
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    # Set DeleteOnTermination to True should pass
+    compute_config["advanced_instance_config"]["BlockDeviceMappings"][0]["Ebs"][
+        "DeleteOnTermination"
+    ] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_head_node():
+    """New schema: EBS DeleteOnTermination is checked in head_node.advanced_instance_config."""
+    compute_config = {
+        "head_node": {
+            "instance_type": "m5.4xlarge",
+            "advanced_instance_config": {
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {"VolumeSize": 1000},
+                    }
+                ]
+            },
+        },
+    }
+    # Missing DeleteOnTermination should fail
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    # Set DeleteOnTermination to True should pass
+    compute_config["head_node"]["advanced_instance_config"]["BlockDeviceMappings"][0][
+        "Ebs"
+    ]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
+def test_validate_cluster_compute_new_schema_ebs_worker_nodes():
+    """New schema: EBS checks in worker_nodes[*].advanced_instance_config."""
+    compute_config = {
+        "worker_nodes": [
+            {
+                "instance_type": "m5.xlarge",
+                "advanced_instance_config": {
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {"VolumeSize": 500},
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+    assert validate_cluster_compute(compute_config, is_new_schema=True)
+
+    compute_config["worker_nodes"][0]["advanced_instance_config"][
+        "BlockDeviceMappings"
+    ][0]["Ebs"]["DeleteOnTermination"] = True
+    assert not validate_cluster_compute(compute_config, is_new_schema=True)
+
+
 def test_get_test_cloud_name_from_cluster_cloud():
     """get_test_cloud_name() returns cluster.cloud when set."""
     test = Test(
