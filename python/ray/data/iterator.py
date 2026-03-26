@@ -297,7 +297,7 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         """Return the schema of the dataset iterated over."""
         ...
 
