@@ -976,6 +976,12 @@ class _ActorPool(AutoscalingActorPool):
         TODO: Change this to support N bundles, M actors. This will significantly
         help with actor locality, since we'll have more knowledge in scheduling.
 
+        Args:
+            bundle: The bundle to schedule. When ``None``, returns any
+                available actor with spare capacity.
+            actor_locality_enabled: Whether to consider data locality
+                when selecting an actor.
+
         Returns:
             An actor handle if an actor with capacity is available, otherwise
             ``None``.
@@ -1059,9 +1065,6 @@ class _ActorPool(AutoscalingActorPool):
 
         Args:
             actor: The running actor that needs state update.
-
-        Returns:
-            The new actor state
         """
         actor_state = actor._get_local_state()
 
