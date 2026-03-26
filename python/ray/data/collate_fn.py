@@ -68,6 +68,7 @@ def _is_tensor_sequence(batch: Any) -> bool:
     >>> _is_tensor_sequence([torch.ones(1), 1])
     False
     """
+
     return isinstance(batch, (list, tuple)) and all(_is_tensor(t) for t in batch)
 
 
