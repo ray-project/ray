@@ -170,8 +170,8 @@ def _download_from_fs_path(
         include: An optional list of filename patterns (fnmatch-style) to include.
             Only files whose names match at least one pattern are downloaded.
             If None, all files are downloaded. Example: ["model.pt", "*.json"]
-            to download model.pt and all JSON files. Only applies when
-            `fs_path` points to a directory.
+            to download model.pt and all JSON files. Only applicable when
+            `fs_path` points at a directory.
 
     Raises:
         FileNotFoundError: if (fs, fs_path) doesn't exist.
