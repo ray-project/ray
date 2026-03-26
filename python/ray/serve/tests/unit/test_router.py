@@ -1178,6 +1178,31 @@ class TestChooseReplica:
         assert replica._requests_sent[0]["request_id"] == "test-request-1"
         assert replica._requests_sent[0]["with_rejection"] is False
 
+    async def test_multiple_dispatch_calls_fail(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A ReplicaSelection can only be dispatched once."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
+        fake_request_router.set_replica_to_return(replica)
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        async with router.choose_replica(request_metadata) as selection:
+            await router.dispatch(selection, request_metadata)
+
+            with pytest.raises(RuntimeError, match="already been dispatched"):
+                await router.dispatch(selection, request_metadata)
+
+        assert len(replica._requests_sent) == 1
+
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
