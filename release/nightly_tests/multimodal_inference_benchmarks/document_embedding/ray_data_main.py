@@ -37,7 +37,9 @@ ray.get([warmup.remote() for _ in range(64)])
 
 def extract_text_from_pdf(row):
     try:
-        bs = row["bytes"]
+        # NOTE: Remove the `bytes` column since we don't need it anymore. This is done by
+        # the system automatically on Ray Data 2.51+ with the `with_column` API.
+        bs = row.pop("bytes")
         doc = pymupdf.Document(stream=bs, filetype="pdf")
         if len(doc) > MAX_PDF_PAGES:
             path = row["uploaded_pdf_path"]
@@ -57,7 +59,7 @@ def chunker(row):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
     )
-    page_text = row["page_text"]
+    page_text = row.pop("page_text")
     chunk_iter = splitter.split_text(page_text)
     for chunk_index, text in enumerate(chunk_iter):
         row["chunk"] = text
@@ -85,9 +87,7 @@ def run_pipeline():
         .filter(lambda row: row["file_name"].endswith(".pdf"))
         .with_column("bytes", download("uploaded_pdf_path"))
         .flat_map(extract_text_from_pdf)
-        .drop_columns(["bytes"])
         .flat_map(chunker)
-        .drop_columns(["page_text"])
         .map_batches(
             Embedder,
             num_gpus=1.0,
