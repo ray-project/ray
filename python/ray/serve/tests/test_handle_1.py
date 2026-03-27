@@ -390,6 +390,75 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't support choose_replica/dispatch",
 )
+async def test_choose_replica_early_return_releases_slot(serve_instance):
+    """Early return from choose_replica should release the reserved slot."""
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=1)
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Proxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            async with self.backend.process.choose_replica(request):
+                pass
+
+            # Ensure the second choose_replica request work
+            async with self.backend.process.choose_replica(request) as selection:
+                response = await asyncio.wait_for(
+                    self.backend.process.dispatch(selection, request), timeout=2
+                )
+                return response
+
+    h = serve.run(Proxy.bind(Backend.bind()))
+    assert await h.handle_request.remote("test_message") == "test_message"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
+async def test_choose_replica_exception_releases_slot(serve_instance):
+    """Exception in choose_replica context should release the reserved slot."""
+
+    @serve.deployment(num_replicas=1, max_ongoing_requests=1)
+    class Backend:
+        def process(self, msg: str):
+            return msg
+
+    @serve.deployment
+    class Proxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            try:
+                async with self.backend.process.choose_replica(request):
+                    raise RuntimeError("test exception")
+            except RuntimeError:
+                pass
+
+            # Ensure the second choose_replica request work
+            async with self.backend.process.choose_replica(request) as selection:
+                response = await asyncio.wait_for(
+                    self.backend.process.dispatch(selection, request), timeout=2
+                )
+                return response
+
+    h = serve.run(Proxy.bind(Backend.bind()))
+    assert await h.handle_request.remote("test_message") == "test_message"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
 async def test_choose_replica_and_dispatch_streaming(serve_instance):
     """Test choose_replica + dispatch with handle.options(stream=True)."""
 
