@@ -12,11 +12,24 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.session import get_session
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
-from ray.tune.utils import flatten_dict
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
+def _flatten_dict(d: Dict, parent_key: str = "", sep: str = "/") -> Dict:
+    """Flatten a nested dictionary."""
+
+    items = []
+
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+
+    return dict(items)
 
 @PublicAPI(stability="alpha")
 def setup_trackio(
@@ -199,12 +212,18 @@ class TrackioLoggerCallback(LoggerCallback):
         self.dataset_id = dataset_id
         self.space_id = space_id
 
+        self._warned_unsupported_keys = set()
         self.excludes = excludes or []
-        self._effective_excludes = list(self._exclude_results)
+        self._effective_excludes = set(self._exclude_results)
+
+        if excludes:
+            self._effective_excludes.update(excludes)
+
         if not self.log_config:
-            self._effective_excludes.append("config")
+            self._effective_excludes.add("config")
 
         self._trial_runs: Dict[Trial, trackio.Run] = {}
+
 
     def log_trial_start(self, trial: Trial):
         """Initialize a Trackio run when a Ray Tune trial starts."""
@@ -243,10 +262,10 @@ class TrackioLoggerCallback(LoggerCallback):
             self.log_trial_start(trial)
             run = self._trial_runs.get(trial)
 
-        flat = flatten_dict(result)
+        flat = _flatten_dict(result)
         metrics = {}
         for key, value in flat.items():
-            if key in self._effective_excludes or key in self.excludes:
+            if any(key.startswith(ex) for ex in self._effective_excludes):
                 continue
 
             # Convert numpy arrays and scalar types
@@ -257,6 +276,14 @@ class TrackioLoggerCallback(LoggerCallback):
             # Only log supported metric types
             if isinstance(value, (int, float)):
                 metrics[key] = value
+            else:
+            # Warn once per key
+                if key not in self._warned_unsupported_keys:
+                    logger.warning(
+                        f"trackio: Dropping unsupported metric '{key}' "
+                        f"(type={type(value).__name__}). Only int/float supported."
+                    )
+                    self._warned_unsupported_keys.add(key)
 
         if metrics:
             training_step = result.get(TRAINING_ITERATION, iteration)
