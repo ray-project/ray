@@ -853,7 +853,14 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         replica_actor_id: Optional[ray.ActorID],
         actor_died_error: ActorDiedError,
-    ) -> None:
+    ) -> bool:
+        """Handle an ActorDiedError from a replica request.
+
+        Returns True if the error is from this replica (i.e., this replica
+        died and should be retried on another replica). Returns False if the
+        error is from an upstream dependency (i.e., this replica is healthy
+        but the request failed due to a bad input).
+        """
         # Only mark the replica as dead if the ActorDiedError refers to this
         # replica. With chained DeploymentResponses, the error may come from
         # an upstream deployment that was passed as an object ref to this
@@ -877,6 +884,7 @@ class AsyncioRouter:
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
             )
+            return True
         else:
             # Error from upstream dependency, not from this replica.
             logger.debug(
@@ -884,6 +892,7 @@ class AsyncioRouter:
                 f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
                 "Replica remains in rotation."
             )
+            return False
 
     async def _route_and_send_request_once(
         self,
@@ -974,7 +983,22 @@ class AsyncioRouter:
             raise
         except ActorDiedError as e:
             if replica is not None:
-                self._handle_actor_died_error(replica.replica_id, replica.actor_id, e)
+                is_from_this_replica = self._handle_actor_died_error(
+                    replica.replica_id, replica.actor_id, e
+                )
+                if not is_from_this_replica and callback_registered:
+                    # Error from an upstream dependency during request
+                    # execution (e.g., a chained DeploymentResponse whose
+                    # source actor died). The request was already accepted
+                    # by this (healthy) replica, but the input is
+                    # permanently failed — retrying with another replica
+                    # won't help. Propagate immediately so the caller gets
+                    # a fast error.
+                    raise
+            elif not pr.resolved:
+                # ActorDiedError during argument resolution — same upstream
+                # cause as above, caught before a replica was even chosen.
+                raise
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
