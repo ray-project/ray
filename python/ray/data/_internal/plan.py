@@ -79,6 +79,18 @@ class ExecutionPlan:
 
         self._context = data_context
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Flush execution cache before serialization
+        state.pop("_cache", None)
+        return state
+
+    def __setstate__(self, state):
+        from ray.data.dataset import _ExecutionCache
+
+        self.__dict__.update(state)
+        self._cache = _ExecutionCache()
+
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
