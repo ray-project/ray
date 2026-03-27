@@ -572,7 +572,7 @@ def test_incremental_rollout_version_isolation(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return "2", ray.get(counter.get.remote()), os.getpid()
 
-    h = serve.run(V1.bind(), name="app")
+    h = serve.run(V1.bind(), name="app", route_prefix="/incremental_rollout_da")
 
     signal.send.remote()
     refs = [h.remote() for _ in range(10)]
@@ -587,7 +587,12 @@ def test_incremental_rollout_version_isolation(serve_instance):
     signal.send.remote(clear=True)
     blocked_ref = h.remote()
 
-    serve._run(V2.bind(), _blocking=False, name="app")
+    serve._run(
+        V2.bind(),
+        _blocking=False,
+        name="app",
+        route_prefix="/incremental_rollout_da",
+    )
 
     # 1 v1 STOPPING (blocked) + 2 v2 RUNNING
     wait_for_condition(
@@ -799,7 +804,11 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return str(ray.get(counter.get.remote()))
 
-    serve.run(MyDeployment.bind(), name="app")
+    serve.run(
+        MyDeployment.bind(),
+        name="app",
+        route_prefix="/survives_controller_restart_da",
+    )
     for _ in range(5):
         resp = request_with_retries(timeout=30, app_name="app")
         assert resp.text == "42"
@@ -1428,7 +1437,11 @@ def test_controller_restart_preserves_mutated_actor_state(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return str(ray.get(counter.get.remote()))
 
-    serve.run(MyDeployment.bind(), name="app")
+    serve.run(
+        MyDeployment.bind(),
+        name="app",
+        route_prefix="/preserves_mutated_state_da",
+    )
     resp = request_with_retries(timeout=30, app_name="app")
     assert resp.text == "0"
 
@@ -1735,7 +1748,11 @@ def test_deployment_actors_outlive_replicas_during_deletion(serve_instance):
             counter = serve.get_deployment_actor("counter")
             return str(ray.get(counter.get.remote()))
 
-    h = serve.run(SlowDrainDeployment.bind(), name="app")
+    h = serve.run(
+        SlowDrainDeployment.bind(),
+        name="app",
+        route_prefix="/outlive_replicas_da",
+    )
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
     # Send a request that blocks — keeps replica busy during deletion
