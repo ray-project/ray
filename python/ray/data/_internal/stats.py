@@ -73,12 +73,12 @@ def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
 class _StatsAccumulator:
     """Tracks min/max/sum/count for incremental stats computation."""
 
-    min_value: Union[int, float] = float("inf")
-    max_value: Union[int, float] = float("-inf")
-    sum: Union[int, float] = 0
+    min_value: int | float = float("inf")
+    max_value: int | float = float("-inf")
+    sum: int | float = 0
     count: int = 0
 
-    def add(self, value: Union[int, float]) -> None:
+    def add(self, value: int | float) -> None:
         self.min_value = min(self.min_value, value)
         self.max_value = max(self.max_value, value)
         self.sum += value
@@ -90,7 +90,7 @@ class _StatsAccumulator:
         include_sum: bool = True,
         include_count: bool = False,
         mean_as_int: bool = False,
-    ) -> Optional[dict[str, Union[int, float]]]:
+    ) -> Optional[dict[str, int | float]]:
         """Return stats dict, or None if no values were added."""
         if not self.count:
             return None
@@ -505,10 +505,10 @@ class _StatsActor:
     def update_execution_metrics(
         self,
         dataset_tag: str,
-        op_metrics: List[Dict[str, Union[int, float]]],
+        op_metrics: List[Dict[str, int | float]],
         operator_tags: List[str],
         state: Dict[str, Any],
-        per_node_metrics: Optional[Dict[str, Dict[str, Union[int, float]]]] = None,
+        per_node_metrics: Optional[Dict[str, Dict[str, int | float]]] = None,
     ):
         def _record(
             prom_metric: Metric,
@@ -851,7 +851,7 @@ class _StatsManager:
     @staticmethod
     def _aggregate_per_node_metrics(
         op_metrics: List[OpRuntimeMetrics],
-    ) -> Optional[Mapping[str, Mapping[str, Union[int, float]]]]:
+    ) -> Optional[Mapping[str, Mapping[str, int | float]]]:
         """
         Aggregate per-node metrics from a list of OpRuntimeMetrics objects.
 
