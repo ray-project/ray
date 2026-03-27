@@ -2385,7 +2385,7 @@ class TestAutoscalingWithRejection:
         t.start()
         return t, result, error
 
-    def _assert_scale_up_and_down(self, stream: bool):
+    def _assert_scale_up_and_down(self, client, dep_id: DeploymentID, stream: bool):
         """Send load, assert 1->2 scale-up, drain, assert 2->1 scale-down."""
 
         # 1) Send load
@@ -2402,7 +2402,7 @@ class TestAutoscalingWithRejection:
             timeout=60,
             retry_interval_ms=1000,
         )
-        tlog(f"Replicas scaled up to 2.")
+        tlog("Replicas scaled up to 2.")
 
         # 3) Drain: wait for load to finish, assert all requests 'ok'
         load_thread.join(timeout=180)
@@ -2427,9 +2427,21 @@ class TestAutoscalingWithRejection:
             app_name="app",
             timeout=60,
         )
-        tlog(f"Replicas scaled back down to 1.")
+        tlog("Replicas scaled back down to 1.")
 
-    def test_streaming_with_rejection(self, ray_instance):
+        # 5) Assert total running requests reaches 0 after scale-down
+        wait_for_condition(
+            check_num_requests_eq,
+            client=client,
+            id=dep_id,
+            expected=0,
+            timeout=20,
+        )
+        tlog("Total running requests reached 0.")
+
+    def test_streaming_with_rejection(self, serve_instance):
+        client = serve_instance
+
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -2483,11 +2495,13 @@ class TestAutoscalingWithRejection:
         )
         tlog("Streaming deployment healthy with 1 replica.")
 
-        self._assert_scale_up_and_down(stream=True)
+        dep_id = DeploymentID(name="Backend", app_name="app")
+        self._assert_scale_up_and_down(client=client, dep_id=dep_id, stream=True)
         tlog("Test passed.")
-        serve.delete("app")
 
-    def test_unary_with_rejection(self, ray_instance):
+    def test_unary_with_rejection(self, serve_instance):
+        client = serve_instance
+
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": 1,
@@ -2536,9 +2550,9 @@ class TestAutoscalingWithRejection:
         )
         tlog("Unary deployment healthy with 1 replica.")
 
-        self._assert_scale_up_and_down(stream=False)
+        dep_id = DeploymentID(name="Backend", app_name="app")
+        self._assert_scale_up_and_down(client=client, dep_id=dep_id, stream=False)
         tlog("Test passed.")
-        serve.delete("app")
 
 
 if __name__ == "__main__":
