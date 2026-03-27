@@ -2314,6 +2314,12 @@ class TestAutoscalingWithRejection:
 
     Original issue: https://github.com/ray-project/ray/issues/61551
     Tests that replicas scale from 1->2 under load and back to 1 after drain.
+
+    The way this test is written makes it somewhat non-deterministic and harder to interpret.
+    It relies on a replica rejecting a request after power-of-two routing
+    has already made a decision based on stale replica state.
+    Since that scenario depends on timing and stale state,
+    it’s not something we can reproduce deterministically.
     """
 
     MIN_REPLICAS = 1
