@@ -962,8 +962,10 @@ async def run_benchmark(
                     current_inflight = await state.track_inflight_end()
                     pbar.set_postfix_str(str(current_inflight))
                     pbar.update(1)
-                    # Clean up failed session
+                    # Clean up failed session and replace it so the pool
+                    # doesn't permanently shrink.
                     await state.mark_session_complete(session_idx, conv.session_id)
+                    await enqueue_new_session()
                     return
 
                 current_inflight = await state.track_inflight_end()
@@ -1768,7 +1770,9 @@ def run_direct(args) -> int:
         return 1
 
     # Build spec (simple mode only)
-    spec = WorkloadSpec(
+    # Filter out None values so dataclass defaults (e.g. num_turns=1, osl=1)
+    # are preserved when the user omits those CLI flags.
+    spec_kwargs = dict(
         num_sessions=args.num_sessions,
         num_turns=args.num_turns,
         osl=args.osl,
@@ -1781,6 +1785,7 @@ def run_direct(args) -> int:
         hit_rate=args.hit_rate,
         duration_s=args.duration or 0.0,
     )
+    spec = WorkloadSpec(**{k: v for k, v in spec_kwargs.items() if v is not None})
     try:
         spec.resolve()
     except ValueError as e:
