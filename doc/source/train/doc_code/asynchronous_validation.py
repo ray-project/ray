@@ -74,7 +74,7 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
     )
     result = trainer.fit()
     # return_values holds the return value of the train function from worker 0
-    return result.return_values
+    return result.return_value
 # __validation_fn_torch_trainer_end__
 
 # __validation_fn_map_batches_start__
