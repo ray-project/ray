@@ -2322,10 +2322,6 @@ class TestAutoscalingWithRejection:
     it’s not something we can reproduce deterministically.
     """
 
-    MIN_REPLICAS = 1
-    MAX_REPLICAS = 2
-    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]  # (qps, duration_s)
-
     @staticmethod
     async def _run_phase(session, url, stream, qps, duration_s, inflight, counters):
         """Run one load phase at the given QPS for duration_s seconds."""
@@ -2355,12 +2351,15 @@ class TestAutoscalingWithRejection:
 
     @classmethod
     async def _run_load(cls, url: str, stream: bool):
-        """Execute the load profile and return final counters."""
+        """Execute the load profile and return final counters.
+
+        Load profile (qps, duration_s): [(1.0, 6), (8.0, 12), (1.0, 10)]
+        """
         inflight: set = set()
         counters = {"sent": 0, "ok": 0, "errors": 0}
 
         async with aiohttp.ClientSession() as session:
-            for qps, duration_s in cls.LOAD_PROFILE:
+            for qps, duration_s in [(1.0, 6), (8.0, 12), (1.0, 10)]:
                 await cls._run_phase(
                     session, url, stream, qps, duration_s, inflight, counters
                 )
@@ -2398,12 +2397,12 @@ class TestAutoscalingWithRejection:
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
-            target=self.MAX_REPLICAS,
+            target=2,
             app_name="app",
             timeout=60,
             retry_interval_ms=1000,
         )
-        tlog(f"Replicas scaled up to {self.MAX_REPLICAS}.")
+        tlog(f"Replicas scaled up to 2.")
 
         # 3) Drain: wait for load to finish, assert all requests 'ok'
         load_thread.join(timeout=180)
@@ -2424,17 +2423,17 @@ class TestAutoscalingWithRejection:
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
-            target=self.MIN_REPLICAS,
+            target=1,
             app_name="app",
             timeout=60,
         )
-        tlog(f"Replicas scaled back down to {self.MIN_REPLICAS}.")
+        tlog(f"Replicas scaled back down to 1.")
 
     def test_streaming_with_rejection(self, ray_instance):
         @serve.deployment(
             autoscaling_config={
-                "min_replicas": self.MIN_REPLICAS,
-                "max_replicas": self.MAX_REPLICAS,
+                "min_replicas": 1,
+                "max_replicas": 2,
                 "target_ongoing_requests": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 8,
@@ -2473,7 +2472,7 @@ class TestAutoscalingWithRejection:
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
-            target=self.MIN_REPLICAS,
+            target=1,
             app_name="app",
             timeout=30,
         )
@@ -2491,8 +2490,8 @@ class TestAutoscalingWithRejection:
     def test_unary_with_rejection(self, ray_instance):
         @serve.deployment(
             autoscaling_config={
-                "min_replicas": self.MIN_REPLICAS,
-                "max_replicas": self.MAX_REPLICAS,
+                "min_replicas": 1,
+                "max_replicas": 2,
                 "target_ongoing_requests": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 8,
@@ -2526,7 +2525,7 @@ class TestAutoscalingWithRejection:
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
-            target=self.MIN_REPLICAS,
+            target=1,
             app_name="app",
             timeout=30,
         )
