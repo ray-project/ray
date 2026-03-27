@@ -357,6 +357,35 @@ class TestBenchmarkState:
         assert result is True
         assert state.warmup_complete is True
 
+    def test_has_remaining_sessions_with_limit(self):
+        spec = _make_spec(num_sessions=3)
+        state = BenchmarkState(spec)
+        assert self._run(state.has_remaining_sessions()) is True
+        self._run(state.get_next_session())
+        self._run(state.get_next_session())
+        assert self._run(state.has_remaining_sessions()) is True
+        self._run(state.get_next_session())
+        assert self._run(state.has_remaining_sessions()) is False
+
+    def test_has_remaining_sessions_unlimited(self):
+        spec = _make_spec(
+            num_sessions=None, duration_s=60.0, request_rate=1.0, concurrency=None
+        )
+        state = BenchmarkState(spec)
+        for _ in range(100):
+            self._run(state.get_next_session())
+        assert self._run(state.has_remaining_sessions()) is True
+
+    def test_get_inflight(self):
+        spec = _make_spec()
+        state = BenchmarkState(spec)
+        assert self._run(state.get_inflight()) == 0
+        self._run(state.track_inflight_start())
+        self._run(state.track_inflight_start())
+        assert self._run(state.get_inflight()) == 2
+        self._run(state.track_inflight_end())
+        assert self._run(state.get_inflight()) == 1
+
     def test_get_stats(self):
         spec = _make_spec()
         state = BenchmarkState(spec)
