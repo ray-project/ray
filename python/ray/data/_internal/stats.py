@@ -73,33 +73,37 @@ def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
 class _StatsAccumulator:
     """Tracks min/max/sum/count for incremental stats computation."""
 
-    min: float = float("inf")
-    max: float = float("-inf")
+    min_value: float = float("inf")
+    max_value: float = float("-inf")
     sum: float = 0.0
     count: int = 0
 
     def add(self, value: float) -> None:
-        if value < self.min:
-            self.min = value
-        if value > self.max:
-            self.max = value
+        self.min_value = min(self.min_value, value)
+        self.max_value = max(self.max_value, value)
         self.sum += value
         self.count += 1
 
     def get(
-        self, *, include_sum: bool = True, mean_as_int: bool = False
-    ) -> Optional[dict[str, float]]:
+        self,
+        *,
+        include_sum: bool = True,
+        include_count: bool = False,
+        mean_as_int: bool = False,
+    ) -> Optional[dict[str, Union[int, float]]]:
         """Return stats dict, or None if no values were added."""
         if not self.count:
             return None
         mean = self.sum / self.count
-        result: dict[str, float] = {
-            "min": self.min,
-            "max": self.max,
+        result: dict[str, int | float] = {
+            "min": self.min_value,
+            "max": self.max_value,
             "mean": int(mean) if mean_as_int else mean,
         }
         if include_sum:
             result["sum"] = self.sum
+        if include_count:
+            result["count"] = self.count
         return result
 
 
@@ -1467,10 +1471,8 @@ class OperatorStatsSummary:
                 udf.add(es.udf_time_s)
                 mem.add(round((es.max_uss_bytes or 0) / MiB, 2))
                 node_tasks[es.node_id].add(es.task_idx)
-                if es.start_time_s < earliest_start_time:
-                    earliest_start_time = es.start_time_s
-                if es.end_time_s > latest_end_time:
-                    latest_end_time = es.end_time_s
+                earliest_start_time = min(earliest_start_time, es.start_time_s)
+                latest_end_time = max(latest_end_time, es.end_time_s)
                 if block_meta.num_rows is not None:
                     task_rows[es.task_idx] += block_meta.num_rows
 
@@ -1496,8 +1498,9 @@ class OperatorStatsSummary:
             tr = _StatsAccumulator()
             for count in task_rows.values():
                 tr.add(count)
-            task_rows_stats = tr.get(include_sum=False, mean_as_int=True)
-            task_rows_stats["count"] = tr.count
+            task_rows_stats = tr.get(
+                include_sum=False, mean_as_int=True, include_count=True
+            )
             exec_summary_str = f"{len(task_rows)} tasks executed, {exec_summary_str}"
 
         # Execution stats.
@@ -1516,9 +1519,11 @@ class OperatorStatsSummary:
             nc = _StatsAccumulator()
             for tasks in node_tasks.values():
                 nc.add(len(tasks))
-            node_counts_stats = nc.get(include_sum=False, mean_as_int=True)
-            if node_counts_stats:
-                node_counts_stats["count"] = nc.count
+            node_counts_stats = nc.get(
+                include_sum=False,
+                mean_as_int=True,
+                include_count=True,
+            )
 
         # Assign a value in to_summary and initialize it as None.
         total_input_num_rows = None
