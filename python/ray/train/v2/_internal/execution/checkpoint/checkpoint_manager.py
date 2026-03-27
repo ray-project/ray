@@ -520,7 +520,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: float = -1,
+        timeout_s: Optional[float] = None,
     ) -> List[ReportedCheckpoint]:
         """Get all the reported checkpoints so far.
 

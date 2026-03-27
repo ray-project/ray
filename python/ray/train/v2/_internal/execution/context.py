@@ -174,7 +174,7 @@ class TrainContext:
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: float = -1,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return ray.get(
             self.controller_actor.get_all_reported_checkpoints.remote(

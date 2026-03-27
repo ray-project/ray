@@ -83,13 +83,13 @@ class TrainFnUtils(ABC):
     def get_all_reported_checkpoints(
         self,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: float = -1,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         """Get all the checkpoints reported by the workers.
 
         Args:
             consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
-            timeout_s: Timeout in seconds for reading checkpoints and validation data. Defaults to -1 to never timeout.
+            timeout_s: Timeout in seconds for reading checkpoints and validation data.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
