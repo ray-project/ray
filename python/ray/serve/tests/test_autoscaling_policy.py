@@ -2309,7 +2309,7 @@ def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
         )
 
 
-class TestAutoscalingWithStreaming:
+class TestAutoscalingWithRejection:
     """Autoscaling tests with rejection under HTTP load.
 
     Original issue: https://github.com/ray-project/ray/issues/61551
