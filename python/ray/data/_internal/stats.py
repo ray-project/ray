@@ -84,18 +84,27 @@ class _StatsAccumulator:
         self.sum += value
         self.count += 1
 
-    def get(self, *, mean_as_int: bool = False) -> Optional[dict[str, int | float]]:
+    def get(
+        self,
+        *,
+        mean_as_int: bool = False,
+        include_sum: bool = True,
+        include_count: bool = True,
+    ) -> Optional[dict[str, int | float]]:
         """Return stats dict, or None if no values were added."""
         if not self.count:
             return None
         mean = self.sum / self.count
-        return {
+        result = {
             "min": self.min_value,
             "max": self.max_value,
             "mean": int(mean) if mean_as_int else mean,
-            "sum": self.sum,
-            "count": self.count,
         }
+        if include_sum:
+            result["sum"] = self.sum
+        if include_count:
+            result["count"] = self.count
+        return result
 
 
 class Timer:
@@ -1491,18 +1500,18 @@ class OperatorStatsSummary:
             tr = _StatsAccumulator()
             for count in task_rows.values():
                 tr.add(count)
-            task_rows_stats = tr.get(mean_as_int=True)
+            task_rows_stats = tr.get(mean_as_int=True, include_sum=False)
             exec_summary_str = f"{tr.count} tasks executed, {exec_summary_str}"
 
         # Execution stats.
-        wall_time_stats = wall.get()
-        cpu_stats = cpu.get()
-        udf_stats = udf.get()
-        memory_stats = mem.get(mean_as_int=True)
+        wall_time_stats = wall.get(include_count=False)
+        cpu_stats = cpu.get(include_count=False)
+        udf_stats = udf.get(include_count=False)
+        memory_stats = mem.get(mean_as_int=True, include_sum=False, include_count=False)
 
         # Output stats.
-        output_num_rows_stats = rows.get(mean_as_int=True)
-        output_size_bytes_stats = sizes.get(mean_as_int=True)
+        output_num_rows_stats = rows.get(mean_as_int=True, include_count=False)
+        output_size_bytes_stats = sizes.get(mean_as_int=True, include_count=False)
 
         # Node distribution stats.
         node_counts_stats = None
@@ -1510,7 +1519,7 @@ class OperatorStatsSummary:
             nc = _StatsAccumulator()
             for tasks in node_tasks.values():
                 nc.add(len(tasks))
-            node_counts_stats = nc.get(mean_as_int=True)
+            node_counts_stats = nc.get(mean_as_int=True, include_sum=False)
 
         # Assign a value in to_summary and initialize it as None.
         total_input_num_rows = None
