@@ -298,7 +298,12 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   cpu_instances2.add_values(1.0);
   (*resources2.mutable_resources_available_instances())["CPU"] = cpu_instances2;
   rpc::syncer::ResourceInstances gpu_instances2;
-  gpu_instances2.add_values(5.0);
+  for (int i = 0; i < 5; i++) {
+    gpu_instances2.add_values(1.0);
+  }
+  for (int i = 0; i < 5; i++) {
+    gpu_instances2.add_values(0.0);
+  }
   (*resources2.mutable_resources_available_instances())["GPU"] = gpu_instances2;
   gcs_server_->UpdateGcsResourceManagerInTest(
       NodeID::FromBinary(node_table_data->node_id()), resources2);

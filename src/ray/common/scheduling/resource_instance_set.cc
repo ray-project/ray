@@ -102,7 +102,7 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     resources_[resource_id] = std::move(instances);
 
     if (track_pg_index_) {
-      // Popluate the pg_indexed_resources_map_
+      // Populate the pg_indexed_resources_map_
       // TODO(myan): The parsing of the resource_id String can be costly and impact the
       // task creation throughput if the parting is required every time we allocate
       // resources for a task and updating the available resources. The current benchmark
@@ -187,12 +187,12 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
   // Remaining demand is fractional. Find the best fit, if one exists.
   if (remaining_demand > 0.) {
     int64_t idx_best_fit = -1;
-    FixedPoint available_best_fit = 1.;
+    FixedPoint remaining_after_fit = 1.;
     for (size_t i = 0; i < remaining_available.size(); i++) {
       if (remaining_available[i] >= remaining_demand) {
         if (idx_best_fit == -1 ||
-            (remaining_available[i] - remaining_demand < available_best_fit)) {
-          available_best_fit = remaining_available[i] - remaining_demand;
+            (remaining_available[i] - remaining_demand < remaining_after_fit)) {
+          remaining_after_fit = remaining_available[i] - remaining_demand;
           idx_best_fit = static_cast<int64_t>(i);
         }
       }

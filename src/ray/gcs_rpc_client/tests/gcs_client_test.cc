@@ -689,7 +689,9 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   rpc::syncer::ResourceInstances cpu_instances;
   cpu_instances.add_values(1.0);
   rpc::syncer::ResourceInstances gpu_instances;
-  gpu_instances.add_values(10.0);
+  for (int i = 0; i < 10; i++) {
+    gpu_instances.add_values(1.0);
+  }
   (*resource.mutable_resources_available_instances())["CPU"] = cpu_instances;
   (*resource.mutable_resources_available_instances())["GPU"] = gpu_instances;
   (*resource.mutable_resources_total())["CPU"] = 1.0;
