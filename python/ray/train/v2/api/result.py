@@ -26,10 +26,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
-    """The output of :meth:`~ray.train.Trainer.fit`.
-
-    The constructor is a private API -- use :meth:`Result.from_path` to create
-    a result object from a directory.
+    """The output of ``Trainer.fit()``.
 
     Attributes:
         metrics: The latest set of metrics reported by the training function
@@ -39,6 +36,8 @@ class Result(ResultV1):
         error: The execution error of the training run, if the run finished
             in error. This is a :class:`~ray.train.v2.api.exceptions.TrainingFailedError`
             wrapping the original exception.
+        return_value: The value returned by the training function on the
+            rank-0 worker.
         path: Path pointing to the run output directory on persistent storage.
             This can point to a remote storage location (e.g. S3) or to a
             local location on the head node. The path is accessible via the
@@ -51,9 +50,6 @@ class Result(ResultV1):
             best checkpoints saved during the run. The checkpoints retained
             are determined by :class:`~ray.train.CheckpointConfig`
             (by default, all checkpoints are kept).
-        return_value: The value returned by the training function on the rank-0
-            worker, if the function returns a value. ``None`` if the training
-            function does not return a value or the run failed.
     """
 
     checkpoint: Optional[Checkpoint]
