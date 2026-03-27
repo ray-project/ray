@@ -222,7 +222,7 @@ def build_sglang_engine_processor(
         if trust_remote_code
         else NodeModelDownloadable.TOKENIZER_ONLY
     )
-    model_path = download_model_files(
+    model_path_or_id = download_model_files(
         model_id=config.model_source,
         mirror_config=None,
         download_model=download_mode,
@@ -231,7 +231,7 @@ def build_sglang_engine_processor(
 
     try:
         hf_config = transformers.AutoConfig.from_pretrained(
-            model_path,
+            model_path_or_id,
             trust_remote_code=trust_remote_code,
         )
         architectures = getattr(hf_config, "architectures", [])

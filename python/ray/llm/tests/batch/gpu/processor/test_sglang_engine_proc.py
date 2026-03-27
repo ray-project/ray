@@ -1,4 +1,5 @@
 """This test suite does not need sglang to be installed."""
+
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -110,6 +111,140 @@ class TestSGLangEngineProcessorConfig:
                     call_kwargs["max_tasks_in_flight_per_actor"]
                     == DEFAULT_MAX_TASKS_IN_FLIGHT
                 )
+
+
+class TestSGLangTelemetryTrustRemoteCode:
+    """Tests for SGLang telemetry initialization with trust_remote_code support.
+
+    Covers the fix for https://github.com/ray-project/ray/issues/62075:
+    when trust_remote_code=True is set in engine_kwargs, telemetry should
+    still initialise correctly rather than raising an exception.
+    """
+
+    _MODULE = "ray.llm._internal.batch.processor.sglang_engine_proc"
+
+    def _build_config(self, trust_remote_code: bool = False):
+        return SGLangEngineProcessorConfig(
+            model_source="unsloth/Llama-3.2-1B-Instruct",
+            engine_kwargs={"trust_remote_code": trust_remote_code},
+        )
+
+    def test_download_model_files_called_with_exclude_safetensors_when_trust_remote_code(
+        self,
+    ):
+        """download_model_files should use EXCLUDE_SAFETENSORS mode when
+        trust_remote_code=True so that custom architecture .py files are
+        available locally before AutoConfig.from_pretrained is called."""
+        from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+
+        with (
+            patch(f"{self._MODULE}.download_model_files") as mock_download,
+            patch(f"{self._MODULE}.transformers") as mock_transformers,
+            patch(f"{self._MODULE}.get_or_create_telemetry_agent"),
+        ):
+            mock_download.return_value = "/tmp/fake_model"
+            mock_hf_config = MagicMock()
+            mock_hf_config.architectures = ["MiniMaxM2ForCausalLM"]
+            mock_transformers.AutoConfig.from_pretrained.return_value = mock_hf_config
+
+            config = self._build_config(trust_remote_code=True)
+            from ray.llm._internal.batch.processor.sglang_engine_proc import (
+                build_sglang_engine_processor,
+            )
+
+            build_sglang_engine_processor(config)
+
+            mock_download.assert_called_once()
+            call_kwargs = mock_download.call_args[1]
+            assert (
+                call_kwargs["download_model"]
+                == NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            )
+
+    def test_download_model_files_called_with_tokenizer_only_when_no_trust_remote_code(
+        self,
+    ):
+        """download_model_files should use TOKENIZER_ONLY mode when
+        trust_remote_code=False (the default)."""
+        from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+
+        with (
+            patch(f"{self._MODULE}.download_model_files") as mock_download,
+            patch(f"{self._MODULE}.transformers") as mock_transformers,
+            patch(f"{self._MODULE}.get_or_create_telemetry_agent"),
+        ):
+            mock_download.return_value = "unsloth/Llama-3.2-1B-Instruct"
+            mock_hf_config = MagicMock()
+            mock_hf_config.architectures = ["LlamaForCausalLM"]
+            mock_transformers.AutoConfig.from_pretrained.return_value = mock_hf_config
+
+            config = self._build_config(trust_remote_code=False)
+            from ray.llm._internal.batch.processor.sglang_engine_proc import (
+                build_sglang_engine_processor,
+            )
+
+            build_sglang_engine_processor(config)
+
+            mock_download.assert_called_once()
+            call_kwargs = mock_download.call_args[1]
+            assert call_kwargs["download_model"] == NodeModelDownloadable.TOKENIZER_ONLY
+
+    def test_trust_remote_code_passed_to_autoconfig(self):
+        """trust_remote_code from engine_kwargs must be forwarded to
+        AutoConfig.from_pretrained so that custom tokeniser/config code runs."""
+        with (
+            patch(f"{self._MODULE}.download_model_files") as mock_download,
+            patch(f"{self._MODULE}.transformers") as mock_transformers,
+            patch(f"{self._MODULE}.get_or_create_telemetry_agent"),
+        ):
+            fake_path = "/tmp/fake_trust_model"
+            mock_download.return_value = fake_path
+            mock_hf_config = MagicMock()
+            mock_hf_config.architectures = ["CustomArch"]
+            mock_transformers.AutoConfig.from_pretrained.return_value = mock_hf_config
+
+            config = self._build_config(trust_remote_code=True)
+            from ray.llm._internal.batch.processor.sglang_engine_proc import (
+                build_sglang_engine_processor,
+            )
+
+            build_sglang_engine_processor(config)
+
+            mock_transformers.AutoConfig.from_pretrained.assert_called_once_with(
+                fake_path,
+                trust_remote_code=True,
+            )
+
+    def test_telemetry_falls_back_to_default_architecture_on_autoconfig_error(
+        self,
+    ):
+        """If AutoConfig.from_pretrained raises (e.g. unsupported model), the
+        processor must still be built successfully and telemetry must record
+        DEFAULT_MODEL_ARCHITECTURE instead of propagating the exception."""
+        from ray.llm._internal.batch.processor.sglang_engine_proc import (
+            DEFAULT_MODEL_ARCHITECTURE,
+            build_sglang_engine_processor,
+        )
+
+        with (
+            patch(f"{self._MODULE}.download_model_files") as mock_download,
+            patch(f"{self._MODULE}.transformers") as mock_transformers,
+            patch(f"{self._MODULE}.get_or_create_telemetry_agent") as mock_telemetry,
+        ):
+            mock_download.return_value = "/tmp/unsupported_model"
+            mock_transformers.AutoConfig.from_pretrained.side_effect = OSError(
+                "model config not found"
+            )
+            mock_agent = MagicMock()
+            mock_telemetry.return_value = mock_agent
+
+            config = self._build_config(trust_remote_code=True)
+            # Should not raise.
+            build_sglang_engine_processor(config)
+
+            mock_agent.push_telemetry_report.assert_called_once()
+            report = mock_agent.push_telemetry_report.call_args[0][0]
+            assert report.model_architecture == DEFAULT_MODEL_ARCHITECTURE
 
 
 if __name__ == "__main__":
