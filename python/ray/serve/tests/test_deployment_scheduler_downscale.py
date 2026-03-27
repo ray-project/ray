@@ -220,13 +220,17 @@ class TestScaleDownReplicaSelection:
 
     def test_downscale_prefers_not_head_node(self, ray_cluster):
         cluster = ray_cluster
-        head_node = cluster.add_node(num_cpus=1)
+        fallback_label = {"type": "fallback"}
+        primary_label = {"type": "primary"}
+        head_node = cluster.add_node(num_cpus=1, labels=fallback_label)
         cluster.wait_for_nodes()
         ray.init(address=cluster.address, ignore_reinit_error=True)
         serve.start()
 
         ray_actor_options = {
             "num_cpus": 1,
+            "label_selector": primary_label,
+            "fallback_strategy": [{"label_selector": fallback_label}],
         }
         app_name = "downscale_prefers_not_head_app"
         deployment_name = "test_deployment"
@@ -245,7 +249,7 @@ class TestScaleDownReplicaSelection:
             )
             wait_for_condition(check_apps_running, apps=[app_name])
 
-            cluster.add_node(num_cpus=2)
+            cluster.add_node(num_cpus=2, labels=primary_label)
             cluster.wait_for_nodes()
 
             # The first replica is always the head node
@@ -265,8 +269,8 @@ class TestScaleDownReplicaSelection:
                 min_replicas=1,
                 timeout=30,
             )
-            # Even though the head node had 1 replica compared to 2 replicas on the worker node
-            # the remaining replica should still be onthe head node.
+            # Even though the head node had 1 replica and just match fallback label,
+            # the remaining replica should still be on the head node.
             assert handle.get_info.remote().result()["node_id"] == head_node_id
         finally:
             serve.shutdown()

@@ -1084,10 +1084,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     ) -> Set[ReplicaID]:
         """Select which replicas to stop for a downscale request in the following priority:
         1. Prioritize replicas that are not in the RUNNING state.
-        2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
-        3. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
-            Head node is always deprioritized to last.
-        4. Prioritize newer replicas over older replicas.
+        2. Prioritize replicas not on the head node because we can't relinquish the head node.
+        3. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        4. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
+        5. Prioritize newer replicas over older replicas.
         Note that this algorithm doesn't consider other non-serve actors on the same node.
         See more at https://github.com/ray-project/ray/issues/20599.
 
@@ -1129,8 +1129,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
 
         # Prioritize based on following priority:
-        # 1. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
-        # 2. Prioritize replicas not on the head node because we can't relinquish the head node.
+        # 1. Prioritize replicas not on the head node because we can't relinquish the head node.
+        # 2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
         # 3. Prioritize replicas on nodes with fewer total replicas so we can relinquish them.
         def scale_down_priority(
             node_and_replicas: Tuple[str, Set[ReplicaID]],
@@ -1142,7 +1142,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 for labels in labels_to_check
             )
             is_head_node = node_id == self._head_node_id
-            return int(match_labels), int(is_head_node), len(all_replicas)
+            return int(is_head_node), int(match_labels), len(all_replicas)
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=scale_down_priority
