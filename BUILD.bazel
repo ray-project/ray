@@ -66,11 +66,11 @@ alias(
 # https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
 refresh_compile_commands(
     name = "refresh_compile_commands",
+    exclude_external_sources = False,
     targets = {
         "//src/ray/...": "",
-	"//:ray_pkg_zip": "",
+        "//:ray_pkg_zip": "",
     },
-    exclude_external_sources = True,
 )
 
 ray_cc_library(
