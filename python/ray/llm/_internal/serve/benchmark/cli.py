@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="HuggingFace tokenizer name/path (default: same as --model)",
     )
+    server.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for Authorization header (default: None)",
+    )
 
     ## Workload ##
     workload = parser.add_argument_group("workload")
@@ -89,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Simulated user think-time between turns in seconds (default: %(default)s)",
     )
     workload.add_argument(
-        "--chunk-size",
+        "--first-chunk-threshold",
         type=int,
         default=16,
         help="Number of content chunks before recording first-chunk latency (default: %(default)s)",

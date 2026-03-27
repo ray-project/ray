@@ -33,8 +33,9 @@ async def send_chat_completion(
     messages: list[dict[str, str]],
     session_id: str = "",
     max_tokens: int = 256,
-    chunk_size: int = 16,
+    first_chunk_threshold: int = 16,
     timeout_sec: int = 300,
+    api_key: Optional[str] = None,
 ) -> TurnResult:
     """Send a streaming chat completion request and collect metrics."""
     url = f"{base_url}/v1/chat/completions"
@@ -50,6 +51,8 @@ async def send_chat_completion(
     headers = {
         "Content-Type": "application/json",
     }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     if session_id:
         headers["X-Session-Id"] = session_id
 
@@ -107,7 +110,7 @@ async def send_chat_completion(
                     ttft_ns = now_ns - start_ns
                 else:
                     chunk_times.append(now_ns - prev_ts)
-                if fc_ns is None and content_chunk_count >= chunk_size:
+                if fc_ns is None and content_chunk_count >= first_chunk_threshold:
                     fc_ns = now_ns - start_ns
                 prev_ts = now_ns
                 generated_text += content
@@ -143,7 +146,8 @@ async def _run_smoke_async(args) -> dict:
             base_url=args.base_url,
             model=args.model,
             messages=messages,
-            chunk_size=args.chunk_size,
+            first_chunk_threshold=args.first_chunk_threshold,
+            api_key=getattr(args, "api_key", None),
         )
     return {
         "ttft_ms": round(result.ttft_ms, 2),

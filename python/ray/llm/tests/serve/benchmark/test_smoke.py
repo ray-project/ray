@@ -22,7 +22,7 @@ async def test_send_chat_completion(mock_server: str) -> None:
             base_url=mock_server,
             model="test-model",
             messages=messages,
-            chunk_size=2,
+            first_chunk_threshold=2,
         )
 
     assert isinstance(result, TurnResult)
@@ -40,7 +40,7 @@ def test_run_smoke(mock_server: str) -> None:
     args = types.SimpleNamespace(
         base_url=mock_server,
         model="test-model",
-        chunk_size=2,
+        first_chunk_threshold=2,
     )
     exit_code = run_smoke(args)
     assert exit_code == 0
@@ -51,7 +51,7 @@ def test_run_smoke_connection_error(free_port: int) -> None:
     args = types.SimpleNamespace(
         base_url=f"http://127.0.0.1:{free_port}",
         model="test-model",
-        chunk_size=16,
+        first_chunk_threshold=16,
     )
     exit_code = run_smoke(args)
     assert exit_code == 1
