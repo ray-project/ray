@@ -68,7 +68,9 @@ refresh_compile_commands(
     name = "refresh_compile_commands",
     targets = {
         "//src/ray/...": "",
+	"//:ray_pkg_zip": "",
     },
+    exclude_external_sources = True,
 )
 
 ray_cc_library(
