@@ -2348,7 +2348,7 @@ class TestAutoscalingWithStreaming:
             await asyncio.sleep(interval_s)
 
     @classmethod
-    async def _send_load(cls, url: str, stream: bool):
+    async def _run_load(cls, url: str, stream: bool):
         """Execute the load profile and return final counters."""
         inflight: set = set()
         counters = {"sent": 0, "ok": 0, "errors": 0}
@@ -2372,7 +2372,7 @@ class TestAutoscalingWithStreaming:
 
         def _run():
             try:
-                result.update(asyncio.run(cls._send_load(url, stream)))
+                result.update(asyncio.run(cls._run_load(url, stream)))
             except Exception as e:
                 error[0] = e
 
@@ -2401,7 +2401,9 @@ class TestAutoscalingWithStreaming:
 
         # 3) Drain: wait for load to finish, assert all requests 'ok'
         load_thread.join(timeout=180)
-        assert not load_thread.is_alive(), "Load generation thread did not finish in time"
+        assert (
+            not load_thread.is_alive()
+        ), "Load generation thread did not finish in time"
         assert load_error[0] is None, f"Load generation failed: {load_error[0]}"
 
         tlog(f"Load finished. counters={load_counters}")
@@ -2455,7 +2457,9 @@ class TestAutoscalingWithStreaming:
                 )
 
             async def __call__(self, request: Request):
-                return StreamingResponse(self._backend.remote(), media_type="text/plain")
+                return StreamingResponse(
+                    self._backend.remote(), media_type="text/plain"
+                )
 
         serve.run(Ingress.bind(Backend.bind()), name="app", route_prefix="/app")
         wait_for_condition(
