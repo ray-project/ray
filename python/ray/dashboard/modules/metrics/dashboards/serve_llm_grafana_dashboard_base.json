@@ -102,8 +102,8 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "includeAll": false,
-        "multi": false,
+        "includeAll": true,
+        "multi": true,
         "allValue": ".*",
         "current": {
           "selected": true,
