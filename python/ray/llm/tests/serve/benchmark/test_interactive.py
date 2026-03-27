@@ -4,13 +4,11 @@ import pytest
 
 # We need to test handle_command, but it's defined inside run_interactive.
 # Instead, test the helper functions that are module-level.
-
 from ray.llm._internal.serve.benchmark.interactive import (
     RuntimeState,
-    _percentile,
     _summarize_metrics,
 )
-from ray.llm._internal.serve.benchmark.multiturn_bench import TurnMetric
+from ray.llm._internal.serve.benchmark.multiturn_bench import TurnMetric, percentile
 
 
 class TestSummarizeMetrics:
@@ -60,9 +58,7 @@ class TestRuntimeState:
 
 class TestPercentile:
     def test_empty(self):
-        assert _percentile([], 50) == 0.0
+        assert percentile([], 50) == 0.0
 
     def test_basic(self):
-        assert _percentile([1.0, 2.0, 3.0, 4.0, 5.0], 50) == pytest.approx(
-            3.0, abs=0.1
-        )
+        assert percentile([1.0, 2.0, 3.0, 4.0, 5.0], 50) == pytest.approx(3.0, abs=0.1)
