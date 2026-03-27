@@ -308,7 +308,6 @@ class TestCustomServeMetrics:
     def test_record_autoscaling_stats_without_autoscaling_config(self, serve_instance):
         """Test that record_autoscaling_stats doesn't crash when using num_replicas instead of autoscaling_config.
 
-        Regression test for: https://github.com/ray-project/ray/issues/XXXXX
         When a deployment defines record_autoscaling_stats but uses fixed num_replicas,
         the replica should start successfully without crashing.
         """
