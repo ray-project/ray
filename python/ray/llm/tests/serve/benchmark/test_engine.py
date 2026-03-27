@@ -57,9 +57,7 @@ class TestTextGenerator:
         for target in [1, 10, 50, 200]:
             text = text_gen.generate(target)
             actual = len(tokenizer.encode(text, add_special_tokens=False))
-            assert actual == target, (
-                f"Expected {target} tokens, got {actual}"
-            )
+            assert actual == target, f"Expected {target} tokens, got {actual}"
 
     def test_generate_zero_tokens(self, text_gen):
         assert text_gen.generate(0) == ""
@@ -198,9 +196,7 @@ class TestConversationFactory:
 
         for msg in conv.user_messages:
             token_count = len(tokenizer.encode(msg, add_special_tokens=False))
-            assert token_count == spec.u, (
-                f"Expected {spec.u} tokens, got {token_count}"
-            )
+            assert token_count == spec.u, f"Expected {spec.u} tokens, got {token_count}"
 
     def test_cross_session_shared_prefix(self, text_gen):
         """Two sessions with cross_sharing > 0 should share the same prefix."""
@@ -257,7 +253,9 @@ class TestBenchmarkState:
         assert self._run(state.get_next_session()) is None
 
     def test_get_next_session_unlimited(self):
-        spec = _make_spec(num_sessions=None, duration_s=60.0, request_rate=1.0, concurrency=None)
+        spec = _make_spec(
+            num_sessions=None, duration_s=60.0, request_rate=1.0, concurrency=None
+        )
         state = BenchmarkState(spec)
         ids = [self._run(state.get_next_session()) for _ in range(100)]
         assert ids == list(range(100))
@@ -266,9 +264,15 @@ class TestBenchmarkState:
         spec = _make_spec()
         state = BenchmarkState(spec)
         metric = TurnMetric(
-            session_id="s0", turn=0, ttft_ms=1.0, fc_ms=1.0,
-            tpot_ms=1.0, latency_ms=10.0, input_tokens=100,
-            output_tokens=50, start_time_ms=0.0,
+            session_id="s0",
+            turn=0,
+            ttft_ms=1.0,
+            fc_ms=1.0,
+            tpot_ms=1.0,
+            latency_ms=10.0,
+            input_tokens=100,
+            output_tokens=50,
+            start_time_ms=0.0,
         )
         self._run(state.record_metric(metric))
         assert len(state.warmup_metrics) == 1
@@ -280,9 +284,15 @@ class TestBenchmarkState:
         self._run(state.mark_warmup_complete())
 
         metric = TurnMetric(
-            session_id="s0", turn=0, ttft_ms=1.0, fc_ms=1.0,
-            tpot_ms=1.0, latency_ms=10.0, input_tokens=100,
-            output_tokens=50, start_time_ms=0.0,
+            session_id="s0",
+            turn=0,
+            ttft_ms=1.0,
+            fc_ms=1.0,
+            tpot_ms=1.0,
+            latency_ms=10.0,
+            input_tokens=100,
+            output_tokens=50,
+            start_time_ms=0.0,
         )
         self._run(state.record_metric(metric))
         assert len(state.warmup_metrics) == 0

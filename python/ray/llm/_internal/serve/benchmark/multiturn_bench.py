@@ -11,6 +11,7 @@ Key features:
   - Cross-session prefix sharing control
 """
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -100,14 +101,18 @@ class WorkloadSpec:
     """
 
     # Core parameters
-    num_sessions: Optional[int] = None  # N_s: total unique sessions (None = duration-based)
+    num_sessions: Optional[
+        int
+    ] = None  # N_s: total unique sessions (None = duration-based)
     num_turns: int = 1  # N_t: turns per session
     osl: int = 1  # o: output sequence length per turn
     think_time: float = 0.0  # seconds between turns within a session
 
     # Traffic (use either concurrency or request_rate, not both)
     concurrency: Optional[int] = None  # C: max concurrent in-flight requests
-    request_rate: Optional[float] = None  # QPS: requests per second (constant rate mode)
+    request_rate: Optional[
+        float
+    ] = None  # QPS: requests per second (constant rate mode)
     ramp_interval: float = -1.0  # seconds between session launches (-1 = auto)
 
     # Duration-based mode (used with request_rate)
@@ -581,9 +586,7 @@ class TextGenerator:
 
         # actual_len < target_tokens: generate more and append
         deficit = target_tokens - actual_len
-        extra_ids = np.random.randint(
-            0, self._vocab_size, size=deficit + 20
-        ).tolist()
+        extra_ids = np.random.randint(0, self._vocab_size, size=deficit + 20).tolist()
         extra_text = tokenizer.decode(extra_ids, skip_special_tokens=True)
         combined = text + " " + extra_text
         combined_ids = tokenizer.encode(combined, add_special_tokens=False)
@@ -753,9 +756,7 @@ class BenchmarkState:
         async with self._lock:
             self.active_turns[session_id] = turn_idx
 
-    async def mark_session_complete(
-        self, session_idx: int, session_id: str
-    ) -> None:
+    async def mark_session_complete(self, session_idx: int, session_id: str) -> None:
         """Mark a session as complete and clean up."""
         async with self._lock:
             self.active_turns.pop(session_id, None)
@@ -892,9 +893,7 @@ async def run_benchmark(
     if spec.concurrency is None:
         raise ValueError("closed-loop benchmark requires concurrency to be set")
     if spec.num_sessions is None:
-        raise ValueError(
-            "closed-loop (concurrency) benchmark requires --num-sessions"
-        )
+        raise ValueError("closed-loop (concurrency) benchmark requires --num-sessions")
 
     state = BenchmarkState(spec)
     request_sem = asyncio.Semaphore(spec.concurrency)
@@ -905,7 +904,6 @@ async def run_benchmark(
 
     connector = aiohttp.TCPConnector(limit=spec.concurrency * 2)
     async with aiohttp.ClientSession(connector=connector) as http_session:
-
         pbar = create_progress_bar(total_expected)
         pbar.set_postfix_str("0")
 
@@ -917,14 +915,8 @@ async def run_benchmark(
             session_idx = await state.get_next_session()
             if session_idx is not None:
                 # Add small staggered delay for first few sessions
-                delay = (
-                    0.0
-                    if session_idx >= spec.concurrency
-                    else session_idx * 0.1
-                )
-                await turn_queue.put(
-                    (session_idx, 0, time.perf_counter() + delay)
-                )
+                delay = 0.0 if session_idx >= spec.concurrency else session_idx * 0.1
+                await turn_queue.put((session_idx, 0, time.perf_counter() + delay))
                 return True
             return False
 
@@ -971,9 +963,7 @@ async def run_benchmark(
                     pbar.set_postfix_str(str(current_inflight))
                     pbar.update(1)
                     # Clean up failed session
-                    await state.mark_session_complete(
-                        session_idx, conv.session_id
-                    )
+                    await state.mark_session_complete(session_idx, conv.session_id)
                     return
 
                 current_inflight = await state.track_inflight_end()
@@ -1012,9 +1002,7 @@ async def run_benchmark(
                 await turn_queue.put((session_idx, next_turn, delay_until))
             else:
                 # Session complete
-                await state.mark_session_complete(
-                    session_idx, conv.session_id
-                )
+                await state.mark_session_complete(session_idx, conv.session_id)
                 # Enqueue a new session to fill this slot
                 await enqueue_new_session()
 
@@ -1025,8 +1013,8 @@ async def run_benchmark(
             """Worker task: continuously pull turns from queue and execute them."""
             while True:
                 try:
-                    session_idx, turn_idx, delay_until = (
-                        await asyncio.wait_for(turn_queue.get(), timeout=1.0)
+                    session_idx, turn_idx, delay_until = await asyncio.wait_for(
+                        turn_queue.get(), timeout=1.0
                     )
                 except asyncio.TimeoutError:
                     # Do not call get_next_session() here — it allocates a session ID
@@ -1072,9 +1060,7 @@ async def run_benchmark(
         )
 
         # Launch worker pool
-        workers = [
-            asyncio.create_task(worker()) for _ in range(spec.concurrency)
-        ]
+        workers = [asyncio.create_task(worker()) for _ in range(spec.concurrency)]
         await asyncio.gather(*workers)
 
         pbar.close()
@@ -1166,9 +1152,7 @@ async def run_rate_based_benchmark(
     # Session budget: computed from rate * duration / num_turns
     # --------------------------------------------------------------------------
     if duration_s > 0:
-        session_budget = math.ceil(
-            spec.request_rate * duration_s / spec.num_turns
-        )
+        session_budget = math.ceil(spec.request_rate * duration_s / spec.num_turns)
     elif spec.num_sessions is not None:
         session_budget = spec.num_sessions
     else:
@@ -1218,9 +1202,7 @@ async def run_rate_based_benchmark(
         "[{elapsed}<{remaining}, {rate_fmt}] {postfix}"
     )
     _bar_fmt_no_total = "{desc}: {bar}| {n_fmt} [{elapsed}, {rate_fmt}]"
-    _bar_fmt_no_total_pf = (
-        "{desc}: {bar}| {n_fmt} [{elapsed}, {rate_fmt}] {postfix}"
-    )
+    _bar_fmt_no_total_pf = "{desc}: {bar}| {n_fmt} [{elapsed}, {rate_fmt}] {postfix}"
 
     pbar_sent = tqdm(
         total=total_slots if total_slots > 0 else None,
@@ -1430,9 +1412,7 @@ async def run_rate_based_benchmark(
     # --------------------------------------------------------------------------
     async def duration_timer() -> None:
         await asyncio.sleep(duration_s)
-        logger.info(
-            "Duration %.1fs elapsed -- stopping new dispatches.", duration_s
-        )
+        logger.info("Duration %.1fs elapsed -- stopping new dispatches.", duration_s)
         stop_dispatching.set()
 
     # --------------------------------------------------------------------------
@@ -1453,20 +1433,14 @@ async def run_rate_based_benchmark(
         await pacer_task
 
         pbar_sent.set_description("  Sent")
-        logger.info(
-            "Waiting for %d in-flight requests to complete...", inflight
-        )
+        logger.info("Waiting for %d in-flight requests to complete...", inflight)
         await all_done.wait()
 
         pbar_sent.close()
         pbar_done.close()
 
     bench_elapsed_s = (time.perf_counter_ns() - bench_start_ns) / 1e9
-    avg_inf = (
-        sum(inflight_samples) / len(inflight_samples)
-        if inflight_samples
-        else 0.0
-    )
+    avg_inf = sum(inflight_samples) / len(inflight_samples) if inflight_samples else 0.0
     logger.info(
         "Benchmark complete: %d requests in %.1fs (%.2f req/s actual); "
         "max_inflight=%d, avg_inflight=%.1f",
@@ -1516,9 +1490,7 @@ def report_results(
     all_output = [m.output_tokens for m in metrics]
 
     total_output_tokens = sum(all_output)
-    throughput = (
-        total_output_tokens / bench_elapsed_s if bench_elapsed_s > 0 else 0
-    )
+    throughput = total_output_tokens / bench_elapsed_s if bench_elapsed_s > 0 else 0
 
     print()
     print("=" * 70)
@@ -1530,19 +1502,14 @@ def report_results(
     if warmup_s > 0:
         print(f"  Warm-up excluded:     {warmup_s:.1f}s")
     if discarded_warmup_requests > 0:
-        print(
-            f"  Warm-up requests:     {discarded_warmup_requests} (discarded)"
-        )
+        print(f"  Warm-up requests:     {discarded_warmup_requests} (discarded)")
     print(f"  Throughput:           {throughput:.1f} output tok/s")
-    print(f"  Request rate:         {len(metrics)/bench_elapsed_s:.1f} req/s")
+    print(f"  Request rate:         {len(metrics) / bench_elapsed_s:.1f} req/s")
     print(
         f"  Avg input tokens:     {mean(all_input):.0f}  "
         f"(target ISL: {spec.effective_isl:.0f})"
     )
-    print(
-        f"  Avg output tokens:    {mean(all_output):.0f}  "
-        f"(target OSL: {spec.osl})"
-    )
+    print(f"  Avg output tokens:    {mean(all_output):.0f}  (target OSL: {spec.osl})")
     print()
 
     # Latency stats
@@ -1582,7 +1549,7 @@ def report_results(
         t_lat = mean([m.latency_ms for m in turn_metrics])
         t_isl = mean([m.input_tokens for m in turn_metrics])
         print(
-            f"    {t+1:<6} {len(turn_metrics):<7} {t_isl:<9.0f} "
+            f"    {t + 1:<6} {len(turn_metrics):<7} {t_isl:<9.0f} "
             f"{t_ttft:<10.1f} {t_fc:<10.1f} {t_tpot:<10.1f} {t_lat:<10.1f}"
         )
     print("=" * 70)
@@ -1604,9 +1571,7 @@ def report_results(
             },
             "stats": {
                 "throughput_tok_s": round(throughput, 1),
-                "measured_request_rate": round(
-                    len(metrics) / bench_elapsed_s, 2
-                ),
+                "measured_request_rate": round(len(metrics) / bench_elapsed_s, 2),
                 "avg_input_tokens": round(mean(all_input), 1),
                 "avg_output_tokens": round(mean(all_output), 1),
                 "avg_ttft_ms": round(mean(all_ttft), 2),
@@ -1618,15 +1583,9 @@ def report_results(
                 "p90_fc_ms": round(percentile(all_fc, 90), 2),
                 "p99_fc_ms": round(percentile(all_fc, 99), 2),
                 "avg_tpot_ms": round(mean(all_tpot), 2) if all_tpot else 0,
-                "p50_tpot_ms": (
-                    round(percentile(all_tpot, 50), 2) if all_tpot else 0
-                ),
-                "p90_tpot_ms": (
-                    round(percentile(all_tpot, 90), 2) if all_tpot else 0
-                ),
-                "p99_tpot_ms": (
-                    round(percentile(all_tpot, 99), 2) if all_tpot else 0
-                ),
+                "p50_tpot_ms": (round(percentile(all_tpot, 50), 2) if all_tpot else 0),
+                "p90_tpot_ms": (round(percentile(all_tpot, 90), 2) if all_tpot else 0),
+                "p99_tpot_ms": (round(percentile(all_tpot, 99), 2) if all_tpot else 0),
                 "avg_latency_ms": round(mean(all_latency), 2),
             },
             "per_turn": [],
@@ -1666,9 +1625,7 @@ def report_results(
                     "p50_fc_ms": round(percentile(t_fc, 50), 2),
                     "p99_ttft_ms": round(percentile(t_ttft, 99), 2),
                     "p99_fc_ms": round(percentile(t_fc, 99), 2),
-                    "p99_tpot_ms": (
-                        round(percentile(t_tpot, 99), 2) if t_tpot else 0
-                    ),
+                    "p99_tpot_ms": (round(percentile(t_tpot, 99), 2) if t_tpot else 0),
                 }
             )
 
@@ -1683,7 +1640,7 @@ def report_results(
 # ============================================================================
 
 
-def set_seed(args) -> int:
+def set_seed(args: argparse.Namespace) -> int:
     """Set random seed combining base seed with workload spec hash.
 
     This ensures:
@@ -1692,10 +1649,10 @@ def set_seed(args) -> int:
       generate different conversations
 
     Args:
-        args: Parsed command-line arguments
+        args: Parsed command-line arguments.
 
     Returns:
-        The combined seed value used
+        The combined seed value used.
     """
     # Generate random base seed if not provided
     if args.seed is None:
@@ -1717,15 +1674,11 @@ def set_seed(args) -> int:
     }
 
     # Include all workload-affecting parameters
-    workload_params = {
-        k: v for k, v in vars(args).items() if k not in exclude_params
-    }
+    workload_params = {k: v for k, v in vars(args).items() if k not in exclude_params}
 
     # Create stable string representation and hash it
     workload_str = json.dumps(workload_params, sort_keys=True, default=str)
-    workload_hash = int(
-        hashlib.sha256(workload_str.encode()).hexdigest()[:8], 16
-    )
+    workload_hash = int(hashlib.sha256(workload_str.encode()).hexdigest()[:8], 16)
 
     # Combine base seed with workload hash; clamp to numpy's valid range [0, 2**32-1]
     combined_seed = (base_seed + workload_hash) % (2**32)
@@ -1802,9 +1755,7 @@ def run_direct(args) -> int:
 
     # Validate
     if args.concurrency is not None and args.num_sessions is None:
-        logger.error(
-            "--num-sessions is required when using --concurrency mode."
-        )
+        logger.error("--num-sessions is required when using --concurrency mode.")
         return 1
     if (
         args.request_rate is not None
@@ -1812,8 +1763,7 @@ def run_direct(args) -> int:
         and (args.duration is None or args.duration <= 0)
     ):
         logger.error(
-            "For --request-rate mode without --num-sessions, "
-            "specify --duration > 0."
+            "For --request-rate mode without --num-sessions, specify --duration > 0."
         )
         return 1
 
@@ -1853,9 +1803,7 @@ def run_direct(args) -> int:
         if spec.duration_s > 0:
             effective_duration = spec.duration_s
         elif spec.num_sessions is not None:
-            effective_duration = (
-                spec.num_sessions * spec.num_turns / spec.request_rate
-            )
+            effective_duration = spec.num_sessions * spec.num_turns / spec.request_rate
         else:
             effective_duration = 60.0
         if args.warm_up >= effective_duration:
