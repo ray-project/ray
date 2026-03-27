@@ -9,6 +9,7 @@ import pytest
 from uv import find_uv_bin
 
 import ray
+from ray.exceptions import RaySystemError
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -507,9 +508,6 @@ def test_uv_run_worker_startup_failed(shutdown_only, monkeypatch):
     causing the worker registration to time out multiple times and eventually raise
     RaySystemError.
     """
-    import ray
-    from ray.exceptions import RaySystemError
-
     with monkeypatch.context() as m:
         # Set environment variables to speed up the test (only for this test context)
         # Reduce timeout to 3 seconds and max retries to 3
