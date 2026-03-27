@@ -29,7 +29,7 @@ class LocalController:
                 dataset_shards=self.datasets,
             )
         )
-        train_func()
+        result = train_func()
         train_fn_utils = get_train_fn_utils()
         assert isinstance(train_fn_utils, LocalTrainFnUtils)
         return Result(
@@ -37,4 +37,5 @@ class LocalController:
             checkpoint=train_fn_utils.get_checkpoint(),
             path=None,
             error=None,
+            return_value=result,
         )
