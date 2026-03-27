@@ -84,27 +84,18 @@ class _StatsAccumulator:
         self.sum += value
         self.count += 1
 
-    def get(
-        self,
-        *,
-        include_sum: bool = True,
-        include_count: bool = False,
-        mean_as_int: bool = False,
-    ) -> Optional[dict[str, int | float]]:
+    def get(self, *, mean_as_int: bool = False) -> Optional[dict[str, int | float]]:
         """Return stats dict, or None if no values were added."""
         if not self.count:
             return None
         mean = self.sum / self.count
-        result: dict[str, int | float] = {
+        return {
             "min": self.min_value,
             "max": self.max_value,
             "mean": int(mean) if mean_as_int else mean,
+            "sum": self.sum,
+            "count": self.count,
         }
-        if include_sum:
-            result["sum"] = self.sum
-        if include_count:
-            result["count"] = self.count
-        return result
 
 
 class Timer:
@@ -1500,16 +1491,14 @@ class OperatorStatsSummary:
             tr = _StatsAccumulator()
             for count in task_rows.values():
                 tr.add(count)
-            task_rows_stats = tr.get(
-                include_sum=False, mean_as_int=True, include_count=True
-            )
-            exec_summary_str = f"{len(task_rows)} tasks executed, {exec_summary_str}"
+            task_rows_stats = tr.get(mean_as_int=True)
+            exec_summary_str = f"{tr.count} tasks executed, {exec_summary_str}"
 
         # Execution stats.
         wall_time_stats = wall.get()
         cpu_stats = cpu.get()
         udf_stats = udf.get()
-        memory_stats = mem.get(include_sum=False, mean_as_int=True)
+        memory_stats = mem.get(mean_as_int=True)
 
         # Output stats.
         output_num_rows_stats = rows.get(mean_as_int=True)
@@ -1521,11 +1510,7 @@ class OperatorStatsSummary:
             nc = _StatsAccumulator()
             for tasks in node_tasks.values():
                 nc.add(len(tasks))
-            node_counts_stats = nc.get(
-                include_sum=False,
-                mean_as_int=True,
-                include_count=True,
-            )
+            node_counts_stats = nc.get(mean_as_int=True)
 
         # Assign a value in to_summary and initialize it as None.
         total_input_num_rows = None
