@@ -215,8 +215,9 @@ def build_sglang_engine_processor(
             )
         )
 
-    # Download model files first if trust_remote_code is enabled,
-    # so that custom architecture .py config files are available locally.
+    # Download model files for telemetry before engine init.
+    # Use EXCLUDE_SAFETENSORS for trust_remote_code models so custom .py config
+    # files are available locally.
     download_mode = (
         NodeModelDownloadable.EXCLUDE_SAFETENSORS
         if trust_remote_code
@@ -234,8 +235,6 @@ def build_sglang_engine_processor(
             model_path_or_id,
             trust_remote_code=trust_remote_code,
         )
-        architectures = getattr(hf_config, "architectures", [])
-        architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
     except Exception:
         # Failed to retrieve HuggingFace config for telemetry purposes.
         # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
@@ -244,7 +243,10 @@ def build_sglang_engine_processor(
         logger.warning(
             f"Failed to retrieve HuggingFace config for {config.model_source}"
         )
-        architecture = DEFAULT_MODEL_ARCHITECTURE
+        hf_config = None
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
