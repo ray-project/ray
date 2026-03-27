@@ -4248,9 +4248,8 @@ class DeploymentState:
             try:
                 latency_s = replica._actor.check_pending_nonblocking_reconfigure()
                 if latency_s is not None:
-                    metric_tags = {"replica": replica.replica_id.unique_id}
                     self.replica_reconfigure_latency_histogram.observe(
-                        latency_s * 1000, tags=metric_tags
+                        latency_s * 1000
                     )
             except Exception:
                 logger.warning(
