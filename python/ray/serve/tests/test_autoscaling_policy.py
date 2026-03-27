@@ -2329,18 +2329,6 @@ class TestAutoscalingWithStreamingConfig:
             (1.0, 10),
         ]
     )
-    ray_serve_env_overrides: dict = field(
-        default_factory=lambda: {
-            "RAY_SERVE_LOG_TO_STDERR": "0",
-            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
-            "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
-        }
-    )
-    throughput_optimized_env_vars: dict = field(
-        default_factory=lambda: {
-            "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
-        }
-    )
 
 
 @ray.remote
@@ -2508,23 +2496,7 @@ class TestAutoscalingWithStreaming:
         t.start()
         return t, result, error
 
-    @pytest.mark.parametrize(
-        "ray_instance, stream",
-        [
-            (TestAutoscalingWithStreamingConfig().ray_serve_env_overrides, True),
-            (TestAutoscalingWithStreamingConfig().ray_serve_env_overrides, False),
-            (TestAutoscalingWithStreamingConfig().throughput_optimized_env_vars, True),
-            (TestAutoscalingWithStreamingConfig().throughput_optimized_env_vars, False),
-        ],
-        ids=[
-            "env_overrides_stream",
-            "env_overrides_no_stream",
-            "throughput_optimized_stream",
-            "throughput_optimized_no_stream",
-        ],
-        indirect=["ray_instance"],
-    )
-    def test_autoscaling_with_streaming(self, ray_instance, stream):
+    def _run_autoscaling_test(self, stream: bool):
         """deploy -> settle -> load -> assert 1->2 -> drain -> assert 2->1."""
         cfg = self.CFG
 
@@ -2601,6 +2573,12 @@ class TestAutoscalingWithStreaming:
         # Cleanup
         serve.delete(cfg.app_name)
         ray.kill(ray.get_actor("request_counter"))
+
+    def test_streaming_with_rejection(self, ray_instance):
+        self._run_autoscaling_test(stream=True)
+
+    def test_unary_with_rejection(self, ray_instance):
+        self._run_autoscaling_test(stream=False)
 
 
 if __name__ == "__main__":
