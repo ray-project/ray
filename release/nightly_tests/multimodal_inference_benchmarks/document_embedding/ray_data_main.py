@@ -13,7 +13,6 @@ from benchmark import Benchmark
 
 EMBED_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
-NUM_GPU_NODES = 8
 INPUT_PATH = "s3://anonymous@ray-example-data/digitalcorpora/metadata/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
@@ -91,7 +90,6 @@ def run_pipeline():
         .flat_map(chunker)
         .map_batches(
             Embedder,
-            concurrency=NUM_GPU_NODES,
             num_gpus=1.0,
             batch_size=EMBEDDING_BATCH_SIZE,
         )
