@@ -323,9 +323,7 @@ class CommandHandler:
             end_ns = time.perf_counter_ns()
             start_ns = self.runtime.measurement_start_ns or end_ns
             self.runtime.last_window_elapsed_s = (end_ns - start_ns) / 1e9
-            self.runtime.last_window_metrics = list(
-                self.runtime.measurement_metrics
-            )
+            self.runtime.last_window_metrics = list(self.runtime.measurement_metrics)
             self.runtime.measurement_target_requests = None
             summary = _summarize_metrics(
                 list(self.runtime.last_window_metrics),
@@ -364,18 +362,14 @@ class CommandHandler:
                 self.runtime.measurement_active
                 and self.runtime.measurement_start_ns is not None
             ):
-                el = (
-                    time.perf_counter_ns() - self.runtime.measurement_start_ns
-                ) / 1e9
+                el = (time.perf_counter_ns() - self.runtime.measurement_start_ns) / 1e9
                 mlist = list(self.runtime.measurement_metrics)
             else:
                 el = self.runtime.last_window_elapsed_s
                 mlist = list(self.runtime.last_window_metrics)
             if not mlist:
                 return "No measured window data to save."
-            save_path = self.resolve_save_path(
-                parts[1] if len(parts) == 2 else None
-            )
+            save_path = self.resolve_save_path(parts[1] if len(parts) == 2 else None)
             _save_window_result(
                 save_path,
                 self.args,
@@ -416,9 +410,7 @@ class CommandHandler:
                     continue
                 try:
                     overrides[mapped] = (
-                        int(v)
-                        if mapped in ("isl", "osl", "num_turns")
-                        else float(v)
+                        int(v) if mapped in ("isl", "osl", "num_turns") else float(v)
                     )
                 except ValueError:
                     errors.append(f"invalid value for {k}: {v!r}")

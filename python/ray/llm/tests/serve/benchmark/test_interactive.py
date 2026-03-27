@@ -99,8 +99,13 @@ class TestSummarizeMetrics:
         metrics = [
             _make_metric(ttft_ms=10.0, output_tokens=20),
             _make_metric(
-                session_id="s1", ttft_ms=15.0, fc_ms=25.0, tpot_ms=6.0,
-                latency_ms=120.0, input_tokens=60, output_tokens=25,
+                session_id="s1",
+                ttft_ms=15.0,
+                fc_ms=25.0,
+                tpot_ms=6.0,
+                latency_ms=120.0,
+                input_tokens=60,
+                output_tokens=25,
                 start_time_ms=100.0,
             ),
         ]
