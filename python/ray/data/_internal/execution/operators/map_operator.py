@@ -775,6 +775,8 @@ def _map_task(
                         block_meta,
                         size_bytes=gen_stats.serialized_object_size_bytes,
                     )
+                else:
+                    raise RuntimeError(f"gen_stats was none? {gen_stats}")
 
                 exec_stats = blk_exec_stats_builder.build(
                     block_ser_time_s=(
