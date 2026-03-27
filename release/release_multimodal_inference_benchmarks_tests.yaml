@@ -6,6 +6,12 @@
   frequency: manual
   team: data
 
+  cluster:
+    byod:
+      runtime_env:
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+
 - name: image_classification
 
   cluster:
