@@ -234,6 +234,25 @@ def run_prepare_commands(
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
+def run_dead_node_check():
+    # Connect to the cluster and check for dead nodes
+    import ray
+    return_code = SUCCESS_RETURN_CODE
+    try:
+        ray.init(address="auto")
+        dead_nodes = [
+            node["NodeID"] for node in ray.nodes() if not node["Alive"]
+        ]
+        if dead_nodes:
+            logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
+            return_code = 1
+    except Exception as e:
+        logger.error(
+            f"Error during dead node check: {e}"
+        )
+        return_code = 1
+    return return_code
+
 def main(
     test_workload: str,
     test_workload_timeout: float,
@@ -297,27 +316,12 @@ def main(
                 f"Finished with return code {return_code}. "
                 f"Time taken: {workload_time_taken}"
             )
+        
+        test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
 
-        if return_code == SUCCESS_RETURN_CODE:
-            if os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1":
-                # Connect to the cluster and check for dead nodes
-                import ray
-
-                try:
-                    ray.init(address="auto")
-                except Exception as e:
-                    logger.error(
-                        f"Failed to connect to Ray cluster for dead node check: {e}"
-                    )
-                    return_code = 1
-                else:
-                    dead_nodes = [
-                        node["NodeID"] for node in ray.nodes() if not node["Alive"]
-                    ]
-                    if dead_nodes:
-                        logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
-                        return_code = 1
-
+        if return_code == SUCCESS_RETURN_CODE and test_fail_on_dead_nodes:
+            return_code = run_dead_node_check()
+                            
         # Upload results.json
         uploaded_results = run_storage_cp(
             os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
