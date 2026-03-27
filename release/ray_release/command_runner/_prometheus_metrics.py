@@ -98,7 +98,14 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
         "cluster_pending_nodes": client.query_prometheus(
             query="ray_cluster_pending_nodes", **kwargs
         ),
+        "worker_oom_kills": client.query_prometheus(
+            query="sum(ray_memory_manager_worker_eviction_total) by (Type, Name)",
+            **kwargs,
+        ),
     }
+    print("=== METRICS ===")
+    print(metrics)
+    print("=== METRICS ===")
     metrics = {k: await v for k, v in metrics.items()}
     await client.close()
     return metrics
