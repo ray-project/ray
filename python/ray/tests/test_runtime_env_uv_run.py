@@ -9,11 +9,11 @@ import pytest
 from uv import find_uv_bin
 
 import ray
-from ray.exceptions import RaySystemError
 from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray.exceptions import RaySystemError
 
 PYPROJECT_TOML = """
 [project]
