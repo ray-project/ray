@@ -469,7 +469,7 @@ py_test_module_list_with_env_variants(
 
 # Test autoscaling with streaming and unary configurations.
 # Regression test for https://github.com/ray-project/ray/issues/61551
-AUTOSCALING_STREAMING_ENV_VARIANTS = {
+AUTOSCALING_ENV_VARIANTS = {
     "env_overrides": {
         "env": {
             "RAY_SERVE_LOG_TO_STDERR": "0",
@@ -488,7 +488,7 @@ AUTOSCALING_STREAMING_ENV_VARIANTS = {
 
 py_test_module_list_with_env_variants(
     size = "enormous",
-    env_variants = AUTOSCALING_STREAMING_ENV_VARIANTS,
+    env_variants = AUTOSCALING_ENV_VARIANTS,
     files = [
         "test_autoscaling_policy.py",
     ],
