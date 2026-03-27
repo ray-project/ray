@@ -523,6 +523,9 @@ class SerializationContext:
             elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return TaskUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("WORKER_STARTUP_FAILED"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return RaySystemError(error_info.error_message)
             elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
