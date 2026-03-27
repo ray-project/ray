@@ -14,11 +14,12 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
-from .util import cap_resource_request_to_limits
+from .util import cap_resource_request_to_limits, is_autoscaling_enabled
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -51,7 +52,9 @@ class _NodeResourceSpec:
     def of(cls, *, cpu=0, gpu=0, mem=0):
         cpu = math.floor(cpu)
         gpu = math.floor(gpu)
-        mem = math.floor(mem)
+        # Round memory to the nearest 0.1 GiB so that nodes of the same type
+        # with slightly different reported physical memory are grouped together.
+        mem = int(round(mem / GiB, 1) * GiB) if mem > 0 else 0
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
     @classmethod
@@ -187,6 +190,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._requester_id = f"data-{execution_id}"
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
+        self._autoscaling_enabled = is_autoscaling_enabled()
 
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
@@ -274,7 +278,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
-        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING:
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not self._autoscaling_enabled:
             level = logging.DEBUG
         else:
             level = logging.INFO
