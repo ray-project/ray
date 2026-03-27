@@ -1,7 +1,10 @@
 import logging
-from typing import Any, Dict, Iterable, Iterator, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, Union
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import jax
 
 logger = logging.getLogger(__name__)
 
@@ -19,17 +22,10 @@ def _get_slice_stop(sl: slice, length: int) -> int:
 def _convert_ndarray_to_jax_array(
     ndarray: np.ndarray,
 ) -> "jax.Array":  # noqa: F821
-
-    local_batch_size = ndarray.shape[0]
-
-    # Validate rank
-
-    # Ray Data partitions objects equally across the total number of hosts/workers
-    # operating in the DataParallelTrainer (along the batch / 0-th dimension).
-    # Since the input subset of records `ndarray` is exactly this host's 1D chunk,
-    # we first create a JAX array matching this exact physical row-sharding.
     import jax
     from jax.sharding import Mesh, NamedSharding, PartitionSpec
+
+    local_batch_size = ndarray.shape[0]
 
     global_devices = jax.devices()
     host_count = jax.process_count()
@@ -46,6 +42,10 @@ def _convert_ndarray_to_jax_array(
 
     # Use index map to deterministically place local chunks onto correct devices
     device_indices_map = physical_sharding.addressable_devices_indices_map(global_shape)
+    # Filter out devices that don't have any data on this host.
+    device_indices_map = {
+        d: idx for d, idx in device_indices_map.items() if idx is not None
+    }
 
     # when a tensor is wholly assigned to a single device instead of being partitioned, addressable_devices_indices_map returns slice(None, None, None) for that dimension instead of concrete indices.
     # _get_slice_start and _get_slice_stop are workarounds to handle this case.
@@ -55,7 +55,7 @@ def _convert_ndarray_to_jax_array(
 
     arrays = []
     for device, index in device_indices_map.items():
-        # Translate the global row-sharding index to this host's local ndarray slice
+        # For deterministic behavior, we need to translate the global row-sharding index to this host's local ndarray slice
         start = _get_slice_start(index[0])
         stop = _get_slice_stop(index[0], global_shape[0])
         local_slice = slice(
@@ -276,6 +276,8 @@ def jax_sync_generator(
                 )
 
             batch = local_batches[i]
+            # Since all_have_batch is True, this batch must not be None.
+            assert batch is not None
             local_batch_size = local_infos[2 * i + 1]
 
             if local_batch_size > min_batch_size:
