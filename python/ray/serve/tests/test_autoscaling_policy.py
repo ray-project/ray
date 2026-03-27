@@ -2471,7 +2471,7 @@ class TestAutoscalingWithStreaming:
         return t, result, error
 
     def _run_autoscaling_test(self, stream: bool):
-        """deploy -> settle -> load -> assert 1->2 -> drain -> assert 2->1."""
+        """deploy -> load -> assert 1->2 -> drain -> assert 2->1."""
 
         # 1) Deploy
         app, counter = self._build_app(stream)
@@ -2498,16 +2498,12 @@ class TestAutoscalingWithStreaming:
         )
         tlog("Deployment healthy with 1 replica.")
 
-        # 2) Settle
-        tlog("Waiting 10 s for the system to settle.")
-        time.sleep(10)
-
-        # 3) Send load
+        # 2) Send load
         url = "http://localhost:8000/app"
         load_thread, load_counters, load_error = self._send_load_in_thread(url, stream)
         tlog("Load generation started.")
 
-        # 4) Assert replicas scale from 1 -> 2 during load
+        # 3) Assert replicas scale from 1 -> 2 during load
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
@@ -2518,7 +2514,7 @@ class TestAutoscalingWithStreaming:
         )
         tlog("Replicas scaled up to 2.")
 
-        # 5) Wait for load to finish; assert all requests reported 'ok'
+        # 4) Wait for load to finish; assert all requests reported 'ok'
         load_thread.join(timeout=180)
         assert (
             not load_thread.is_alive()
@@ -2533,7 +2529,7 @@ class TestAutoscalingWithStreaming:
         )
         tlog(f"All {load_counters['ok']} requests reported ok.")
 
-        # 6) Assert replicas scale from 2 -> 1 after drain
+        # 5) Assert replicas scale from 2 -> 1 after drain
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
@@ -2543,7 +2539,7 @@ class TestAutoscalingWithStreaming:
         )
         tlog("Replicas scaled back down to 1. Test passed.")
 
-        # Cleanup
+        # 6) Cleanup
         serve.delete("app")
         ray.kill(ray.get_actor("request_counter"))
 
