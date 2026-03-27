@@ -487,7 +487,7 @@ AUTOSCALING_ENV_VARIANTS = {
 }
 
 py_test_module_list_with_env_variants(
-    size = "enormous",
+    size = "large",
     args = [
         "-k",
         "TestAutoscalingWithRejection",
