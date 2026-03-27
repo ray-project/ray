@@ -16,6 +16,7 @@ from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
+
 def _flatten_dict(d: Dict, parent_key: str = "", sep: str = "/") -> Dict:
     """Flatten a nested dictionary."""
 
@@ -30,6 +31,7 @@ def _flatten_dict(d: Dict, parent_key: str = "", sep: str = "/") -> Dict:
             items.append((new_key, v))
 
     return dict(items)
+
 
 @PublicAPI(stability="alpha")
 def setup_trackio(
@@ -185,7 +187,7 @@ class TrackioLoggerCallback(LoggerCallback):
         excludes: List of metric keys that should not be logged.
     """
 
-    _exclude_results = ["done", "should_checkpoint"]
+    _exclude_results = ["done", "should_checkpoint", TRAINING_ITERATION]
 
     def __init__(
         self,
@@ -223,7 +225,6 @@ class TrackioLoggerCallback(LoggerCallback):
             self._effective_excludes.add("config")
 
         self._trial_runs: Dict[Trial, trackio.Run] = {}
-
 
     def log_trial_start(self, trial: Trial):
         """Initialize a Trackio run when a Ray Tune trial starts."""
@@ -265,7 +266,9 @@ class TrackioLoggerCallback(LoggerCallback):
         flat = _flatten_dict(result)
         metrics = {}
         for key, value in flat.items():
-            if any(key.startswith(ex) for ex in self._effective_excludes):
+            if any(
+                key == ex or key.startswith(ex + "/") for ex in self._effective_excludes
+            ):
                 continue
 
             # Convert numpy arrays and scalar types
@@ -277,7 +280,7 @@ class TrackioLoggerCallback(LoggerCallback):
             if isinstance(value, (int, float)):
                 metrics[key] = value
             else:
-            # Warn once per key
+                # Warn once per key
                 if key not in self._warned_unsupported_keys:
                     logger.warning(
                         f"trackio: Dropping unsupported metric '{key}' "
@@ -285,9 +288,12 @@ class TrackioLoggerCallback(LoggerCallback):
                     )
                     self._warned_unsupported_keys.add(key)
 
-        if metrics:
+        if metrics and run:
             training_step = result.get(TRAINING_ITERATION, iteration)
-            run.log(metrics, step=training_step)
+            try:
+                run.log(metrics, step=training_step)
+            except Exception as e:
+                logger.warning(f"trackio: Failed to log metrics: {e}")
 
     def log_trial_save(self, trial: Trial):
         """Log checkpoint metadata when a Ray Tune trial checkpoint is saved."""

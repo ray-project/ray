@@ -1,16 +1,17 @@
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
 
 from ray.air.integrations.trackio import (
     TrackioLoggerCallback,
     setup_trackio,
 )
 
-
 # -------------------------
 # Mock Objects
 # -------------------------
+
 
 class MockTrial:
     def __init__(self):
@@ -38,6 +39,7 @@ class MockRun:
 # Fixtures
 # -------------------------
 
+
 @pytest.fixture
 def mock_trackio(mocker):
     mock_run = MockRun()
@@ -53,6 +55,7 @@ def mock_trackio(mocker):
 # -------------------------
 # Tests: TrackioLoggerCallback
 # -------------------------
+
 
 def test_log_trial_start_initializes_run(mock_trackio):
     mock_init, _ = mock_trackio
@@ -154,9 +157,7 @@ def test_warning_logged_once_per_key(mock_trackio, mocker):
     cb.log_trial_result(1, trial, result)
     cb.log_trial_result(2, trial, result)
 
-    logger_mock = pytest.importorskip(
-        "ray.air.integrations.trackio"
-    ).logger.warning
+    logger_mock = pytest.importorskip("ray.air.integrations.trackio").logger.warning
 
     assert logger_mock.call_count == 1
 
@@ -229,6 +230,7 @@ def test_on_experiment_end_cleans_all_runs(mock_trackio):
 # -------------------------
 # Tests: setup_trackio
 # -------------------------
+
 
 def test_setup_trackio_rank_zero_only_blocks_nonzero(mocker):
     mocker.patch("ray.air.integrations.trackio.trackio.init")
