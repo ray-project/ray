@@ -242,7 +242,9 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
 
 
 def test_inherit_batch_format_rule():
-    if DataContext.get_current().batch_to_block_arrow_format: # Skip the test if batch_to_block_arrow_format is True as rule is disabled
+    if (
+        DataContext.get_current().batch_to_block_arrow_format
+    ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
         return
 
     from ray.data._internal.logical.rules import (
