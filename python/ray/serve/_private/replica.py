@@ -1773,7 +1773,7 @@ class Replica:
             raise RuntimeError(traceback.format_exc()) from None
 
     def _on_request_cancelled(
-        self, metadata: RequestMetadata, e: asyncio.CancelledError
+        self, request_metadata: RequestMetadata, e: asyncio.CancelledError
     ):
         """Recursively cancel child requests.
 
@@ -1783,7 +1783,7 @@ class Replica:
         # Cancel child requests pending assignment
         requests_pending_assignment = (
             ray.serve.context._get_requests_pending_assignment(
-                metadata.internal_request_id
+                request_metadata.internal_request_id
             )
         )
         for task in requests_pending_assignment.values():
@@ -1791,7 +1791,9 @@ class Replica:
 
         # Cancel child requests that have already been assigned.
         # This is for gRPC requests and direct ingress requests.
-        in_flight_requests = _get_in_flight_requests(metadata.internal_request_id)
+        in_flight_requests = _get_in_flight_requests(
+            request_metadata.internal_request_id
+        )
         for replica_result in in_flight_requests.values():
             replica_result.cancel()
 
@@ -1848,17 +1850,10 @@ class Replica:
 
         await self._metrics_manager.shutdown()
 
-    async def _perform_base_graceful_shutdown(self):
+    async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
-        await self.shutdown()
-
-    async def perform_graceful_shutdown(self):
+        coros = []
         if (
             RAY_SERVE_ENABLE_DIRECT_INGRESS
             and self._ingress
@@ -1868,12 +1863,17 @@ class Replica:
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
             # balancers (e.g., ALB) time to deregister the replica, in addition to
             # waiting for requests to drain.
-            await asyncio.gather(
-                asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
-                self._perform_base_graceful_shutdown(),
-            )
-        else:
-            await self._perform_base_graceful_shutdown()
+            coros.append(asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S))
+
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            coros.append(self._drain_ongoing_requests())
+
+        if coros:
+            await asyncio.gather(*coros)
+
+        await self.shutdown()
 
         # Cancel direct ingress HTTP/gRPC server tasks if they exist.
         if self._direct_ingress_http_server_task:
