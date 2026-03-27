@@ -132,7 +132,7 @@ def handle_timeout_errors(
                     ) from exc
 
                 logger.warning(msg)
-                logger.debug("Traceback for the above error:", exc_info=True)
+                logger.debug(f"Traceback for {operation_name} failure for {requester_id}:", exc_info=True)
 
                 # Return value on error if callback provided
                 if on_error_return is not None:
