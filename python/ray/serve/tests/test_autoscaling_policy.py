@@ -6,7 +6,6 @@ import tempfile
 import threading
 import time
 import zipfile
-from dataclasses import dataclass, field
 from typing import Dict, Iterable, List
 from unittest import mock
 
@@ -2310,27 +2309,6 @@ def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
         )
 
 
-@dataclass(frozen=True)
-class TestAutoscalingWithStreamingConfig:
-    """Configuration for TestAutoscalingWithStreaming."""
-
-    app_name: str = "autoscaling-with-streaming"
-    backend_name: str = "StreamingBackend"
-    route_prefix: str = "/app"
-    n_ingress: int = 4
-    min_replicas: int = 1
-    max_replicas: int = 2
-    num_chunks: int = 20
-    chunk_delay_s: float = 0.15
-    load_profile: list = field(
-        default_factory=lambda: [
-            (1.0, 6),
-            (8.0, 12),
-            (1.0, 10),
-        ]
-    )
-
-
 @ray.remote
 class _RequestCounter:
     """Tracks in-flight and finished request counts.
@@ -2360,27 +2338,27 @@ class TestAutoscalingWithStreaming:
     Test downscaling replicas from 2 to 1 after inflight requests drain to 0.
     """
 
-    CFG = TestAutoscalingWithStreamingConfig()
+    MIN_REPLICAS = 1
+    MAX_REPLICAS = 2
+    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]
 
     class _Backend:
-        def __init__(self, counter_handle, num_chunks: int, chunk_delay_s: float):
+        def __init__(self, counter_handle):
             self._counter = counter_handle
-            self._num_chunks = num_chunks
-            self._chunk_delay_s = chunk_delay_s
 
         async def stream(self):
             await self._counter.on_start.remote()
             try:
-                for i in range(self._num_chunks):
+                for i in range(20):
                     yield f"{i}\n".encode()
-                    await asyncio.sleep(self._chunk_delay_s)
+                    await asyncio.sleep(0.15)
             finally:
                 await self._counter.on_finish.remote()
 
         async def __call__(self):
             await self._counter.on_start.remote()
             try:
-                await asyncio.sleep(self._num_chunks * self._chunk_delay_s)
+                await asyncio.sleep(20 * 0.15)
                 return {"ok": True}
             finally:
                 await self._counter.on_finish.remote()
@@ -2405,16 +2383,15 @@ class TestAutoscalingWithStreaming:
     @classmethod
     def _build_app(cls, stream: bool):
         """Create the Ray Serve application and a request counter Actor."""
-        cfg = cls.CFG
         counter = _RequestCounter.options(
             name="request_counter", lifetime="detached"
         ).remote()
 
         backend = serve.deployment(
-            name=cfg.backend_name,
+            name="Backend",
             autoscaling_config={
-                "min_replicas": cfg.min_replicas,
-                "max_replicas": cfg.max_replicas,
+                "min_replicas": cls.MIN_REPLICAS,
+                "max_replicas": cls.MAX_REPLICAS,
                 "target_ongoing_requests": 2,
                 "upscale_delay_s": 2,
                 "downscale_delay_s": 8,
@@ -2426,14 +2403,11 @@ class TestAutoscalingWithStreaming:
         )(cls._Backend)
 
         ingress = serve.deployment(
-            num_replicas=cfg.n_ingress,
+            num_replicas=4,
             max_ongoing_requests=1000,
         )(cls._Ingress)
 
-        app = ingress.bind(
-            backend.bind(counter, cfg.num_chunks, cfg.chunk_delay_s),
-            stream,
-        )
+        app = ingress.bind(backend.bind(counter), stream)
         return app, counter
 
     @staticmethod
@@ -2470,7 +2444,7 @@ class TestAutoscalingWithStreaming:
         counters = {"sent": 0, "ok": 0, "errors": 0}
 
         async with aiohttp.ClientSession() as session:
-            for qps, duration_s in cls.CFG.load_profile:
+            for qps, duration_s in cls.LOAD_PROFILE:
                 await cls._run_phase(
                     session, url, stream, qps, duration_s, inflight, counters
                 )
@@ -2498,11 +2472,10 @@ class TestAutoscalingWithStreaming:
 
     def _run_autoscaling_test(self, stream: bool):
         """deploy -> settle -> load -> assert 1->2 -> drain -> assert 2->1."""
-        cfg = self.CFG
 
         # 1) Deploy
         app, counter = self._build_app(stream)
-        serve.run(app, name=cfg.app_name, route_prefix=cfg.route_prefix)
+        serve.run(app, name="app", route_prefix="/app")
         tlog(
             f"Deployed app with configuration: "
             f"{stream=} "
@@ -2511,16 +2484,16 @@ class TestAutoscalingWithStreaming:
 
         wait_for_condition(
             check_deployment_status,
-            name=cfg.backend_name,
+            name="Backend",
             expected_status=DeploymentStatus.HEALTHY,
-            app_name=cfg.app_name,
+            app_name="app",
             timeout=30,
         )
         wait_for_condition(
             check_num_replicas_eq,
-            name=cfg.backend_name,
-            target=cfg.min_replicas,
-            app_name=cfg.app_name,
+            name="Backend",
+            target=self.MIN_REPLICAS,
+            app_name="app",
             timeout=30,
         )
         tlog("Deployment healthy with 1 replica.")
@@ -2530,16 +2503,16 @@ class TestAutoscalingWithStreaming:
         time.sleep(10)
 
         # 3) Send load
-        url = f"http://localhost:8000{cfg.route_prefix}"
+        url = "http://localhost:8000/app"
         load_thread, load_counters, load_error = self._send_load_in_thread(url, stream)
         tlog("Load generation started.")
 
         # 4) Assert replicas scale from 1 -> 2 during load
         wait_for_condition(
             check_num_replicas_eq,
-            name=cfg.backend_name,
-            target=cfg.max_replicas,
-            app_name=cfg.app_name,
+            name="Backend",
+            target=self.MAX_REPLICAS,
+            app_name="app",
             timeout=60,
             retry_interval_ms=1000,
         )
@@ -2563,15 +2536,15 @@ class TestAutoscalingWithStreaming:
         # 6) Assert replicas scale from 2 -> 1 after drain
         wait_for_condition(
             check_num_replicas_eq,
-            name=cfg.backend_name,
-            target=cfg.min_replicas,
-            app_name=cfg.app_name,
+            name="Backend",
+            target=self.MIN_REPLICAS,
+            app_name="app",
             timeout=60,
         )
         tlog("Replicas scaled back down to 1. Test passed.")
 
         # Cleanup
-        serve.delete(cfg.app_name)
+        serve.delete("app")
         ray.kill(ray.get_actor("request_counter"))
 
     def test_streaming_with_rejection(self, ray_instance):
