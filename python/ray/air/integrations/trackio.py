@@ -98,7 +98,8 @@ def setup_trackio(
 
                 for step in range(10):
                     loss = train_step()
-                    run.log({"loss": loss}, step=step)
+                    if run:
+                        run.log({"loss": loss}, step=step)
 
                 if run:
                     run.finish()

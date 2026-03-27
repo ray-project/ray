@@ -277,3 +277,9 @@ def test_setup_trackio_initializes_on_rank_zero(mocker):
     assert kwargs["name"] == "trial_name"
     assert kwargs["group"] == "exp_name"
     assert kwargs["config"]["lr"] == 0.1
+
+
+if __name__ == "__main__":
+    import pytest
+
+    pytest.main(["-v", __file__])
