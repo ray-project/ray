@@ -501,6 +501,7 @@ py_test_module_list_with_env_variants(
         ":conftest",
         "//python/ray/serve:serve_lib",
     ],
+    args = ["-k", "TestAutoscalingWithRejection"],
 )
 
 # Test feature flag for task events.
