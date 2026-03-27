@@ -2309,106 +2309,16 @@ def test_warmup_no_runaway_scaling_with_control_loop(serve_instance):
         )
 
 
-@ray.remote
-class _RequestCounter:
-    """Tracks in-flight and finished request counts.
-
-    It's a Ray Actor used in the TestAutoscalingWithStreaming.
-    """
-
-    def __init__(self):
-        self.inflight = 0
-        self.finished = 0
-
-    def on_start(self):
-        self.inflight += 1
-
-    def on_finish(self):
-        self.inflight -= 1
-        self.finished += 1
-
-    def snapshot(self):
-        return {"inflight": self.inflight, "finished": self.finished}
-
-
 class TestAutoscalingWithStreaming:
-    """Autoscaling test with streaming and non-streaming setups.
+    """Autoscaling tests with rejection under HTTP load.
 
     Original issue: https://github.com/ray-project/ray/issues/61551
-    Test downscaling replicas from 2 to 1 after inflight requests drain to 0.
+    Tests that replicas scale from 1->2 under load and back to 1 after drain.
     """
 
     MIN_REPLICAS = 1
     MAX_REPLICAS = 2
-    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]
-
-    class _Backend:
-        def __init__(self, counter_handle):
-            self._counter = counter_handle
-
-        async def stream(self):
-            await self._counter.on_start.remote()
-            try:
-                for i in range(20):
-                    yield f"{i}\n".encode()
-                    await asyncio.sleep(0.15)
-            finally:
-                await self._counter.on_finish.remote()
-
-        async def __call__(self):
-            await self._counter.on_start.remote()
-            try:
-                await asyncio.sleep(20 * 0.15)
-                return {"ok": True}
-            finally:
-                await self._counter.on_finish.remote()
-
-    class _Ingress:
-        def __init__(self, backend: DeploymentHandle, stream: bool):
-            self._stream = stream
-            if self._stream:
-                self._backend = backend.options(
-                    stream=True, method_name="stream", _by_reference=False
-                )
-            else:
-                self._backend = backend
-
-        async def __call__(self, request: Request):
-            if self._stream:
-                return StreamingResponse(
-                    self._backend.remote(), media_type="text/plain"
-                )
-            return await self._backend.remote()
-
-    @classmethod
-    def _build_app(cls, stream: bool):
-        """Create the Ray Serve application and a request counter Actor."""
-        counter = _RequestCounter.options(
-            name="request_counter", lifetime="detached"
-        ).remote()
-
-        backend = serve.deployment(
-            name="Backend",
-            autoscaling_config={
-                "min_replicas": cls.MIN_REPLICAS,
-                "max_replicas": cls.MAX_REPLICAS,
-                "target_ongoing_requests": 2,
-                "upscale_delay_s": 2,
-                "downscale_delay_s": 8,
-                "metrics_interval_s": 1,
-                "look_back_period_s": 5,
-            },
-            max_ongoing_requests=4,
-            graceful_shutdown_timeout_s=1,
-        )(cls._Backend)
-
-        ingress = serve.deployment(
-            num_replicas=4,
-            max_ongoing_requests=1000,
-        )(cls._Ingress)
-
-        app = ingress.bind(backend.bind(counter), stream)
-        return app, counter
+    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]  # (duration_s, qps)
 
     @staticmethod
     async def _run_phase(session, url, stream, qps, duration_s, inflight, counters):
@@ -2470,18 +2380,84 @@ class TestAutoscalingWithStreaming:
         t.start()
         return t, result, error
 
-    def _run_autoscaling_test(self, stream: bool):
-        """deploy -> load -> assert 1->2 -> drain -> assert 2->1."""
+    def _assert_scale_up_and_down(self, stream: bool):
+        """Send load, assert 1->2 scale-up, drain, assert 2->1 scale-down."""
 
-        # 1) Deploy
-        app, counter = self._build_app(stream)
-        serve.run(app, name="app", route_prefix="/app")
-        tlog(
-            f"Deployed app with configuration: "
-            f"{stream=} "
-            f"{' '.join(f'{k}={v}' for k, v in os.environ.items() if k.startswith('RAY_SERVE_'))}"
+        # 1) Send load
+        url = "http://localhost:8000/app"
+        load_thread, load_counters, load_error = self._send_load_in_thread(url, stream)
+        tlog("Load generation started.")
+
+        # 2) Assert replicas scale-up: 1 -> 2
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=self.MAX_REPLICAS,
+            app_name="app",
+            timeout=60,
+            retry_interval_ms=1000,
         )
+        tlog(f"Replicas scaled up to {self.MAX_REPLICAS}.")
 
+        # 3) Drain: wait for load to finish, assert all requests 'ok'
+        load_thread.join(timeout=180)
+        assert not load_thread.is_alive(), "Load generation thread did not finish in time"
+        assert load_error[0] is None, f"Load generation failed: {load_error[0]}"
+
+        tlog(f"Load finished. counters={load_counters}")
+
+        assert load_counters["ok"] == load_counters["sent"], (
+            f"Expected all {load_counters['sent']} requests to succeed, "
+            f"but ok={load_counters['ok']}, errors={load_counters['errors']}"
+        )
+        tlog(f"All {load_counters['ok']} requests reported ok.")
+
+        # 4) Assert replicas scale-down: 2 -> 1
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="Backend",
+            target=self.MIN_REPLICAS,
+            app_name="app",
+            timeout=60,
+        )
+        tlog(f"Replicas scaled back down to {self.MIN_REPLICAS}.")
+
+    def test_streaming_with_rejection(self, ray_instance):
+        """Streaming Backend behind an Ingress
+
+        uses _by_reference=False.
+        """
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": self.MIN_REPLICAS,
+                "max_replicas": self.MAX_REPLICAS,
+                "target_ongoing_requests": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 8,
+                "metrics_interval_s": 1,
+                "look_back_period_s": 5,
+            },
+            max_ongoing_requests=4,
+            graceful_shutdown_timeout_s=1,
+        )
+        class Backend:
+            async def stream(self):
+                for i in range(20):
+                    yield f"{i}\n".encode()
+                    await asyncio.sleep(0.15)
+
+        @serve.deployment(num_replicas=4, max_ongoing_requests=1000)
+        class Ingress:
+            def __init__(self, backend: DeploymentHandle):
+                self._backend = backend.options(
+                    stream=True, method_name="stream", _by_reference=False
+                )
+
+            async def __call__(self, request: Request):
+                return StreamingResponse(self._backend.remote(), media_type="text/plain")
+
+        serve.run(Ingress.bind(Backend.bind()), name="app", route_prefix="/app")
         wait_for_condition(
             check_deployment_status,
             name="Backend",
@@ -2496,58 +2472,74 @@ class TestAutoscalingWithStreaming:
             app_name="app",
             timeout=30,
         )
-        tlog("Deployment healthy with 1 replica.")
 
-        # 2) Send load
-        url = "http://localhost:8000/app"
-        load_thread, load_counters, load_error = self._send_load_in_thread(url, stream)
-        tlog("Load generation started.")
+        tlog(
+            f"Deployed app with configuration: "
+            f"{' '.join(f'{k}={v}' for k, v in os.environ.items() if k.startswith('RAY_SERVE_'))}"
+        )
+        tlog("Streaming deployment healthy with 1 replica.")
 
-        # 3) Assert replicas scale from 1 -> 2 during load
+        self._assert_scale_up_and_down(stream=True)
+        tlog("Test passed.")
+        serve.delete("app")
+
+    def test_unary_with_rejection(self, ray_instance):
+        """Streaming Backend behind an Ingress
+
+        uses _by_reference=False.
+        """
+
+        @serve.deployment(
+            autoscaling_config={
+                "min_replicas": self.MIN_REPLICAS,
+                "max_replicas": self.MAX_REPLICAS,
+                "target_ongoing_requests": 2,
+                "upscale_delay_s": 2,
+                "downscale_delay_s": 8,
+                "metrics_interval_s": 1,
+                "look_back_period_s": 5,
+            },
+            max_ongoing_requests=4,
+            graceful_shutdown_timeout_s=1,
+        )
+        class Backend:
+            async def __call__(self):
+                await asyncio.sleep(20 * 0.15)
+                return {"ok": True}
+
+        @serve.deployment(num_replicas=4, max_ongoing_requests=1000)
+        class Ingress:
+            def __init__(self, backend: DeploymentHandle):
+                self._backend = backend.options(_by_reference=False)
+
+            async def __call__(self, request: Request):
+                return await self._backend.remote()
+
+        serve.run(Ingress.bind(Backend.bind()), name="app", route_prefix="/app")
         wait_for_condition(
-            check_num_replicas_eq,
+            check_deployment_status,
             name="Backend",
-            target=self.MAX_REPLICAS,
+            expected_status=DeploymentStatus.HEALTHY,
             app_name="app",
-            timeout=60,
-            retry_interval_ms=1000,
+            timeout=30,
         )
-        tlog("Replicas scaled up to 2.")
-
-        # 4) Wait for load to finish; assert all requests reported 'ok'
-        load_thread.join(timeout=180)
-        assert (
-            not load_thread.is_alive()
-        ), "Load generation thread did not finish in time"
-        assert load_error[0] is None, f"Load generation failed: {load_error[0]}"
-
-        tlog(f"Load finished. counters={load_counters}")
-
-        assert load_counters["ok"] == load_counters["sent"], (
-            f"Expected all {load_counters['sent']} requests to succeed, "
-            f"but ok={load_counters['ok']}, errors={load_counters['errors']}"
-        )
-        tlog(f"All {load_counters['ok']} requests reported ok.")
-
-        # 5) Assert replicas scale from 2 -> 1 after drain
         wait_for_condition(
             check_num_replicas_eq,
             name="Backend",
             target=self.MIN_REPLICAS,
             app_name="app",
-            timeout=60,
+            timeout=30,
         )
-        tlog("Replicas scaled back down to 1. Test passed.")
 
-        # 6) Cleanup
+        tlog(
+            f"Deployed app with configuration: "
+            f"{' '.join(f'{k}={v}' for k, v in os.environ.items() if k.startswith('RAY_SERVE_'))}"
+        )
+        tlog("Unary deployment healthy with 1 replica.")
+
+        self._assert_scale_up_and_down(stream=False)
+        tlog("Test passed.")
         serve.delete("app")
-        ray.kill(ray.get_actor("request_counter"))
-
-    def test_streaming_with_rejection(self, ray_instance):
-        self._run_autoscaling_test(stream=True)
-
-    def test_unary_with_rejection(self, ray_instance):
-        self._run_autoscaling_test(stream=False)
 
 
 if __name__ == "__main__":
