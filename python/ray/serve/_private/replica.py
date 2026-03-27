@@ -994,7 +994,7 @@ class ReplicaMetricsManager:
 StatusCodeCallback = Callable[[str], None]
 
 
-class ReplicaBase:
+class Replica:
     def __init__(
         self,
         replica_id: ReplicaID,
@@ -2671,7 +2671,7 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-        self._replica_impl: ReplicaBase = create_replica_impl(
+        self._replica_impl: Replica = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
             init_args=cloudpickle.loads(serialized_init_args),
