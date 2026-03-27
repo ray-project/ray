@@ -78,7 +78,7 @@ class LocalTorchController(LocalController):
 
     def run(self, train_func: Callable[[], None]) -> Result:
         self._set_train_fn_utils()
-        train_func()
+        result = train_func()
         train_fn_utils = get_train_fn_utils()
         assert isinstance(train_fn_utils, LocalTrainFnUtils)
         result = Result(
@@ -86,6 +86,7 @@ class LocalTorchController(LocalController):
             checkpoint=train_fn_utils.get_checkpoint(),
             path=None,
             error=None,
+            return_value=result,
         )
         if dist.is_initialized():
             dist.destroy_process_group()
