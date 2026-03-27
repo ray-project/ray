@@ -250,6 +250,8 @@ def run_dead_node_check():
             f"Error during dead node check: {e}"
         )
         return_code = 1
+    finally:
+        ray.shutdown()
     return return_code
 
 def main(
