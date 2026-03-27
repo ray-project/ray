@@ -2318,7 +2318,7 @@ class TestAutoscalingWithStreaming:
 
     MIN_REPLICAS = 1
     MAX_REPLICAS = 2
-    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]  # (duration_s, qps)
+    LOAD_PROFILE = [(1.0, 6), (8.0, 12), (1.0, 10)]  # (qps, duration_s)
 
     @staticmethod
     async def _run_phase(session, url, stream, qps, duration_s, inflight, counters):
