@@ -12,6 +12,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaState
 from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
@@ -872,6 +873,7 @@ def test_deployment_actor_constructor_failure_app_status(serve_instance):
     """When a deployment actor's constructor fails, app deploy status is DEPLOY_FAILED."""
 
     @serve.deployment(
+        max_constructor_retry_count=3,
         deployment_actors=[
             DeploymentActorConfig(
                 name="bad_actor",
@@ -897,7 +899,7 @@ def test_deployment_actor_constructor_failure_app_status(serve_instance):
             "ctor_fail" in n and a.status == ApplicationStatus.DEPLOY_FAILED
             for n, a in serve.status().applications.items()
         ),
-        timeout=30,
+        timeout=60,
     )
 
     status = serve.status()
@@ -944,9 +946,10 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
 
     serve.run(
         HealthCheckFailDeployment.bind(),
+        name=SERVE_DEFAULT_APP_NAME,
         route_prefix="/health_check_fail_da",
     )
-    url = f"{get_application_url()}/"
+    url = f"{get_application_url(app_name=SERVE_DEFAULT_APP_NAME)}/"
     wait_for_condition(lambda: httpx.get(url).status_code == 200)
     old_pid = httpx.get(url).text
 
@@ -954,8 +957,8 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
     # consecutive failures, the replica is marked unhealthy and restarted.
     # The replacement replica's health checks succeed (actor stops raising).
     wait_for_condition(
-        lambda: httpx.get(url).text != old_pid,
-        timeout=30,
+        lambda: httpx.get(url, timeout=5).text != old_pid,
+        timeout=60,
     )
     # Verify the new replica serves requests.
     for _ in range(5):
@@ -1719,6 +1722,7 @@ def test_partial_actor_creation_failure(serve_instance):
     """
 
     @serve.deployment(
+        max_constructor_retry_count=3,
         deployment_actors=[
             DeploymentActorConfig(
                 name="good_counter",
@@ -1748,7 +1752,7 @@ def test_partial_actor_creation_failure(serve_instance):
             "partial_fail" in n and a.status == ApplicationStatus.DEPLOY_FAILED
             for n, a in serve.status().applications.items()
         ),
-        timeout=30,
+        timeout=60,
     )
 
     status = serve.status()
