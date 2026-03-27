@@ -239,7 +239,7 @@ def run_dead_node_check():
 
     return_code = 0
     try:
-        ray.init(address="auto")
+        ray.init(address="auto")  # Connect to the local cluster
         dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
         if dead_nodes:
             logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
@@ -248,7 +248,7 @@ def run_dead_node_check():
         logger.error(f"Error during dead node check: {e}")
         return_code = 1
     finally:
-        ray.shutdown()
+        ray.shutdown()  # Disconnect from the cluster
     return return_code
 
 
