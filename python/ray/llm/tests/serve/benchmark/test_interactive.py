@@ -17,7 +17,6 @@ from ray.llm._internal.serve.benchmark.interactive import (
 )
 from ray.llm._internal.serve.benchmark.multiturn_bench import TurnMetric, percentile
 
-
 # ============================================================================
 # Helpers
 # ============================================================================
