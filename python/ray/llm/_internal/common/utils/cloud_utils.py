@@ -271,7 +271,7 @@ class CloudFileSystem:
 
             # Download files
             tokenizer_file_substrings = (
-                ["tokenizer", "config.json"] if tokenizer_only else []
+                ["tokenizer", "config.json", ".jinja"] if tokenizer_only else []
             )
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
