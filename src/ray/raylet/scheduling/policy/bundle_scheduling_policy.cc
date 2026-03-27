@@ -362,26 +362,20 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   // where per-instance CanAllocate rejects a summed demand that could be
   // satisfied by distributing across instances.
   auto try_allocate_all_bundles = [&](scheduling::NodeID node_id) -> bool {
-    std::vector<std::optional<ResourceAllocation>> allocs;
+    std::vector<ResourceAllocation> allocs;
     for (const auto *request : resource_request_list) {
       auto alloc =
           cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request);
       if (!alloc.has_value()) {
-        // Rollback all previous allocations on this node.
         for (auto &prev : allocs) {
-          if (prev.has_value()) {
-            cluster_resource_manager_.AddNodeAvailableResources(node_id, *prev);
-          }
+          cluster_resource_manager_.AddNodeAvailableResources(node_id, prev);
         }
         return false;
       }
-      allocs.push_back(std::move(alloc));
+      allocs.push_back(std::move(*alloc));
     }
-    // Rollback -- we're only checking feasibility, not committing.
     for (auto &a : allocs) {
-      if (a.has_value()) {
-        cluster_resource_manager_.AddNodeAvailableResources(node_id, *a);
-      }
+      cluster_resource_manager_.AddNodeAvailableResources(node_id, a);
     }
     return true;
   };

@@ -305,7 +305,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     DestroyPlacementGroupCommittedBundleResources(
         lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID());
     ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
-                          lease_status_tracker.get());
+                          lease_status_tracker);
     schedule_failure_handler(lease_status_tracker->GetPlacementGroup(),
                              /*is_feasible=*/true);
     return;
@@ -386,7 +386,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
-                          lease_status_tracker.get());
+                          lease_status_tracker);
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -441,7 +441,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations(),
-                          lease_status_tracker.get());
+                          lease_status_tracker);
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
@@ -455,7 +455,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
       placement_group->GetMutableBundle(bundle.first.second)->clear_node_id();
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-    ReturnBundleResources(uncommitted_bundle_locations, lease_status_tracker.get());
+    ReturnBundleResources(uncommitted_bundle_locations, lease_status_tracker);
     schedule_failure_handler(placement_group, /*is_feasible*/ true);
   } else {
     schedule_success_handler(placement_group);
@@ -715,9 +715,6 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
       auto resource_id = scheduling::ResourceID(resource_name);
       auto original_name = GetOriginalResourceName(resource_name);
 
-      // Use the per-instance allocation from AcquireBundleResources if available
-      // for this original resource. Synthetic resources like bundle_group won't
-      // be in the allocation and fall through to the single-element path.
       if (bundle_alloc != nullptr) {
         auto alloc_it = bundle_alloc->find(scheduling::ResourceID(original_name));
         if (alloc_it != bundle_alloc->end()) {
@@ -726,8 +723,9 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
           continue;
         }
       }
-      // No saved allocation (e.g. GCS restart recovery). Single-element vector
-      // may not match actual per-instance layout; syncer corrects within ~100ms.
+      // Two cases reach here:
+      // 1. Synthetic resources like bundle_group have no physical allocation.
+      // 2. GCS restart loses the in-memory tracker; syncer corrects within ~100ms.
       cluster_resource_manager.AddResourceInstances(
           node_id, resource_id, {FixedPoint(capacity)});
     }
@@ -740,10 +738,19 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(
     const std::shared_ptr<BundleLocations> &bundle_locations,
-    const LeaseStatusTracker *lease_status_tracker) {
-  // If a tracker is provided, restore the original resources that were
-  // speculatively deducted by AcquireBundleResources, using the saved
-  // per-instance allocation.
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
+  // 1. Remove PG-formatted resources (GPU_group_xxx, etc.) from nodes.
+  // 2. Add original resources (GPU, CPU) back to nodes if has a tracker.
+  //    Without a tracker (e.g. PG remove, where it was destroyed after commit)
+  //    we don't know which instances were allocated, and recomputing is not a
+  //    good idea since the topology may have changed. Prefer relying on syncer
+  //    which delivers the real state within ~100ms.
+  for (auto &bundle : *bundle_locations) {
+    if (!TryReleasingBundleResources(bundle.second)) {
+      waiting_removed_bundles_.push_back(bundle.second);
+    }
+  }
+
   if (lease_status_tracker) {
     auto &crm = cluster_resource_scheduler_.GetClusterResourceManager();
     for (const auto &[bundle_id, location] : *bundle_locations) {
@@ -752,13 +759,6 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
         crm.AddNodeAvailableResources(scheduling::NodeID(location.first.Binary()),
                                       *alloc);
       }
-    }
-  }
-
-  // Clean up PG-formatted resources (wildcard + indexed).
-  for (auto &bundle : *bundle_locations) {
-    if (!TryReleasingBundleResources(bundle.second)) {
-      waiting_removed_bundles_.push_back(bundle.second);
     }
   }
 
@@ -818,8 +818,6 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   // It will affect nothing if the resource_id to be deleted does not exist in the
   // cluster_resource_manager_.
   cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
-  // Original resources are restored by the caller (ReturnBundleResources)
-  // when a LeaseStatusTracker is available, or by syncer otherwise.
   return true;
 }
 

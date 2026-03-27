@@ -228,11 +228,9 @@ class LeaseStatusTracker {
   /// status tracker anymore.
   void MarkCommitPhaseStarted();
 
-  /// Save the per-instance allocation for a bundle (from
-  /// AcquireBundleResources).
   void SetBundleAllocation(const BundleID &bundle_id, ResourceAllocation allocation);
 
-  /// Retrieve the saved allocation. Returns nullptr if not found.
+  /// Returns nullptr if not found.
   const ResourceAllocation *GetBundleAllocation(const BundleID &bundle_id) const;
 
  private:
@@ -279,9 +277,8 @@ class LeaseStatusTracker {
   /// Bundles to schedule.
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule_;
 
-  /// Per-bundle resource allocations (original resources, not PG-formatted)
-  /// from AcquireBundleResources. Used by CommitBundleResources to create
-  /// PG-formatted resources with the correct per-instance distribution.
+  /// Per-bundle per-instance resource allocations (original resources, not
+  /// PG-formatted), e.g. {GPU: [0, 1, 0, 0]} meaning GPU instance 1 was used.
   absl::flat_hash_map<BundleID, ResourceAllocation, pair_hash>
       acquired_resource_allocations_;
 
@@ -468,11 +465,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Return the bundle resources to the cluster resources.
-  /// Removes PG-formatted resources (wildcard + indexed). If a LeaseStatusTracker
-  /// is provided, also restores original resources using the saved per-instance
-  /// allocation from AcquireBundleResources.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations,
-                             const LeaseStatusTracker *lease_status_tracker = nullptr);
+  /// Removes PG-formatted resources and restores original resources if a
+  /// LeaseStatusTracker with saved per-instance allocation is provided.
+  void ReturnBundleResources(
+      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker = nullptr);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(

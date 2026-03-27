@@ -49,10 +49,10 @@ message ResourceViewSyncMessage {
   repeated string node_activity = 7;
   // The key-value labels of this node.
   map<string, string> labels = 8;
-  // Per-instance available resources for this node. For unit-instance resources
-  // like GPU, each element corresponds to one instance (e.g., one GPU card).
-  // For non-unit resources like CPU, the vector has a single element with the
-  // aggregate value. Replaces the old scalar resources_available (field 1).
+  // Per-instance available resources. For unit instance resources like GPU,
+  // each element is one instance (e.g., {"GPU": [0.4, 0.6]} means
+  // GPU 0 has 0.4 free, GPU 1 has 0.6 free). For scalar resources like CPU,
+  // a single element with the aggregate value (e.g., {"CPU": [8.0]}).
   map<string, ResourceInstances> resources_available_instances = 9;
 }
 

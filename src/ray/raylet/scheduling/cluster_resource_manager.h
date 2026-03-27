@@ -79,9 +79,7 @@ class ClusterResourceManager {
                               double resource_total);
 
   /// Add per-instance capacity to a resource. Updates both total (scalar sum
-  /// of instances added) and available (element-wise addition). Used by
-  /// CommitBundleResources to create PG-formatted resources with the correct
-  /// per-instance distribution from AcquireBundleResources.
+  /// of instances added) and available (element-wise addition).
   void AddResourceInstances(scheduling::NodeID node_id,
                             scheduling::ResourceID resource_id,
                             const std::vector<FixedPoint> &instances);
