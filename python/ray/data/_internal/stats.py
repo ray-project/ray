@@ -73,12 +73,12 @@ def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
 class _StatsAccumulator:
     """Tracks min/max/sum/count for incremental stats computation."""
 
-    min_value: float = float("inf")
-    max_value: float = float("-inf")
-    sum: float = 0.0
+    min_value: Union[int, float] = float("inf")
+    max_value: Union[int, float] = float("-inf")
+    sum: Union[int, float] = 0
     count: int = 0
 
-    def add(self, value: float) -> None:
+    def add(self, value: Union[int, float]) -> None:
         self.min_value = min(self.min_value, value)
         self.max_value = max(self.max_value, value)
         self.sum += value
@@ -1487,7 +1487,9 @@ class OperatorStatsSummary:
         if is_sub_operator:
             exec_summary_str = f"{num_exec} blocks produced\n"
         elif num_exec:
-            rounded_total = max(round(time_total_s, 2), 0)  # Clamp -0.0 to 0.
+            rounded_total = round(time_total_s, 2)
+            if rounded_total <= 0:
+                rounded_total = 0
             exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
         else:
             exec_summary_str = "\n"
