@@ -500,7 +500,7 @@ docutils==0.19
     #   sphinx
 dulwich==0.21.6
     # via comet-ml
-ecdsa==0.18.0
+ecdsa==0.19.2
     # via
     #   moto
     #   python-jose
