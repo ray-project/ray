@@ -26,12 +26,40 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
-    """The output of a Ray Train run."""
+    """The output of :meth:`~ray.train.Trainer.fit`.
+
+    The constructor is a private API -- use :meth:`Result.from_path` to create
+    a result object from a directory.
+
+    Attributes:
+        metrics: The latest set of metrics reported by the training function
+            via :func:`ray.train.report`.
+        checkpoint: The latest checkpoint saved by the training function
+            via :func:`ray.train.report`.
+        error: The execution error of the training run, if the run finished
+            in error. This is a :class:`~ray.train.v2.api.exceptions.TrainingFailedError`
+            wrapping the original exception.
+        path: Path pointing to the run output directory on persistent storage.
+            This can point to a remote storage location (e.g. S3) or to a
+            local location on the head node. The path is accessible via the
+            result's associated :attr:`filesystem`. For instance, for a result
+            stored in S3 at ``s3://bucket/location``, ``path`` will have the
+            value ``bucket/location``.
+        metrics_dataframe: A DataFrame of metrics from all checkpoints saved
+            during the run. Each row corresponds to a checkpoint.
+        best_checkpoints: A list of ``(checkpoint, metrics)`` tuples for the
+            best checkpoints saved during the run. The checkpoints retained
+            are determined by :class:`~ray.train.CheckpointConfig`
+            (by default, all checkpoints are kept).
+        return_value: The value returned by the training function on the rank-0
+            worker, if the function returns a value. ``None`` if the training
+            function does not return a value or the run failed.
+    """
 
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
-    return_values: Optional[Any] = None
+    return_value: Optional[Any] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
