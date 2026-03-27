@@ -4,6 +4,7 @@ to the server.
 """
 
 import base64
+import dataclasses
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ from ray._private.ray_constants import (
     env_float,
     env_integer,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
@@ -876,6 +878,27 @@ class Worker:
         """Initialize the server"""
         if ray_init_kwargs is None:
             ray_init_kwargs = {}
+        else:
+            ray_init_kwargs = dict(ray_init_kwargs)
+        if "logging_config" in ray_init_kwargs and isinstance(
+            ray_init_kwargs["logging_config"], LoggingConfig
+        ):
+            lc = ray_init_kwargs["logging_config"]
+            # Convert LoggingConfig to dict before client sends it over JSON in InitRequest
+            ray_init_kwargs["logging_config"] = dataclasses.asdict(lc)
+        # If JobConfig has no py_logging_config, copy logging_config onto JobConfig for the pickled job.
+        if job_config is not None:
+            lc_raw = ray_init_kwargs.get("logging_config")
+            if lc_raw is not None and job_config.py_logging_config is None:
+                if isinstance(lc_raw, dict):
+                    field_names = {f.name for f in dataclasses.fields(LoggingConfig)}
+                    job_config.set_py_logging_config(
+                        LoggingConfig(
+                            **{k: v for k, v in lc_raw.items() if k in field_names}
+                        )
+                    )
+                elif isinstance(lc_raw, LoggingConfig):
+                    job_config.set_py_logging_config(lc_raw)
         try:
             if job_config is None:
                 serialized_job_config = None

@@ -11,6 +11,7 @@ import pytest
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.server as ray_client_server
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.cluster_utils import cluster_not_supported
 from ray.util.client import _ClientContext
 
@@ -192,6 +193,30 @@ def test_max_clients(init_and_serve):
     with pytest.raises(ConnectionError):
         api = _ClientContext()
         _ = api.connect("localhost:50051")
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port=50056"],
+    indirect=True,
+)
+def test_logging_config_in_client_mode(call_ray_start):
+    """logging_config reaches task workers (JobConfig) when using Ray Client."""
+
+    @ray.remote
+    def job_logging_encoding():
+        w = ray.get_runtime_context().worker
+        jlc = w.job_logging_config
+        return None if jlc is None else jlc.encoding
+
+    ray.init(
+        "ray://localhost:50056",
+        logging_config=LoggingConfig(encoding="TEXT", log_level="INFO"),
+        log_to_driver=False,
+        configure_logging=False,
+    )
+
+    assert ray.get(job_logging_encoding.remote()) == "TEXT"
 
 
 if __name__ == "__main__":

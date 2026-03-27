@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Dict, Optional, Tuple
 
 import ray.util.client_connect
@@ -14,6 +14,7 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.utils import get_ray_client_dependency_error, split_address
 from ray._private.worker import BaseContext, init as ray_driver_init
 from ray.job_config import JobConfig
@@ -216,6 +217,23 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
+
+        # Put logging_config on JobConfig so remote workers receive it via the job config
+        if kwargs.get("logging_config") is not None:
+            lc_raw = kwargs.pop("logging_config")
+            if isinstance(lc_raw, dict):
+                field_names = {f.name for f in fields(LoggingConfig)}
+                lc = LoggingConfig(
+                    **{k: v for k, v in lc_raw.items() if k in field_names}
+                )
+            elif isinstance(lc_raw, LoggingConfig):
+                lc = lc_raw
+            else:
+                raise TypeError(
+                    "logging_config must be a dict or LoggingConfig, "
+                    f"got {type(lc_raw)}"
+                )
+            self._job_config.set_py_logging_config(lc)
 
         if kwargs.get("allow_multiple") is True:
             self._allow_multiple_connections = True
