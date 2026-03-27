@@ -2425,11 +2425,6 @@ class TestAutoscalingWithStreaming:
         tlog(f"Replicas scaled back down to {self.MIN_REPLICAS}.")
 
     def test_streaming_with_rejection(self, ray_instance):
-        """Streaming Backend behind an Ingress
-
-        uses _by_reference=False.
-        """
-
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": self.MIN_REPLICAS,
@@ -2488,11 +2483,6 @@ class TestAutoscalingWithStreaming:
         serve.delete("app")
 
     def test_unary_with_rejection(self, ray_instance):
-        """Streaming Backend behind an Ingress
-
-        uses _by_reference=False.
-        """
-
         @serve.deployment(
             autoscaling_config={
                 "min_replicas": self.MIN_REPLICAS,
