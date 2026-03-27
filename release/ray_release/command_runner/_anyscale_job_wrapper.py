@@ -322,6 +322,7 @@ def main(
                         "Test failed: OOM worker kills detected. "
                         f"Details: {oom_kills}"
                     )
+                    return_code = 1
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
