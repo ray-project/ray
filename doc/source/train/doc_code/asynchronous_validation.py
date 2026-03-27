@@ -241,36 +241,35 @@ import ray.train
 from ray.train import ValidationConfig, ValidationTaskConfig
 
 
+tracking_uri = "my_uri"
+experiment_name = "my_experiment"
+num_epochs = ...
+
 def validation_fn(
-    checkpoint: ray.train.Checkpoint, run_id: str, tracking_uri: str
+    checkpoint: ray.train.Checkpoint, mlflow_run_id: str, val_step: int
 ) -> dict:
-    # Use the non-fluent MlflowClient to log to the existing run.
     client = MlflowClient(tracking_uri=tracking_uri)
-    score = ...  # compute validation metrics
-    client.log_metric(run_id, "val_score", score)
+    score = ...
+    client.log_metric(mlflow_run_id, "val_score", score, step=val_step)
     return {"val_score": score}
 
 
 def train_func():
     if ray.train.get_context().get_world_rank() == 0:
-        mlflow.set_tracking_uri("databricks")
-        mlflow.set_experiment("my_experiment")
-        mlflow.start_run()
-        run_id = mlflow.active_run().info.run_id
-        tracking_uri = mlflow.get_tracking_uri()
+        client = MlflowClient(tracking_uri=tracking_uri)
+        experiment = client.get_experiment_by_name(experiment_name)
+        run = client.create_run(experiment_id=experiment.experiment_id)
 
     for epoch in range(num_epochs):
-        loss = ...  # training step
+        loss = ...
         if ray.train.get_context().get_world_rank() == 0:
-            mlflow.log_metrics({"train_loss": loss, "epoch": epoch})
+            client.log_metric(run.info.run_id, "train_loss", loss, step=epoch)
+            checkpoint = ...
             ray.train.report(
                 {"train_loss": loss},
-                checkpoint=...,
+                checkpoint=checkpoint,
                 validation=ValidationTaskConfig(
-                    fn_kwargs={
-                        "run_id": run_id,
-                        "tracking_uri": tracking_uri,
-                    }
+                    fn_kwargs={"mlflow_run_id": run.info.run_id, "val_step": epoch}
                 ),
             )
         else:
@@ -278,6 +277,5 @@ def train_func():
 
     if ray.train.get_context().get_world_rank() == 0:
         mlflow.end_run()
-
 
 # __exp_tracking_same_run_mlflow_end__
