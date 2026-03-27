@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 import tempfile
 
 import pytest
@@ -420,3 +421,7 @@ class TestCommandHandler:
         assert "rate <qps>" in _run(h.handle("HELP"))
         resp = _run(h.handle("RATE 1.0"))
         assert "1.000" in resp
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
