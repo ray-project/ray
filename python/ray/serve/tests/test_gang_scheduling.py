@@ -1424,7 +1424,12 @@ class TestGangNodeFailure:
         wait_for_condition(fully_recovered, timeout=60)
         recovered.set()
 
-        time.sleep(1)
+        # Wait for at least one post-recovery success
+        successes_at_recovery = len(successes)
+        wait_for_condition(
+            lambda: len(successes) > successes_at_recovery,
+            timeout=10,
+        )
         stop.set()
         sender.join(timeout=5)
 
@@ -1434,15 +1439,6 @@ class TestGangNodeFailure:
         # After full recovery, no errors should occur.
         assert len(errors_after_recovery) == 0
         assert len(successes) > 0
-
-        # Verify no leaked PGs (already checked in fully_recovered, but
-        # assert here for a clear failure message).
-        gang_pg_names = [
-            n
-            for n in get_all_live_placement_group_names()
-            if n.startswith(GANG_PG_NAME_PREFIX)
-        ]
-        assert len(gang_pg_names) == expected_num_pgs
 
         wait_for_condition(check_apps_running, apps=[app_name])
 
@@ -1816,7 +1812,7 @@ class TestGangAutoscaling:
 
         # Send 9 blocking requests. With target_ongoing_requests=2:
         # desired = ceil(9/2) = 5 (unaligned).
-        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        # Gang policy rounds to nearest: nearest(5, 3) = 6.
         results = [handle.remote() for _ in range(9)]
 
         def upscaled_and_aligned():
@@ -1869,7 +1865,9 @@ class TestGangAutoscaling:
                 "initial_replicas": 9,
                 "metrics_interval_s": 0.5,
                 "upscale_delay_s": 5,
-                "downscale_delay_s": 3,
+                # Must be long enough for all 9 gang-scheduled replicas to
+                # start before the autoscaler can trigger a downscale.
+                "downscale_delay_s": 20,
                 "look_back_period_s": 1,
                 "target_ongoing_requests": 2,
             },
@@ -1893,7 +1891,7 @@ class TestGangAutoscaling:
 
         # Send 13 blocking requests. With target_ongoing_requests=2:
         # desired = ceil(13/2) = 7 (unaligned).
-        # Gang policy rounds down: 7 // 3 * 3 = 6.
+        # Gang policy rounds to nearest: nearest(7, 3) = 6.
         results = [handle.remote() for _ in range(13)]
 
         # Wait for downscale from 9 to 6.
