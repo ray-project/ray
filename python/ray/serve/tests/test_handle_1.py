@@ -390,6 +390,46 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     reason="local_testing_mode doesn't support choose_replica/dispatch",
 )
+async def test_choose_replica_and_dispatch_streaming(serve_instance):
+    """Test choose_replica + dispatch with handle.options(stream=True)."""
+
+    @serve.deployment(num_replicas=2)
+    class Backend:
+        async def stream(self, msg: str):
+            replica_id = get_replica_context().replica_id.unique_id
+            for i in range(3):
+                yield {"actual_replica_id": replica_id, "chunk": f"{msg}-{i}"}
+
+    @serve.deployment
+    class StreamingProxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend_stream = backend.stream.options(stream=True)
+
+        async def handle_request(self, request: str):
+            async with self.backend_stream.choose_replica(request) as selection:
+                gen = self.backend_stream.dispatch(selection, request)
+                chunks = [item async for item in gen]
+                return {"selected_replica_id": selection.replica_id, "chunks": chunks}
+
+    h = serve.run(StreamingProxy.bind(Backend.bind()))
+    result = await h.handle_request.remote("stream_test")
+
+    assert [item["chunk"] for item in result["chunks"]] == [
+        "stream_test-0",
+        "stream_test-1",
+        "stream_test-2",
+    ]
+    assert all(
+        item["actual_replica_id"] == result["selected_replica_id"]
+        for item in result["chunks"]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
 async def test_choose_replica_and_dispatch_parallel(serve_instance):
     """Test parallel selection pattern (e.g., PD proxy) using AsyncExitStack."""
 
