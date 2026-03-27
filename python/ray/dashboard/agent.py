@@ -108,13 +108,13 @@ class DashboardAgent:
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._common.tls_utils import add_port_to_grpc_server
         from ray._private.authentication.authentication_utils import (
             is_token_auth_enabled,
         )
         from ray._private.authentication.grpc_authentication_server_interceptor import (
             AsyncAuthenticationServerInterceptor,
         )
-        from ray._private.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
@@ -150,12 +150,10 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        # grpc_port can be 0 for dynamic port assignment. get the actual bound port.
+        grpc_ip = "127.0.0.1" if is_localhost(self.ip) else "0.0.0.0"
         self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(self.ip, self.grpc_port)
+            self.server, build_address(grpc_ip, self.grpc_port)
         )
-        if not is_localhost(self.ip):
-            add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
 
         persist_port(
             self.session_dir,

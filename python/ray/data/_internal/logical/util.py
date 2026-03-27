@@ -5,9 +5,7 @@ from typing import Dict
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import AbstractUDFMap, Read, Write
 
 # The dictionary for the operator name and count.
 _recorded_operators = dict()
@@ -92,11 +90,11 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
 
     # Check read and write operator, and anonymize user-defined data source.
     if isinstance(op, Read):
-        op_name = f"Read{op._datasource.get_name()}"
+        op_name = f"Read{op.datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "ReadCustom"
     elif isinstance(op, Write):
-        op_name = f"Write{op._datasink_or_legacy_datasource.get_name()}"
+        op_name = f"Write{op.datasink_or_legacy_datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "WriteCustom"
     elif isinstance(op, AbstractUDFMap):

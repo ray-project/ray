@@ -8,6 +8,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON: "{{matrix}}"
 
@@ -61,3 +62,12 @@ steps:
     wanda: ci/docker/base.cu128.wanda.yaml
     env:
       PYTHON: "3.11"
+
+  - name: oss-ci-base_cu130-multipy
+    label: "wanda: oss-ci-base_cu130-py{{matrix}}"
+    wanda: ci/docker/base.cu130.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.12"
+    env:
+      PYTHON: "{{matrix}}"

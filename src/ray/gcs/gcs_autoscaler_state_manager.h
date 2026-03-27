@@ -72,6 +72,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                        rpc::autoscaler::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleResizeRayletResourceInstances(
+      rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+      rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleReportClusterConfig(rpc::autoscaler::ReportClusterConfigRequest request,
                                  rpc::autoscaler::ReportClusterConfigReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;

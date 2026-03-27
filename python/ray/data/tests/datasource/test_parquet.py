@@ -17,7 +17,6 @@ from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
@@ -26,10 +25,10 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -209,6 +208,35 @@ def test_parquet_read_basic(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+)
+def test_parquet_read_with_success_file(ray_start_regular_shared, fs, data_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.parquet")
+    pq.write_table(table, path, filesystem=fs)
+
+    # Add _SUCCESS file to ensure it's ignored
+    success_path = os.path.join(setup_data_path, "_SUCCESS")
+    if fs is None:
+        open(success_path, "wb").close()
+    else:
+        with fs.open_output_stream(success_path):
+            pass
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
+    assert ds.count() == 3
+    values = [s["one"] for s in ds.take_all()]
+    assert sorted(values) == [1, 2, 3]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
@@ -230,31 +258,23 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    input_list = list(range(10))
-    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
-    table = pa.Table.from_pandas(df1)
+    num_files = 10
+    input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
+    for i in range(num_files):
+        table = pa.Table.from_pydict({"id": [i]})
+        path = os.path.join(setup_data_path, f"test_{i}.parquet")
+        pq.write_table(table, path, filesystem=fs)
 
-    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+    shuffle = FileShuffleConfig(seed=0)
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle=shuffle)
 
-    # Execute 10 times to get a set of output results.
-    output_results_list = []
-    for _ in range(10):
-        result = [row["one"] for row in ds.take_all()]
-        output_results_list.append(result)
-    all_rows_matched = [
-        input_list == output_list for output_list in output_results_list
-    ]
+    first = [row["id"] for row in ds.take_all()]
+    second = [row["id"] for row in ds.take_all()]
 
-    # Check when shuffle is enabled, output order has at least one different
-    # case.
-    assert not all(all_rows_matched)
+    assert sorted(first) == input_list
+    assert sorted(second) == input_list
+    assert first != second
 
 
 @pytest.mark.parametrize(
@@ -327,7 +347,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -337,7 +357,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -389,6 +409,45 @@ def test_parquet_read_partitioned_with_columns(
         ["b", 0.4],
         ["b", 0.6],
     ]
+
+
+def test_parquet_read_partitioned_excludes_unrequested_partition_columns(
+    ray_start_regular_shared, tmp_path
+):
+    """Test that partition columns are excluded when not explicitly requested.
+
+    This is a regression test to ensure that when a user uses select_columns()
+    with only data columns, partition columns are NOT automatically included.
+    """
+    table = pa.table(
+        {
+            "partition_col0": [1, 1, 2, 2],
+            "partition_col1": ["a", "a", "b", "b"],
+            "data_col0": [10.5, 20.3, 30.2, 25.8],
+            "data_col1": [100, 200, 300, 400],
+        }
+    )
+
+    pq.write_to_dataset(
+        table,
+        root_path=tmp_path,
+        partition_cols=["partition_col0", "partition_col1"],
+    )
+
+    # Request only data columns excluding partition columns
+    ds = ray.data.read_parquet(
+        tmp_path,
+        columns=["data_col0"],
+        partitioning=Partitioning("hive"),
+    )
+
+    # Verify only the requested column is present
+    assert ds.columns() == ["data_col0"]
+
+    # Verify the data is correct
+    result_df = ds.to_pandas()
+    expected_df = pd.DataFrame({"data_col0": [10.5, 20.3, 25.8, 30.2]})
+    assert rows_same(result_df, expected_df)
 
 
 @pytest.mark.parametrize(
@@ -807,7 +866,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
             self.filename_template = filename_template
             self.should_include_uuid = should_include_uuid
 
-        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+        def get_filename_for_task(self, write_uuid, task_index):
             if self.should_include_uuid:
                 # Replace {write_uuid} placeholder with actual write_uuid
                 return self.filename_template.format(write_uuid=write_uuid, i="{i}")
@@ -1123,12 +1182,13 @@ def test_partitioning_in_dataset_kwargs_raises_error(
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
-    restore_data_context,
+    tensor_format_context,
     target_max_block_size_infinite_or_default,
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
+    new_tensor_format = tensor_format_context
 
     num_rows = 10_000
     num_groups = 10
@@ -1187,12 +1247,12 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    # Test #2: Verify writing tensors as either
+    #   - ArrowTensorTypeV2 or
+    #   - (Arrow-native) FixedShapeTensorType
     #
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
-
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
+    tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1203,11 +1263,14 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
-    )
-
     _assert_equal(ds.take_all(), expected_tuples)
+
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        new_tensor_format.to_type(),
+    )
 
 
 def test_multiple_files_with_ragged_arrays(
@@ -2193,7 +2256,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     def call_helper(paths, fs, kwargs):
         from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
 
-        return get_parquet_dataset(paths, fs, kwargs)
+        return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
     ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
     assert ds is not None
@@ -2568,6 +2631,43 @@ def test_write_parquet_partitioning(choice, tmp_path):
     assert len(df) == 1000
     assert df["grp"].nunique() == 10
     assert set(df.columns.tolist()) == {"id", "grp"}
+
+
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+    """Same as `test_parquet_write` but using a custom, fsspec filesystem.
+
+    TODO (Alex): We should write a similar test with a mock PyArrow fs, but
+    unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
+    some effort.
+    """
+    from fsspec.implementations.local import LocalFileSystem
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(str(tmp_path), "test1.parquet")
+    pq.write_table(table, path1)
+    table = pa.Table.from_pandas(df2)
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
+    pq.write_table(table, path2)
+
+    fs = LocalFileSystem()
+
+    ds = ray.data.read_parquet([path1, path2], filesystem=fs)
+
+    # Test metadata-only parquet ops.
+    assert not ds._plan.has_started_execution
+    assert ds.count() == 6
+
+    out_path = os.path.join(tmp_path, "out")
+    os.mkdir(out_path)
+
+    ds._set_uuid("data")
+    ds.write_parquet(out_path)
+
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 if __name__ == "__main__":

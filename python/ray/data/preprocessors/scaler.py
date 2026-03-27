@@ -8,12 +8,18 @@ import pyarrow.compute as pc
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
+
+# Small epsilon value to handle near-zero values in division operations.
+# This prevents numerical instability when scaling columns with very small
+# variance or range. Similar to sklearn's approach.
+_EPSILON = 1e-8
 
 
 @PublicAPI(stability="alpha")
@@ -88,19 +94,27 @@ class StandardScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=Mean,
-            columns=self.columns,
+            columns=self._columns,
         )
-        self.stat_computation_plan.add_aggregator(
+        self._stat_computation_plan.add_aggregator(
             aggregator_fn=lambda col: Std(col, ddof=0),
-            columns=self.columns,
+            columns=self._columns,
         )
         return self
 
@@ -113,19 +127,21 @@ class StandardScaler(SerializablePreprocessorBase):
                 s[:] = np.nan
                 return s
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if s_std == 0:
+            # Handle division by zero and near-zero values for numerical stability.
+            # If standard deviation is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if s_std < _EPSILON:
                 s_std = 1
 
             return (s - s_mean) / s_std
 
-        df[self.output_columns] = df[self.columns].transform(column_standard_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_standard_scaler)
         return df
 
     @staticmethod
     def _scale_column(column: pa.Array, mean: float, std: float) -> pa.Array:
-        if std == 0:
+        # Handle division by zero and near-zero values for numerical stability.
+        if std < _EPSILON:
             std = 1
 
         return pc.divide(
@@ -136,10 +152,10 @@ class StandardScaler(SerializablePreprocessorBase):
         """Transform using fast native PyArrow operations."""
         # Read all input columns first to avoid reading modified data when
         # output_columns[i] == columns[j] for i < j
-        input_columns = [table.column(input_col) for input_col in self.columns]
+        input_columns = [table.column(input_col) for input_col in self._columns]
 
         for input_col, output_col, column in zip(
-            self.columns, self.output_columns, input_columns
+            self._columns, self._output_columns, input_columns
         ):
             s_mean = self.stats_[f"mean({input_col})"]
             s_std = self.stats_[f"std({input_col})"]
@@ -167,20 +183,34 @@ class StandardScaler(SerializablePreprocessorBase):
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -251,13 +281,21 @@ class MinMaxScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
+        aggregates = [Agg(col) for Agg in [Min, Max] for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -267,32 +305,47 @@ class MinMaxScaler(SerializablePreprocessorBase):
             s_max = self.stats_[f"max({s.name})"]
             diff = s_max - s_min
 
-            # Handle division by zero.
-            # TODO: extend this to handle near-zero values.
-            if diff == 0:
+            # Handle division by zero and near-zero values for numerical stability.
+            # If range is very small (constant or near-constant column),
+            # treat it as 1 to avoid numerical instability.
+            if diff < _EPSILON:
                 diff = 1
 
             return (s - s_min) / diff
 
-        df[self.output_columns] = df[self.columns].transform(column_min_max_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_min_max_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -359,13 +412,21 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
     def __init__(self, columns: List[str], output_columns: Optional[List[str]] = None):
         super().__init__()
-        self.columns = columns
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._columns = columns
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self.columns]
+        aggregates = [AbsMax(col) for col in self._columns]
         self.stats_ = dataset.aggregate(*aggregates)
         return self
 
@@ -380,25 +441,39 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
             return s / s_abs_max
 
-        df[self.output_columns] = df[self.columns].transform(column_abs_max_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_abs_max_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
+
     def __repr__(self):
-        return f"{self.__class__.__name__}(columns={self.columns!r}, output_columns={self.output_columns!r})"
+        return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
 
 
 @PublicAPI(stability="alpha")
@@ -489,32 +564,48 @@ class RobustScaler(SerializablePreprocessorBase):
         quantile_precision: int = DEFAULT_QUANTILE_PRECISION,
     ):
         super().__init__()
-        self.columns = columns
-        self.quantile_range = quantile_range
-        self.quantile_precision = quantile_precision
+        self._columns = columns
+        self._quantile_range = quantile_range
+        self._quantile_precision = quantile_precision
 
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def quantile_range(self) -> Tuple[float, float]:
+        return self._quantile_range
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    @property
+    def quantile_precision(self) -> int:
+        return self._quantile_precision
+
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         quantiles = [
-            self.quantile_range[0],
+            self._quantile_range[0],
             0.50,
-            self.quantile_range[1],
+            self._quantile_range[1],
         ]
         aggregates = [
             ApproximateQuantile(
                 on=col,
                 quantiles=quantiles,
-                quantile_precision=self.quantile_precision,
+                quantile_precision=self._quantile_precision,
             )
-            for col in self.columns
+            for col in self._columns
         ]
         aggregated = dataset.aggregate(*aggregates)
 
         self.stats_ = {}
-        for col in self.columns:
+        for col in self._columns:
             low_q, med_q, high_q = aggregated[f"approx_quantile({col})"]
             self.stats_[f"low_quantile({col})"] = low_q
             self.stats_[f"median({col})"] = med_q
@@ -536,30 +627,51 @@ class RobustScaler(SerializablePreprocessorBase):
 
             return (s - s_median) / diff
 
-        df[self.output_columns] = df[self.columns].transform(column_robust_scaler)
+        df[self._output_columns] = df[self._columns].transform(column_robust_scaler)
         return df
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": self.columns,
-            "output_columns": self.output_columns,
-            "quantile_range": self.quantile_range,
-            "quantile_precision": self.quantile_precision,
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "quantile_range": self._quantile_range,
+            "quantile_precision": self._quantile_precision,
             "_fitted": getattr(self, "_fitted", None),
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
         # required fields
-        self.columns = fields["columns"]
-        self.output_columns = fields["output_columns"]
-        self.quantile_range = fields["quantile_range"]
-        self.quantile_precision = fields["quantile_precision"]
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._quantile_range = fields["quantile_range"]
+        self._quantile_precision = fields["quantile_precision"]
         # optional fields
         self._fitted = fields.get("_fitted")
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_quantile_range": _PublicField(
+                    public_field="quantile_range", default=(0.25, 0.75)
+                ),
+                "_quantile_precision": _PublicField(
+                    public_field="quantile_precision",
+                    default=self.DEFAULT_QUANTILE_PRECISION,
+                ),
+            },
+        )
+
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"quantile_range={self.quantile_range!r}), "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"quantile_range={self._quantile_range!r}, "
+            f"output_columns={self._output_columns!r})"
         )

@@ -57,7 +57,7 @@ from ray.serve.llm.ingress import OpenAiIngress, make_fastapi_ingress
 # Configure prefill with data parallel attention
 prefill_config = LLMConfig(
     model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
+        "model_id": "microsoft/Phi-tiny-MoE-instruct"
     },
     engine_kwargs={
         "data_parallel_size": 2,  # 2 DP replicas for prefill
@@ -70,15 +70,12 @@ prefill_config = LLMConfig(
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
-    experimental_configs={
-        "dp_size_per_node": 2,
-    },
 )
 
 # Configure decode with data parallel attention
 decode_config = LLMConfig(
     model_loading_config={
-        "model_id": "Qwen/Qwen2.5-0.5B-Instruct"
+        "model_id": "microsoft/Phi-tiny-MoE-instruct"
     },
     engine_kwargs={
         "data_parallel_size": 2,  # 2 DP replicas for decode (adjusted for 4 GPU limit)
@@ -90,9 +87,6 @@ decode_config = LLMConfig(
         # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
-    },
-    experimental_configs={
-        "dp_size_per_node": 2,
     },
 )
 

@@ -9,7 +9,7 @@ ci/pipeline/test_conditional_testing.py: tools
 
 # === Ray Libraries ===
 
-python/ray/data/__init__.py: data ml train
+python/ray/data/__init__.py: data
 python/ray/air/__init__.py: ml train train_gpu tune data linux_wheels
 python/ray/llm/llm.py: llm
 python/ray/workflow/workflow.py: workflow
@@ -22,7 +22,7 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels python
 
 python/ray/util/dask/dask.py: python dask
 python/ray/dag/dag.py: python cgraphs_direct_transport
-python/ray/experimental/gpu_object_manager/gpu_object_manager.py: python cgraphs_direct_transport
+python/ray/experimental/rdt/rdt_manager.py: python cgraphs_direct_transport
 
 # === RLlib ===
 
@@ -79,6 +79,11 @@ release/release_tests.yaml: tools
 ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
 ci/ci.sh: tools
+
+# === Build Scripts ===
+
+build-wheel.sh: tools
+ci/build/build_common.py: tools
 
 # === Root Files ===
 

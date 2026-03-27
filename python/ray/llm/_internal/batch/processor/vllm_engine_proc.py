@@ -84,6 +84,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
     )
+    log_engine_metrics: bool = Field(
+        default=True,
+        description="Enable vLLM engine metrics export via Ray's Prometheus endpoint. "
+        "When enabled, metrics like prefix cache hit rate, TTFT, TPOT, KV cache "
+        "utilization, and scheduler state are available at Ray's metrics endpoint. "
+        "Requires Ray to be initialized with _metrics_export_port "
+        "(e.g., ray.init(_metrics_export_port=8080)).",
+    )
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
         default=None,
@@ -166,6 +174,7 @@ def build_vllm_engine_processor(
     stages = []
 
     # Prepare processor defaults for merging into stage configs
+    trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
     processor_defaults = {
         "batch_size": config.batch_size,
         "concurrency": config.concurrency,
@@ -241,6 +250,7 @@ def build_vllm_engine_processor(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
                     ),
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
@@ -257,6 +267,7 @@ def build_vllm_engine_processor(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
@@ -276,6 +287,7 @@ def build_vllm_engine_processor(
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
+                log_engine_metrics=config.log_engine_metrics,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -284,7 +296,7 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    **config.get_concurrency(autoscaling_enabled=False),
+                    **config.get_concurrency(autoscaling_enabled=True),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -310,6 +322,7 @@ def build_vllm_engine_processor(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=detokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
@@ -317,7 +330,11 @@ def build_vllm_engine_processor(
 
     # We download the config files here so that we can report the underlying architecture to the telemetry system.
     # This should be a lightweight operation.
-    if config.engine_kwargs.get("load_format", None) in STREAMING_LOAD_FORMATS:
+    # Use EXCLUDE_SAFETENSORS for streaming formats or trust_remote_code models,
+    # since custom model architectures require Python config files to be downloaded.
+    if config.engine_kwargs.get(
+        "load_format", None
+    ) in STREAMING_LOAD_FORMATS or config.engine_kwargs.get("trust_remote_code", False):
         download_model_mode = NodeModelDownloadable.EXCLUDE_SAFETENSORS
     else:
         download_model_mode = NodeModelDownloadable.TOKENIZER_ONLY
@@ -327,10 +344,21 @@ def build_vllm_engine_processor(
         download_model=download_model_mode,
         download_extra_files=False,
     )
-    hf_config = transformers.AutoConfig.from_pretrained(
-        model_path,
-        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
-    )
+
+    try:
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path,
+            trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+        )
+    except Exception:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in vLLM, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            f"Failed to retrieve HuggingFace config for {config.model_source}"
+        )
+        hf_config = None
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
