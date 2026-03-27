@@ -128,16 +128,18 @@ def test_does_not_double_count_usage_from_union():
         topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
     )
 
-    # Create a 1-byte `RefBundle`.
-    block_ref = ray.ObjectRef(b"1" * 28)
+    # Create two 1-byte `RefBundle`s.
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=1, input_files=None, exec_stats=None
     )
-    bundle = RefBundle([(block_ref, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
+    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
     # Add two 1-byte `RefBundle` to the union operator.
-    topology[union_op].add_output(bundle)
-    topology[union_op].add_output(bundle)
+    topology[union_op].add_output(bundle1)
+    topology[union_op].add_output(bundle2)
     resource_manager.update_usages()
 
     # The total object store memory usage should be 2. If the resource manager double-

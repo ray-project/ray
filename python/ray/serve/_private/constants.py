@@ -419,11 +419,12 @@ RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = get_env_bool(
     "RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0"
 )
 
-# How often (in seconds) the controller re-records an unchanged health-check
-# gauge value for each replica. Setting this to 0 disables caching (every loop
-# iteration records the gauge, matching pre-optimization behavior).
-RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
-    "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S", 10.0
+# How often (in seconds) the controller re-records an unchanged status gauge
+# value for replicas and applications. Setting this to 0 disables caching
+# (every control loop iteration records the gauge, matching pre-optimization
+# behavior).
+RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S", 10.0
 )
 
 # Initial deadline for queue length responses in the router.
@@ -614,6 +615,12 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Feature flag to include client IP address in HTTP access logs.
+# Off by default for privacy; set to "1" to enable.
+RAY_SERVE_LOG_CLIENT_ADDRESS = (
+    os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
+)
+
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
 RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
@@ -712,6 +719,11 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER = os.environ.get(
 # Time interval between each haproxy health check attempt when the server is in the DOWN state
 RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
+)
+
+# The balancing algorithm to use in HAProxy backends. Default is leastconn.
+RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(

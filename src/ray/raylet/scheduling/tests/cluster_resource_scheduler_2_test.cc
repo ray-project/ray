@@ -105,8 +105,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result1 =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    const auto &result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result1.status.IsSuccess());
     ASSERT_EQ(result1.selected_nodes.size(), 3);
 
@@ -123,8 +123,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result2 =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result2.status.IsFailed());
     ASSERT_EQ(result2.selected_nodes.size(), 0);
 
@@ -178,8 +178,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    auto result =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    auto result = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result.status.IsSuccess());
     ASSERT_EQ(result.selected_nodes.size(), resources_list.size());
   }
@@ -229,7 +229,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   auto bundle_locations = std::make_shared<BundleLocations>();
   BundleID bundle_id{PlacementGroupID::Of(JobID::FromInt(1)), 0};
   bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
-  auto result1 = cluster_resource_scheduler_->Schedule(
+  auto result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
           std::make_unique<BundleSchedulingContext>(bundle_locations)));
@@ -237,7 +237,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Scheduling succeeded.
-  auto result2 = cluster_resource_scheduler_->Schedule(
+  auto result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
           std::make_unique<BundleSchedulingContext>(nullptr)));
@@ -266,7 +266,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   for (auto &request : requests) {
     resource_request_list.emplace_back(&request);
   }
-  auto result1 = cluster_resource_scheduler_->Schedule(
+  auto result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list, SchedulingOptions::BundleStrictSpread());
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
@@ -287,7 +287,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   for (auto &request : requests) {
     resource_request_list.emplace_back(&request);
   }
-  const auto &result2 = cluster_resource_scheduler_->Schedule(
+  const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list, SchedulingOptions::BundleStrictPack());
   ASSERT_TRUE(result2.status.IsInfeasible());
   ASSERT_EQ(result2.selected_nodes.size(), 0);

@@ -250,6 +250,11 @@ void TaskStatusEvent::PopulateRpcRayTaskDefinitionEvent(T &definition_event_data
         ray::LabelSelector(label_selector).ToStringMap();
   }
 
+  const auto &fallback_strategy = task_spec_->GetMessage().fallback_strategy();
+  if (fallback_strategy.options_size() > 0) {
+    definition_event_data.mutable_fallback_strategy()->CopyFrom(fallback_strategy);
+  }
+
   // Specific fields
   if constexpr (std::is_same_v<T, rpc::events::ActorTaskDefinitionEvent>) {
     definition_event_data.mutable_actor_func()->CopyFrom(

@@ -18,8 +18,14 @@ from ray.serve._private.common import (
     DeploymentID,
     ReplicaID,
     RequestMetadata,
+    RunningReplicaInfo,
 )
-from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+from ray.serve._private.constants import (
+    RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -81,6 +87,10 @@ class FakeRunningReplica(RunningReplica):
     @property
     def multiplexed_model_ids(self) -> Set[str]:
         return self._model_ids
+
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        """Override to update _model_ids for FakeRunningReplica."""
+        self._model_ids = set(replica_info.multiplexed_model_ids)
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -1743,6 +1753,115 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_router):
 @pytest.mark.parametrize(
     "pow_2_router",
     [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_on_request_completion(pow_2_router):
+    """
+    Verify that decrement_queue_len_cache decrements the queue length cache.
+    Without this, with max_ongoing_requests=1 the cache gets stuck at 1
+    after routing, causing every subsequent pick to require blocking probe RPCs.
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate: request was sent, on_send_request bumped cache to 1
+    s.on_send_request(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    # Request completes - cache should decrement to 0
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decremented_multiple_requests(pow_2_router):
+    """Verify that multiple request completions correctly decrement the cache."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Simulate 3 in-flight requests
+    s._replica_queue_len_cache.update(r1.replica_id, 3)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 3
+
+    # Each completion decrements
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 2
+
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 1
+
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_does_not_go_negative(pow_2_router):
+    """Verify that cache never goes below 0 (e.g. duplicate completion callbacks)."""
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    s._replica_queue_len_cache.update(r1.replica_id, 0)
+
+    # Duplicate or spurious completion - should stay at 0
+    s.decrement_queue_len_cache(r1.replica_id)
+    assert s._replica_queue_len_cache.get(r1.replica_id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
+        {"use_replica_queue_len_cache": True},
+    ],
+    indirect=True,
+)
+async def test_queue_len_cache_decrement_skipped_when_expired(pow_2_router):
+    """
+    Verify that decrement_queue_len_cache does not add a cache entry when the
+    replica's cache entry has expired (get returns None).
+    """
+    s = pow_2_router
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    # Expire the cache entry (from initial probe)
+    TIMER.advance(RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S + 1)
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+    # Completion should not add an entry (we only update when current is not None)
+    s.decrement_queue_len_cache(r1.replica_id)
+
+    # Cache should still be empty - we don't incorrectly create an entry
+    assert s._replica_queue_len_cache.get(r1.replica_id) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [
         {"prefer_local_node": True, "prefer_local_az": True},
     ],
     indirect=True,
@@ -2006,6 +2125,70 @@ async def test_rank_replicas_via_locality(pow_2_router: PowerOfTwoChoicesRequest
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_router", [{}], indirect=True)
+async def test_update_running_replicas_refreshes_multiplexed_model_ids(
+    pow_2_router: PowerOfTwoChoicesRequestRouter,
+):
+    """
+    When _update_running_replicas reuses an existing wrapper for a known replica_id,
+    it must call update_replica_info so that multiplexed_model_ids from the new
+    RunningReplicaInfo (e.g. from record_multiplexed_model_ids broadcast) are applied.
+    Otherwise _update_multiplexed_model_ids_with_replicas builds stale model-to-replica
+    mapping and multiplexed model routing breaks.
+    """
+    deploy_id = DeploymentID(name="TEST_DEPLOYMENT")
+    replica_id = ReplicaID(unique_id="r1", deployment_id=deploy_id)
+
+    def create_fake_replica(replica_info: RunningReplicaInfo) -> FakeRunningReplica:
+        return FakeRunningReplica(
+            replica_info.replica_id.unique_id,
+            model_ids=set(replica_info.multiplexed_model_ids),
+        )
+
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=deploy_id,
+        handle_source=DeploymentHandleSource.REPLICA,
+        prefer_local_node_routing=False,
+        prefer_local_az_routing=False,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        use_replica_queue_len_cache=False,
+        get_curr_time_s=TIMER.time,
+        create_replica_wrapper_func=create_fake_replica,
+    )
+    router.initialize_state()
+
+    # First update: replica r1 has model m1 only
+    info_v1 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="n1",
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_name="actor_r1",
+        max_ongoing_requests=10,
+        multiplexed_model_ids=["m1"],
+    )
+    router._update_running_replicas([info_v1])
+    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
+    assert "m2" not in router._multiplexed_model_id_to_replica_ids
+
+    # Second update: same replica, now has m1 and m2 (e.g. after loading model m2)
+    info_v2 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="n1",
+        node_ip="127.0.0.1",
+        availability_zone=None,
+        actor_name="actor_r1",
+        max_ongoing_requests=10,
+        multiplexed_model_ids=["m1", "m2"],
+    )
+    router._update_running_replicas([info_v2])
+    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
+    assert router._multiplexed_model_id_to_replica_ids.get("m2") == {replica_id}
+
+
+@pytest.mark.asyncio
 async def test_rank_replicas_via_multiplex(
     pow_2_router: PowerOfTwoChoicesRequestRouter,
 ):
@@ -2032,6 +2215,45 @@ async def test_rank_replicas_via_multiplex(
         [replica_with_no_model],  # replica with fewer cached models ranked 1
         [replica_with_other_models],  # replica with more cached models ranked 2
     ]
+
+
+def test_request_router_backoff_params_default():
+    """Test that backoff params use env var defaults when not specified."""
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+    )
+
+    assert router.initial_backoff_s == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+    assert router.backoff_multiplier == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+    assert router.max_backoff_s == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+
+
+def test_request_router_backoff_params_custom():
+    """Test that custom backoff params are properly set on the RequestRouter."""
+    custom_initial_backoff = 0.1
+    custom_multiplier = 5
+    custom_max_backoff = 3.0
+
+    router = PowerOfTwoChoicesRequestRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_node_id=ROUTER_NODE_ID,
+        self_actor_id="fake-actor-id",
+        self_actor_handle=None,
+        get_curr_time_s=TIMER.time,
+        initial_backoff_s=custom_initial_backoff,
+        backoff_multiplier=custom_multiplier,
+        max_backoff_s=custom_max_backoff,
+    )
+
+    assert router.initial_backoff_s == custom_initial_backoff
+    assert router.backoff_multiplier == custom_multiplier
+    assert router.max_backoff_s == custom_max_backoff
 
 
 if __name__ == "__main__":

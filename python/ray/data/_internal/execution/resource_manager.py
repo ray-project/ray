@@ -210,7 +210,6 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
-            op.update_resource_usage()
             op_usage = op.current_logical_usage()
             op_running_usage = op.running_logical_usage()
             op_pending_usage = op.pending_logical_usage()
@@ -900,16 +899,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if op not in self._op_budgets:
             return None
 
-        budget_obj_store = self._op_budgets[op].object_store_memory
-        # The total output ceiling is the general budget plus the output reservation.
-        # Subtract current output usage to get how much more can be read.
+        res = self._op_budgets[op].object_store_memory
+        # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
 
-        res = max(
-            budget_obj_store + self._reserved_for_op_outputs[op] - op_outputs_usage, 0
-        )
+        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         if math.isinf(res):
             self._output_budgets[op] = res
             return None

@@ -907,6 +907,33 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+def test_options_no_ref_cycle(ray_start_regular_shared):
+    """ActorMethod.options() must not prevent the ActorHandle from being freed
+    by reference counting alone. Regression test for #61922."""
+    import gc
+    import weakref
+
+    @ray.remote
+    class MyActor:
+        def task(self, x):
+            return x
+
+    actor = MyActor.remote()
+    weak = weakref.ref(actor)
+
+    ref = actor.task.options(num_returns=1).remote(42)
+    assert ray.get(ref) == 42
+    del ref
+
+    # With gc disabled, only reference counting can free the handle.
+    gc.disable()
+    try:
+        del actor
+        assert weak() is None, "ActorHandle leaked via reference cycle"
+    finally:
+        gc.enable()
+
+
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows doesn't support changing process title."
 )
