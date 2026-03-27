@@ -468,6 +468,38 @@ class LLMConfig(BaseModelExtended):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_gpu_mode(self):
+        """Validate that accelerator_type is not set when use_gpu would resolve to False.
+
+        This catches the case where accelerator_type would be silently ignored because
+        the configuration resolves to CPU-only mode (via use_cpu=True or
+        placement_group_config with no GPUs).
+        """
+        if not self.accelerator_type:
+            return self
+
+        # Check if use_cpu is explicitly True
+        if self.use_cpu is True:
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "use_cpu=True. Either remove accelerator_type or set use_cpu=False."
+            )
+
+        # Check if placement_group_config has bundles with no GPUs
+        if self.placement_group_config:
+            bundles = self.placement_group_config.get("bundles", [])
+            if bundles:
+                has_gpu = any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+                if not has_gpu:
+                    raise ValueError(
+                        f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                        "placement_group_config that contains no GPUs. Either remove "
+                        "accelerator_type or add GPUs to the placement group bundles."
+                    )
+
+        return self
+
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:

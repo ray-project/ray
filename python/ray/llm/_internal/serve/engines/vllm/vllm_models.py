@@ -77,6 +77,22 @@ class VLLMEngineConfig(BaseModelExtended):
         validated = PlacementGroupConfig(**value)
         return validated.model_dump()
 
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_gpu_mode(self):
+        """Validate that accelerator_type is not set when use_gpu resolves to False.
+
+        This catches the case where accelerator_type is silently ignored because
+        the configuration resolves to CPU-only mode (via use_cpu=True or
+        placement_group_config with no GPUs).
+        """
+        if self.accelerator_type and not self.use_gpu:
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. Either remove accelerator_type, set "
+                "use_cpu=False, or ensure placement_group_config bundles include GPUs."
+            )
+        return self
+
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
