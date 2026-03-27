@@ -215,6 +215,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._options,
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
+            output_operator=dag,
         )
 
         # Setup progress manager

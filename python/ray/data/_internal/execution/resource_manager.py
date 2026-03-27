@@ -76,6 +76,7 @@ class ResourceManager:
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
+        output_operator: Optional[PhysicalOperator] = None,
     ):
         self._topology = topology
         self._options = options
@@ -101,6 +102,14 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        # Executor sink (same as StreamingExecutor._output_node[0]). When set,
+        # external consumer bytes are attributed only to this op. When None,
+        # we infer a unique operator with no output_dependencies, or skip if ambiguous.
+        self._output_operator = output_operator
+        if output_operator is not None and output_operator not in topology:
+            raise ValueError("output_operator must be present in topology")
+        # Set per update_usages() iteration while estimating memory.
+        self._external_consumer_target_op: Optional[PhysicalOperator] = None
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -149,11 +158,34 @@ class ResourceManager:
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
+        if num_bytes < 0:
+            logger.warning(
+                f"External consumer bytes should be non-negative, got {num_bytes}. "
+                "Clamping to 0."
+            )
+            num_bytes = 0
         self._external_consumer_bytes = num_bytes
 
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
+
+    def _resolve_external_consumer_target_op(self) -> Optional[PhysicalOperator]:
+        """Operator that should be charged for iterator / streaming_split prefetch."""
+        if self._output_operator is not None:
+            return self._output_operator
+        terminals = [o for o in self._topology if not o.output_dependencies]
+        if len(terminals) == 1:
+            return terminals[0]
+        if len(terminals) > 1 and log_once(
+            "ray_data_resource_manager_multiple_terminal_ops"
+        ):
+            logger.warning(
+                "ResourceManager: multiple operators have no output_dependencies; "
+                "external consumer object-store bytes will not be attributed. "
+                "Pass output_operator= (executor sink) to ResourceManager."
+            )
+        return None
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"
@@ -161,6 +193,13 @@ class ResourceManager:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
+            if (
+                self._external_consumer_target_op is not None
+                and op is self._external_consumer_target_op
+            ):
+                self._mem_op_internal[op] = 0
+                self._mem_op_outputs[op] = self._external_consumer_bytes
+                return self._external_consumer_bytes
             return 0
 
         # Operator's internal Object Store usage
@@ -192,6 +231,14 @@ class ResourceManager:
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
 
+        # Attribute iterator / streaming_split prefetch to the executor sink only
+        # (see _resolve_external_consumer_target_op).
+        if (
+            self._external_consumer_target_op is not None
+            and op is self._external_consumer_target_op
+        ):
+            self._mem_op_outputs[op] += self._external_consumer_bytes
+
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
     def update_usages(self):
@@ -206,45 +253,49 @@ class ResourceManager:
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
 
-        # Iterate from last to first operator.
-        for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages`, `self._op_running_usages`,
-            # and `self._op_pending_usages`.
-            op_usage = op.current_logical_usage()
-            op_running_usage = op.running_logical_usage()
-            op_pending_usage = op.pending_logical_usage()
+        self._external_consumer_target_op = self._resolve_external_consumer_target_op()
+        try:
+            # Iterate from last to first operator.
+            for op, state in reversed(self._topology.items()):
+                # Update `self._op_usages`, `self._op_running_usages`,
+                # and `self._op_pending_usages`.
+                op_usage = op.current_logical_usage()
+                op_running_usage = op.running_logical_usage()
+                op_pending_usage = op.pending_logical_usage()
 
-            assert not op_usage.object_store_memory
-            assert not op_running_usage.object_store_memory
-            assert not op_pending_usage.object_store_memory
+                assert not op_usage.object_store_memory
+                assert not op_running_usage.object_store_memory
+                assert not op_pending_usage.object_store_memory
 
-            used_object_store = self._estimate_object_store_memory_usage(op, state)
+                used_object_store = self._estimate_object_store_memory_usage(op, state)
 
-            op_usage = op_usage.copy(object_store_memory=used_object_store)
-            op_running_usage = op_running_usage.copy(
-                object_store_memory=used_object_store
-            )
+                op_usage = op_usage.copy(object_store_memory=used_object_store)
+                op_running_usage = op_running_usage.copy(
+                    object_store_memory=used_object_store
+                )
 
-            if isinstance(op, ReportsExtraResourceUsage):
-                op_usage.add(op.extra_resource_usage())
+                if isinstance(op, ReportsExtraResourceUsage):
+                    op_usage.add(op.extra_resource_usage())
 
-            self._op_usages[op] = op_usage
-            self._op_running_usages[op] = op_running_usage
-            self._op_pending_usages[op] = op_pending_usage
+                self._op_usages[op] = op_usage
+                self._op_running_usages[op] = op_running_usage
+                self._op_pending_usages[op] = op_pending_usage
 
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
-            self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
-            )
-            self._global_pending_usage = self._global_pending_usage.add(
-                op_pending_usage
-            )
+                # Update `self._global_usage`, `self._global_running_usage`,
+                # and `self._global_pending_usage`.
+                self._global_usage = self._global_usage.add(op_usage)
+                self._global_running_usage = self._global_running_usage.add(
+                    op_running_usage
+                )
+                self._global_pending_usage = self._global_pending_usage.add(
+                    op_pending_usage
+                )
 
-            # Update operator's object store usage, which is used by
-            # DatasetStats and updated on the Ray Data dashboard.
-            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+                # Update operator's object store usage, which is used by
+                # DatasetStats and updated on the Ray Data dashboard.
+                op._metrics.obj_store_mem_used = op_usage.object_store_memory
+        finally:
+            self._external_consumer_target_op = None
 
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
@@ -252,14 +303,9 @@ class ResourceManager:
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
 
-        external_consumer_usage = ExecutionResources(
-            object_store_memory=self._external_consumer_bytes
-        )
-
         available_limits = (
             self.get_global_limits()
             .subtract(completed_ops_usage)
-            .subtract(external_consumer_usage)
             .max(ExecutionResources.zero())
         )
 

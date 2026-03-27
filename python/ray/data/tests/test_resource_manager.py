@@ -504,20 +504,17 @@ class TestResourceManager:
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
 
-    def test_external_consumer_bytes_reduces_available_budget(
+    def test_external_consumer_bytes_attributed_to_terminal_operator(
         self, restore_data_context
     ):
-        """Test that external consumer bytes (e.g., iterator prefetch buffers)
-        are subtracted from the available object store memory budget passed to
-        the resource allocator, without affecting CPU/GPU limits."""
+        """External consumer bytes (e.g., iterator prefetch buffers) are charged
+        to the terminal operator's object store usage, not as a global deduction."""
         cluster_resources = ExecutionResources(cpu=10, gpu=0, object_store_memory=1000)
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
-        # Mark o2 as finished (with residual usage) to test interaction
-        # with completed_ops_usage.
         o1.mark_execution_finished()
         o2.mark_execution_finished()
 
@@ -527,6 +524,7 @@ class TestResourceManager:
             ExecutionOptions(),
             lambda: cluster_resources,
             DataContext.get_current(),
+            output_operator=o3,
         )
 
         for op in [o1, o2, o3]:
@@ -534,43 +532,85 @@ class TestResourceManager:
             op.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
             op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
 
-        allocator = resource_manager._op_resource_allocator
-        assert allocator is not None
+        assert resource_manager._op_resource_allocator is not None
 
-        captured_limits = []
-        original_update_budgets = allocator.update_budgets
-
-        def spy_update_budgets(*, limits):
-            captured_limits.append(limits)
-            return original_update_budgets(limits=limits)
-
-        allocator.update_budgets = spy_update_budgets
-
-        # Baseline: no external consumer bytes.
         resource_manager.update_usages()
-        baseline = captured_limits[-1]
+        baseline_terminal = resource_manager.get_op_usage(o3).object_store_memory
+        baseline_upstream = resource_manager.get_op_usage(o2).object_store_memory
 
-        # External consumer bytes reduce only object_store_memory.
+        def _available_pool_object_store():
+            return (
+                resource_manager.get_global_limits()
+                .subtract(resource_manager._get_completed_ops_usage())
+                .max(ExecutionResources.zero())
+                .object_store_memory
+            )
+
+        pool_before = _available_pool_object_store()
+
         resource_manager.set_external_consumer_bytes(200)
         resource_manager.update_usages()
-        reduced = captured_limits[-1]
 
-        assert reduced.object_store_memory == baseline.object_store_memory - 200
-        assert reduced.cpu == baseline.cpu
-        assert reduced.gpu == baseline.gpu
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory
+            == baseline_terminal + 200
+        )
+        assert (
+            resource_manager.get_op_usage(o2).object_store_memory == baseline_upstream
+        )
+        assert _available_pool_object_store() == pool_before
 
-        # Clearing restores the full budget.
         resource_manager.set_external_consumer_bytes(0)
         resource_manager.update_usages()
-        assert captured_limits[-1].object_store_memory == baseline.object_store_memory
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory == baseline_terminal
+        )
 
-        # Overflow: external bytes exceed available budget, clamped to zero.
+        # Very large external bytes: terminal usage reflects them; update still succeeds.
         resource_manager.set_external_consumer_bytes(999999)
         resource_manager.update_usages()
-        clamped = captured_limits[-1]
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory
+            == baseline_terminal + 999999
+        )
 
-        assert clamped.object_store_memory == 0
-        assert clamped.cpu == baseline.cpu
+    def test_external_consumer_bytes_input_data_buffer_sink(self, restore_data_context):
+        """When the execute DAG is only an InputDataBuffer, prefetch bytes still
+        attach to that sink (output_operator) instead of being dropped by the
+        InputDataBuffer early return."""
+        buf = InputDataBuffer(DataContext.get_current(), [])
+        topo = build_streaming_topology(buf, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
+            DataContext.get_current(),
+            output_operator=buf,
+        )
+        buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 0
+
+        resource_manager.set_external_consumer_bytes(150)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 150
+
+    def test_output_operator_must_be_in_topology(self, restore_data_context):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        orphan = mock_map_op(InputDataBuffer(DataContext.get_current(), []))
+        with pytest.raises(ValueError, match="output_operator must be present"):
+            ResourceManager(
+                topo,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+                output_operator=orphan,
+            )
 
     def test_is_blocking_materializing_op(self, restore_data_context):
         """Test _is_blocking_materializing_op correctly identifies blocking materializing ops.
