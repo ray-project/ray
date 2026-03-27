@@ -32,7 +32,6 @@ import aiohttp
 import numpy as np
 from tqdm import tqdm
 
-
 # ============================================================================
 # LOGGING SETUP
 # ============================================================================
@@ -116,7 +115,7 @@ class WorkloadSpec:
 
     # Cross-sharing: fraction of system prompt shared across all sessions
     # 1.0 = identical system prompt, 0.0 = all unique
-    cross_sharing: float = 1.0  # f
+    cross_sharing: float = 0.0  # f
 
     # Simple mode inputs (derive u, s)
     isl: Optional[int] = None
@@ -318,7 +317,7 @@ class WorkloadSpec:
         if s["num_sessions"] is not None:
             print(f"  Sessions (N_s):           {s['num_sessions']}")
         else:
-            print(f"  Sessions (N_s):           unlimited (duration-based)")
+            print("  Sessions (N_s):           unlimited (duration-based)")
         if s["duration_s"] > 0:
             print(f"  Duration:                 {s['duration_s']}s")
         print(f"  Turns per session (N_t):  {s['num_turns']}")
@@ -622,6 +621,13 @@ class TextGenerator:
                 hi = mid - 1
                 best_text = text
 
+        # BPE merges can prevent the binary search from finding an exact match.
+        # Scan prefix lengths from `target` upward (shortest plausible first);
+        # the loop above already explored midpoints, so this covers edge cases.
+        for n in range(target, len(token_ids) + 1):
+            text = tokenizer.decode(token_ids[:n], skip_special_tokens=True)
+            if len(tokenizer.encode(text, add_special_tokens=False)) == target:
+                return text
         return best_text
 
 
@@ -707,6 +713,19 @@ class BenchmarkState:
                 return session_id
             return None
 
+    async def has_remaining_sessions(self) -> bool:
+        """True if more session indices can still be allocated (does not consume an ID)."""
+        async with self._lock:
+            limit = self.spec.num_sessions
+            if limit is None:
+                return True
+            return self.next_session_id < limit
+
+    async def get_inflight(self) -> int:
+        """Current in-flight HTTP requests (concurrency benchmark)."""
+        async with self._lock:
+            return self.inflight
+
     async def get_or_create_conversation(
         self,
         session_idx: int,
@@ -781,18 +800,25 @@ class BenchmarkState:
             if not self.active_turns:
                 return False
 
-            # Calculate entropy
+            # Calculate entropy. For num_turns==1, max_entropy=log2(1)=0 so the
+            # threshold is 0.0 — any non-empty active_turns distribution satisfies
+            # entropy >= 0, so warm-up ends on the first turn completion.
             max_entropy = np.log2(self.spec.num_turns)
             entropy_threshold = 0.50 * max_entropy
             entropy = self._calculate_entropy()
 
             if entropy >= entropy_threshold:
                 self.warmup_complete = True
+                pct_of_target = (
+                    (entropy / entropy_threshold * 100)
+                    if entropy_threshold > 0
+                    else 100.0
+                )
                 logger.info(
                     "Steady-state reached! Entropy=%.3f (threshold=%.3f, %.0f%% of target)",
                     entropy,
                     entropy_threshold,
-                    (entropy / entropy_threshold * 100),
+                    pct_of_target,
                 )
                 logger.info(
                     "Warm-up complete (%d sessions, %d requests discarded). "
@@ -850,8 +876,9 @@ async def run_benchmark(
     model: str,
     shared_system_text: str,
     text_gen: TextGenerator,
-    tokenizer: "PreTrainedTokenizerBase",
-    chunk_size: int = 16,
+    first_chunk_threshold: int = 16,
+    api_key: Optional[str] = None,
+    warmup_jitter_max_s: float = 10.0,
 ) -> list[TurnMetric]:
     """Run the full benchmark with rolling session pool and steady-state warm-up.
 
@@ -930,7 +957,8 @@ async def run_benchmark(
                         messages=messages,
                         session_id=conv.session_id,
                         max_tokens=spec.osl,
-                        chunk_size=chunk_size,
+                        first_chunk_threshold=first_chunk_threshold,
+                        api_key=api_key,
                     )
                 except Exception as e:
                     logger.error(
@@ -977,7 +1005,7 @@ async def run_benchmark(
                 # During warm-up: add random jitter to desynchronize sessions
                 # After warm-up: use configured think_time
                 if is_warmup:
-                    jitter = np.random.uniform(0.0, 10.0)
+                    jitter = np.random.uniform(0.0, warmup_jitter_max_s)
                     delay_until = time.perf_counter() + jitter
                 else:
                     delay_until = time.perf_counter() + spec.think_time
@@ -1001,10 +1029,13 @@ async def run_benchmark(
                         await asyncio.wait_for(turn_queue.get(), timeout=1.0)
                     )
                 except asyncio.TimeoutError:
-                    # Check if we're done: all sessions started and none active
-                    next_id = await state.get_next_session()
-                    all_started = next_id is None
-                    if all_started and turn_queue.empty():
+                    # Do not call get_next_session() here — it allocates a session ID
+                    # without enqueueing work. Peek completion instead.
+                    if (
+                        not await state.has_remaining_sessions()
+                        and turn_queue.empty()
+                        and await state.get_inflight() == 0
+                    ):
                         break
                     continue
 
@@ -1086,12 +1117,17 @@ async def run_rate_based_benchmark(
     model: str,
     shared_system_text: str,
     text_gen: TextGenerator,
-    tokenizer: "PreTrainedTokenizerBase",
-    chunk_size: int = 16,
+    first_chunk_threshold: int = 16,
     duration_s: float = 0.0,
     warmup_s: float = 0.0,
+    api_key: Optional[str] = None,
 ) -> tuple[list[TurnMetric], int]:
     """Closed-loop constant-QPS benchmark with turn-order guarantees.
+
+    Uses separate asyncio locks for metrics/inflight here (time-based warm-up
+    filtering) while :class:`BenchmarkState` powers the concurrency path
+    (entropy-based warm-up). Unifying both under one state object is possible
+    but is left for a follow-up refactor.
 
     Architecture
     ============
@@ -1252,7 +1288,8 @@ async def run_rate_based_benchmark(
                 messages=messages,
                 session_id=conv.session_id,
                 max_tokens=spec.osl,
-                chunk_size=chunk_size,
+                first_chunk_threshold=first_chunk_threshold,
+                api_key=api_key,
             )
         except Exception as e:
             logger.error(
@@ -1354,7 +1391,7 @@ async def run_rate_based_benchmark(
                         f"  Sent [lag {next_session_idx}/{session_budget}]"
                     )
                 if now - _last_lag_log >= 1.0:
-                    elapsed = now - bench_start_ns / 1e9
+                    elapsed = (time.perf_counter_ns() - bench_start_ns) / 1e9
                     if beyond_budget:
                         logger.warning(
                             "Server lagging at %.1fs: ready queue empty, budget exhausted "
@@ -1460,7 +1497,7 @@ def report_results(
     metrics: list[TurnMetric],
     spec: WorkloadSpec,
     bench_elapsed_s: float,
-    chunk_size: int = 16,
+    first_chunk_threshold: int = 16,
     save_path: Optional[str] = None,
     warmup_s: float = 0.0,
     discarded_warmup_requests: int = 0,
@@ -1488,7 +1525,7 @@ def report_results(
     print("BENCHMARK RESULTS")
     print("=" * 70)
     print(f"  Total requests:       {len(metrics)}")
-    print(f"  Unique sessions:      {len(set(m.session_id for m in metrics))}")
+    print(f"  Unique sessions:      {len({m.session_id for m in metrics})}")
     print(f"  Duration:             {bench_elapsed_s:.1f}s")
     if warmup_s > 0:
         print(f"  Warm-up excluded:     {warmup_s:.1f}s")
@@ -1509,7 +1546,7 @@ def report_results(
     print()
 
     # Latency stats
-    fc_label = f"FC({chunk_size})"
+    fc_label = f"FC({first_chunk_threshold})"
     print("  Latency Statistics:")
     for name, values in [
         ("TTFT", all_ttft),
@@ -1558,7 +1595,7 @@ def report_results(
                 "request_rate": spec.request_rate,
             },
             "spec": spec.summary(),
-            "chunk_size": chunk_size,
+            "first_chunk_threshold": first_chunk_threshold,
             "benchmark": {
                 "total_requests": len(metrics),
                 "duration_s": round(bench_elapsed_s, 2),
@@ -1675,7 +1712,8 @@ def set_seed(args) -> int:
         "base_url",  # Server URL doesn't affect workload
         "model",  # Model name doesn't affect workload shape
         "tokenizer",  # Tokenizer path doesn't affect workload (token counts do)
-        "chunk_size",  # Measurement detail, not workload shape
+        "first_chunk_threshold",  # Measurement detail, not workload shape
+        "warmup_jitter_max",  # Warm-up pacing only; does not change generated text
     }
 
     # Include all workload-affecting parameters
@@ -1807,6 +1845,10 @@ def run_direct(args) -> int:
     discarded_warmup_requests = 0
     report_elapsed = None
 
+    api_key = getattr(args, "api_key", None)
+    fc_thresh = args.first_chunk_threshold
+    warmup_jitter_max = getattr(args, "warmup_jitter_max", 10.0)
+
     if spec.request_rate is not None:
         if spec.duration_s > 0:
             effective_duration = spec.duration_s
@@ -1816,6 +1858,13 @@ def run_direct(args) -> int:
             )
         else:
             effective_duration = 60.0
+        if args.warm_up >= effective_duration:
+            logger.error(
+                "--warm-up (%.3fs) must be less than effective duration (%.3fs).",
+                args.warm_up,
+                effective_duration,
+            )
+            return 1
         metrics, discarded_warmup_requests = asyncio.run(
             run_rate_based_benchmark(
                 spec,
@@ -1823,10 +1872,10 @@ def run_direct(args) -> int:
                 args.model,
                 shared_system_text,
                 text_gen,
-                tokenizer,
-                chunk_size=args.chunk_size,
+                first_chunk_threshold=fc_thresh,
                 duration_s=effective_duration,
                 warmup_s=args.warm_up,
+                api_key=api_key,
             )
         )
         report_elapsed = max(1e-9, effective_duration - args.warm_up)
@@ -1838,8 +1887,9 @@ def run_direct(args) -> int:
                 args.model,
                 shared_system_text,
                 text_gen,
-                tokenizer,
-                chunk_size=args.chunk_size,
+                first_chunk_threshold=fc_thresh,
+                api_key=api_key,
+                warmup_jitter_max_s=warmup_jitter_max,
             )
         )
 
@@ -1851,7 +1901,7 @@ def run_direct(args) -> int:
         metrics,
         spec,
         report_elapsed,
-        chunk_size=args.chunk_size,
+        first_chunk_threshold=fc_thresh,
         save_path=args.save_result,
         warmup_s=args.warm_up if spec.request_rate is not None else 0.0,
         discarded_warmup_requests=discarded_warmup_requests,

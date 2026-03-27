@@ -14,6 +14,7 @@ class TestWorkloadSpec:
             hit_rate=0.5,
             num_turns=1,
             osl=100,
+            cross_sharing=1.0,
             concurrency=1,
             num_sessions=1,
         ).resolve()

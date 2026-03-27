@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     workload.add_argument(
         "--cross-sharing",
         type=float,
-        default=1.0,
+        default=0.0,
         help="Cross-session prefix sharing factor (default: %(default)s)",
     )
     workload.add_argument(
@@ -132,6 +132,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0,
         help="Warm-up period in seconds (default: %(default)s)",
+    )
+    traffic.add_argument(
+        "--warmup-jitter-max",
+        type=float,
+        default=10.0,
+        help="Max random delay (seconds) between turns during entropy warm-up in "
+        "concurrency mode (default: %(default)s)",
     )
     traffic.add_argument(
         "--ramp-interval",
