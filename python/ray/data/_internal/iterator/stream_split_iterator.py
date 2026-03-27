@@ -112,7 +112,7 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> ray.data.Schema:
         """Implements DataIterator."""
         return ray.get(self._coord_actor.get_dataset_schema.remote())
 
