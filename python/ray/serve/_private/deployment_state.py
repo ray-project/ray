@@ -4252,6 +4252,10 @@ class DeploymentState:
                         latency_s * 1000
                     )
             except Exception:
+                # Re-enter transition so the controller retries reconfigure
+                # on the next loop (the version was reverted, so the replica
+                # will be detected as outdated).
+                self._in_transition = True
                 logger.warning(
                     f"Non-blocking reconfigure failed for {replica.replica_id}. "
                     "The replica will continue serving with its previous config.",
