@@ -106,31 +106,6 @@ class FailingDeploymentActor:
             raise RuntimeError("Deployment actor init failed")
 
 
-@ray.remote
-class HealthCheckFailingDeploymentActor:
-    """Deployment actor that succeeds on init, then fails N times, then succeeds.
-
-    Used to test that when a replica's health check calls this actor and gets
-    an error, the replica is marked unhealthy and restarted. Succeeds on the
-    first call (replica init), fails on the next N (periodic health checks),
-    then succeeds so the replacement replica stays healthy.
-    """
-
-    def __init__(self, init_successes: int = 1, fail_count: int = 3):
-        self._init_successes = init_successes
-        self._fail_count = fail_count
-        self._call_count = 0
-
-    def ping(self):
-        """Called by replica's check_health. Succeeds then fails N times."""
-        self._call_count += 1
-        if self._call_count <= self._init_successes:
-            return "ok"
-        if self._call_count <= self._init_successes + self._fail_count:
-            raise RuntimeError("Deployment actor remote call failed")
-        return "ok"
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -921,14 +896,38 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
     (e.g. deployment actor raises), the replica is marked unhealthy and restarted.
     """
 
+    @ray.remote
+    class SignalGatedHealthCheckActor:
+        """Deployment actor whose ping() fails after a signal is sent.
+
+        Starts healthy so the test can capture the original replica PID.
+        After the signal fires, fails exactly `fail_count` times then recovers,
+        so the replacement replica's health checks succeed.
+        """
+
+        def __init__(self, fail_count: int = 3):
+            self._fail_count = fail_count
+            self._triggered = False
+            self._fail_calls = 0
+
+        def trigger(self):
+            self._triggered = True
+
+        def ping(self):
+            if not self._triggered:
+                return "ok"
+            self._fail_calls += 1
+            if self._fail_calls <= self._fail_count:
+                raise RuntimeError("Deployment actor remote call failed")
+            return "ok"
+
     @serve.deployment(
         name="HealthCheckFailDeployment",
         deployment_actors=[
             DeploymentActorConfig(
                 name="health_actor",
-                actor_class=HealthCheckFailingDeploymentActor,
+                actor_class=SignalGatedHealthCheckActor,
                 init_kwargs={
-                    "init_successes": 1,
                     "fail_count": REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
                 },
             ),
@@ -953,14 +952,23 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
     wait_for_condition(lambda: httpx.get(url).status_code == 200)
     old_pid = httpx.get(url).text
 
-    # The deployment actor will raise on the first N health checks. After N
-    # consecutive failures, the replica is marked unhealthy and restarted.
-    # The replacement replica's health checks succeed (actor stops raising).
+    # Trigger the deployment actor to start failing health checks. After
+    # REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD consecutive failures the
+    # replica is marked unhealthy and restarted. The replacement replica's
+    # health checks succeed (actor stops raising after fail_count).
+    actor_names = [
+        n
+        for n in _get_deployment_actor_names()
+        if "HealthCheckFailDeployment" in n and "health_actor" in n
+    ]
+    assert len(actor_names) == 1
+    da_handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
+    ray.get(da_handle.trigger.remote())
+
     wait_for_condition(
         lambda: httpx.get(url, timeout=5).text != old_pid,
         timeout=60,
     )
-    # Verify the new replica serves requests.
     for _ in range(5):
         assert httpx.get(url).status_code == 200
 
