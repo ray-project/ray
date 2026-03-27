@@ -1,0 +1,19 @@
+group: Custom images build
+steps:
+- label: ':tapioca: build custom: ray-ml:py310-gpu (f5ba7a66ca83d2d76bb0) hello_world_custom.aws
+    hello_world_custom_2.aws'
+  key: f5ba7a66ca83d2d76bb0
+  instance_type: release-medium
+  mount_buildkite_agent: true
+  commands:
+  - export RAY_WANT_COMMIT_IN_IMAGE=
+  - bash release/gcloud_docker_login.sh release/aws2gce_iam.json
+  - export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH
+  - bash release/azure_docker_login.sh
+  - az acr login --name rayreleasetest
+  - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin
+    029272617770.dkr.ecr.us-west-2.amazonaws.com
+  - bazelisk run //release:custom_byod_build -- --image-name 029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale/ray-ml:$$RAYCI_BUILD_ID-py310-gpu-720f240c5b117ac63dcd01c1e0a49f9152afc3d932f7198d3d38613321d395d8
+    --base-image 029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale/ray-ml:$$RAYCI_BUILD_ID-py310-gpu
+    --post-build-script byod_hello_world.sh
+  depends_on: anyscalemlbuild

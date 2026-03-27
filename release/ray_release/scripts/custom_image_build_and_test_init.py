@@ -7,6 +7,7 @@ from typing import Tuple
 
 import click
 
+from ray_release.base_image_filter import create_filtered_build_yaml
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import (
     get_frequency,
@@ -86,6 +87,12 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     type=str,
     help="The output file for the test jobs json file",
 )
+@click.option(
+    "--base-build-yaml-file",
+    type=str,
+    default=None,
+    help="Path to build.rayci.yml to filter based on required images",
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
@@ -96,6 +103,7 @@ def main(
     run_per_test: int = 1,
     custom_build_jobs_output_file: str = None,
     test_jobs_output_file: str = None,
+    base_build_yaml_file: str = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -137,6 +145,12 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
+    # Filter base image builds to only include what's needed
+    if base_build_yaml_file:
+        create_filtered_build_yaml(
+            os.path.join(_bazel_workspace_dir, base_build_yaml_file),
+            tests,
+        )
     # Generate custom image build steps
     create_custom_build_yaml(
         os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),

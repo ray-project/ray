@@ -63,6 +63,7 @@ fi
 BUILD_WORKSPACE_DIRECTORY="${PWD}" bazel-bin/release/custom_image_build_and_test_init \
   "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
-  --test-jobs-output-file .buildkite/release/release_tests.json
+  --test-jobs-output-file .buildkite/release/release_tests.json \
+  --base-build-yaml-file .buildkite/release/build.rayci.yml
 
 buildkite-agent pipeline upload .buildkite/release/release_tests.json
