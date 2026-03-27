@@ -6,10 +6,7 @@ if TYPE_CHECKING:
     import pyarrow.fs
 
 from ray import ObjectRef
-from ray.data._internal.execution.execution_callback import (
-    ExecutionCallback,
-    get_execution_callbacks,
-)
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
@@ -188,14 +185,7 @@ class Planner:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
 
-        # TODO: This is a temporary fix. Switch this back to:
-        #   callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
-        # once the old callback API (add_execution_callback, get_execution_callbacks,
-        # remove_execution_callback in execution_callback.py) is fully removed and all
-        # callers are migrated to use execution_callback_classes instead. Until then,
-        # we use get_execution_callbacks() here so that callbacks registered via
-        # add_execution_callback() are not silently dropped during execution.
-        callbacks = list(get_execution_callbacks(logical_plan.context))
+        callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
 
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
