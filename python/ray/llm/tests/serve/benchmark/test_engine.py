@@ -1,6 +1,7 @@
 """Tests for benchmark engine components: TextGenerator, Conversation, conversation_factory, BenchmarkState."""
 
 import asyncio
+import sys
 
 import numpy as np
 import pytest
@@ -366,3 +367,7 @@ class TestBenchmarkState:
         assert "max_inflight" in stats
         assert "warmup_complete" in stats
         assert stats["warmup_complete"] is False
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

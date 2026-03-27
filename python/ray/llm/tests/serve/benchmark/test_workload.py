@@ -1,4 +1,6 @@
 """Tests for WorkloadSpec solver."""
+import sys
+
 import pytest
 
 from ray.llm._internal.serve.benchmark.multiturn_bench import WorkloadSpec
@@ -139,3 +141,7 @@ class TestWorkloadSpec:
         }
         assert expected_keys.issubset(s.keys())
         assert len(s["per_turn"]) == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
