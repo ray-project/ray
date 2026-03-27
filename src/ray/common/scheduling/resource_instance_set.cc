@@ -155,6 +155,13 @@ NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &availa
     return std::nullopt;
   }
 
+  // If resources has multiple instances, each instance has total capacity of 1.
+  //
+  // As long as remaining_demand is greater than 1.,
+  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
+  // Then try to find the best fit for the fractional remaining_demand. Best fit means
+  // allocating the resource instance with the smallest available capacity greater than
+  // remaining_demand.
   std::vector<FixedPoint> allocation(available.size(), FixedPoint(0));
   std::vector<FixedPoint> remaining_available = available;
   FixedPoint remaining_demand = demand;

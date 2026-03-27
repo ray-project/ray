@@ -47,7 +47,15 @@ class GcsResourceManagerTest : public ::testing::Test {
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     for (const auto &resource : available_resources) {
       rpc::syncer::ResourceInstances instances;
-      instances.add_values(resource.second);
+      auto resource_id = scheduling::ResourceID(resource.first);
+      if (resource_id.IsUnitInstanceResource()) {
+        size_t num = static_cast<size_t>(resource.second);
+        for (size_t i = 0; i < num; i++) {
+          instances.add_values(1.0);
+        }
+      } else {
+        instances.add_values(resource.second);
+      }
       (*resource_view_sync_message
             .mutable_resources_available_instances())[resource.first] = instances;
     }
@@ -103,6 +111,55 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   // Test `ReleaseResources`.
   ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
                                                                   allocation.value()));
+}
+
+TEST_F(GcsResourceManagerTest, TestPerInstanceGpuResources) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({{"GPU", 4}});
+  gcs_resource_manager_->OnNodeAdd(*node);
+
+  auto node_id = NodeID::FromBinary(node->node_id());
+  scheduling::NodeID scheduling_node_id(node->node_id());
+
+  // Syncer reports 4 GPUs, each with 1.0 capacity.
+  UpdateFromResourceViewSync(node_id, {{"GPU", 4}}, {{"GPU", 4}});
+
+  // Verify per-instance: 4 instances, each 1.0.
+  const auto &view = cluster_resource_manager_.GetResourceView();
+  const auto &available = view.at(scheduling_node_id).GetLocalView().available;
+  auto gpu_instances = available.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_instances.size(), 4);
+  for (const auto &inst : gpu_instances) {
+    ASSERT_EQ(inst, FixedPoint(1.0));
+  }
+
+  // Allocate 0.5 GPU (should take from one instance).
+  absl::flat_hash_map<std::string, double> demand_map = {{"GPU", 0.5}};
+  auto request =
+      ResourceMapToResourceRequest(demand_map, /*requires_object_store_memory=*/false);
+  auto alloc = cluster_resource_manager_.SubtractNodeAvailableResources(
+      scheduling_node_id, request);
+  ASSERT_TRUE(alloc.has_value());
+
+  // One instance should have 0.5 remaining, others still 1.0.
+  const auto &after_alloc = view.at(scheduling_node_id).GetLocalView().available;
+  auto gpu_after = after_alloc.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_after.size(), 4);
+  FixedPoint sum(0);
+  for (const auto &inst : gpu_after) {
+    sum += inst;
+  }
+  ASSERT_EQ(sum, FixedPoint(3.5));
+
+  // Free it back.
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
+                                                                  alloc.value()));
+  auto gpu_freed = view.at(scheduling_node_id)
+                       .GetLocalView()
+                       .available.Get(scheduling::ResourceID("GPU"));
+  for (const auto &inst : gpu_freed) {
+    ASSERT_EQ(inst, FixedPoint(1.0));
+  }
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {

@@ -255,8 +255,6 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   if (!IsSchedulable(resource_request, node_id)) {
     return false;
   }
-  // The per-instance allocation is discarded; the actual allocation happens
-  // on the remote node and its real state syncs back via RaySyncer.
   return cluster_resource_manager_
       ->SubtractNodeAvailableResources(node_id, resource_request)
       .has_value();

@@ -807,7 +807,7 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   }
 
   for (const auto &[resource_name, capacity] : wildcard_resources) {
-    if (capacity == 0) {
+    if (capacity <= 0) {
       bundle_resource_ids.emplace_back(scheduling::ResourceID(resource_name));
     } else {
       cluster_resource_manager.UpdateResourceCapacity(
