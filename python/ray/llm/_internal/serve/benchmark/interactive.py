@@ -216,6 +216,247 @@ def _build_spec(
 
 
 # ============================================================================
+# Command handler (extracted for testability)
+# ============================================================================
+
+
+class CommandHandler:
+    """Handles interactive benchmark commands.
+
+    Extracted from the ``run_interactive`` closure so that command parsing,
+    state mutation, and response formatting can be unit-tested without
+    starting a real server or HTTP session.
+    """
+
+    def __init__(
+        self,
+        runtime: RuntimeState,
+        workload: dict,
+        args: argparse.Namespace,
+        text_gen: Optional[mt.TextGenerator] = None,
+        rate_changed: Optional[asyncio.Event] = None,
+        workload_changed: Optional[asyncio.Event] = None,
+        stop_event: Optional[asyncio.Event] = None,
+    ):
+        self.runtime = runtime
+        self.workload = workload
+        self.args = args
+        self.text_gen = text_gen
+        self.rate_changed = rate_changed or asyncio.Event()
+        self.workload_changed = workload_changed or asyncio.Event()
+        self.stop_event = stop_event or asyncio.Event()
+
+    def resolve_save_path(self, raw: Optional[str]) -> str:
+        if raw:
+            expanded = str(Path(raw).expanduser())
+            if "/" in expanded or expanded.startswith("."):
+                return expanded
+            return str(Path(self.runtime.save_dir) / expanded)
+
+        if self.args.save_result:
+            return str(Path(self.args.save_result).expanduser())
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        qps_label = f"{self.runtime.current_qps:.2f}".replace(".", "p")
+        return str(
+            Path(self.runtime.save_dir)
+            / f"interactive_measure_qps{qps_label}_{ts}.json"
+        )
+
+    async def handle(self, cmd: str) -> str:  # noqa: C901
+        """Process a single command string and return the response."""
+        cmd = cmd.strip()
+        if not cmd:
+            return "empty command"
+
+        parts = cmd.split()
+        op = parts[0].lower()
+
+        if op == "help":
+            return (
+                "Commands: help, rate <qps>, start, measure <n>, stop, "
+                "status, save [path|name], save-dir <path>, quit\n"
+                "Workload: workload [isl=N] [osl=N] [hit-rate=F] "
+                "[cross-sharing=F] [num-turns=N]\n"
+                "  e.g.  workload isl=2000 osl=200 hit-rate=0.5\n"
+                "  All params optional; unspecified ones keep their current values.\n"
+                "  workload (no args) prints current workload spec."
+            )
+        if op == "rate":
+            if len(parts) != 2:
+                return "Usage: rate <qps>"
+            try:
+                new_qps = float(parts[1])
+                if new_qps < 0:
+                    raise ValueError()
+            except ValueError:
+                return "QPS must be a non-negative number."
+            self.runtime.current_qps = new_qps
+            self.rate_changed.set()
+            return f"Set target qps={new_qps:.3f}"
+        if op == "start":
+            self.runtime.measurement_active = True
+            self.runtime.measurement_start_ns = time.perf_counter_ns()
+            self.runtime.measurement_metrics = []
+            self.runtime.measurement_target_requests = None
+            self.runtime.last_notice = None
+            return "Measurement started."
+        if op == "measure":
+            if len(parts) != 2:
+                return "Usage: measure <num_requests>"
+            try:
+                tgt = int(parts[1])
+                if tgt <= 0:
+                    raise ValueError()
+            except ValueError:
+                return "measure requires a positive integer."
+            self.runtime.measurement_active = True
+            self.runtime.measurement_start_ns = time.perf_counter_ns()
+            self.runtime.measurement_metrics = []
+            self.runtime.measurement_target_requests = tgt
+            self.runtime.last_notice = None
+            return f"Measurement started: capturing next {tgt} completed requests."
+        if op == "stop":
+            if not self.runtime.measurement_active:
+                return "Measurement is not active."
+            self.runtime.measurement_active = False
+            end_ns = time.perf_counter_ns()
+            start_ns = self.runtime.measurement_start_ns or end_ns
+            self.runtime.last_window_elapsed_s = (end_ns - start_ns) / 1e9
+            self.runtime.last_window_metrics = list(
+                self.runtime.measurement_metrics
+            )
+            self.runtime.measurement_target_requests = None
+            summary = _summarize_metrics(
+                list(self.runtime.last_window_metrics),
+                self.runtime.last_window_elapsed_s,
+            )
+            return f"Measurement stopped.\n{json.dumps(summary, indent=2)}"
+        if op == "status":
+            cur = self.workload["spec"]
+            status = (
+                f"qps={self.runtime.current_qps:.2f} "
+                f"inflight={self.runtime.inflight} "
+                f"completed={self.runtime.total_completed} "
+                f"failed={self.runtime.total_failed} "
+                f"measured={len(self.runtime.measurement_metrics)} "
+                f"active={self.runtime.measurement_active} "
+                f"target={self.runtime.measurement_target_requests} "
+                f"save_dir={self.runtime.save_dir}\n"
+                f"workload: isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
+                f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
+            )
+            if self.runtime.last_notice:
+                status += f"\n{self.runtime.last_notice}"
+                self.runtime.last_notice = None
+            return status
+        if op == "save-dir":
+            if len(parts) != 2:
+                return "Usage: save-dir <path>"
+            new_dir = str(Path(parts[1]).expanduser())
+            self.runtime.save_dir = new_dir
+            return f"Set save_dir={self.runtime.save_dir}"
+        if op == "save":
+            if len(parts) > 2:
+                return "Usage: save [path.json|name.json]"
+
+            if (
+                self.runtime.measurement_active
+                and self.runtime.measurement_start_ns is not None
+            ):
+                el = (
+                    time.perf_counter_ns() - self.runtime.measurement_start_ns
+                ) / 1e9
+                mlist = list(self.runtime.measurement_metrics)
+            else:
+                el = self.runtime.last_window_elapsed_s
+                mlist = list(self.runtime.last_window_metrics)
+            if not mlist:
+                return "No measured window data to save."
+            save_path = self.resolve_save_path(
+                parts[1] if len(parts) == 2 else None
+            )
+            _save_window_result(
+                save_path,
+                self.args,
+                self.workload["spec"],
+                mlist,
+                el,
+                runtime_qps=self.runtime.current_qps,
+            )
+            return f"Saved measurement window to {save_path}"
+        if op == "workload":
+            cur = self.workload["spec"]
+            if len(parts) == 1:
+                return (
+                    f"isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
+                    f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
+                )
+            _param_aliases = {
+                "isl": "isl",
+                "osl": "osl",
+                "hit-rate": "hit_rate",
+                "hitrate": "hit_rate",
+                "hit_rate": "hit_rate",
+                "cross-sharing": "cross_sharing",
+                "cross_sharing": "cross_sharing",
+                "num-turns": "num_turns",
+                "num_turns": "num_turns",
+            }
+            overrides: dict = {}
+            errors: list[str] = []
+            for token in parts[1:]:
+                if "=" not in token:
+                    errors.append(f"bad token {token!r} (expected key=value)")
+                    continue
+                k, _, v = token.partition("=")
+                mapped = _param_aliases.get(k.lower())
+                if mapped is None:
+                    errors.append(f"unknown param {k!r}")
+                    continue
+                try:
+                    overrides[mapped] = (
+                        int(v)
+                        if mapped in ("isl", "osl", "num_turns")
+                        else float(v)
+                    )
+                except ValueError:
+                    errors.append(f"invalid value for {k}: {v!r}")
+            if errors:
+                return "Error: " + "; ".join(errors)
+            merged = dict(
+                isl=cur.isl,
+                osl=cur.osl,
+                hit_rate=cur.hit_rate,
+                cross_sharing=cur.cross_sharing,
+                num_turns=cur.num_turns,
+            )
+            merged.update(overrides)
+            try:
+                new_spec = _build_spec(self.args, merged)
+            except Exception as e:
+                return f"Invalid workload spec: {e}"
+            if self.text_gen is not None:
+                new_sst = self.text_gen.generate(new_spec.shared_s)
+            else:
+                new_sst = ""
+            self.workload["spec"] = new_spec
+            self.workload["shared_system_text"] = new_sst
+            self.workload_changed.set()
+            new_spec.print_summary()
+            return (
+                f"Workload updated: isl={new_spec.isl} osl={new_spec.osl} "
+                f"hit-rate={new_spec.hit_rate} "
+                f"cross-sharing={new_spec.cross_sharing} "
+                f"num-turns={new_spec.num_turns}"
+            )
+        if op in ("quit", "exit"):
+            self.stop_event.set()
+            return "Stopping benchmark..."
+        return f"Unknown command: {op}"
+
+
+# ============================================================================
 # Interactive server
 # ============================================================================
 
@@ -471,198 +712,16 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 flush=True,
             )
 
-    def print_window_summary(
-        metrics: list[mt.TurnMetric], elapsed_s: float
-    ) -> str:
-        summary = _summarize_metrics(metrics, elapsed_s)
-        return json.dumps(summary, indent=2)
-
-    def resolve_save_path(raw: Optional[str]) -> str:
-        if raw:
-            expanded = str(Path(raw).expanduser())
-            if "/" in expanded or expanded.startswith("."):
-                return expanded
-            return str(Path(runtime.save_dir) / expanded)
-
-        if args.save_result:
-            return str(Path(args.save_result).expanduser())
-
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        qps_label = f"{runtime.current_qps:.2f}".replace(".", "p")
-        return str(
-            Path(runtime.save_dir) / f"interactive_measure_qps{qps_label}_{ts}.json"
-        )
-
-    async def handle_command(cmd: str) -> str:
-        cmd = cmd.strip()
-        if not cmd:
-            return "empty command"
-
-        parts = cmd.split()
-        op = parts[0].lower()
-
-        if op == "help":
-            return (
-                "Commands: help, rate <qps>, start, measure <n>, stop, "
-                "status, save [path|name], save-dir <path>, quit\n"
-                "Workload: workload [isl=N] [osl=N] [hit-rate=F] "
-                "[cross-sharing=F] [num-turns=N]\n"
-                "  e.g.  workload isl=2000 osl=200 hit-rate=0.5\n"
-                "  All params optional; unspecified ones keep their current values.\n"
-                "  workload (no args) prints current workload spec."
-            )
-        if op == "rate":
-            if len(parts) != 2:
-                return "Usage: rate <qps>"
-            try:
-                new_qps = float(parts[1])
-                if new_qps < 0:
-                    raise ValueError()
-            except ValueError:
-                return "QPS must be a non-negative number."
-            runtime.current_qps = new_qps
-            rate_changed.set()
-            return f"Set target qps={new_qps:.3f}"
-        if op == "start":
-            runtime.measurement_active = True
-            runtime.measurement_start_ns = time.perf_counter_ns()
-            runtime.measurement_metrics = []
-            runtime.measurement_target_requests = None
-            runtime.last_notice = None
-            return "Measurement started."
-        if op == "measure":
-            if len(parts) != 2:
-                return "Usage: measure <num_requests>"
-            try:
-                tgt = int(parts[1])
-                if tgt <= 0:
-                    raise ValueError()
-            except ValueError:
-                return "measure requires a positive integer."
-            runtime.measurement_active = True
-            runtime.measurement_start_ns = time.perf_counter_ns()
-            runtime.measurement_metrics = []
-            runtime.measurement_target_requests = tgt
-            runtime.last_notice = None
-            return f"Measurement started: capturing next {tgt} completed requests."
-        if op == "stop":
-            if not runtime.measurement_active:
-                return "Measurement is not active."
-            runtime.measurement_active = False
-            end_ns = time.perf_counter_ns()
-            start_ns = runtime.measurement_start_ns or end_ns
-            runtime.last_window_elapsed_s = (end_ns - start_ns) / 1e9
-            runtime.last_window_metrics = list(runtime.measurement_metrics)
-            runtime.measurement_target_requests = None
-            mlist = list(runtime.last_window_metrics)
-            el = runtime.last_window_elapsed_s
-            summary = print_window_summary(mlist, el)
-            return f"Measurement stopped.\n{summary}"
-        if op == "status":
-            cur = workload["spec"]
-            status = (
-                f"qps={runtime.current_qps:.2f} "
-                f"inflight={runtime.inflight} "
-                f"completed={runtime.total_completed} "
-                f"failed={runtime.total_failed} "
-                f"measured={len(runtime.measurement_metrics)} "
-                f"active={runtime.measurement_active} "
-                f"target={runtime.measurement_target_requests} "
-                f"save_dir={runtime.save_dir}\n"
-                f"workload: isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
-                f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
-            )
-            if runtime.last_notice:
-                status += f"\n{runtime.last_notice}"
-                runtime.last_notice = None
-            return status
-        if op == "save-dir":
-            if len(parts) != 2:
-                return "Usage: save-dir <path>"
-            new_dir = str(Path(parts[1]).expanduser())
-            runtime.save_dir = new_dir
-            return f"Set save_dir={runtime.save_dir}"
-        if op == "save":
-            if len(parts) > 2:
-                return "Usage: save [path.json|name.json]"
-
-            if runtime.measurement_active and runtime.measurement_start_ns is not None:
-                el = (time.perf_counter_ns() - runtime.measurement_start_ns) / 1e9
-                mlist = list(runtime.measurement_metrics)
-            else:
-                el = runtime.last_window_elapsed_s
-                mlist = list(runtime.last_window_metrics)
-            if not mlist:
-                return "No measured window data to save."
-            save_path = resolve_save_path(parts[1] if len(parts) == 2 else None)
-            _save_window_result(
-                save_path, args, workload["spec"], mlist, el,
-                runtime_qps=runtime.current_qps,
-            )
-            return f"Saved measurement window to {save_path}"
-        if op == "workload":
-            cur = workload["spec"]
-            if len(parts) == 1:
-                return (
-                    f"isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
-                    f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
-                )
-            _param_aliases = {
-                "isl": "isl",
-                "osl": "osl",
-                "hit-rate": "hit_rate",
-                "hitrate": "hit_rate",
-                "hit_rate": "hit_rate",
-                "cross-sharing": "cross_sharing",
-                "cross_sharing": "cross_sharing",
-                "num-turns": "num_turns",
-                "num_turns": "num_turns",
-            }
-            overrides: dict = {}
-            errors: list[str] = []
-            for token in parts[1:]:
-                if "=" not in token:
-                    errors.append(f"bad token {token!r} (expected key=value)")
-                    continue
-                k, _, v = token.partition("=")
-                mapped = _param_aliases.get(k.lower())
-                if mapped is None:
-                    errors.append(f"unknown param {k!r}")
-                    continue
-                try:
-                    overrides[mapped] = (
-                        int(v) if mapped in ("isl", "osl", "num_turns") else float(v)
-                    )
-                except ValueError:
-                    errors.append(f"invalid value for {k}: {v!r}")
-            if errors:
-                return "Error: " + "; ".join(errors)
-            merged = dict(
-                isl=cur.isl,
-                osl=cur.osl,
-                hit_rate=cur.hit_rate,
-                cross_sharing=cur.cross_sharing,
-                num_turns=cur.num_turns,
-            )
-            merged.update(overrides)
-            try:
-                new_spec = _build_spec(args, merged)
-            except Exception as e:
-                return f"Invalid workload spec: {e}"
-            new_sst = text_gen.generate(new_spec.shared_s)
-            workload["spec"] = new_spec
-            workload["shared_system_text"] = new_sst
-            workload_changed.set()
-            new_spec.print_summary()
-            return (
-                f"Workload updated: isl={new_spec.isl} osl={new_spec.osl} "
-                f"hit-rate={new_spec.hit_rate} cross-sharing={new_spec.cross_sharing} "
-                f"num-turns={new_spec.num_turns}"
-            )
-        if op in ("quit", "exit"):
-            stop_event.set()
-            return "Stopping benchmark..."
-        return f"Unknown command: {op}"
+    cmd_handler = CommandHandler(
+        runtime=runtime,
+        workload=workload,
+        args=args,
+        text_gen=text_gen,
+        rate_changed=rate_changed,
+        workload_changed=workload_changed,
+        stop_event=stop_event,
+    )
+    handle_command = cmd_handler.handle
 
     async def stdin_command_loop() -> None:
         print(
