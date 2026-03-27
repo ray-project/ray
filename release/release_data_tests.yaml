@@ -321,6 +321,7 @@
       cluster:
         byod:
           runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
             - RAYTEST_FAIL_ON_DEAD_NODES=0
       run:
         prepare: >
@@ -510,6 +511,7 @@
   cluster:
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
@@ -549,6 +551,7 @@
   cluster:
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: dataset/autoscaling_all_to_all_compute.yaml
 
@@ -614,6 +617,7 @@
   cluster:
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
@@ -687,6 +691,7 @@
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
   run:
     timeout: 3600
@@ -731,6 +736,7 @@
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
       post_build_script: byod_install_pybase64.sh
 
@@ -770,6 +776,7 @@
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
       type: cu123
       post_build_script: byod_install_text_embedding.sh
