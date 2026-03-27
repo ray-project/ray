@@ -94,6 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Simulated user think-time between turns in seconds (default: %(default)s)",
     )
     workload.add_argument(
+        "-fc",
         "--first-chunk-threshold",
         type=int,
         default=16,
