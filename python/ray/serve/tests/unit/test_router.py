@@ -42,7 +42,11 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import decompress_metric_report, get_random_string
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, ReplicaUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    ReplicaUnavailableError,
+)
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -841,6 +845,40 @@ class TestAssignRequest:
 @pytest.mark.asyncio
 class TestChooseReplica:
     """Tests for choose_replica() and dispatch() flow."""
+
+    async def test_choose_replica_raises_deployment_unavailable(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """choose_replica fails when deployment is marked unavailable."""
+        router, _ = setup_router
+        router._deployment_available = False
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        with pytest.raises(DeploymentUnavailableError):
+            async with router.choose_replica(request_metadata):
+                pass
+
+    async def test_choose_replica_raises_backpressure(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """choose_replica raises BackPressureError when queue limit is reached."""
+        router, _ = setup_router
+        router.update_deployment_config(DeploymentConfig(max_queued_requests=1))
+        # Bump num_queued_requests to 1 to simulate a full queue
+        router._metrics_manager.inc_num_queued_requests()
+
+        request_metadata = RequestMetadata(
+            request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
+        )
+
+        with pytest.raises(BackPressureError):
+            async with router.choose_replica(request_metadata):
+                pass
 
     async def test_basic_choose_and_dispatch(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
