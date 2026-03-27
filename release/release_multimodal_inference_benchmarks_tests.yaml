@@ -103,6 +103,8 @@
   cluster:
     cluster_compute: video_object_detection/compute.yaml
     byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Expect node death during test
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: video_object_detection_py3.10.lock
   run:
