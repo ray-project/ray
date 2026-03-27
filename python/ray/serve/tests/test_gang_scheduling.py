@@ -1812,7 +1812,7 @@ class TestGangAutoscaling:
 
         # Send 9 blocking requests. With target_ongoing_requests=2:
         # desired = ceil(9/2) = 5 (unaligned).
-        # Gang policy rounds to nearest: nearest(5, 3) = 6.
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
         results = [handle.remote() for _ in range(9)]
 
         def upscaled_and_aligned():
@@ -1889,10 +1889,10 @@ class TestGangAutoscaling:
             timeout=60,
         )
 
-        # Send 13 blocking requests. With target_ongoing_requests=2:
-        # desired = ceil(13/2) = 7 (unaligned).
-        # Gang policy rounds to nearest: nearest(7, 3) = 6.
-        results = [handle.remote() for _ in range(13)]
+        # Send 10 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(10/2) = 5 (unaligned).
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        results = [handle.remote() for _ in range(10)]
 
         # Wait for downscale from 9 to 6.
         def downscaled_and_aligned():

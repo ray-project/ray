@@ -1213,18 +1213,18 @@ class TestGangSchedulingAutoscalingPolicy:
     @pytest.mark.parametrize(
         "raw_autoscaling_decision,expected",
         [
-            (5, 4),  # closer to 4 than 8
-            (7, 8),  # closer to 8 than 4
+            (5, 8),  # ceil(5/4)*4 = 8
+            (7, 8),  # ceil(7/4)*4 = 8
             (8, 8),  # already aligned
-            (6, 4),  # equidistant (4 and 8) — tie goes to lower
+            (9, 12),  # ceil(9/4)*4 = 12
         ],
     )
-    def test_rounds_to_nearest(self, raw_autoscaling_decision, expected):
-        """Round-to-nearest is independent of current replica count."""
-        current_num_replicas = 4
+    def test_rounds_up(self, raw_autoscaling_decision, expected):
+        """Always rounds up, independent of current replica count."""
         policy = self._make_policy(gang_size=4, inner_result=raw_autoscaling_decision)
-        ctx = self._make_ctx(current_num_replicas=current_num_replicas)
-        assert policy(ctx)[0] == expected
+        for current in [4, 12]:
+            ctx = self._make_ctx(current_num_replicas=current)
+            assert policy(ctx)[0] == expected
 
     def test_zero_replicas_unchanged(self):
         ctx = self._make_ctx(current_num_replicas=4)
@@ -1282,11 +1282,11 @@ class TestGangSchedulingAutoscalingPolicy:
         assert not isinstance(state._policy, GangSchedulingAutoscalingPolicy)
 
     def test_integration_scale_up_respects_max(self):
-        """Gang alignment rounds to nearest, but apply_bounds clips to max."""
+        """Gang alignment rounds up, but apply_bounds clips to max."""
         state = self._create_state(
             gang_size=4, min_replicas=4, max_replicas=8, running=4
         )
-        # nearest(9, gang_size=4) = 8, clipped to max_replicas=8
+        # ceil(9/4)*4 = 12, clipped to max_replicas=8
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (9, {}), gang_size=4
         )
@@ -1294,11 +1294,11 @@ class TestGangSchedulingAutoscalingPolicy:
         assert decision == 8
 
     def test_integration_scale_down_respects_min(self):
-        """Gang alignment rounds to nearest, but apply_bounds clips to min."""
+        """Gang alignment rounds up, but apply_bounds clips to min."""
         state = self._create_state(
             gang_size=4, min_replicas=4, max_replicas=16, running=8
         )
-        # nearest(1, gang_size=4) = 0, clipped to min_replicas=4
+        # ceil(1/4)*4 = 4, clipped to min_replicas=4
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (1, {}), gang_size=4
         )
