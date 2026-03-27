@@ -488,6 +488,10 @@ AUTOSCALING_ENV_VARIANTS = {
 
 py_test_module_list_with_env_variants(
     size = "enormous",
+    args = [
+        "-k",
+        "TestAutoscalingWithRejection",
+    ],
     env_variants = AUTOSCALING_ENV_VARIANTS,
     files = [
         "test_autoscaling_policy.py",
@@ -501,7 +505,6 @@ py_test_module_list_with_env_variants(
         ":conftest",
         "//python/ray/serve:serve_lib",
     ],
-    args = ["-k", "TestAutoscalingWithRejection"],
 )
 
 # Test feature flag for task events.
