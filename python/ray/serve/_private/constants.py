@@ -721,6 +721,11 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
+# The balancing algorithm to use in HAProxy backends. Default is leastconn.
+RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
+)
+
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
