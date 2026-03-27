@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -17,9 +17,8 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    import pyarrow
 
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,7 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> ray.data.Schema:
+    def schema(self) -> Optional["Schema"]:
         """Implements DataIterator."""
         return ray.get(self._coord_actor.get_dataset_schema.remote())
 
