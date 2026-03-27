@@ -22,7 +22,6 @@ AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
-SUCCESS_RETURN_CODE = 0
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -237,7 +236,7 @@ def run_prepare_commands(
 def run_dead_node_check():
     # Connect to the cluster and check for dead nodes
     import ray
-    return_code = SUCCESS_RETURN_CODE
+    return_code = 0
     try:
         ray.init(address="auto")
         dead_nodes = [
@@ -319,7 +318,7 @@ def main(
         
         test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
 
-        if return_code == SUCCESS_RETURN_CODE and test_fail_on_dead_nodes:
+        if return_code == 0 and test_fail_on_dead_nodes:
             return_code = run_dead_node_check()
                             
         # Upload results.json
