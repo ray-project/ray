@@ -260,10 +260,6 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
-        # Trigger the large UDF warning check by accessing the property.
-        # This is needed because ActorPoolMapOperator passes _map_transformer
-        # directly to actors, never accessing the lazy _map_transformer_ref property.
-        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -318,16 +314,15 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._actor_cls is not None
-        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
-            ctx=ctx,
+            ctx=self._data_context_ref,
             logical_actor_id=logical_actor_id,
             src_fn_name=self.name,
-            map_transformer=self._map_transformer,
+            map_transformer=self._map_transformer_ref,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
         res_ref = actor.get_location.options(
@@ -402,7 +397,7 @@ class ActorPoolMapOperator(MapOperator):
                 _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
                 **actor_task_args,
             ).remote(
-                self.data_context,
+                self._data_context_ref,
                 ctx,
                 *input_blocks,
                 slices=bundle.slices,
