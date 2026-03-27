@@ -964,9 +964,12 @@ class AsyncioRouter:
                 )
                 return result
 
-            # Request was rejected by the replica. Cancel the result so that
-            # done callbacks run. Without this, same-loop gRPC
-            # streaming results never finalize and the counter leaks.
+            # Request was rejected: cancel so done callbacks fire.
+            # Without this, same-loop (means the router is running on the main event loop,
+            # where the DeploymentHandle lives) gRPC streaming results are
+            # never consumed (no background drain task exists in that mode).
+            # The call stays open, the running request counter is never decremented,
+            # and the autoscaler sees load that blocks downscaling.
             result.cancel()
 
         except asyncio.CancelledError:
