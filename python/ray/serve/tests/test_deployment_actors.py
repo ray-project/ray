@@ -813,7 +813,7 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
         resp = request_with_retries(timeout=30, app_name="app")
         assert resp.text == "42"
 
-    actor_names_before = _get_deployment_actor_names()
+    actor_names_before = _get_deployment_actor_names_for_app("app", "MyDeployment")
     assert len(actor_names_before) == 1
 
     ray.kill(serve_instance._controller, no_restart=False)
@@ -825,7 +825,7 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
         resp = request_with_retries(timeout=30, app_name="app")
         assert resp.text == "42"
 
-    actor_names_after = _get_deployment_actor_names()
+    actor_names_after = _get_deployment_actor_names_for_app("app", "MyDeployment")
     assert actor_names_after == actor_names_before
 
 
@@ -884,15 +884,33 @@ def test_deployment_actor_constructor_failure_app_status(serve_instance):
         def __call__(self):
             return "ok"
 
-    with pytest.raises(RuntimeError):
-        serve.run(MyDeployment.bind())
+    # Non-default app: avoid leaving `default` in DEPLOY_FAILED (teardown).
+    serve._run(
+        MyDeployment.bind(),
+        name="da_ctor_fail_app",
+        route_prefix="/da_ctor_fail",
+        _blocking=False,
+    )
+
+    wait_for_condition(
+        lambda: any(
+            "ctor_fail" in n and a.status == ApplicationStatus.DEPLOY_FAILED
+            for n, a in serve.status().applications.items()
+        ),
+        timeout=30,
+    )
 
     status = serve.status()
-    app_status = status.applications["default"]
+    app_status = next(a for n, a in status.applications.items() if "ctor_fail" in n)
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
     assert "MyDeployment" in app_status.deployments
     assert (
         app_status.deployments["MyDeployment"].status == DeploymentStatus.DEPLOY_FAILED
+    )
+
+    serve.delete(
+        next(n for n in status.applications if "ctor_fail" in n),
+        _blocking=True,
     )
 
 
@@ -924,7 +942,10 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
             actor = serve.get_deployment_actor("health_actor")
             ray.get(actor.ping.remote())
 
-    serve.run(HealthCheckFailDeployment.bind())
+    serve.run(
+        HealthCheckFailDeployment.bind(),
+        route_prefix="/health_check_fail_da",
+    )
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).status_code == 200)
     old_pid = httpx.get(url).text
@@ -1446,7 +1467,7 @@ def test_controller_restart_preserves_mutated_actor_state(serve_instance):
     assert resp.text == "0"
 
     # Mutate actor state directly (bypass replica to isolate the test)
-    actor_names = _get_deployment_actor_names()
+    actor_names = _get_deployment_actor_names_for_app("app", "MyDeployment")
     assert len(actor_names) == 1
     handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
     for _ in range(5):
@@ -1597,9 +1618,9 @@ def test_redeployment_changes_actor_class(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=20)
     # AltCounter.get() returns start * 10 = 100, proving the class changed
-    wait_for_condition(lambda: httpx.get(url).text == "100")
+    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=10)
     v2_actor_names = _get_deployment_actor_names()
     assert len(v2_actor_names) == 1
     assert v1_actor_names[0] != v2_actor_names[0]
@@ -1715,12 +1736,29 @@ def test_partial_actor_creation_failure(serve_instance):
         def __call__(self):
             return "ok"
 
-    with pytest.raises(RuntimeError):
-        serve.run(MyDeployment.bind())
+    serve._run(
+        MyDeployment.bind(),
+        name="da_partial_fail_app",
+        route_prefix="/da_partial_fail",
+        _blocking=False,
+    )
+
+    wait_for_condition(
+        lambda: any(
+            "partial_fail" in n and a.status == ApplicationStatus.DEPLOY_FAILED
+            for n, a in serve.status().applications.items()
+        ),
+        timeout=30,
+    )
 
     status = serve.status()
-    app_status = status.applications["default"]
+    app_status = next(a for n, a in status.applications.items() if "partial_fail" in n)
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
+
+    serve.delete(
+        next(n for n in status.applications if "partial_fail" in n),
+        _blocking=True,
+    )
 
 
 def test_deployment_actors_outlive_replicas_during_deletion(serve_instance):
