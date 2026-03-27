@@ -245,7 +245,9 @@ def test_inherit_batch_format_rule():
     if (
         DataContext.get_current().batch_to_block_arrow_format
     ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
-        return
+        pytest.skip(
+            "Skipping inherit batch format rule test as batch_to_block_arrow_format is True"
+        )
 
     from ray.data._internal.logical.rules import (
         InheritBatchFormatRule,
