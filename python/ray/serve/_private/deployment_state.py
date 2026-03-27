@@ -4248,9 +4248,7 @@ class DeploymentState:
             try:
                 latency_s = replica._actor.check_pending_nonblocking_reconfigure()
                 if latency_s is not None:
-                    self.replica_reconfigure_latency_histogram.observe(
-                        latency_s * 1000
-                    )
+                    self.replica_reconfigure_latency_histogram.observe(latency_s * 1000)
             except Exception:
                 # Re-enter transition so the controller retries reconfigure
                 # on the next loop (the version was reverted, so the replica
