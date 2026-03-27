@@ -15,7 +15,7 @@ import logging
 import os
 import random
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -72,7 +72,9 @@ def _create_conv_in_worker(
     shared_system_text: str,
 ) -> mt.Conversation:
     """Create a Conversation inside a worker process."""
-    return mt.conversation_factory(session_idx, spec, shared_system_text, _worker_text_gen)
+    return mt.conversation_factory(
+        session_idx, spec, shared_system_text, _worker_text_gen
+    )
 
 
 # ============================================================================
@@ -102,12 +104,6 @@ class RuntimeState:
             self.last_window_metrics = []
 
 
-def _percentile(values: list[float], p: float) -> float:
-    if not values:
-        return 0.0
-    return float(np.percentile(values, p))
-
-
 def _summarize_metrics(metrics: list[mt.TurnMetric], elapsed_s: float) -> dict:
     if not metrics:
         return {"requests": 0, "elapsed_s": round(elapsed_s, 2)}
@@ -124,25 +120,27 @@ def _summarize_metrics(metrics: list[mt.TurnMetric], elapsed_s: float) -> dict:
         "requests": len(metrics),
         "elapsed_s": round(elapsed_s, 2),
         "request_rate": round(len(metrics) / elapsed_s, 2) if elapsed_s > 0 else 0.0,
-        "throughput_tok_s": round(total_output_tokens / elapsed_s, 2) if elapsed_s > 0 else 0.0,
+        "throughput_tok_s": round(total_output_tokens / elapsed_s, 2)
+        if elapsed_s > 0
+        else 0.0,
         "avg_input_tokens": round(mean(in_tok), 2),
         "avg_output_tokens": round(mean(out_tok), 2),
         "avg_ttft_ms": round(mean(ttft), 2),
-        "p50_ttft_ms": round(_percentile(ttft, 50), 2),
-        "p90_ttft_ms": round(_percentile(ttft, 90), 2),
-        "p99_ttft_ms": round(_percentile(ttft, 99), 2),
+        "p50_ttft_ms": round(mt.percentile(ttft, 50), 2),
+        "p90_ttft_ms": round(mt.percentile(ttft, 90), 2),
+        "p99_ttft_ms": round(mt.percentile(ttft, 99), 2),
         "avg_fc_ms": round(mean(fc), 2),
-        "p50_fc_ms": round(_percentile(fc, 50), 2),
-        "p90_fc_ms": round(_percentile(fc, 90), 2),
-        "p99_fc_ms": round(_percentile(fc, 99), 2),
+        "p50_fc_ms": round(mt.percentile(fc, 50), 2),
+        "p90_fc_ms": round(mt.percentile(fc, 90), 2),
+        "p99_fc_ms": round(mt.percentile(fc, 99), 2),
         "avg_tpot_ms": round(mean(tpot), 2) if tpot else 0.0,
-        "p50_tpot_ms": round(_percentile(tpot, 50), 2) if tpot else 0.0,
-        "p90_tpot_ms": round(_percentile(tpot, 90), 2) if tpot else 0.0,
-        "p99_tpot_ms": round(_percentile(tpot, 99), 2) if tpot else 0.0,
+        "p50_tpot_ms": round(mt.percentile(tpot, 50), 2) if tpot else 0.0,
+        "p90_tpot_ms": round(mt.percentile(tpot, 90), 2) if tpot else 0.0,
+        "p99_tpot_ms": round(mt.percentile(tpot, 99), 2) if tpot else 0.0,
         "avg_latency_ms": round(mean(latency), 2),
-        "p50_latency_ms": round(_percentile(latency, 50), 2),
-        "p90_latency_ms": round(_percentile(latency, 90), 2),
-        "p99_latency_ms": round(_percentile(latency, 99), 2),
+        "p50_latency_ms": round(mt.percentile(latency, 50), 2),
+        "p90_latency_ms": round(mt.percentile(latency, 90), 2),
+        "p99_latency_ms": round(mt.percentile(latency, 99), 2),
     }
 
 
@@ -152,6 +150,7 @@ def _save_window_result(
     spec: mt.WorkloadSpec,
     metrics: list[mt.TurnMetric],
     elapsed_s: float,
+    runtime_qps: float = 0.0,
 ) -> None:
     payload = {
         "mode": "interactive_rate",
@@ -160,14 +159,15 @@ def _save_window_result(
             "base_url": args.base_url,
             "model": args.model,
             "tokenizer": getattr(args, "tokenizer", None) or args.model,
-            "chunk_size": args.chunk_size,
+            "first_chunk_threshold": args.first_chunk_threshold,
             "num_turns": args.num_turns,
             "osl": args.osl,
             "cross_sharing": args.cross_sharing,
             "isl": args.isl,
             "hit_rate": args.hit_rate,
+            "runtime_qps": runtime_qps,
         },
-        "spec": asdict(spec),
+        "spec": spec.summary(),
         "window": _summarize_metrics(metrics, elapsed_s),
         "raw_metrics": [
             {
@@ -287,7 +287,11 @@ async def run_interactive(args: argparse.Namespace) -> None:
         s = workload["spec"]
         sst = workload["shared_system_text"]
         return await loop.run_in_executor(
-            cpu_pool, _create_conv_in_worker, idx, s, sst,
+            cpu_pool,
+            _create_conv_in_worker,
+            idx,
+            s,
+            sst,
         )
 
     async def prefill_queue() -> None:
@@ -332,8 +336,8 @@ async def run_interactive(args: argparse.Namespace) -> None:
                     try:
                         conv = await fut
                         await ready_queue.put((conv, 0))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to create conversation in worker: %s", e)
             await asyncio.sleep(0.02)
 
     async def execute_turn(
@@ -350,7 +354,8 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 messages=conv.get_turn_messages(turn_idx),
                 session_id=conv.session_id,
                 max_tokens=cur_spec.osl,
-                chunk_size=args.chunk_size,
+                first_chunk_threshold=args.first_chunk_threshold,
+                api_key=getattr(args, "api_key", None),
             )
             metric = mt.TurnMetric(
                 session_id=conv.session_id,
@@ -372,10 +377,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 elif len(runtime.measurement_metrics) < target:
                     runtime.measurement_metrics.append(metric)
 
-                if (
-                    target is not None
-                    and len(runtime.measurement_metrics) >= target
-                ):
+                if target is not None and len(runtime.measurement_metrics) >= target:
                     runtime.measurement_active = False
                     end_ns = time.perf_counter_ns()
                     start_ns = runtime.measurement_start_ns or end_ns
@@ -469,7 +471,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 flush=True,
             )
 
-    async def print_window_summary(
+    def print_window_summary(
         metrics: list[mt.TurnMetric], elapsed_s: float
     ) -> str:
         summary = _summarize_metrics(metrics, elapsed_s)
@@ -554,7 +556,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
             runtime.measurement_target_requests = None
             mlist = list(runtime.last_window_metrics)
             el = runtime.last_window_elapsed_s
-            summary = await print_window_summary(mlist, el)
+            summary = print_window_summary(mlist, el)
             return f"Measurement stopped.\n{summary}"
         if op == "status":
             cur = workload["spec"]
@@ -593,7 +595,10 @@ async def run_interactive(args: argparse.Namespace) -> None:
             if not mlist:
                 return "No measured window data to save."
             save_path = resolve_save_path(parts[1] if len(parts) == 2 else None)
-            _save_window_result(save_path, args, workload["spec"], mlist, el)
+            _save_window_result(
+                save_path, args, workload["spec"], mlist, el,
+                runtime_qps=runtime.current_qps,
+            )
             return f"Saved measurement window to {save_path}"
         if op == "workload":
             cur = workload["spec"]
@@ -675,7 +680,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
         reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         try:
-            data = await reader.read()
+            data = await reader.read(4096)
             cmd = data.decode("utf-8", errors="replace").strip()
             resp = await handle_command(cmd)
             writer.write((resp + "\n").encode("utf-8"))
