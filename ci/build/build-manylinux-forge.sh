@@ -82,5 +82,6 @@ sudo ln -sf /usr/local/bin/python3.10 /usr/local/bin/python3
   echo "build --announce_rc"
   if [[ "${BUILDKITE_BAZEL_CACHE_URL:-}" != "" ]]; then
     echo "build:ci --remote_cache=${BUILDKITE_BAZEL_CACHE_URL:-}"
+    echo "build:ci --remote_download_minimal=false"
   fi
 } > "$HOME"/.bazelrc

@@ -116,6 +116,7 @@ if [[ "${CI-}" == "true" && "${BUILDKITE-}" != "" ]]; then
     echo "build --repository_cache=/tmp/bazel-repo-cache" >> ~/.bazelrc
   elif [[ "${BUILDKITE_BAZEL_CACHE_URL:-}" != "" ]]; then
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> ~/.bazelrc
+    echo "build --remote_download_minimal=false" >> ~/.bazelrc
     if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
       echo "build --remote_upload_local_results=false" >> ~/.bazelrc
     fi

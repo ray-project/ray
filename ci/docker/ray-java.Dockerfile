@@ -52,6 +52,7 @@ fi
 
 bazelisk --output_base=$BAZEL_CACHE run --config=ci \
     --repository_cache=$REPOSITORY_CACHE \
+    --remote_download_minimal=false \
     $BAZEL_CACHE_ARGS \
     $BAZEL_RESOURCE_FLAGS \
     //java:gen_ray_java_pkg

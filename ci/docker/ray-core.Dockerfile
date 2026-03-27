@@ -58,6 +58,7 @@ fi
 
 bazelisk --output_base=$BAZEL_CACHE build --config=ci \
     --repository_cache=$REPOSITORY_CACHE \
+    --remote_download_minimal=false \
     $BAZEL_CACHE_ARGS \
     $BAZEL_RESOURCE_FLAGS \
     //:ray_pkg_zip //:ray_py_proto_zip

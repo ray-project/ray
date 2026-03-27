@@ -47,6 +47,8 @@ apt-get update
 apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
+echo "build --remote_download_minimal=false" >> /root/.bazelrc
+
 
 EOF
 

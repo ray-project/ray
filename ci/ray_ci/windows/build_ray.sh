@@ -14,6 +14,7 @@ cd /c/rayci
   # Set a shorter output_base to avoid long file paths that Windows can't handle.
   echo "startup --output_base=c:/bzl";
   echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
+  echo "build --remote_download_minimal=false";
 } >> ~/.bazelrc
 
 if [[ "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then

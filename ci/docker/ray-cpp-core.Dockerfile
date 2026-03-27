@@ -55,6 +55,7 @@ fi
 
 bazelisk --output_base=$BAZEL_CACHE build --config=ci \
     --repository_cache=$REPOSITORY_CACHE \
+    --remote_download_minimal=false \
     $BAZEL_CACHE_ARGS \
     //cpp:ray_cpp_pkg_zip
 
