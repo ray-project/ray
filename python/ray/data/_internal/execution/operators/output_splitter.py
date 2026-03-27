@@ -56,6 +56,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
+            num_output_splits=n,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
@@ -100,9 +101,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def num_output_rows_total(self) -> Optional[int]:
         # The total number of rows is the same as the number of input rows.
         return self.input_dependencies[0].num_output_rows_total()
-
-    def num_output_splits(self) -> int:
-        return len(self._num_output)
 
     def start(self, options: ExecutionOptions) -> None:
         if options.preserve_order:

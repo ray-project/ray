@@ -53,7 +53,8 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
         seed_config=RandomSeedConfig(seed=0),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "RandomShuffle"
     assert isinstance(physical_op, AllToAllOperator)
@@ -85,7 +86,8 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Repartition"
     assert isinstance(physical_op, AllToAllOperator)
@@ -161,7 +163,8 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
         compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Write"
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -185,7 +188,8 @@ def test_sort_operator(
         sort_key=SortKey("col1"),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Sort"
     assert isinstance(physical_op, AllToAllOperator)
@@ -369,7 +373,8 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Zip"
     assert isinstance(physical_op, ZipOperator)
