@@ -86,9 +86,9 @@ def create_deployment_scheduler(
 
 
 def create_replica_impl(**kwargs):
-    from ray.serve._private.replica import Replica
+    from ray.serve._private.replica import ReplicaBase
 
-    return Replica(**kwargs)
+    return ReplicaBase(**kwargs)
 
 
 def create_replica_metrics_manager(**kwargs):
