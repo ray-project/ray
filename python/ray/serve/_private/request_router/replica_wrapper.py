@@ -205,6 +205,24 @@ class RunningReplica:
         # Active slot reservation tokens for the choose_replica/dispatch pattern.
         self._reserved_slots: Set[str] = set()
 
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        """Update mutable fields from a new RunningReplicaInfo.
+
+        Called when reusing an existing wrapper in _update_running_replicas.
+        Replicas dynamically load/unload models via record_multiplexed_model_ids,
+        which triggers a broadcast with updated RunningReplicaInfo. Without this
+        update, the router would use stale multiplexed_model_ids and break
+        multiplexed model routing.
+
+        Because we reassign _replica_info, any property that reads from it
+        (including max_ongoing_requests, node_id, availability_zone, etc.)
+        will reflect the new values. Fields that are cached separately
+        (e.g., _actor_handle) are NOT refreshed here because they are tied
+        to the replica's identity and should never change for a live replica.
+        """
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+
     @property
     def replica_id(self) -> ReplicaID:
         """ID of this replica."""

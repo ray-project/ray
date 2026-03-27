@@ -109,7 +109,7 @@ class ControllerCallback(RayTrainCallback):
         """
         return None
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         """Called before `TrainController.run` exits,
         after the control loop has exited."""
         pass
@@ -142,6 +142,10 @@ class ControllerCallback(RayTrainCallback):
         Args:
             result: The final training result containing metrics and checkpoint.
         """
+        pass
+
+    def before_controller_abort(self):
+        """Called during `TrainController.abort` before the actor process exits."""
         pass
 
 

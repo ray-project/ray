@@ -99,6 +99,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.AutoscalingPolicy
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
+   serve.config.DeploymentActorConfig
 ```
 
 ### Schemas
@@ -156,6 +157,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.get_replica_context
    serve.get_trace_context
+   serve.get_deployment_actor
    serve.context.ReplicaContext
    serve.context.GangContext
    serve.get_multiplexed_model_id
