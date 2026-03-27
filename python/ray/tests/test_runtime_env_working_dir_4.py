@@ -11,7 +11,7 @@ from ray._private.test_utils import (
     check_local_files_gced,
     run_string_as_driver_nonblocking,
 )
-from ray.exceptions import RaySystemError
+from ray.exceptions import GetTimeoutError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -102,6 +102,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # don't prestart worker as it is expected to fail
                 "prestart_worker_first_driver": False,
                 "worker_register_timeout_seconds": 0.5,
+                "pop_worker_max_retries": -1,
             },
         },
         {
@@ -114,6 +115,7 @@ def test_default_large_cache(start_cluster, option: str, source: str):
                 # don't prestart worker as it is expected to fail
                 "prestart_worker_first_driver": False,
                 "worker_register_timeout_seconds": 0.5,
+                "pop_worker_max_retries": -1,
             },
         },
     ],
@@ -157,13 +159,13 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
     else:
         runtime_env = {"py_modules": [S3_PACKAGE_URI]}
 
-    # Set a timeout large enough to guarantee pop worker retries are exhausted first.
-    get_timeout = 30
+    # Note: We should set a bigger timeout if downloads the s3 package slowly.
+    get_timeout = 10
 
     # Start a task with runtime env
     if worker_register_timeout:
         obj_ref = f.options(runtime_env=runtime_env).remote()
-        with pytest.raises(RaySystemError):
+        with pytest.raises(GetTimeoutError):
             ray.get(obj_ref, timeout=get_timeout)
         ray.cancel(obj_ref)
     else:
@@ -178,7 +180,7 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
     # Start a actor with runtime env
     actor = A.options(runtime_env=runtime_env).remote()
     if worker_register_timeout:
-        with pytest.raises(RaySystemError):
+        with pytest.raises(GetTimeoutError):
             ray.get(actor.check.remote(), timeout=get_timeout)
     else:
         ray.get(actor.check.remote())
@@ -195,7 +197,7 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
     # Start a task with runtime env
     if worker_register_timeout:
         obj_ref = f.options(runtime_env=runtime_env).remote()
-        with pytest.raises(RaySystemError):
+        with pytest.raises(GetTimeoutError):
             ray.get(obj_ref, timeout=get_timeout)
         ray.cancel(obj_ref)
     else:
