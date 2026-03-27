@@ -285,7 +285,7 @@ def _run_data_config_resource_test(data_config):
         def __init__(self, **kwargs):
             def train_loop_fn():
                 train_ds = train.get_dataset_shard("train")
-                new_execution_options = train_ds._base_dataset.context.execution_options
+                new_execution_options = train_ds.get_context().execution_options
                 if original_execution_options.is_resource_limits_default():
                     # If the original resource limits are default, the new resource
                     # limits should be the default as well.
