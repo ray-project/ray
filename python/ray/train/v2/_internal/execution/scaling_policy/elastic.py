@@ -102,38 +102,9 @@ class ElasticScalingPolicy(ScalingPolicy):
         physically intact slices to prevent scaling onto fractional/broken
         topologies.
 
-        Unlike GPUs where we simply divide total resources by per-worker need,
-        TPU workers must be scheduled on complete slices. A slice with any
-        dead host is unusable even if some hosts in it are still alive.
-
-        How TPU worker count is calculated
-        -----------------------------------
-
-        Example: 2 x (2x4 TPU V5E) slices, each with 2 hosts
-
-            Cluster: 4 hosts across 2 slices
-            ┌─────────────────────┐  ┌─────────────────────┐
-            │  Slice A  (2x4)     │  │  Slice B  (2x4)     │
-            │  ┌──────┐ ┌──────┐  │  │  ┌──────┐ ┌──────┐  │
-            │  │Host 0│ │Host 1│  │  │  │Host 0│ │Host 1│  │
-            │  │4 chip│ │4 chip│  │  │  │4 chip│ │4 chip│  │
-            │  └──────┘ └──────┘  │  │  └──────┘ └──────┘  │
-            └─────────────────────┘  └─────────────────────┘
-            workers_per_slice = 2 (one per host)
-
-            If Host 1 in Slice B goes down:
-            ┌─────────────────────┐  ┌─────────────────────┐
-            │  Slice A  (intact)  │  │  Slice B  (broken)   │
-            │  ┌──────┐ ┌──────┐  │  │  ┌──────┐ ┌──────┐  │
-            │  │Host 0│ │Host 1│  │  │  │Host 0│ │  ██  │  │
-            │  │4 chip│ │4 chip│  │  │  │4 chip│ │ DEAD │  │
-            │  └──────┘ └──────┘  │  │  └──────┘ └──────┘  │
-            └─────────────────────┘  └─────────────────────┘
-
-            Step 1: Autoscaler allocated resources → 3 hosts → 3 raw workers
-            Step 2: workers_per_slice=2 → 3//2 = 1 slice from resources
-            Step 3: get_num_ready_tpu_slices → 1 intact slice (Slice A)
-            Step 4: min(1, 1) = 1 usable slice → 1 * 2 = 2 workers
+        The worker count is: min(resource_based_slices, intact_slices) *
+        workers_per_slice, where resource_based_slices =
+        total_num_workers // workers_per_slice.
 
         Args:
             total_num_workers: The initial estimate of workers based on raw
