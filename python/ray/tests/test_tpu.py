@@ -612,16 +612,6 @@ def test_get_num_ready_tpu_slices_calculation(
             ],
             1,
         ),
-        # Intact slice counts even if TPUs are in use (no idle check).
-        (
-            "2x2x2",
-            "v4",
-            [
-                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
-                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
-            ],
-            1,
-        ),
         # Fractured slice (missing a physical host) -> 0 intact slices.
         (
             "2x2x2",

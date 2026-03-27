@@ -126,6 +126,8 @@ class ElasticScalingPolicy(ScalingPolicy):
             )
 
             if workers_per_slice == 0:
+                # A single worker requires more resources than exist in a
+                # full slice — impossible scheduling configuration for TPU.
                 return 0
 
             num_slices_from_resources = total_num_workers // workers_per_slice

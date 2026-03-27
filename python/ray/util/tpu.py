@@ -375,15 +375,12 @@ def get_num_intact_tpu_slices(
 
     try:
         pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
-        if not pod_type:
-            return 0
-
         total_chips_expected = get_num_chips_from_topology(topology)
-        if total_chips_expected <= 0:
-            return 0
-
     except Exception as e:
         logger.warning(f"Failed to parse TPU topology for integrity check: {e}")
+        return 0
+
+    if not pod_type or total_chips_expected <= 0:
         return 0
 
     slice_to_nodes = {}
@@ -398,18 +395,12 @@ def get_num_intact_tpu_slices(
     intact_slices = 0
     for slice_name, nodes in slice_to_nodes.items():
         slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
-
-        if slice_tpu_chips != total_chips_expected:
-            continue
-
         has_head = any(
             n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
             for n in nodes
         )
-        if not has_head:
-            continue
-
-        intact_slices += 1
+        if slice_tpu_chips == total_chips_expected and has_head:
+            intact_slices += 1
 
     return intact_slices
 
