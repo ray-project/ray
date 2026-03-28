@@ -944,7 +944,7 @@ class ApplicationAutoscalingState:
 
             # Validate returned decisions
             assert (
-                type(decisions) is dict
+                isinstance(decisions, dict)
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
 
             # assert that deployment_id is in decisions is valid
