@@ -314,7 +314,7 @@ class TestObstoreDownloadPath:
         assert results[0].column("bytes")[0].as_py() == content
 
     def test_download_bytes_async_fallback_drops_size_columns(self, tmp_path):
-        # Verify that file-size columns attached by PartitionActor are dropped
+        # Verify that file-size columns attached by AsyncPartitionActor are dropped
         # when falling back to download_bytes_threaded (unsupported scheme).
         content = b"fallback size col test"
         (tmp_path / "test.bin").write_bytes(content)
@@ -443,7 +443,7 @@ class TestObstoreRangeSplitDownload:
 
     def test_download_bytes_async_reads_and_drops_size_column(self, tmp_path):
         # Verify that download_bytes_async reads the hidden size column
-        # from PartitionActor, passes it through, and drops it from output.
+        # from AsyncPartitionActor, passes it through, and drops it from output.
         content = b"test content for size column"
         (tmp_path / "test.bin").write_bytes(content)
         uri = f"file://{tmp_path}/test.bin"

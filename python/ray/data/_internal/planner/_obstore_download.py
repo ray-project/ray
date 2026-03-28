@@ -222,7 +222,7 @@ def download_bytes_async(
             "falling back to PyArrow threaded download.",
             first_uris[0],
         )
-        # Drop any file-size columns the PartitionActor may have attached,
+        # Drop any file-size columns AsyncPartitionActor may have attached,
         # since download_bytes_threaded doesn't know about them.
         size_cols = [
             f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
@@ -255,7 +255,7 @@ def download_bytes_async(
         if not uris:
             continue
 
-        # Read pre-computed file sizes from the PartitionActor if available.
+        # Read pre-computed file sizes from AsyncPartitionActor if available.
         size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
         file_sizes = None
         if size_col in output_block.column_names:
@@ -307,7 +307,7 @@ async def _download_uris_with_obstore(
     When ``RAY_DATA_OBSTORE_RANGE_THRESHOLD`` is set to a positive value,
     files larger than the threshold are downloaded as parallel range chunks
     via ``get_range_async``.  The *file_sizes* list, when provided by the
-    upstream ``PartitionActor``, lets the function skip the HEAD request
+    upstream ``AsyncPartitionActor``, lets the function skip the HEAD request
     for files whose size is already known.
 
     Args:
@@ -315,7 +315,7 @@ async def _download_uris_with_obstore(
         uri_column_name: Column name (used only for error logging).
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store.
-        file_sizes: Optional per-URI file sizes from the PartitionActor.
+        file_sizes: Optional per-URI file sizes from AsyncPartitionActor.
             ``0`` or ``None`` entries trigger a HEAD request when range
             splitting is enabled.
 
@@ -423,7 +423,7 @@ async def _fetch_whole(
             async with semaphore:
                 return await _fetch(uri, registry)
         # No semaphore (RAY_DATA_OBSTORE_MAX_CONCURRENCY=0).
-        # Concurrency is bounded only by the PartitionActor batch size.
+        # Concurrency is bounded only by the partition actor batch size.
         return await _fetch(uri, registry)
     except OSError as e:
         logger.debug(
