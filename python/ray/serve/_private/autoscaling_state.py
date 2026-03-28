@@ -9,7 +9,10 @@ from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     AsyncInferenceTaskQueueMetricReport,
+    AutoscalingSnapshotError,
+    AutoscalingStatus,
     DeploymentID,
+    DeploymentSnapshot,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -92,6 +95,10 @@ class DeploymentAutoscalingState:
         self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
+        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
+        self._cached_snapshot_key: Optional[tuple] = None
+        self._cached_snapshot_metrics: Optional[tuple] = None
+        self._latest_metrics_timestamp: Optional[float] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -241,6 +248,12 @@ class DeploymentAutoscalingState:
             replica_id not in self._replica_metrics
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
             self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
@@ -257,6 +270,12 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
+            if self._latest_metrics_timestamp is None:
+                self._latest_metrics_timestamp = send_timestamp
+            else:
+                self._latest_metrics_timestamp = max(
+                    self._latest_metrics_timestamp, send_timestamp
+                )
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
@@ -355,7 +374,21 @@ class DeploymentAutoscalingState:
         if _skip_bound_check:
             return decision_num_replicas
 
-        return self.apply_bounds(decision_num_replicas)
+        decision_num_replicas = self.apply_bounds(decision_num_replicas)
+
+        self._cached_snapshot_key = (
+            decision_num_replicas,
+            autoscaling_context.current_num_replicas,
+            autoscaling_context.capacity_adjusted_min_replicas,
+            autoscaling_context.capacity_adjusted_max_replicas,
+        )
+        self._cached_snapshot_metrics = (
+            float(autoscaling_context.total_queued_requests),
+            float(autoscaling_context.total_num_requests),
+        )
+        self._cached_deployment_snapshot = None
+
+        return decision_num_replicas
 
     def get_autoscaling_context(
         self,
@@ -715,6 +748,65 @@ class DeploymentAutoscalingState:
         else:
             return self._calculate_total_requests_simple_mode()
 
+    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
+        """Return the cached deployment snapshot, building it lazily if needed."""
+        if self._cached_deployment_snapshot is not None:
+            return self._cached_deployment_snapshot
+
+        if self._cached_snapshot_key is None:
+            return None
+
+        (
+            target_replicas,
+            current_replicas,
+            min_replicas,
+            max_replicas,
+        ) = self._cached_snapshot_key
+        queued_requests, ongoing_requests = self._cached_snapshot_metrics
+
+        if target_replicas > current_replicas:
+            scaling_status_raw = AutoscalingStatus.UPSCALE
+        elif target_replicas < current_replicas:
+            scaling_status_raw = AutoscalingStatus.DOWNSCALE
+        else:
+            scaling_status_raw = AutoscalingStatus.STABLE
+
+        if self._latest_metrics_timestamp is not None:
+            elapsed = time.time() - self._latest_metrics_timestamp
+        else:
+            elapsed = None
+
+        look_back_period_s = self._config.look_back_period_s
+        errors: List[str] = []
+        if elapsed is None:
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
+
+        policy = self._config.policy.get_policy()
+
+        self._cached_deployment_snapshot = DeploymentSnapshot(
+            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            app=self._deployment_id.app_name,
+            deployment=self._deployment_id.name,
+            current_replicas=current_replicas,
+            target_replicas=target_replicas,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+            scaling_status=AutoscalingStatus.format_scaling_status(scaling_status_raw),
+            policy_name=f"{policy.__module__}.{policy.__name__}",
+            look_back_period_s=look_back_period_s,
+            queued_requests=queued_requests,
+            ongoing_requests=ongoing_requests,
+            metrics_health=DeploymentSnapshot.format_metrics_health_text(
+                time_since_last_collected_metrics_s=elapsed,
+                look_back_period_s=look_back_period_s,
+            ),
+            errors=errors,
+        )
+        return self._cached_deployment_snapshot
+
+    def get_cached_snapshot_key(self) -> Optional[tuple]:
+        return self._cached_snapshot_key
+
     def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
         metric_values = defaultdict(list)
@@ -923,6 +1015,7 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
+            # TODO(nadongjun): App-level autoscaling bypasses per-deployment snapshot creation; add snapshot support here.
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
@@ -1249,3 +1342,19 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    def get_deployment_snapshot(
+        self, deployment_id: DeploymentID
+    ) -> Optional[DeploymentSnapshot]:
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if not app_state:
+            return None
+        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
+        return dep_state.get_deployment_snapshot() if dep_state else None
+
+    def get_cached_snapshot_key(self, deployment_id: DeploymentID) -> Optional[tuple]:
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if not app_state:
+            return None
+        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
+        return dep_state.get_cached_snapshot_key() if dep_state else None
