@@ -92,6 +92,19 @@ See the :doc:`tutorial here </tune/examples/tune-comet>`.
 
     ~air.integrations.comet.CometLoggerCallback
 
+Trackio Integration
+------------------------------
+
+Tune also provides a logger for `Trackio <https://huggingface.co/docs/trackio/index>`_.
+You can install Trackio via ``pip install trackio``.
+See the :doc:`tutorial here </tune/examples/tune-trackio>`.
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~air.integrations.trackio.TrackioLoggerCallback
+
 Aim Integration
 ---------------
 
