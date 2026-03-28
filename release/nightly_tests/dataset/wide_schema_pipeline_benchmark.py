@@ -1,4 +1,5 @@
 import argparse
+import os
 from typing import Dict, Any
 
 import ray
@@ -18,6 +19,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace) -> None:
+    # The S3 tensor data was written by Ray 2.49-2.54 using cloudpickle for
+    # tensor metadata serialization. Enable the cloudpickle fallback on the
+    # driver and propagate it to workers via runtime_env.
+    if args.data_type == "tensors":
+        os.environ["RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA"] = "1"
+        ray.init(
+            runtime_env={
+                "env_vars": {
+                    "RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA": "1",
+                }
+            }
+        )
+
     benchmark = Benchmark()
 
     # Each dataset contains about 500-600Mbs of data, except for objects,
