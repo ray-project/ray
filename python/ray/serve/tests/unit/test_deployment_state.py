@@ -1793,18 +1793,35 @@ def test_reconfigure_throttling(mock_deployment_state_manager):
     )
 
 
-def test_rolling_update_percentage_configurable(mock_deployment_state_manager):
-    """Test that rolling_update_percentage controls how many replicas update per wave.
-
-    With 10 replicas and rolling_update_percentage=0.5, 5 replicas should update
-    at a time instead of the default 2 (20%).
-    """
+@pytest.mark.parametrize(
+    ("num_replicas", "percentage", "expected_stopping"),
+    [
+        # The existing case: 50% of 10 replicas is 5.
+        (10, 0.5, 5),
+        # Test default percentage (20%) of 10 replicas is 2.
+        (10, None, 2),
+        # Test rounding down: 50% of 3 replicas is 1.5 -> 1.
+        (3, 0.5, 1),
+        # Test minimum of 1: 20% of 4 replicas is 0.8 -> 0, but minimum is 1.
+        (4, 0.2, 1),
+        # Test percentage that isn't a clean divisor.
+        (10, 0.21, 2),
+        # Test 100% update. All old replicas should be stopping.
+        (5, 1.0, 5),
+    ],
+)
+def test_rolling_update_percentage_configurable(
+    mock_deployment_state_manager, num_replicas, percentage, expected_stopping
+):
+    """Test that rolling_update_percentage controls how many replicas update per wave."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
-    b_info_1, v1 = deployment_info(
-        num_replicas=10, version="1", rolling_update_percentage=0.5
-    )
+    deploy_kwargs = {"num_replicas": num_replicas, "version": "1"}
+    if percentage is not None:
+        deploy_kwargs["rolling_update_percentage"] = percentage
+
+    b_info_1, v1 = deployment_info(**deploy_kwargs)
     assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
@@ -1812,26 +1829,31 @@ def test_rolling_update_percentage_configurable(mock_deployment_state_manager):
     for replica in ds._replicas.get():
         replica._actor.set_ready()
     dsm.update()
-    check_counts(ds, total=10, by_state=[(ReplicaState.RUNNING, 10, v1)])
-
-    # Deploy new version. With rolling_update_percentage=0.5, rollout_size should
-    # be max(int(0.5 * 10), 1) = 5, so 5 replicas should be stopped at once
-    # and 5 new ones started.
-    b_info_2, v2 = deployment_info(
-        num_replicas=10, version="2", rolling_update_percentage=0.5
+    check_counts(
+        ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
     )
+
+    # Deploy new version and check that the correct number of replicas are
+    # transitioning.
+    deploy_kwargs["version"] = "2"
+    b_info_2, v2 = deployment_info(**deploy_kwargs)
     assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
     dsm.update()
 
-    # 5 old replicas should be stopping, 5 still running, and 5 new starting.
+    expected_running_v1 = num_replicas - expected_stopping
+    # When there are 0 running v1 replicas, the check_counts `by_state`
+    # entry should be omitted.
+    expected_by_state = [
+        (ReplicaState.STOPPING, expected_stopping, v1),
+        (ReplicaState.STARTING, expected_stopping, v2),
+    ]
+    if expected_running_v1 > 0:
+        expected_by_state.insert(0, (ReplicaState.RUNNING, expected_running_v1, v1))
+
     check_counts(
         ds,
-        total=15,
-        by_state=[
-            (ReplicaState.RUNNING, 5, v1),
-            (ReplicaState.STOPPING, 5, v1),
-            (ReplicaState.STARTING, 5, v2),
-        ],
+        total=num_replicas + expected_stopping,
+        by_state=expected_by_state,
     )
 
 
