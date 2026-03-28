@@ -247,3 +247,6 @@ tag-mapping.json
 
 # Claude files
 /.claude/
+
+# Worktrees
+.worktrees/
