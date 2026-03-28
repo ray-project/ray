@@ -1,7 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
 import pyarrow
 
@@ -11,9 +11,13 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
-from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.operators import StreamingSplit
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
-from ray.data._internal.logical.optimizers import get_plan_conversion_fns
+from ray.data._internal.logical.optimizers import (
+    LogicalOptimizer,
+    PhysicalOptimizer,
+)
+from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import _take_first_non_empty_schema
 from ray.data.context import DataContext
@@ -75,6 +79,18 @@ class ExecutionPlan:
 
         self._context = data_context
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Flush execution cache before serialization
+        state.pop("_cache", None)
+        return state
+
+    def __setstate__(self, state):
+        from ray.data.dataset import _ExecutionCache
+
+        self.__dict__.update(state)
+        self._cache = _ExecutionCache()
+
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
         UUID, and current execution index.
@@ -101,30 +117,28 @@ class ExecutionPlan:
 
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
-
-        convert_fns = [lambda x: x] + get_plan_conversion_fns()
-        titles: List[str] = [
-            "Logical Plan",
-            "Logical Plan (Optimized)",
-            "Physical Plan",
-            "Physical Plan (Optimized)",
-        ]
-
-        # 1. Set initial plan
-        plan = self._logical_plan
-
         sections = []
-        for title, convert_fn in zip(titles, convert_fns):
 
-            # 2. Convert plan to new plan
-            plan = convert_fn(plan)
-
-            # 3. Generate plan str from new plan.
+        def _add_section(title, plan):
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
-
             banner = f"\n-------- {title} --------\n"
-            section = f"{banner}{plan_str}"
-            sections.append(section)
+            sections.append(f"{banner}{plan_str}")
+
+        # 1. Logical Plan
+        logical_plan = self._logical_plan
+        _add_section("Logical Plan", logical_plan)
+
+        # 2. Optimized Logical Plan
+        optimized_logical = LogicalOptimizer().optimize(logical_plan)
+        _add_section("Logical Plan (Optimized)", optimized_logical)
+
+        # 3. Physical Plan
+        physical_plan, _ = create_planner().plan(optimized_logical)
+        _add_section("Physical Plan", physical_plan)
+
+        # 4. Optimized Physical Plan
+        optimized_physical = PhysicalOptimizer().optimize(physical_plan)
+        _add_section("Physical Plan (Optimized)", optimized_physical)
 
         return "".join(sections)
 
@@ -355,7 +369,7 @@ class ExecutionPlan:
         """Get the estimated number of blocks from the logical plan
         after applying execution plan optimizations, but prior to
         fully executing the dataset."""
-        return self._logical_plan.dag.estimated_num_outputs()
+        return self._logical_plan.initial_num_blocks()
 
     def schema(
         self, fetch_if_missing: bool = False
@@ -372,7 +386,13 @@ class ExecutionPlan:
         """
 
         def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
-            limited_dag = Limit(plan._logical_plan.dag, limit=1)
+            dag = plan._logical_plan.dag
+            # Unwrap `StreamingSplit` if any, as `StreamingSplit` must be a
+            # terminal operator (ie can't be wrapped into other ops)
+            if isinstance(dag, StreamingSplit):
+                dag = dag.input_dependencies[0]
+
+            limited_dag = Limit(dag, limit=1)
             limited_plan = plan.copy()
             limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
             return limited_plan
@@ -395,10 +415,6 @@ class ExecutionPlan:
         if schema is not None:
             self._cache.set_schema(self._logical_plan.dag, schema)
         return schema
-
-    def input_files(self) -> Optional[List[str]]:
-        """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.infer_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -441,7 +457,7 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -519,7 +535,6 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
-                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()
@@ -588,7 +603,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return all(isinstance(op, Read) for op in self._logical_plan.sources())
+        return self._logical_plan.has_lazy_input()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
@@ -598,9 +613,4 @@ class ExecutionPlan:
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators import Zip
-
-        for op in self._logical_plan.dag.post_order_iter():
-            if isinstance(op, Zip):
-                return True
-        return False
+        return self._logical_plan.require_preserve_order()

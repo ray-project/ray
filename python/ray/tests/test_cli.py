@@ -1524,5 +1524,45 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
     )
 
 
+# Check if ray.serve is available (it's an optional dependency)
+try:
+    import ray.serve.scripts  # noqa: F401
+
+    SERVE_AVAILABLE = True
+except ImportError:
+    SERVE_AVAILABLE = False
+
+
+@pytest.mark.skipif(not SERVE_AVAILABLE, reason="ray.serve is not installed")
+def test_serve_cli_registered():
+    """Test that serve CLI is properly registered with the main ray CLI."""
+    # Verify 'serve' command is registered
+    assert "serve" in scripts.cli.commands, "serve command should be registered"
+
+    # Verify serve subcommands are accessible
+    serve_cli = scripts.cli.commands["serve"]
+    expected_commands = {
+        "start",
+        "deploy",
+        "run",
+        "config",
+        "status",
+        "shutdown",
+        "build",
+    }
+    assert expected_commands.issubset(set(serve_cli.commands.keys()))
+
+
+@pytest.mark.skipif(not SERVE_AVAILABLE, reason="ray.serve is not installed")
+def test_ray_serve_help():
+    """Test that 'ray serve --help' works correctly."""
+    runner = CliRunner()
+    result = runner.invoke(scripts.cli, ["serve", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "CLI for managing Serve applications" in result.output
+    assert "deploy" in result.output
+    assert "run" in result.output
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

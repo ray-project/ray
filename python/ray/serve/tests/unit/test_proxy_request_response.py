@@ -3,7 +3,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ray.serve._private.logging_utils as logging_utils_mod
 from ray.serve._private.common import gRPCRequest
+from ray.serve._private.logging_utils import access_log_msg, format_client_address
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
@@ -236,6 +238,101 @@ class TestgRPCProxyRequest:
         request_object = pickle.loads(serialized_arg)
         assert isinstance(request_object, gRPCRequest)
         assert request_object.user_request_proto == request_proto
+
+
+class TestGRPCProxyRequestClient:
+    """Tests for gRPCProxyRequest.client property."""
+
+    def _make_request(self, peer_value):
+        context = MagicMock()
+        context.peer.return_value = peer_value
+        context.invocation_metadata.return_value = ()
+        return gRPCProxyRequest(
+            request_proto=MagicMock(),
+            context=context,
+            service_method="/ray.serve.RayServeAPIService/Healthz",
+            stream=False,
+        )
+
+    def test_ipv4_peer(self):
+        req = self._make_request("ipv4:127.0.0.1:54321")
+        assert req.client == "127.0.0.1:54321"
+
+    def test_ipv6_peer(self):
+        # gRPC URL-encodes brackets in IPv6 peer addresses
+        req = self._make_request("ipv6:%5B::1%5D:54321")
+        assert req.client == "[::1]:54321"
+
+    def test_none_peer(self):
+        req = self._make_request(None)
+        assert req.client == ""
+
+    def test_empty_peer(self):
+        req = self._make_request("")
+        assert req.client == ""
+
+
+class TestFormatClientAddress:
+    """Tests for format_client_address in proxy.py."""
+
+    def test_tuple(self):
+        assert format_client_address(("10.0.0.1", 54321)) == "10.0.0.1:54321"
+
+    def test_list(self):
+        assert format_client_address(["10.0.0.1", 54321]) == "10.0.0.1:54321"
+
+    def test_string(self):
+        assert format_client_address("10.0.0.1:54321") == "10.0.0.1:54321"
+
+    def test_empty_string(self):
+        assert format_client_address("") == ""
+
+    def test_none(self):
+        assert format_client_address(None) == ""
+
+    def test_ipv6_tuple(self):
+        assert format_client_address(("::1", 54321)) == "[::1]:54321"
+
+    def test_ipv6_full_tuple(self):
+        assert format_client_address(("2001:db8::1", 8080)) == "[2001:db8::1]:8080"
+
+    def test_ipv6_string_passthrough(self):
+        assert format_client_address("[::1]:54321") == "[::1]:54321"
+
+
+class TestAccessLogMsg:
+    """Tests for access_log_msg formatting."""
+
+    def test_without_client(self):
+        msg = access_log_msg(method="GET", route="/", status="200", latency_ms=1.0)
+        assert msg == "GET / 200 1.0ms"
+
+    def test_with_client_flag_enabled(self, monkeypatch):
+        monkeypatch.setattr(logging_utils_mod, "RAY_SERVE_LOG_CLIENT_ADDRESS", True)
+        msg = access_log_msg(
+            method="GET",
+            route="/",
+            status="200",
+            latency_ms=1.0,
+            client="10.0.0.1:54321",
+        )
+        assert msg == "10.0.0.1:54321 GET / 200 1.0ms"
+
+    def test_with_client_flag_disabled(self):
+        msg = access_log_msg(
+            method="GET",
+            route="/",
+            status="200",
+            latency_ms=1.0,
+            client="10.0.0.1:54321",
+        )
+        assert msg == "GET / 200 1.0ms"
+
+    def test_with_empty_client(self):
+        msg = access_log_msg(
+            method="POST", route="/api", status="500", latency_ms=25.3, client=""
+        )
+        assert msg == "POST /api 500 25.3ms"
 
 
 if __name__ == "__main__":

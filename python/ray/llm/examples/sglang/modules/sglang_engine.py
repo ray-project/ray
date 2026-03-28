@@ -1,24 +1,36 @@
 import copy
+import json
 import signal
 import time
+import uuid
 from typing import (
     Any,
     AsyncGenerator,
     List,
     Optional,
+    Union,
 )
 
+from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingCompletionRequest,
     EmbeddingRequest,
     EmbeddingResponse,
+    TokenizeCompletionRequest,
+    TokenizeRequest,
+    TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.core.server.llm_server import (
+    _merge_replica_actor_and_child_actor_bundles,
+)
 
 
 class SGLangServer:
@@ -79,6 +91,13 @@ class SGLangServer:
             sampling_params["stop"] = stop
 
         return sampling_params
+
+    @staticmethod
+    def _parse_finish_reason(finish_reason_info: Any) -> str:
+        """Parse finish_reason from SGLang metadata."""
+        if isinstance(finish_reason_info, dict):
+            return finish_reason_info.get("type", "length")
+        return str(finish_reason_info)
 
     @staticmethod
     def _build_chat_messages(messages: List[Any]) -> List[dict[str, Any]]:
@@ -164,19 +183,26 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    def _build_generate_kwargs(
+        self, request: Any, prompt: Any, stream: bool
+    ) -> dict[str, Any]:
+        """Build kwargs dict for engine.async_generate."""
+        generate_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "stream": stream,
+        }
+        sampling_params = self._build_sampling_params(request)
+        if sampling_params:
+            generate_kwargs["sampling_params"] = sampling_params
+        return generate_kwargs
+
     async def _generate_raw(
         self,
         request: Any,
         prompt: Any,
     ) -> dict[str, Any]:
         """Run generation and return raw engine output payload."""
-        sampling_params = self._build_sampling_params(request)
-        generate_kwargs = {
-            "prompt": prompt,
-            "stream": False,
-        }
-        if sampling_params:
-            generate_kwargs["sampling_params"] = sampling_params
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=False)
         return await self.engine.async_generate(**generate_kwargs)
 
     @staticmethod
@@ -185,11 +211,7 @@ class SGLangServer:
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
-
-        if isinstance(finish_reason_info, dict):
-            finish_reason = finish_reason_info.get("type", "length")
-        else:
-            finish_reason = str(finish_reason_info)
+        finish_reason = SGLangServer._parse_finish_reason(finish_reason_info)
 
         prompt_tokens = int(meta.get("prompt_tokens", 0))
         completion_tokens = int(meta.get("completion_tokens", 0))
@@ -208,13 +230,27 @@ class SGLangServer:
     async def _generate_and_extract_metadata(
         self,
         request: Any,
-        prompt: Any,
-    ) -> dict[str, Any]:
+        prompt: Union[str, List[str]],
+    ) -> Union[dict[str, Any], List[dict[str, Any]]]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
+
+        Accepts either a single prompt string or a list of prompts. When a list
+        is provided, all prompts are sent to SGLang in one batched call, letting
+        SGLang's scheduler handle concurrency natively via async_generate.
         """
         raw = await self._generate_raw(request, prompt)
+
+        # Batch case — SGLang returns a list of results, one per prompt
+        if isinstance(prompt, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            return [self._extract_generation_metadata(r) for r in raw]
+
+        # Single prompt case
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
@@ -223,18 +259,82 @@ class SGLangServer:
             raw = raw[0]
         return self._extract_generation_metadata(raw)
 
+    async def _stream_generate(
+        self,
+        request: Any,
+        prompt: Any,
+    ) -> AsyncGenerator[tuple[str, Optional[str]], None]:
+        """Stream from SGLang engine, yielding (delta_text, finish_reason) tuples.
+
+        SGLang returns cumulative text in each chunk, so this method
+        tracks the previous text and yields only the incremental delta.
+        """
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=True)
+        stream = await self.engine.async_generate(**generate_kwargs)
+
+        previous_text = ""
+        async for chunk in stream:
+            text = chunk.get("text", "")
+            meta = chunk.get("meta_info", {}) or {}
+
+            delta_text = text[len(previous_text) :]
+            previous_text = text
+
+            finish_reason_info = meta.get("finish_reason", None)
+            finish_reason = (
+                self._parse_finish_reason(finish_reason_info)
+                if finish_reason_info is not None
+                else None
+            )
+            yield delta_text, finish_reason
+
+    @staticmethod
+    def _build_sse_chunk(
+        gen_id: str,
+        object_type: str,
+        created: int,
+        model: str,
+        choice: dict[str, Any],
+    ) -> str:
+        """Build an SSE-formatted chunk string from a single choice payload."""
+        chunk_data = {
+            "id": gen_id,
+            "object": object_type,
+            "created": created,
+            "model": model,
+            "choices": [choice],
+        }
+        return f"data: {json.dumps(chunk_data)}\n\n"
+
     async def chat(
         self,
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[ChatCompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         chat_messages = self._build_chat_messages(request.messages)
         prompt = self._render_chat_prompt(request, chat_messages)
 
-        metadata = await self._generate_and_extract_metadata(
-            request,
-            prompt,
-        )
+        if request.stream:
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
+            created = int(time.time())
+            first_chunk = True
+            async for delta_text, finish_reason in self._stream_generate(
+                request, prompt
+            ):
+                delta: dict[str, Any] = {"content": delta_text}
+                if first_chunk:
+                    delta["role"] = "assistant"
+                    first_chunk = False
+                yield self._build_sse_chunk(
+                    gen_id,
+                    "chat.completion.chunk",
+                    created,
+                    request.model,
+                    {"index": 0, "delta": delta, "finish_reason": finish_reason},
+                )
+            return
+
+        metadata = await self._generate_and_extract_metadata(request, prompt)
 
         usage_data = {
             "prompt_tokens": metadata["prompt_tokens"],
@@ -263,35 +363,49 @@ class SGLangServer:
         self,
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[CompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
         prompt_input = request.prompt
 
-        prompts_to_process: List[str] = []
+        # Normalize prompt input.
         if isinstance(prompt_input, list):
-            # Check for empty list
             if not prompt_input:
                 raise ValueError(
                     "The 'prompt' list cannot be empty for completion requests."
                 )
-            # Batched prompts: process all of them
             prompts_to_process = prompt_input
         else:
-            # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
+
+        if request.stream:
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
+            created = int(time.time())
+            for i, prompt_string in enumerate(prompts_to_process):
+                async for delta_text, finish_reason in self._stream_generate(
+                    request, prompt_string
+                ):
+                    yield self._build_sse_chunk(
+                        gen_id,
+                        "text_completion",
+                        created,
+                        request.model,
+                        {
+                            "index": i,
+                            "text": delta_text,
+                            "logprobs": None,
+                            "finish_reason": finish_reason,
+                        },
+                    )
+            return
+
+        results = await self._generate_and_extract_metadata(request, prompts_to_process)
 
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        last_metadata = {}
 
-        # 2. Loop through all prompts in the batch
-        for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata  # Keep track of the metadata from the last run
-
+        for index, metadata in enumerate(results):
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
-
             choice_data = {
                 "index": index,
                 "text": metadata["text"],
@@ -306,7 +420,8 @@ class SGLangServer:
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
 
-        # Use metadata from the last generation for shared fields (id, created)
+        last_metadata = results[-1]
+
         resp = CompletionResponse(
             id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
             object="text_completion",
@@ -319,16 +434,21 @@ class SGLangServer:
         yield resp
 
     async def embeddings(
-        self, request: EmbeddingRequest, raw_request: Optional[Any] = None
+        self,
+        request: EmbeddingRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[EmbeddingResponse, None]:
         # Input handling follows SGLang's OpenAIServingEmbedding pattern:
         # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
         if isinstance(request, EmbeddingCompletionRequest):
             prompt = request.input
         else:
-            # Chat embedding request - convert messages to prompt
-            prompt = self._render_fallback_prompt(
-                self._build_chat_messages(request.messages)
+            # Chat embedding request - join messages without the trailing
+            # "assistant:" generation cue that _render_fallback_prompt adds.
+            chat_messages = self._build_chat_messages(request.messages)
+            prompt = "\n".join(
+                f"{m.get('role', 'user')}: {m.get('content') or ''}"
+                for m in chat_messages
             )
 
         # async_encode handles both single strings and lists of strings
@@ -369,6 +489,55 @@ class SGLangServer:
 
         yield resp
 
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[TokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The tokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+
+        if isinstance(request, TokenizeCompletionRequest):
+            prompt = request.prompt
+        else:
+            # Chat tokenize request - render messages to prompt string
+            chat_messages = self._build_chat_messages(request.messages)
+            prompt = self._render_chat_prompt(request, chat_messages)
+
+        add_special_tokens = getattr(request, "add_special_tokens", True)
+        tokens = tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
+
+        max_model_len = (
+            getattr(self.engine.tokenizer_manager, "context_len", None)
+            or getattr(self.engine.server_args, "context_length", None)
+            or 0
+        )
+
+        yield TokenizeResponse(
+            tokens=tokens,
+            count=len(tokens),
+            max_model_len=max_model_len,
+        )
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[DetokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The detokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+        prompt = tokenizer.decode(request.tokens)
+
+        yield DetokenizeResponse(text=prompt)
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
@@ -377,12 +546,37 @@ class SGLangServer:
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+        num_devices = tp_size * pp_size
+
+        if tp_size < 1 or pp_size < 1:
+            raise ValueError(
+                f"Invalid configuration: tp_size={tp_size} and pp_size={pp_size}. "
+                f"Both must be >= 1."
+            )
 
         if "placement_group_bundles" not in pg_config:
-            pg_bundles = [{"CPU": 1, "GPU": 1}]
-            if tp_size > 1:  # TO DO: to support tp_size > 1 cases
-                pg_bundles.extend([{"GPU": 1} for _ in range(tp_size - 1)])
+            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
+
+            replica_bundle = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+            }
+
+            if ray_actor_options.get("num_gpus"):
+                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+
+            replica_bundle.update(ray_actor_options.get("resources", {}))
+
+            if "memory" in ray_actor_options:
+                replica_bundle["memory"] = ray_actor_options["memory"]
+
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                child_actor_bundles=child_bundles,
+                replica_actor_bundle=replica_bundle,
+            )
             pg_strategy = "PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
@@ -395,15 +589,13 @@ class SGLangServer:
             }
         )
 
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
 
-        # set as default without checking ENABLE_WORKER_PROCESS_SETUP_HOOK
-        runtime_env.setdefault(
-            "worker_process_setup_hook",
-            "ray.llm._internal.serve._worker_process_setup_hook",
-        )
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            runtime_env.setdefault(
+                "worker_process_setup_hook",
+                "ray.llm._internal.serve._worker_process_setup_hook",
+            )
 
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)

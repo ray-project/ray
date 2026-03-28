@@ -189,7 +189,10 @@ void AutoscalerStateGrpcService::InitServerCallFactories(
                       max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, GetClusterStatus, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
+      AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ResizeRayletResourceInstances, max_active_rpcs_per_handler_)
 }
 
 }  // namespace autoscaler

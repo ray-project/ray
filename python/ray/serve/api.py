@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
@@ -49,6 +50,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import (
     ReplicaContext,
+    _get_deployment_actor,
     _get_global_client,
     _get_internal_replica_context,
     _set_global_client,
@@ -179,6 +181,59 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
+@DeveloperAPI
+def get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Must be called from within a running Serve replica. The actor must be
+    declared in the deployment's deployment_actors config.
+
+    Args:
+        actor_name: Name of the deployment-scoped actor (as specified in
+            deployment_actors list).
+
+    Returns:
+        Ray ActorHandle to the deployment-scoped actor.
+
+    Raises:
+        RayServeException: If not called from within a replica, or if the
+            actor is not found.
+        ValueError: If the actor is not found.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+                def insert(self, text: str):
+                    self.max_depth += 1
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+    """
+    return _get_deployment_actor(actor_name)
+
+
 @PublicAPI(stability="stable")
 def ingress(app: Union[ASGIApp, Callable]) -> Callable:
     """Wrap a deployment class with an ASGI application for HTTP request parsing.
@@ -294,9 +349,12 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            def __init__(self, *args, **kwargs):
+            async def __init__(self, *args, **kwargs):
                 # Call user-defined constructor.
-                cls.__init__(self, *args, **kwargs)
+                if inspect.iscoroutinefunction(cls.__init__):
+                    await cls.__init__(self, *args, **kwargs)
+                else:
+                    cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
@@ -347,6 +405,9 @@ def deployment(
     max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
     gang_scheduling_config: Default[
         Union[Dict, GangSchedulingConfig, None]
+    ] = DEFAULT.VALUE,
+    deployment_actors: Default[
+        Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
@@ -422,6 +483,10 @@ def deployment(
             Gang scheduling ensures that groups of replicas are scheduled together
             atomically, which is essential for distributed workloads that require
             coordination between replicas. See `GangSchedulingConfig` for options.
+        deployment_actors: List of deployment-scoped Ray actors managed by the controller.
+            Each actor is shared across all replicas of this deployment. Use
+            `serve.get_deployment_actor(actor_name)` from within a replica to get
+            the actor handle. See `DeploymentActorConfig` for options.
     Returns:
         `Deployment`
     """
@@ -453,15 +518,6 @@ def deployment(
             "gang_scheduling_config.gang_placement_strategy instead."
         )
     if num_replicas == "auto":
-        if (
-            gang_scheduling_config is not DEFAULT.VALUE
-            and gang_scheduling_config is not None
-        ):
-            raise ValueError(
-                'num_replicas="auto" is not allowed when '
-                "gang_scheduling_config is provided. Please set num_replicas "
-                "to a fixed multiple of gang_size."
-            )
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
@@ -500,7 +556,7 @@ def deployment(
         )
 
     if isinstance(logging_config, LoggingConfig):
-        logging_config = logging_config.dict()
+        logging_config = logging_config.model_dump()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
@@ -516,6 +572,7 @@ def deployment(
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
+        deployment_actors=deployment_actors,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
