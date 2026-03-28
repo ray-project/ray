@@ -563,18 +563,19 @@ DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S = 30
 # Name of deployment request routing stats method implemented by user.
 REQUEST_ROUTING_STATS_METHOD = "record_routing_stats"
 
-# By default, we run user code in a separate event loop.
-# This flag can be set to 0 to run user code in the same event loop as the
-# replica's main event loop.
+# By default, we run user code in the same event loop as the replica's main
+# event loop. This flag can be set to 1 to run user code in a separate thread
+# with its own event loop, which isolates system tasks from user code but adds
+# cross-loop overhead.
 RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD = get_env_bool(
-    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "1"
+    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD", "0"
 )
 
-# By default, we run the router in a separate event loop.
-# This flag can be set to 0 to run the router in the same event loop as the
-# replica's main event loop.
+# By default, we run the router in the same event loop as the replica's main
+# event loop. This flag can be set to 1 to run the router in a separate event
+# loop, which isolates routing from user code but adds overhead.
 RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP = get_env_bool(
-    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "1"
+    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
 )
 
 # For now, this is used only for testing. In the suite of tests that

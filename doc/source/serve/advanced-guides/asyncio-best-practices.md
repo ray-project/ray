@@ -296,46 +296,41 @@ Before enabling this in production, make sure:
 
 ### `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD`
 
-By default, Serve runs user code in a separate event loop from the replica's main/control loop:
+By default, Serve runs user code in the same event loop as the replica's main/control loop:
 
 ```bash
-export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1  # default
+export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0  # default
 ```
 
-This isolation:
+This provides better throughput by avoiding cross-loop communication overhead. However, any blocking operation in user code can interfere with replica health and control-plane operations. Make sure your request handlers avoid blocking operations (use `await` instead of `time.sleep`, etc.).
 
-- Protects system tasks (health checks, controller communication) from being blocked by user code.
-- Adds some amount of overhead to cross-loop communication, resulting in higher latency in request. For throughput-optimized configurations, see [High throughput optimization](serve-high-throughput). 
-
-You can disable this behavior:
+You can enable separate-thread isolation:
 
 ```bash
-export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+export RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1
 ```
 
-Only advanced users should change this. When user code and system tasks share a loop, any blocking operation in user code can interfere with replica health and control-plane operations.
+This protects system tasks (health checks, controller communication) from being blocked by user code, at the cost of additional cross-loop communication overhead resulting in higher latency.
 
 ### `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP`
 
-Serve's request router is also run on its own event loop by default:
+By default, Serve's request router shares the same event loop as user code:
 
 ```bash
-export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1  # default
+export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0  # default
 ```
 
-This ensures:
+This provides better throughput by avoiding cross-loop overhead. However, blocking operations in user code can affect request routing.
 
-- The router can continue routing and load balancing requests even if some replicas are running slow user code.
-
-Disabling this:
+You can enable separate-loop isolation:
 
 ```bash
-export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
+export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1
 ```
 
-makes the router share an event loop with other work. This can reduce overhead in advanced, highly optimized scenarios, but makes the system more sensitive to blocking operations. See [High throughput optimization](serve-high-throughput). 
+This ensures the router can continue routing and load balancing requests even if some replicas are running slow user code, at the cost of additional overhead.
 
-For most production deployments, you should keep the defaults (`1`) for both separate-loop flags.
+For both flags, the defaults (`0`) prioritize throughput. Set them to `1` if your application includes blocking operations that you cannot refactor.
 
 ## Batching and streaming semantics
 

@@ -774,8 +774,8 @@ These metrics track the health of asyncio event loops in Serve components. High 
   - `unknown`: When using `DeploymentHandle.remote()`
 - `loop_type`: The type of event loop being monitored.
   - `main`: Main event loop for the actor (always present)
-  - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is the default)
-  - `router`: Separate event loop for request routing (replicas only, when `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1`, which is the default)
+  - `user_code`: Separate event loop for user handler code (replicas only, when `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1`, which is not the default)
+  - `router`: Separate event loop for request routing (replicas only, when `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=1`, which is not the default)
 - `actor_id`: The Ray actor ID of the proxy or replica
 - `deployment`: The deployment name (replicas only, for `main` and `user_code` loops)
 - `application`: The application name (replicas only, for `main` and `user_code` loops)
