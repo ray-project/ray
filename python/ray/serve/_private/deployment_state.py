@@ -263,6 +263,12 @@ class DeploymentActorWrapper:
         return ReplicaHealthCheckResponse.NONE
 
     def _should_start_new_deployment_actor_health_check(self) -> bool:
+        # Do not poll a handle we already marked unhealthy: ``check_health`` clears
+        # the ref before returning False, and the controller will ``kill`` this
+        # wrapper—starting another ``__ray_ready__`` would target a dead actor and
+        # orphan the new ObjectRef when ``kill`` clears ``_health_check_ref``.
+        if not self._healthy:
+            return False
         if self._health_check_ref is not None:
             return False
         if self._handle is None:
