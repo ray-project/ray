@@ -3956,6 +3956,7 @@ class Dataset:
     def _base_schema(
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+        """Gets the underlying raw schema value not wrapped in Schema class."""
         base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
@@ -3963,7 +3964,20 @@ class Dataset:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of
             # this plan, which we then execute to get its schema.
-            limited_ds = self.limit(1)
+            dag = self._logical_plan.dag
+            if isinstance(dag, StreamingSplit):
+                # Unwrap StreamingSplit since it is a terminal operator
+                # that cannot be wrapped into other ops like Limit.
+                dag = dag.input_dependencies[0]
+                limited_ds = Dataset(
+                    ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None),
+                        self._plan._context,
+                    ),
+                    LogicalPlan(dag, self._plan._context),
+                ).limit(1)
+            else:
+                limited_ds = self.limit(1)
             iter_ref_bundles, _, executor = limited_ds._execute_to_iterator()
             if executor is not None:
                 # Make sure executor is fully shutdown upon exiting
@@ -3982,9 +3996,7 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
-    def schema(
-        self, fetch_if_missing: bool = True
-    ) -> Optional[Union["Schema", type, "pyarrow.lib.Schema"]]:
+    def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
         Examples:
