@@ -314,7 +314,7 @@ This protects system tasks (health checks, controller communication) from being 
 
 ### `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP`
 
-By default, Serve's request router shares the same event loop as user code:
+By default, Serve's request router runs in the same event loop as the replica's main/control loop:
 
 ```bash
 export RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0  # default
