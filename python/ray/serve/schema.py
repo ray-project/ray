@@ -463,6 +463,16 @@ class DeploymentSchema(BaseModel):
             "init_kwargs, and actor_options."
         ),
     )
+    rolling_update_percentage: float = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "The percentage of replicas to update at a time during a "
+            "rolling update. Must be between 0.0 and 1.0 (exclusive of 0). "
+            "Defaults to 0.2 (20%)."
+        ),
+        gt=0.0,
+        le=1.0,
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -647,6 +657,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         health_check_timeout_s=info.deployment_config.health_check_timeout_s,
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
+        rolling_update_percentage=info.deployment_config.rolling_update_percentage,
     )
 
     if info.deployment_config.autoscaling_config is not None:

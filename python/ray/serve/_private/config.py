@@ -219,6 +219,13 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    rolling_update_percentage: float = Field(
+        default=0.2,
+        gt=0.0,
+        le=1.0,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
@@ -536,6 +543,12 @@ class DeploymentConfig(BaseModel):
             data["deployment_actors"] = deployment_actors
         else:
             data.pop("deployment_actors", None)
+
+        # Handle proto3 zero-value default for rolling_update_percentage.
+        # During rolling upgrades, older controllers send configs without
+        # this field; proto3 defaults double to 0.0.
+        if not data.get("rolling_update_percentage"):
+            data.pop("rolling_update_percentage", None)
 
         return cls(**data)
 
