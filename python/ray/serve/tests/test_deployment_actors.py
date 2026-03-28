@@ -1,6 +1,7 @@
 import concurrent.futures
 import os
 import sys
+import time
 
 import httpx
 import pytest
@@ -9,6 +10,7 @@ import yaml
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaState
 from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -806,10 +808,10 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
 
 
 def test_deployment_actor_restarts_on_crash(serve_instance):
-    """When a deployment actor crashes, Ray restarts it (max_restarts=-1).
+    """When a deployment actor dies, the Serve controller recreates it (no Ray auto-restart).
 
-    Replicas use serve.get_deployment_actor() which does ray.get_actor()
-    each time, so they get a fresh handle to the restarted actor.
+    Replicas call ``serve.get_deployment_actor()`` per request here, so they resolve a
+    current handle after recreation.
     """
 
     @serve.deployment(
@@ -839,9 +841,110 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
     assert len(actor_names) == 1
     handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
 
-    ray.kill(handle, no_restart=False)
+    ray.kill(handle, no_restart=True)
 
-    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=30)
+    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=120)
+
+
+def test_cached_get_deployment_actor_handle_stale_after_recreation(serve_instance):
+    """Stale handle in ``__init__`` vs cache + refresh after the deployment actor dies.
+
+    (1) A handle from ``get_deployment_actor`` stored only in ``__init__`` still
+    points at the dead actor after Serve recreates the named actor; HTTP stays 5xx.
+    Logs typically show ``ActorDiedError`` / ``RayActorError`` from ``ray.get`` on
+    that stale handle.
+
+    (2) **Recommended** — on ``RayActorError`` from ``ray.get``, call
+    ``serve.get_deployment_actor`` again. That lookup can raise ``ValueError`` with a
+    message that lists three causes (including namespace); after a kill the usual
+    case is that the name is not registered yet—retry briefly until the controller
+    finishes recreating the actor. Alternatively resolve the actor on every request;
+    see ``test_deployment_actor_restarts_on_crash``.
+
+    Expected log noise: replica ``ERROR``/``500`` lines while the actor is missing or
+    stale are normal for phase (1); phase (2) should stay quiet once refresh retries
+    ``get_deployment_actor``.
+    """
+
+    counter_cfg = DeploymentActorConfig(
+        name="counter",
+        actor_class=SharedCounter,
+        init_kwargs={"start": 7},
+    )
+
+    def kill_stale_test_counter():
+        names = [
+            n
+            for n in _get_deployment_actor_names()
+            if "StaleHandleDeployment" in n and "counter" in n
+        ]
+        assert len(names) == 1
+        ray.kill(
+            ray.get_actor(names[0], namespace=SERVE_NAMESPACE),
+            no_restart=True,
+        )
+
+    @serve.deployment(
+        name="StaleHandleDeployment",
+        deployment_actors=[counter_cfg],
+    )
+    class StaleHandleDeployment:
+        def __init__(self):
+            self._counter = serve.get_deployment_actor("counter")
+
+        def __call__(self):
+            return str(ray.get(self._counter.get.remote()))
+
+    serve.run(StaleHandleDeployment.bind())
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "7")
+
+    kill_stale_test_counter()
+
+    def replica_still_fails_after_recreation():
+        r = httpx.get(url, timeout=10)
+        return r.status_code >= 500
+
+    wait_for_condition(replica_still_fails_after_recreation, timeout=120)
+
+    @serve.deployment(
+        name="StaleHandleDeployment",
+        deployment_actors=[counter_cfg],
+    )
+    class CacheAndRefreshOnRayActorError:
+        def __init__(self):
+            self._counter = serve.get_deployment_actor("counter")
+
+        def _resolve_counter_after_actor_died(self):
+            # After Serve kills the deployment actor, the same name may not exist in
+            # GCS until recreation completes; ray.get_actor raises ValueError (message
+            # also mentions namespace as a generic possibility).
+            deadline = time.monotonic() + 30.0
+            last_exc = None
+            while time.monotonic() < deadline:
+                try:
+                    self._counter = serve.get_deployment_actor("counter")
+                    return
+                except ValueError as e:
+                    last_exc = e
+                    time.sleep(0.05)
+            if last_exc is not None:
+                raise last_exc
+            raise TimeoutError(
+                "Timed out waiting for deployment actor name after recreation."
+            )
+
+        def __call__(self):
+            try:
+                return str(ray.get(self._counter.get.remote()))
+            except RayActorError:
+                self._resolve_counter_after_actor_died()
+                return str(ray.get(self._counter.get.remote()))
+
+    serve.run(CacheAndRefreshOnRayActorError.bind())
+    wait_for_condition(lambda: httpx.get(url).text == "7")
+    kill_stale_test_counter()
+    wait_for_condition(lambda: httpx.get(url).text == "7", timeout=120)
 
 
 def test_deployment_actor_constructor_failure_app_status(serve_instance):
