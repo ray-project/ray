@@ -718,7 +718,8 @@ class ReplicaMetricsManager:
         if custom_metrics_enabled:
             self._custom_metrics_enabled = custom_metrics_enabled
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
-            self.start_metrics_pusher()
+            if self._autoscaling_config is not None:
+                self.start_metrics_pusher()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         self._num_ongoing_requests += 1
