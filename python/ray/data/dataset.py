@@ -4078,7 +4078,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return self._plan.input_files() or []
+        return self._logical_plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5532,11 +5532,14 @@ class Dataset:
         path: str,
         *,
         schema: Optional["pyarrow.Schema"] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: SaveMode = SaveMode.CREATE,
         min_rows_per_file: int = 1024 * 1024,
         max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        table_id: Optional[List[str]] = None,
+        namespace_impl: Optional[str] = None,
+        namespace_properties: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5552,9 +5555,12 @@ class Dataset:
                 ds.write_lance("/tmp/data/")
 
         Args:
-            path: The path to the destination Lance dataset.
+            path: The path to the destination Lance dataset. Ignored when namespace
+                parameters are provided; the namespace-resolved location is used.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
-            mode: The write mode. Can be "create", "append", or "overwrite".
+            mode: The write mode using SaveMode enum:
+                SaveMode.CREATE, SaveMode.APPEND, or SaveMode.OVERWRITE.
+                Namespace-backed writes currently support only SaveMode.CREATE.
             min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -5562,6 +5568,11 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            table_id: The table identifier as a list of strings, used with namespace params.
+            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
+            namespace_properties: Properties for connecting to the namespace.
+                When namespace params are provided, only SaveMode.CREATE is
+                currently supported.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5576,6 +5587,9 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            table_id=table_id,
+            namespace_impl=namespace_impl,
+            namespace_properties=namespace_properties,
         )
 
         self.write_datasink(
@@ -6705,11 +6719,7 @@ class Dataset:
             A string containing execution timing information, or an empty string if
             the dataset has not been executed.
         """
-        if self._current_executor:
-            return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.stats()
-        return self._get_stats_summary().to_string()
+        return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
     def explain(self):
@@ -6749,6 +6759,23 @@ class Dataset:
         print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats().to_summary()
+
+    @DeveloperAPI
+    def get_stats_summary(self) -> DatasetStatsSummary:
+        """Get stats summary from dataset, handling both streaming and plan stats.
+
+        After materialize() with streaming execution, stats are stored in
+        _current_executor. This method returns the correct stats summary
+        regardless of execution mode.
+
+        Returns:
+            DatasetStatsSummary object containing execution statistics.
+        """
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.get_stats_summary()
         return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")

@@ -5,7 +5,6 @@ It should be deleted once we fully move to the new executor backend.
 import logging
 from typing import Iterator, Optional
 
-from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     Executor,
     RefBundle,
@@ -15,7 +14,6 @@ from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +21,12 @@ logger = logging.getLogger(__name__)
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    data_context: DataContext,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
 
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a bundle iterator.
@@ -39,7 +35,6 @@ def execute_to_legacy_bundle_iterator(
         executor=executor,
         plan=plan,
         preserve_order=False,
-        data_context=data_context,
     )
 
     class CacheMetadataIterator(OutputIterator):
@@ -100,7 +95,6 @@ def execute_to_ref_bundle(
     plan: ExecutionPlan,
     dataset_uuid: str,
     preserve_order: bool,
-    data_context: DataContext,
 ) -> RefBundle:
     """Execute a plan with the new executor and return the output as a RefBundle.
 
@@ -109,7 +103,6 @@ def execute_to_ref_bundle(
         plan: The legacy plan to execute.
         dataset_uuid: UUID of the dataset for this execution.
         preserve_order: Whether to preserve order in execution.
-        data_context: The DataContext to use for retrieving execution callbacks.
 
     Returns:
         The output as a RefBundle.
@@ -118,7 +111,6 @@ def execute_to_ref_bundle(
         executor=executor,
         plan=plan,
         preserve_order=preserve_order,
-        data_context=data_context,
     )
     ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
@@ -130,7 +122,6 @@ def _execute_dag(
     executor: Executor,
     plan: ExecutionPlan,
     preserve_order: bool,
-    data_context: DataContext,
 ) -> OutputIterator:
     """Execute the optimized physical operators DAG from the plan."""
     from ray.data._internal.logical.optimizers import get_execution_plan
@@ -139,7 +130,8 @@ def _execute_dag(
     record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    dag = get_execution_plan(plan._logical_plan).dag
+    physical_plan, callbacks = get_execution_plan(plan._logical_plan)
+    dag = physical_plan.dag
     stats = plan.initial_stats()
 
     # Enforce to preserve ordering if the plan has operators
@@ -147,7 +139,6 @@ def _execute_dag(
     if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
-    callbacks = get_execution_callbacks(data_context)
     return executor.execute(dag, initial_stats=stats, callbacks=callbacks)
 
 

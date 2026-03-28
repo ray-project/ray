@@ -67,7 +67,7 @@ To enable privileged pods in Kubernetes, you need to `set the securityContext <h
 Running in Google Kubernetes Engine (GKE) with Writable Cgroups
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Running pods in a privileged security context may not be acceptable for your use case. To avoid this, GKE allows you to use writable cgroups instead. See the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_.
+Running pods in a privileged security context may not be acceptable for your use case. To avoid this, GKE allows you to use writable cgroups instead. See the :ref:`Resource Isolation with Writable Cgroups on GKE <resource-isolation-with-writable-cgroups>` guide for step-by-step instructions and the `GKE documentation on writable cgroups <https://cloud.google.com/kubernetes-engine/docs/how-to/writable-cgroups>`_ for more details.
 
 Running in a Bare Container
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
