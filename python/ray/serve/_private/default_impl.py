@@ -184,14 +184,15 @@ def create_router(
     else:
         try:
             asyncio.get_running_loop()
+            router_wrapper_cls = CurrentLoopRouter
         except RuntimeError:
-            raise RuntimeError(
-                "No event loop running. You cannot use a handle initialized with "
-                "`_run_router_in_separate_loop=False` when not inside an asyncio event "
-                "loop."
-            )
-
-        router_wrapper_cls = CurrentLoopRouter
+            # No running event loop (e.g. calling handle.remote() from a
+            # synchronous script). Fall back to SingletonThreadRouter so
+            # sync callers can still use handle.remote().result().
+            # This does not affect the performance-critical path: replicas
+            # and proxies always have a running event loop and will use
+            # CurrentLoopRouter as intended.
+            router_wrapper_cls = SingletonThreadRouter
 
     return router_wrapper_cls(
         controller_handle=controller_handle,

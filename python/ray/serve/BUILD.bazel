@@ -3,7 +3,6 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     size = "small",
-    env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "1"},
     files = glob(
         ["**/*.py"],
         exclude = [
