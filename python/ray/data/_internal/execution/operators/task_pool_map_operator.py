@@ -123,11 +123,9 @@ class TaskPoolMapOperator(MapOperator):
                 2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        data_context = self.data_context
-
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
-            data_context,
+            self._data_context_ref,
             ctx,
             *bundle.block_refs,
             slices=bundle.slices,

@@ -1,6 +1,7 @@
 import argparse
 import dataclasses
 import inspect
+import json
 import typing
 from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
 
@@ -329,11 +330,11 @@ class VLLMEngine(LLMEngine):
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
         self._oai_serving_completion = getattr(state, "openai_serving_completion", None)
-        self._oai_serving_embedding = getattr(state, "openai_serving_embedding", None)
+        self._oai_serving_embedding = getattr(state, "serving_embedding", None)
         self._oai_serving_transcription = getattr(
             state, "openai_serving_transcription", None
         )
-        self._oai_serving_scores = getattr(state, "openai_serving_scores", None)
+        self._oai_serving_scores = getattr(state, "serving_scores", None)
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
         )
@@ -505,6 +506,20 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
+    @staticmethod
+    def _make_error_response(
+        serving: Any,
+        exc: Exception,
+    ) -> ErrorResponse:
+        """Convert an exception to an ErrorResponse and map exception types to
+        the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
+        """
+        try:
+            vllm_error = serving.create_error_response(exc)
+            return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
+        except Exception:
+            raise exc  # re-raise the original so it surfaces as a 500
+
     async def chat(
         self,
         request: ChatCompletionRequest,
@@ -517,10 +532,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_chat, e)
+            return
 
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
@@ -547,10 +566,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_completion, e)
+            return
 
         if isinstance(completion_response, AsyncGenerator):
             async for response in completion_response:
@@ -579,17 +602,18 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
-
-        if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(
-                error=ErrorInfo(**embedding_response.error.model_dump())
+        try:
+            embedding_response = await self._oai_serving_embedding(
+                request,
+                raw_request=raw_request,
             )
-        else:
-            yield EmbeddingResponse(**embedding_response.model_dump())
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_embedding, e)
+            return
+
+        # vLLM 0.18+ returns a starlette Response object
+        content = json.loads(embedding_response.body)
+        yield EmbeddingResponse(**content)
 
     async def transcriptions(
         self,
@@ -606,11 +630,15 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
-            audio_data,
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
+                audio_data,
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_transcription, e)
+            return
 
         if isinstance(transcription_response, AsyncGenerator):
             async for response in transcription_response:
@@ -639,10 +667,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        score_response = await self._oai_serving_scores.create_score(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            score_response = await self._oai_serving_scores.create_score(
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_scores, e)
+            return
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())
@@ -661,10 +693,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        tokenize_response = await self._oai_serving_tokenization.create_tokenize(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            tokenize_response = await self._oai_serving_tokenization.create_tokenize(
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_tokenization, e)
+            return
 
         if isinstance(tokenize_response, VLLMErrorResponse):
             yield ErrorResponse(error=ErrorInfo(**tokenize_response.error.model_dump()))
@@ -683,10 +719,16 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        detokenize_response = await self._oai_serving_tokenization.create_detokenize(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            detokenize_response = (
+                await self._oai_serving_tokenization.create_detokenize(
+                    request,
+                    raw_request=raw_request,
+                )
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_tokenization, e)
+            return
 
         if isinstance(detokenize_response, VLLMErrorResponse):
             yield ErrorResponse(
