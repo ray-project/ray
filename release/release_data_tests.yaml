@@ -262,6 +262,7 @@
   run:
     timeout: 300
     script: >
+      RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
       python wide_schema_pipeline_benchmark.py
       --data-type {{data_type}}
 
