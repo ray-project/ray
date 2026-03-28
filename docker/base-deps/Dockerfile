@@ -31,8 +31,14 @@ ARG PYTHON_DEPSET="python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.l
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
+# HAProxy package and source build parameters
 ARG HAPROXY_REPO="https://www.haproxy.com/download/haproxy/performance/ubuntu/ha32"
 ARG HAPROXY_KEY_URL="https://pks.haproxy.com/linux/community/RPM-GPG-KEY-HAProxy"
+ARG AWSLC_TAG="v1.69.0"
+ARG HAPROXY_BRANCH="3.2"
+ARG HAPROXY_MINOR="3.2.15"
+ARG HAPROXY_SHA256="117e408aff544c9ad758c2fb3fd8cf791a72609d3ae319b2cf9f2a0b035393c2"
+ARG HAPROXY_SRC_URL="http://www.haproxy.org/download"
 
 RUN <<EOF
 #!/bin/bash
@@ -66,14 +72,54 @@ APT_PKGS=(
 
 apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 
-# Install HAProxy 3.2 performance package (haproxy-awslc) from HAProxy repo
-install -d -m 0755 /usr/share/keyrings
-wget -qO /usr/share/keyrings/HAPROXY-key-community.asc "${HAPROXY_KEY_URL}"
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/HAPROXY-key-community.asc] ${HAPROXY_REPO} jammy main" \
-    > /etc/apt/sources.list.d/haproxy.list
-apt-get update -y
-apt-get install -y --no-install-recommends haproxy-awslc
-ln -s /usr/sbin/haproxy /usr/local/bin/haproxy
+# Install HAProxy 3.2 based on architecture
+DPKG_ARCH=$(dpkg --print-architecture)
+if [ "$DPKG_ARCH" = "amd64" ]; then
+    # Use HAProxy performance package (haproxy-awslc) from HAProxy repo
+    install -d -m 0755 /usr/share/keyrings && \
+    wget -qO /usr/share/keyrings/HAPROXY-key-community.asc "${HAPROXY_KEY_URL}" && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/HAPROXY-key-community.asc] ${HAPROXY_REPO} jammy main" \
+        > /etc/apt/sources.list.d/haproxy.list && \
+    apt-get update -y && \
+    apt-get install -y --no-install-recommends haproxy-awslc && \
+    ln -s /usr/sbin/haproxy /usr/local/bin/haproxy
+else
+    # Build HAProxy from source with AWS-LC on non-amd64 platforms
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl golang ninja-build \
+        make libc6-dev libssl-dev libpcre2-dev liblua5.4-dev && \
+    git clone --depth 1 --branch "${AWSLC_TAG}" https://github.com/aws/aws-lc.git /tmp/aws-lc && \
+    mkdir /tmp/aws-lc/build && \
+    cd /tmp/aws-lc/build && \
+    cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/aws-lc -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON .. && \
+    ninja install && \
+    rm -rf /tmp/aws-lc && \
+    curl -sfSL "${HAPROXY_SRC_URL}/${HAPROXY_BRANCH}/src/haproxy-${HAPROXY_MINOR}.tar.gz" -o /tmp/haproxy.tar.gz && \
+    echo "${HAPROXY_SHA256} */tmp/haproxy.tar.gz" | sha256sum -c - && \
+    mkdir -p /tmp/haproxy && \
+    tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy --strip-components=1 && \
+    rm -f /tmp/haproxy.tar.gz && \
+    make -C /tmp/haproxy -j"$(nproc)" TARGET=linux-glibc CPU=generic \
+        USE_PCRE2=1 USE_PCRE2_JIT=1 \
+        USE_TFO=1 USE_LINUX_TPROXY=1 USE_LUA=1 USE_GETADDRINFO=1 \
+        USE_PROMEX=1 USE_SLZ=1 \
+        USE_OPENSSL_AWSLC=1 USE_PTHREAD_EMULATION=1 \
+        SSL_INC=/opt/aws-lc/include SSL_LIB=/opt/aws-lc/lib USE_QUIC=1 \
+        LDFLAGS="-L/opt/aws-lc/lib -Wl,-rpath,/opt/aws-lc/lib" \
+        ADDLIB=-ljemalloc \
+        all && \
+    make -C /tmp/haproxy TARGET=linux-glibc install-bin && \
+    ln -s /usr/local/sbin/haproxy /usr/local/bin/haproxy && \
+    rm -rf /tmp/haproxy && \
+    echo "/opt/aws-lc/lib" > /etc/ld.so.conf.d/awslc.conf && \
+    mkdir -p /opt/aws-lc/ssl && \
+    rm -rf /opt/aws-lc/ssl/certs && \
+    ln -s /etc/ssl/certs /opt/aws-lc/ssl/certs && \
+    ldconfig && \
+    apt-get purge -y golang ninja-build libssl-dev libpcre2-dev liblua5.4-dev libc6-dev && \
+    apt-get autoremove -y && \
+    apt-get install -y --no-install-recommends liblua5.4-0 libpcre2-8-0
+fi
 
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
