@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from dataclasses import replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -52,7 +53,10 @@ from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -498,7 +502,15 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={
+            "Read": [
+                # NOTE: We're truncating `input_files` from metadata as it could
+                #       be carrying 1000s of input files (for `ImageDatasource` for ex)
+                #       and isn't useful inside `DatasetStats`
+                replace(read_task.metadata, input_files=None)
+                for read_task in read_tasks
+            ]
+        },
         parent=None,
     )
 
@@ -938,7 +950,7 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -2816,6 +2828,7 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
@@ -2823,7 +2836,7 @@ def read_databricks_tables(
     )
 
     resolved_provider = resolve_credential_provider(
-        credential_provider=credential_provider
+        DatabricksTableCredentialConfig(credential_provider=credential_provider)
     )
 
     if not catalog:
@@ -4252,20 +4265,15 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
+        UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    resolved_provider = resolve_credential_provider(
+        UnityCatalogCredentialConfig(
+            credential_provider=credential_provider, url=url, token=token
         )
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,
@@ -4407,7 +4415,7 @@ def read_kafka(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: Optional[int] = None,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4473,9 +4481,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+            If None (default), no task-level timeout is applied and each read task
+            will poll until it reaches end_offset. If set, the read task will stop
+            polling after the timeout and return the messages it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4547,7 +4556,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:
@@ -4557,15 +4566,22 @@ def _resolve_parquet_args(
             from ray.data.extensions import ArrowTensorArray
 
             for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                if block.num_rows == 0:
+                    # Empty tables (e.g., dummy tables for schema inference)
+                    # have no buffers to decode. Construct a properly shaped
+                    # empty ndarray so from_numpy infers the correct tensor
+                    # type (shape + dtype).
+                    np_col = np.empty((0,) + shape, dtype=dtype)
+                else:
+                    # NOTE(Clark): We use NumPy to consolidate these
+                    # potentially non-contiguous buffers, and to do buffer
+                    # bookkeeping in general.
+                    np_col = _create_possibly_ragged_ndarray(
+                        [
+                            np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                            for buf in block.column(tensor_col_name)
+                        ]
+                    )
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

@@ -44,11 +44,12 @@ def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
         "unsharded": ray.data.range(NUM_ROWS),
     }
     dataset_config = ray.train.DataConfig(datasets_to_split=["sharded_1", "sharded_2"])
-    train_run_context = create_dummy_run_context(
-        datasets=datasets, dataset_config=dataset_config
-    )
+    train_run_context = create_dummy_run_context(dataset_config=dataset_config)
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets=datasets,
+    )
     callback.before_init_train_context(wg.get_workers())
 
     # Two coordinator actors, one for each sharded dataset
@@ -57,7 +58,10 @@ def test_datasets_callback_multiple_datasets(ray_start_4_cpus):
 
 
 def test_after_worker_group_abort():
-    callback = DatasetsCallback(create_dummy_run_context())
+    callback = DatasetsCallback(
+        train_run_context=create_dummy_run_context(),
+        datasets={},
+    )
 
     # Mock SplitCoordinator shutdown_executor method
     coord_mock = create_autospec(SplitCoordinator)
@@ -78,7 +82,10 @@ def test_after_worker_group_abort():
 
 
 def test_after_worker_group_shutdown():
-    callback = DatasetsCallback(create_dummy_run_context())
+    callback = DatasetsCallback(
+        train_run_context=create_dummy_run_context(),
+        datasets={},
+    )
 
     # Mock SplitCoordinator shutdown_executor method
     coord_mock = create_autospec(SplitCoordinator)
@@ -125,7 +132,7 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     # Explicitly trigger autoscaling
     ray.get(
         coord.__ray_call__.remote(
-            lambda coord: coord._executor._cluster_autoscaler.try_trigger_scaling()
+            lambda coord: coord._current_executor._cluster_autoscaler.try_trigger_scaling()
         )
     )
 
