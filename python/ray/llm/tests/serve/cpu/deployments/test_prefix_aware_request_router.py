@@ -523,10 +523,6 @@ class TestSessionAffinity:
         session_replica = await loop.create_task(
             prefix_request_router._choose_replica_for_request(request)
         )
-
-        prefix_request_router.on_request_routed(
-            request, session_replica.replica_id, None
-        )
         other_replica = r2 if session_replica == r1 else r1
 
         # Insert a long matching prefix on the other replica so prefix cache

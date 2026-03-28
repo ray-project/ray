@@ -457,8 +457,10 @@ class SessionMixin:
         if mapped_replica_ids:
             alive = mapped_replica_ids & self._replica_id_set
             if alive:
+                pending_request.routing_context.should_backoff = True
                 return alive
 
+        pending_request.routing_context.should_backoff = True
         return self._replica_id_set
 
     def rank_replicas_via_session(
@@ -1268,6 +1270,11 @@ class RequestRouter(ABC):
             matched_pending_request.future.set_result(replica)
             # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
             self._remove_pending_request_from_indices(matched_pending_request)
+            if hasattr(self, "_record_session_assignment"):
+                self._record_session_assignment(
+                    matched_pending_request.metadata.session_id,
+                    replica.replica_id,
+                )
             return
 
     def _get_next_pending_request_to_route(

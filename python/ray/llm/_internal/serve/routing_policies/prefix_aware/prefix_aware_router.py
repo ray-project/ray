@@ -410,13 +410,6 @@ class PrefixCacheAffinityRouter(
         This is used as a callback to update the state of the request router
         after a response is generated.
         """
-        # Record session assignment so future requests with the same session_id
-        # are routed to the same replica.
-        if pending_request is not None and pending_request.metadata.session_id:
-            self._record_session_assignment(
-                pending_request.metadata.session_id, replica_id
-            )
-
         # Right now this only inserts the prompt into the prefix tree, not the response (streaming response makes things complicated)
         if (
             pending_request is not None

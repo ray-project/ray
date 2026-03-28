@@ -145,6 +145,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.request_router.FIFOMixin
    serve.request_router.LocalityMixin
    serve.request_router.MultiplexMixin
+   serve.request_router.SessionMixin
    serve.request_router.RequestRouter
 ```
 

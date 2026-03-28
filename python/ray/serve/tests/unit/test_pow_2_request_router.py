@@ -2437,5 +2437,128 @@ class TestSessionAffinity:
             assert (await task) == r2
 
 
+@pytest.mark.asyncio
+async def test_rank_replicas_via_session(pow_2_router):
+    """Test rank_replicas_via_session returns the correct ranking."""
+    s = pow_2_router
+
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    r1.set_queue_len_response(0)
+    r2.set_queue_len_response(0)
+    all_replicas = [r1, r2]
+    s.update_replicas(all_replicas)
+
+    # Establish session mapping to one replica.
+    loop = get_or_create_event_loop()
+    request = fake_pending_request(session_id="s1")
+    chosen = await loop.create_task(s._choose_replica_for_request(request))
+
+    other = r2 if chosen == r1 else r1
+    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="s1") == [
+        [chosen],
+        [other],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_session_spillover(pow_2_router):
+    """When the session-mapped replica is at capacity, requests should spill to other
+    replicas immediately."""
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    r2 = FakeRunningReplica("r2")
+    r2.set_queue_len_response(0)
+    s.update_replicas([r1, r2])
+
+    # Establish session mapping.
+    request = fake_pending_request(session_id="s1")
+    first_replica = await loop.create_task(s._choose_replica_for_request(request))
+    other_replica = r2 if first_replica == r1 else r1
+
+    # Fill the mapped replica's queue to max capacity.
+    first_replica.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+
+    # Request should spill to the other replica.
+    request = fake_pending_request(session_id="s1")
+    spill_replica = await loop.create_task(s._choose_replica_for_request(request))
+    assert spill_replica == other_replica
+
+
+@pytest.mark.asyncio
+async def test_session_one_to_many_after_spillover(pow_2_router):
+    """After spillover, subsequent requests should load-balance across
+    the expanded session replica set."""
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    r2 = FakeRunningReplica("r2")
+    r2.set_queue_len_response(0)
+    s.update_replicas([r1, r2])
+
+    # Establish session mapping.
+    request = fake_pending_request(session_id="s1")
+    first_replica = await loop.create_task(s._choose_replica_for_request(request))
+    other_replica = r2 if first_replica == r1 else r1
+
+    # Trigger spillover by filling the first replica.
+    first_replica.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    request = fake_pending_request(session_id="s1")
+    spill_replica = await loop.create_task(s._choose_replica_for_request(request))
+    assert spill_replica == other_replica
+
+    # Now both replicas should be in the session's set.
+    assert r1.replica_id in s._session_id_to_replica_ids["s1"]
+    assert r2.replica_id in s._session_id_to_replica_ids["s1"]
+
+    # Restore first replica to available.
+    first_replica.set_queue_len_response(0)
+
+    # Subsequent requests should load-balance across both replicas.
+    replicas_chosen = set()
+    for _ in range(20):
+        request = fake_pending_request(session_id="s1")
+        task = loop.create_task(s._choose_replica_for_request(request))
+        replicas_chosen.add(await task)
+
+    assert replicas_chosen == {r1, r2}
+
+
+@pytest.mark.asyncio
+async def test_sessions_share_replicas(pow_2_router):
+    """More sessions than replicas: each session should be independently
+    sticky, and replicas should be shared across sessions."""
+    s = pow_2_router
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    r2 = FakeRunningReplica("r2")
+    r2.set_queue_len_response(0)
+    s.update_replicas([r1, r2])
+
+    # Establish mappings for 4 sessions across 2 replicas.
+    session_to_replica = {}
+    for sid in ["s1", "s2", "s3", "s4"]:
+        request = fake_pending_request(session_id=sid)
+        replica = await loop.create_task(s._choose_replica_for_request(request))
+        session_to_replica[sid] = replica
+
+    # Each session should be sticky.
+    for sid, expected_replica in session_to_replica.items():
+        for _ in range(5):
+            request = fake_pending_request(session_id=sid)
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == expected_replica
+
+    # Both replicas should be used across the 4 sessions.
+    assert set(session_to_replica.values()) == {r1, r2}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

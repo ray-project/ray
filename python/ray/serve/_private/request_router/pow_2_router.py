@@ -25,17 +25,17 @@ from ray.serve._private.request_router.request_router import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def _pick_two_from(
+def _power_of_two_choices(
     candidate_replica_ids: set,
     replicas: dict,
 ) -> List[RunningReplica]:
     """Pick at most two replicas from a set using power-of-two-choices.
 
     Optimized selection: use direct randrange for k=2 instead of
-    random.sample.  This is ~1.9x faster for the common case.
+    random.sample. This is ~1.9x faster for the common case.
 
     Correctness proof: We pick i uniformly from [0, n), then j uniformly
-    from [0, n-1) and shift j up if j >= i.  Every ordered pair (i, j)
+    from [0, n-1) and shift j up if j >= i. Every ordered pair (i, j)
     with i != j has probability 1/(n(n-1)), matching random.sample(k=2).
     """
     candidates = tuple(candidate_replica_ids)
@@ -112,14 +112,14 @@ class PowerOfTwoChoicesRequestRouter(
                 pending_request=pending_request,
             )
         elif pending_request is not None and pending_request.metadata.session_id:
-            # Returns ranked tiers instead of a flat candidate set so the
-            # request can spill to non-session replicas immediately when
-            # session-mapped replicas are full, without waiting for backoff.
+            # Returns ranked tiers instead of a flat candidate set so the request can spill
+            # to non-session replicas immediately when session-mapped replicas are full.
+            pending_request.routing_context.should_backoff = True
             ranked = self.rank_replicas_via_session(
                 candidate_replicas, pending_request.metadata.session_id
             )
             return [
-                _pick_two_from({r.replica_id for r in tier}, self._replicas)
+                _power_of_two_choices({r.replica_id for r in tier}, self._replicas)
                 for tier in ranked
             ]
         else:
@@ -131,4 +131,4 @@ class PowerOfTwoChoicesRequestRouter(
         if not candidate_replica_ids:
             return []
 
-        return [_pick_two_from(candidate_replica_ids, self._replicas)]
+        return [_power_of_two_choices(candidate_replica_ids, self._replicas)]
