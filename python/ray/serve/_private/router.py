@@ -23,7 +23,13 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
+from ray.exceptions import (
+    ActorDiedError,
+    ActorUnavailableError,
+    RayActorError,
+    RayError,
+    RayTaskError,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -994,11 +1000,15 @@ class AsyncioRouter:
                     # permanently failed — retrying with another replica
                     # won't help. Propagate immediately so the caller gets
                     # a fast error.
-                    raise
+                    raise RayActorError(
+                        error_msg="An upstream deployment in the request chain crashed."
+                    )
             elif not pr.resolved:
                 # ActorDiedError during argument resolution — same upstream
                 # cause as above, caught before a replica was even chosen.
-                raise
+                raise RayActorError(
+                    error_msg="An upstream deployment in the request chain crashed."
+                )
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
