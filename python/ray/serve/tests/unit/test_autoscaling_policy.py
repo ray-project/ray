@@ -1,5 +1,5 @@
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -148,7 +148,10 @@ def _run_upscale_downscale_flow(
     downscale.
     This can be used by both the default autoscaling policy and custom autoscaling policy
     with default parameters to verify scaling is properly enabled.
-    The downscale flow is from upscale_target upto zero
+    The downscale flow is from upscale_target upto zero.
+
+    Uses a mocked clock so that each policy call advances wall-clock time by
+    CONTROL_LOOP_INTERVAL_S, matching what the real control loop would do.
     """
 
     upscale_wait_periods = int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
@@ -167,8 +170,30 @@ def _run_upscale_downscale_flow(
     # decorated policies can persist their internal state
     policy_state = ctx.policy_state or {}
 
-    # We should scale up only after enough consecutive scale-up decisions.
-    for i in range(upscale_wait_periods):
+    # Track a fake clock that advances by CONTROL_LOOP_INTERVAL_S per call,
+    # simulating real control-loop timing for the wall-clock delay logic.
+    fake_time = [1_000_000.0]
+
+    def _advance_time():
+        current = fake_time[0]
+        fake_time[0] += CONTROL_LOOP_INTERVAL_S
+        return current
+
+    with patch("ray.serve.autoscaling_policy.time") as mock_time:
+        mock_time.time = _advance_time
+
+        # We should scale up only after enough consecutive scale-up decisions.
+        for i in range(upscale_wait_periods):
+            ctx = create_context_with_overrides(
+                ctx,
+                total_num_requests=overload_requests,
+                current_num_replicas=start_replicas,
+                target_num_replicas=start_replicas,
+                policy_state=policy_state,
+            )
+            new_num_replicas, policy_state = policy(ctx=ctx)
+            assert new_num_replicas == start_replicas, i
+
         ctx = create_context_with_overrides(
             ctx,
             total_num_requests=overload_requests,
@@ -177,22 +202,22 @@ def _run_upscale_downscale_flow(
             policy_state=policy_state,
         )
         new_num_replicas, policy_state = policy(ctx=ctx)
-        assert new_num_replicas == start_replicas, i
+        assert new_num_replicas == upscale_target
 
-    ctx = create_context_with_overrides(
-        ctx,
-        total_num_requests=overload_requests,
-        current_num_replicas=start_replicas,
-        target_num_replicas=start_replicas,
-        policy_state=policy_state,
-    )
-    new_num_replicas, policy_state = policy(ctx=ctx)
-    assert new_num_replicas == upscale_target
+        no_requests = 0
 
-    no_requests = 0
+        # We should scale down only after enough consecutive scale-down decisions.
+        for i in range(downscale_wait_periods):
+            ctx = create_context_with_overrides(
+                ctx,
+                total_num_requests=no_requests,
+                current_num_replicas=upscale_target,
+                target_num_replicas=upscale_target,
+                policy_state=policy_state,
+            )
+            new_num_replicas, policy_state = policy(ctx=ctx)
+            assert new_num_replicas == upscale_target, i
 
-    # We should scale down only after enough consecutive scale-down decisions.
-    for i in range(downscale_wait_periods):
         ctx = create_context_with_overrides(
             ctx,
             total_num_requests=no_requests,
@@ -201,20 +226,21 @@ def _run_upscale_downscale_flow(
             policy_state=policy_state,
         )
         new_num_replicas, policy_state = policy(ctx=ctx)
-        assert new_num_replicas == upscale_target, i
+        assert new_num_replicas == 1
 
-    ctx = create_context_with_overrides(
-        ctx,
-        total_num_requests=no_requests,
-        current_num_replicas=upscale_target,
-        target_num_replicas=upscale_target,
-        policy_state=policy_state,
-    )
-    new_num_replicas, policy_state = policy(ctx=ctx)
-    assert new_num_replicas == 1
+        # We should scale down to zero only after enough consecutive
+        # downscale-to-zero decisions.
+        for i in range(downscale_to_zero_wait_periods):
+            ctx = create_context_with_overrides(
+                ctx,
+                total_num_requests=no_requests,
+                current_num_replicas=1,
+                target_num_replicas=1,
+                policy_state=policy_state,
+            )
+            new_num_replicas, policy_state = policy(ctx=ctx)
+            assert new_num_replicas == 1, i
 
-    # We should scale down to zero only after enough consecutive downscale-to-zero decisions.
-    for i in range(downscale_to_zero_wait_periods):
         ctx = create_context_with_overrides(
             ctx,
             total_num_requests=no_requests,
@@ -223,17 +249,7 @@ def _run_upscale_downscale_flow(
             policy_state=policy_state,
         )
         new_num_replicas, policy_state = policy(ctx=ctx)
-        assert new_num_replicas == 1, i
-
-    ctx = create_context_with_overrides(
-        ctx,
-        total_num_requests=no_requests,
-        current_num_replicas=1,
-        target_num_replicas=1,
-        policy_state=policy_state,
-    )
-    new_num_replicas, policy_state = policy(ctx=ctx)
-    assert new_num_replicas == 0
+        assert new_num_replicas == 0
 
     # Get some scale-up decisions, but not enough to trigger a scale up.
     for i in range(int(upscale_wait_periods / 2)):
@@ -868,7 +884,7 @@ class TestAutoscalingConfigParameters:
         assert result == 9
 
     def test_apply_delay_logic_upscale(self):
-        """Test upscale delay requires consecutive periods."""
+        """Test upscale delay uses wall-clock time."""
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=10,
@@ -895,25 +911,30 @@ class TestAutoscalingConfigParameters:
             last_scale_down_time=None,
             total_pending_async_requests=0,
         )
-        upscale_wait_period = int(ctx.config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
-        for i in range(upscale_wait_period):
+        base_time = 1000.0
+        # Simulate calls before the delay elapses — should not scale up.
+        for i in range(3):
             decision, ctx.policy_state = _apply_delay_logic(
                 desired_num_replicas=5,
                 curr_target_num_replicas=ctx.target_num_replicas,
                 config=ctx.config,
                 policy_state=ctx.policy_state,
+                _now=base_time + i * 0.05,
             )
             assert decision == 1, f"Should not scale up on iteration {i}"
 
+        # Simulate a call after the delay has elapsed.
         decision, _ = _apply_delay_logic(
             desired_num_replicas=5,
             curr_target_num_replicas=ctx.target_num_replicas,
             config=ctx.config,
             policy_state=ctx.policy_state,
+            _now=base_time + 0.3,
         )
         assert decision == 5
 
     def test_apply_delay_logic_downscale(self):
+        """Test downscale delay uses wall-clock time."""
         config = AutoscalingConfig(
             min_replicas=0,
             max_replicas=10,
@@ -940,48 +961,52 @@ class TestAutoscalingConfigParameters:
             last_scale_down_time=None,
             total_pending_async_requests=0,
         )
-        downscale_to_zero_wait_period = int(
-            ctx.config.downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
-        )
-        downscale_wait_period = int(
-            ctx.config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
-        )
-        # Downscale form 4->1
-        for i in range(downscale_wait_period):
+        base_time = 1000.0
+        # Downscale from 4->1: calls before downscale_delay_s (0.3s) elapses
+        for i in range(3):
             decision_num_replicas, ctx.policy_state = _apply_delay_logic(
                 desired_num_replicas=0,
                 curr_target_num_replicas=ctx.target_num_replicas,
                 config=ctx.config,
                 policy_state=ctx.policy_state,
+                _now=base_time + i * 0.05,
             )
             assert (
                 decision_num_replicas == 4
-            ), f"Should not scale down to 0 on iteration {i}"
+            ), f"Should not scale down on iteration {i}"
 
-        decision_num_replicas, _ = _apply_delay_logic(
+        # Call after 0.3s has elapsed — should downscale 4->1
+        decision_num_replicas, ctx.policy_state = _apply_delay_logic(
             desired_num_replicas=0,
             curr_target_num_replicas=ctx.target_num_replicas,
             config=ctx.config,
             policy_state=ctx.policy_state,
+            _now=base_time + 0.3,
         )
         assert decision_num_replicas == 1
         ctx.target_num_replicas = decision_num_replicas
-        # Downscale from 1->0
-        for i in range(downscale_to_zero_wait_period):
+
+        # Downscale from 1->0: calls before downscale_to_zero_delay_s (0.4s) elapses
+        base_time2 = base_time + 0.5
+        for i in range(3):
             decision_num_replicas, ctx.policy_state = _apply_delay_logic(
                 desired_num_replicas=0,
                 curr_target_num_replicas=ctx.target_num_replicas,
                 config=ctx.config,
                 policy_state=ctx.policy_state,
+                _now=base_time2 + i * 0.1,
             )
             assert (
                 decision_num_replicas == 1
             ), f"Should not scale down from 1 to 0 on tick {i}"
+
+        # Call after 0.4s has elapsed — should downscale 1->0
         decision_num_replicas, _ = _apply_delay_logic(
             desired_num_replicas=0,
             curr_target_num_replicas=ctx.target_num_replicas,
             config=ctx.config,
             policy_state=ctx.policy_state,
+            _now=base_time2 + 0.4,
         )
         assert decision_num_replicas == 0
 

@@ -795,6 +795,8 @@ RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
+# Key for the wall-clock timestamp when a scaling decision was first observed
+SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY = "__decision_timestamp"
 
 # Event loop monitoring interval in seconds.
 # This is how often the event loop lag is measured.
