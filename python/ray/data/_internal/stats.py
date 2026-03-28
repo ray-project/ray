@@ -88,20 +88,38 @@ class _StatsAccumulator:
         self,
         *,
         mean_as_int: bool = False,
+        round_digits: Optional[int] = None,
         include_sum: bool = True,
         include_count: bool = True,
     ) -> Optional[dict[str, int | float]]:
-        """Return stats dict, or None if no values were added."""
+        """Build a summary dict from accumulated values.
+
+        Args:
+            mean_as_int: If True, the ``mean`` field is ``int(mean)``; otherwise
+                it is a float (optionally rounded).
+            round_digits: If set, round ``min``, ``max``, ``mean``, and ``sum``
+                to this many decimal places. Applied before ``mean_as_int``.
+            include_sum: If True, include a ``sum`` key in the result.
+            include_count: If True, include a ``count`` key in the result.
+
+        Returns:
+            A dict with ``min``, ``max``, ``mean``, and optionally ``sum`` and
+            ``count``, or ``None`` if no values were added via :meth:`add`.
+        """
         if not self.count:
             return None
         mean = self.sum / self.count
+
+        def _maybe_round(v: int | float) -> int | float:
+            return round(v, round_digits) if round_digits is not None else v
+
         result = {
-            "min": self.min_value,
-            "max": self.max_value,
-            "mean": int(mean) if mean_as_int else mean,
+            "min": _maybe_round(self.min_value),
+            "max": _maybe_round(self.max_value),
+            "mean": int(mean) if mean_as_int else _maybe_round(mean),
         }
         if include_sum:
-            result["sum"] = self.sum
+            result["sum"] = _maybe_round(self.sum)
         if include_count:
             result["count"] = self.count
         return result
@@ -1446,80 +1464,89 @@ class OperatorStatsSummary:
             A `OperatorStatsSummary` object initialized with the calculated statistics
         """
         # Single pass over block_stats to collect all metrics.
-        wall = _StatsAccumulator()
-        cpu = _StatsAccumulator()
-        udf = _StatsAccumulator()
-        mem = _StatsAccumulator()
-        rows = _StatsAccumulator()
-        sizes = _StatsAccumulator()
-        task_rows = collections.defaultdict(int)
-        node_tasks = collections.defaultdict(set)
+        wall_time_acc: _StatsAccumulator = _StatsAccumulator()
+        cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
+        udf_time_acc: _StatsAccumulator = _StatsAccumulator()
+        memory_acc: _StatsAccumulator = _StatsAccumulator()
+        output_rows_acc: _StatsAccumulator = _StatsAccumulator()
+        output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
+        rows_per_task: dict[int, int] = collections.defaultdict(int)
+        tasks_per_node: dict[str, set[int]] = collections.defaultdict(set)
         num_exec = 0
         earliest_start_time, latest_end_time = float("inf"), float("-inf")
 
         for block_meta in block_stats:
             if block_meta.num_rows is not None:
-                rows.add(block_meta.num_rows)
+                output_rows_acc.add(block_meta.num_rows)
             if block_meta.size_bytes is not None:
-                sizes.add(block_meta.size_bytes)
+                output_sizes_acc.add(block_meta.size_bytes)
 
             es = block_meta.exec_stats
             if es is not None:
                 num_exec += 1
-                wall.add(es.wall_time_s)
-                cpu.add(es.cpu_time_s)
-                udf.add(es.udf_time_s)
-                mem.add(round((es.max_uss_bytes or 0) / MiB, 2))
-                node_tasks[es.node_id].add(es.task_idx)
+                wall_time_acc.add(es.wall_time_s)
+                cpu_time_acc.add(es.cpu_time_s)
+                udf_time_acc.add(es.udf_time_s)
+                memory_acc.add((es.max_uss_bytes or 0) / MiB)
+                tasks_per_node[es.node_id].add(es.task_idx)
                 earliest_start_time = min(earliest_start_time, es.start_time_s)
                 latest_end_time = max(latest_end_time, es.end_time_s)
                 if block_meta.num_rows is not None:
-                    task_rows[es.task_idx] += block_meta.num_rows
-
-        # Compute timing totals.
-        if num_exec:
-            time_total_s = latest_end_time - earliest_start_time
-        else:
-            time_total_s = 0
-            earliest_start_time, latest_end_time = 0, 0
+                    rows_per_task[es.task_idx] += block_meta.num_rows
 
         # Build execution summary string.
         if is_sub_operator:
+            time_total_s = 0
+            earliest_start_time, latest_end_time = 0, 0
             exec_summary_str = f"{num_exec} blocks produced\n"
         elif num_exec:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                rounded_total = 0
-            exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
+            # Handle -0.0 case.
+            time_total_s = round(latest_end_time - earliest_start_time, 2)
+            if time_total_s <= 0:
+                time_total_s = 0
+            exec_summary_str = f"{num_exec} blocks produced in {time_total_s}s\n"
         else:
+            time_total_s = 0
+            earliest_start_time, latest_end_time = 0, 0
             exec_summary_str = "\n"
 
         # Task-level row stats.
         task_rows_stats = None
-        if task_rows:
-            tr = _StatsAccumulator()
-            for count in task_rows.values():
-                tr.add(count)
-            task_rows_stats = tr.get(mean_as_int=True, include_sum=False)
-            exec_summary_str = f"{tr.count} tasks executed, {exec_summary_str}"
+        if rows_per_task:
+            task_rows_acc = _StatsAccumulator()
+            for count in rows_per_task.values():
+                task_rows_acc.add(count)
+            task_rows_stats = task_rows_acc.get(mean_as_int=True, include_sum=False)
+            exec_summary_str = (
+                f"{task_rows_acc.count} tasks executed, {exec_summary_str}"
+            )
 
         # Execution stats.
-        wall_time_stats = wall.get(include_count=False)
-        cpu_stats = cpu.get(include_count=False)
-        udf_stats = udf.get(include_count=False)
-        memory_stats = mem.get(mean_as_int=True, include_sum=False, include_count=False)
+        wall_time_stats = wall_time_acc.get(include_count=False)
+        cpu_stats = cpu_time_acc.get(include_count=False)
+        udf_stats = udf_time_acc.get(include_count=False)
+        memory_stats = memory_acc.get(
+            mean_as_int=True,
+            round_digits=2,
+            include_sum=False,
+            include_count=False,
+        )
 
         # Output stats.
-        output_num_rows_stats = rows.get(mean_as_int=True, include_count=False)
-        output_size_bytes_stats = sizes.get(mean_as_int=True, include_count=False)
+        output_num_rows_stats = output_rows_acc.get(
+            mean_as_int=True, include_count=False
+        )
+        output_size_bytes_stats = output_sizes_acc.get(
+            mean_as_int=True, include_count=False
+        )
 
         # Node distribution stats.
         node_counts_stats = None
-        if node_tasks:
-            nc = _StatsAccumulator()
-            for tasks in node_tasks.values():
-                nc.add(len(tasks))
-            node_counts_stats = nc.get(mean_as_int=True, include_sum=False)
+        if tasks_per_node:
+            node_counts_acc = _StatsAccumulator()
+            for tasks in tasks_per_node.values():
+                node_counts_acc.add(len(tasks))
+            node_counts_stats = node_counts_acc.get(mean_as_int=True, include_sum=False)
 
         # Assign a value in to_summary and initialize it as None.
         total_input_num_rows = None
