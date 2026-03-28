@@ -38,7 +38,7 @@ ARG AWSLC_TAG="v1.69.0"
 ARG HAPROXY_BRANCH="3.2"
 ARG HAPROXY_MINOR="3.2.15"
 ARG HAPROXY_SHA256="117e408aff544c9ad758c2fb3fd8cf791a72609d3ae319b2cf9f2a0b035393c2"
-ARG HAPROXY_SRC_URL="http://www.haproxy.org/download"
+ARG HAPROXY_SRC_URL="https://www.haproxy.org/download"
 
 RUN <<EOF
 #!/bin/bash
