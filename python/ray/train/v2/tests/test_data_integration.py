@@ -144,11 +144,11 @@ def test_datasets_callback(ray_start_4_cpus):
     # Under the V2 cluster autoscaler (default), the scaling policy registers training resources
     # with the AutoscalingCoordinator, so exclude_resources should not be set.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
 
@@ -666,11 +666,11 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
 
     # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
 
@@ -729,11 +729,11 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     # Under the V2 cluster autoscaler (default), exclude_resources should be
     # zero regardless of how many training resources are reserved.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
 
