@@ -193,6 +193,9 @@ def create_router(
             # and proxies always have a running event loop and will use
             # CurrentLoopRouter as intended.
             router_wrapper_cls = SingletonThreadRouter
+            SingletonThreadRouter._get_singleton_asyncio_loop(
+                EventLoopMonitor.COMPONENT_UNKNOWN
+            ).set_exception_handler(asyncio_grpc_exception_handler)
 
     return router_wrapper_cls(
         controller_handle=controller_handle,
