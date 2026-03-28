@@ -27,6 +27,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TracingConfig,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1052,6 +1053,152 @@ class TestLoggingConfig:
             {"additional_log_standard_attrs": ["name", "name"]}
         )
         assert schema.additional_log_standard_attrs == ["name"]
+
+
+class TestTracingConfig:
+    def test_default_values(self):
+        """TracingConfig() defaults should come from the module-level constants."""
+        from ray.serve._private.constants import (
+            RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+            RAY_SERVE_TRACING_SAMPLING_RATIO,
+        )
+
+        config = TracingConfig()
+        assert config.enabled == bool(RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH)
+        assert config.exporter_import_path == RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+        assert config.sampling_ratio == RAY_SERVE_TRACING_SAMPLING_RATIO
+
+    def test_explicit_enabled(self):
+        """Explicitly setting enabled=True/False overrides the default."""
+        config = TracingConfig(enabled=True)
+        assert config.enabled is True
+
+        config = TracingConfig(enabled=False)
+        assert config.enabled is False
+
+    def test_parse_dict(self):
+        config = TracingConfig.model_validate(
+            {
+                "enabled": True,
+                "exporter_import_path": "my_module:my_exporter",
+                "sampling_ratio": 0.5,
+            }
+        )
+        assert config.enabled is True
+        assert config.exporter_import_path == "my_module:my_exporter"
+        assert config.sampling_ratio == 0.5
+
+    def test_parse_empty_dict(self):
+        """Empty dict should produce the same result as TracingConfig()."""
+        config = TracingConfig.model_validate({})
+        default = TracingConfig()
+        assert config.enabled == default.enabled
+        assert config.exporter_import_path == default.exporter_import_path
+        assert config.sampling_ratio == default.sampling_ratio
+
+    def test_enabled_true_fills_default_exporter(self):
+        """enabled=True with empty exporter should auto-fill the built-in exporter."""
+        config = TracingConfig(enabled=True, exporter_import_path="")
+        assert config.exporter_import_path == (
+            "ray.serve._private.tracing_utils:default_tracing_exporter"
+        )
+
+    def test_enabled_true_custom_exporter_not_overwritten(self):
+        """enabled=True with a custom exporter should not overwrite it."""
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="custom:exporter",
+        )
+        assert config.exporter_import_path == "custom:exporter"
+
+    def test_enabled_false_no_exporter_fill(self):
+        """enabled=False should not auto-fill the exporter."""
+        config = TracingConfig(enabled=False)
+        assert config.exporter_import_path == ""
+
+    def test_sampling_ratio_bounds(self):
+        # Valid boundary values
+        assert TracingConfig(sampling_ratio=0.0).sampling_ratio == 0.0
+        assert TracingConfig(sampling_ratio=1.0).sampling_ratio == 1.0
+        assert TracingConfig(sampling_ratio=0.5).sampling_ratio == 0.5
+
+    def test_sampling_ratio_out_of_range(self):
+        with pytest.raises(ValidationError, match="sampling_ratio"):
+            TracingConfig(sampling_ratio=-0.1)
+        with pytest.raises(ValidationError, match="sampling_ratio"):
+            TracingConfig(sampling_ratio=1.1)
+
+    def test_extra_fields_forbidden(self):
+        with pytest.raises(ValidationError):
+            TracingConfig.model_validate({"unknown_field": "value"})
+
+    def test_dict_roundtrip(self):
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="my_module:exporter",
+            sampling_ratio=0.1,
+        )
+        d = config.model_dump()
+        restored = TracingConfig.model_validate(d)
+        assert restored.enabled == config.enabled
+        assert restored.exporter_import_path == config.exporter_import_path
+        assert restored.sampling_ratio == config.sampling_ratio
+
+    def test_serve_deploy_schema_with_tracing_config(self):
+        """TracingConfig in ServeDeploySchema should parse correctly."""
+        deploy_config = ServeDeploySchema.model_validate(
+            {
+                "tracing_config": {
+                    "enabled": True,
+                    "exporter_import_path": "my_module:my_exporter",
+                    "sampling_ratio": 0.1,
+                },
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": "module.graph",
+                    }
+                ],
+            }
+        )
+        assert deploy_config.tracing_config is not None
+        assert deploy_config.tracing_config.enabled is True
+        assert deploy_config.tracing_config.exporter_import_path == (
+            "my_module:my_exporter"
+        )
+        assert deploy_config.tracing_config.sampling_ratio == 0.1
+
+    def test_serve_deploy_schema_without_tracing_config(self):
+        """Omitting tracing_config should default to None."""
+        deploy_config = ServeDeploySchema.model_validate(
+            {
+                "applications": [
+                    {
+                        "name": "app1",
+                        "route_prefix": "/app1",
+                        "import_path": "module.graph",
+                    }
+                ],
+            }
+        )
+        assert deploy_config.tracing_config is None
+
+    def test_serve_deploy_schema_invalid_tracing_config(self):
+        """Invalid tracing_config should raise ValidationError."""
+        with pytest.raises(ValidationError):
+            ServeDeploySchema.model_validate(
+                {
+                    "tracing_config": {"sampling_ratio": 2.0},
+                    "applications": [
+                        {
+                            "name": "app1",
+                            "route_prefix": "/app1",
+                            "import_path": "module.graph",
+                        }
+                    ],
+                }
+            )
 
 
 # This function is defined globally to be accessible via import path

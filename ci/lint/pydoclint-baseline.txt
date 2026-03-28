@@ -1384,10 +1384,12 @@ python/ray/scripts/scripts.py
 python/ray/serve/_private/api.py
     DOC101: Function `serve_start`: Docstring contains fewer arguments than in function signature.
     DOC111: Function `serve_start`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC103: Function `serve_start`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , global_logging_config: Union[None, dict, LoggingConfig]].
+    DOC103: Function `serve_start`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , global_logging_config: Union[None, dict, LoggingConfig], global_tracing_config: Union[None, dict, 'TracingConfig']].
     DOC201: Function `serve_start` does not have a return section in docstring
 --------------------
 python/ray/serve/_private/application_state.py
+    DOC101: Method `ApplicationState.__init__`: Docstring contains fewer arguments than in function signature.
+    DOC103: Method `ApplicationState.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [tracing_config: Optional['TracingConfig']].
     DOC103: Method `ApplicationStateManager.deploy_app`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [deployment_args: List[Dict]]. Arguments in the docstring but not in the function signature: [deployment_args_list: ].
     DOC102: Function `override_deployment_info`: Docstring contains more arguments than in function signature.
     DOC103: Function `override_deployment_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [app_name: ].
