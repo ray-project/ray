@@ -4388,8 +4388,48 @@ class DeploymentState:
             # Reconfigure replicas that had their ranks reassigned
             self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
+    def _handle_deployment_actor_failed_health_check(
+        self,
+        wrapper: DeploymentActorWrapper,
+        *,
+        actor_name: str,
+    ) -> None:
+        """Stop an actor after failed health polling; separate from startup retries.
+
+        Matches replica semantics in ``_stop_replica_mark_unhealthy_if_target_version``:
+        target-version failures mark the deployment UNHEALTHY and set
+        ``_in_transition`` so ``start_deployment_actors`` can recreate; older code
+        versions are only stopped (no ``_deployment_actor_retry_counter``).
+        """
+        detail = (
+            f"Deployment actor '{actor_name}' failed health checks "
+            f"({DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD} consecutive "
+            "failures or actor crash); recreating. "
+            "Replicas should call serve.get_deployment_actor() again if they "
+            "cached a stale ActorHandle."
+        )
+        logger.warning(f"{detail} deployment_id={self._id}")
+        wrapper.kill()
+        target_version = self._target_state.version
+        if (
+            target_version is not None
+            and wrapper.code_version == target_version.code_version
+        ):
+            self._in_transition = True
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                message=(
+                    "A deployment actor's health check failed. This deployment will be "
+                    "UNHEALTHY until the actor is recreated or a new deploy happens."
+                ),
+            )
+
     def check_and_update_deployment_actors(self) -> None:
-        """Poll RUNNING deployment-scoped actors; recreate any that fail health checks."""
+        """Poll all RUNNING deployment-scoped actors (every code version), like replicas.
+
+        Failed health checks kill the actor. Target-version actors are recreated via
+        ``start_deployment_actors`` without consuming ``_deployment_actor_retry_counter``.
+        """
         if self._target_state.deleting:
             return
         if not self._get_deployment_actors_configs():
@@ -4405,17 +4445,10 @@ class DeploymentState:
             if wrapper.check_health():
                 self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)
             else:
-                name = wrapper.actor_logical_name
-                err = (
-                    f"Deployment actor '{name}' failed health checks "
-                    f"({DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD} consecutive "
-                    "failures or actor crash); recreating. "
-                    "Replicas should call serve.get_deployment_actor() again if they "
-                    "cached a stale ActorHandle."
+                self._handle_deployment_actor_failed_health_check(
+                    wrapper,
+                    actor_name=wrapper.actor_logical_name,
                 )
-                logger.warning(f"{err} deployment_id={self._id}")
-                wrapper.kill()
-                self.record_deployment_actor_startup_failure(err)
 
     def _check_and_update_transitioning_replicas(self):
         """Check STARTING/UPDATING/RECOVERING/STOPPING replicas for state transitions."""
@@ -4848,10 +4881,12 @@ class DeploymentState:
         )
 
     def record_deployment_actor_startup_failure(self, error_msg: str) -> None:
-        """Record that a deployment actor failed to start. Updates message with retries.
+        """Record constructor/start failure for a deployment actor (not health checks).
 
-        Consistent with record_replica_startup_failure: status stays UPDATING
-        during retries; transition to DEPLOY_FAILED only when threshold exceeded.
+        Increments ``_deployment_actor_retry_counter`` toward DEPLOY_FAILED, like
+        ``record_replica_startup_failure``. Health-driven kills use
+        ``_handle_deployment_actor_failed_health_check`` instead so rolling updates
+        are not coupled to startup retries.
         """
         deployment_actors_configs = self._get_deployment_actors_configs()
         if not deployment_actors_configs:

@@ -3296,7 +3296,7 @@ class TestDeploymentActors:
     def test_deployment_actor_check_health_unhealthy_kills_and_recreates(
         self, mock_deployment_state_manager
     ):
-        """Failed ``check_health`` removes the actor, records failure, and can recover."""
+        """Failed ``check_health`` kills the actor without startup retry counter; recovers."""
         create_dsm, _, _, _ = mock_deployment_state_manager
 
         dsm: DeploymentStateManager = create_dsm()
@@ -3322,8 +3322,9 @@ class TestDeploymentActors:
         ds.check_and_update_deployment_actors()
         assert w.killed
         assert ds._deployment_actors.get_wrapper("1", "counter") is None
-        assert ds._deployment_actor_retry_counter == 1
+        assert ds._deployment_actor_retry_counter == 0
         assert ds._in_transition is True
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
 
         dsm.update()
         w2 = _get_deployment_actor_wrapper(ds, "1")
@@ -3415,6 +3416,59 @@ class TestDeploymentActors:
         ds.check_and_update_deployment_actors()
         assert not ds._deployment_actors_satisfied_for_target()
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 1
+
+    def test_deployment_actor_health_check_non_target_kills_without_startup_counter(
+        self, mock_deployment_state_manager
+    ):
+        """Like old replicas: non-target unhealthy actors are stopped, no startup counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        w_v2 = _get_deployment_actor_wrapper(ds, "2")
+        w_v2.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actor_retry_counter == 0
+
+        w_orphan = _mock_deployment_actor_wrapper(
+            TEST_DEPLOYMENT_ID, "1", "orphan_leftover"
+        )
+        w_orphan.set_health_ok(False)
+        ds._deployment_actors.add(DeploymentActorState.RUNNING, w_orphan)
+
+        ds.check_and_update_deployment_actors()
+
+        assert w_orphan.killed
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._deployment_actors.get_wrapper("1", "orphan_leftover") is None
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
