@@ -689,6 +689,13 @@ def method(*args, **kwargs):
 
     def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
+            # Validate num_returns using centralized validation logic
+            is_generator_callable = inspect.isgeneratorfunction(
+                method
+            ) or inspect.isasyncgenfunction(method)
+            ray_option_utils.validate_num_returns(
+                is_generator_callable, kwargs["num_returns"]
+            )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
             method.__ray_max_task_retries__ = kwargs["max_task_retries"]
@@ -704,7 +711,7 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             tensor_transport = kwargs["tensor_transport"]
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -921,26 +928,16 @@ class ActorMethod:
             >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
         """
 
-        func_cls = self
-
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
             tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
             options["tensor_transport"] = tensor_transport
 
-        class FuncWrapper:
-            def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
-
-            @DeveloperAPI
-            def bind(self, *args, **kwargs):
-                return func_cls._bind(args=args, kwargs=kwargs, **options)
-
-        return FuncWrapper()
+        return _ActorMethodOptionsWrapper(self, options)
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -1036,6 +1033,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
+        _labels: Optional[Dict[str, str]] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -1065,8 +1063,8 @@ class ActorMethod:
                     f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
                     "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
                 )
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.actor_has_tensor_transport(
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            if not rdt_manager.actor_has_tensor_transport(
                 self._actor, tensor_transport
             ):
                 raise ValueError(
@@ -1076,7 +1074,7 @@ class ActorMethod:
                 )
 
             # Wait for source actor to have the transport registered.
-            gpu_object_manager.wait_until_custom_transports_registered(self._actor)
+            rdt_manager.wait_until_custom_transports_registered(self._actor)
 
         args = args or []
         kwargs = kwargs or {}
@@ -1089,10 +1087,8 @@ class ActorMethod:
                     "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
                 )
 
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
-                dst_actor, args
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, args)
 
             return dst_actor._actor_method_call(
                 self._method_name,
@@ -1108,6 +1104,7 @@ class ActorMethod:
                 ),
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
+                labels=_labels,
             )
 
         # Apply the decorator if there is one.
@@ -1119,10 +1116,8 @@ class ActorMethod:
             # Currently, we only support RDT when num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
             object_ref = object_refs
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(
-                object_ref, self._actor, tensor_transport
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.add_rdt_ref(object_ref, self._actor, tensor_transport)
 
         return object_refs
 
@@ -1153,6 +1148,27 @@ class ActorMethod:
             state["decorator"],
             state["_tensor_transport"],
         )
+
+
+class _ActorMethodOptionsWrapper:
+    """Wraps an ActorMethod with pre-set options for .remote() and .bind().
+
+    Defined at module scope to avoid the reference cycle that occurs when a
+    class is defined inside a closure (CPython's implicit __class__ cell keeps
+    the closure alive, which keeps the ActorMethod and its ActorHandle alive).
+    See https://github.com/ray-project/ray/issues/61922.
+    """
+
+    def __init__(self, actor_method, options):
+        self._actor_method = actor_method
+        self._options = options
+
+    def remote(self, *args, **kwargs):
+        return self._actor_method._remote(args=args, kwargs=kwargs, **self._options)
+
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
 
 
 class _ActorClassMethodMetadata(object):
@@ -2090,8 +2106,8 @@ class ActorClass(Generic[T]):
         )
 
         if meta.enable_tensor_transport:
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.register_custom_transports_on_actor(actor_handle)
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.register_custom_transports_on_actor(actor_handle)
 
         return actor_handle
 
@@ -2318,6 +2334,7 @@ class ActorHandle(Generic[T]):
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -2341,6 +2358,7 @@ class ActorHandle(Generic[T]):
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
+            labels: Optional key-value labels to attach to this actor method task.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2405,6 +2423,7 @@ class ActorHandle(Generic[T]):
             generator_backpressure_num_objects,
             enable_task_events,
             tensor_transport,
+            labels,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
