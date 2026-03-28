@@ -1,6 +1,7 @@
 from typing import Dict, Type
 
 from .collective_group.base_collective_group import BaseGroup
+from ray.util.annotations import PublicAPI
 
 
 class BackendRegistry:
@@ -42,11 +43,13 @@ class BackendRegistry:
 _global_registry = BackendRegistry()
 
 
+@PublicAPI(stability="alpha")
 def register_collective_backend(name: str, group_cls: Type[BaseGroup]):
     """Register a custom collective backend with Ray.
 
     This function registers a custom backend class that can be used for
-    collective operations. The backend must be a subclass of BaseGroup
+    collective operations. The backend must be a subclass of
+    :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup`
     and implement all required collective operations.
 
     Important: The backend must be registered on both the driver and all
@@ -57,7 +60,8 @@ def register_collective_backend(name: str, group_cls: Type[BaseGroup]):
     Args:
         name: The name of the backend (e.g., "MY_BACKEND"). This will be
             automatically added to the Backend enum as Backend.MY_BACKEND.
-        group_cls: The backend class, which must be a subclass of BaseGroup.
+        group_cls: The backend class, which must be a subclass of
+            :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup`.
 
     Example:
         >>> import ray

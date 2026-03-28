@@ -10,9 +10,9 @@ Overview
 
 Ray collective operations support custom backends through a registration API. You can implement your own backend by:
 
-1. Creating a class that inherits from ``BaseGroup``
+1. Creating a class that inherits from :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup`
 2. Implementing required collective operations
-3. Registering your backend with ``register_collective_backend``
+3. Registering your backend with :func:`~ray.util.collective.backend_registry.register_collective_backend`
 
 Creating a Custom Backend
 -------------------------
@@ -20,7 +20,7 @@ Creating a Custom Backend
 Step 1: Define Your Backend Class
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Your backend class must inherit from ``BaseGroup`` and implement required methods. See the ``BaseGroup`` API reference for the complete list of required methods.
+Your backend class must inherit from :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` and implement required methods. See the :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` API reference for the complete list of required methods.
 
 .. code-block:: python
 
@@ -50,38 +50,39 @@ Your backend class must inherit from ``BaseGroup`` and implement required method
 Step 2: Register Your Backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Next, register your collective backend on the driver and the actors participating in the collective group with :func:`~ray.util.collective.backend_registry.register_collective_backend`.
+
 .. code-block:: python
 
     from ray.util.collective.backend_registry import register_collective_backend
 
     register_collective_backend("MY_BACKEND", MyCustomBackend)
 
-Important: Registration Requirements
-------------------------------------
+.. note::
 
-**Your backend must be registered on both the driver and all actors before using collective operations.**
+    **Your backend must be registered on both the driver and all actors before using collective operations.** This is because each process (driver and each actor) needs to know about your backend class to instantiate it.
 
-This is because each process (driver and each actor) needs to know about your backend class to instantiate it.
-
-Two Ways to Initialize Collective Groups
-----------------------------------------
+Initializing Collective Groups
+-------------------------------
 
 There are **two distinct approaches** to initialize collective groups. **Choose one approach for your use case - do not mix them for the same group.**
 
 .. note::
 
-    Using both ``create_collective_group`` and ``init_collective_group`` together for the same group is incorrect and will cause errors.
+    Using both :func:`~ray.util.collective.collective.create_collective_group` and :func:`~ray.util.collective.collective.init_collective_group` together for the same group is not supported and will cause errors.
 
 Approach 1: Driver-Managed (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Use ``create_collective_group`` on the driver to declare the group. Workers do **not** call ``init_collective_group`` - the group is automatically initialized when workers call collective operations.
+Use :func:`~ray.util.collective.collective.create_collective_group` on the driver to declare the group. Workers do **not** call :func:`~ray.util.collective.collective.init_collective_group` - the group is automatically initialized when workers call collective operations.
+
+This approach is recommended because it provides a declarative, centralized way to manage collective groups. The driver has full visibility into all participants and can coordinate the initialization process.
 
 .. code-block:: python
 
     import ray
     import numpy as np
-    from ray.util.collective import allreduce, broadcast, create_collective_group
+    from ray.util.collective import allreduce, create_collective_group
     from ray.util.collective.backend_registry import register_collective_backend
     from ray.util.collective.types import ReduceOp
 
@@ -113,7 +114,7 @@ Use ``create_collective_group`` on the driver to declare the group. Workers do *
     # Create workers
     actors = [Worker.remote(rank=i) for i in range(3)]
 
-    # Declare collective group from driver (creates info actor)
+    # Declare collective group from driver
     create_collective_group(
         actors=actors,
         world_size=3,
@@ -134,13 +135,15 @@ Use ``create_collective_group`` on the driver to declare the group. Workers do *
 Approach 2: Worker-Managed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Each worker explicitly calls ``init_collective_group`` to initialize its group membership. The driver does **not** call ``create_collective_group``.
+Each worker explicitly calls :func:`~ray.util.collective.collective.init_collective_group` to initialize its group membership. The driver does **not** call :func:`~ray.util.collective.collective.create_collective_group`.
+
+This approach provides more control over initialization timing within each worker, which can be useful for advanced scenarios where workers need to perform custom setup before or after group initialization.
 
 .. code-block:: python
 
     import ray
     import numpy as np
-    from ray.util.collective import allreduce, broadcast, init_collective_group
+    from ray.util.collective import allreduce, init_collective_group
     from ray.util.collective.backend_registry import register_collective_backend
     from ray.util.collective.types import ReduceOp
 
@@ -202,66 +205,74 @@ Comparison Table
 | Group init        | Automatic (on first         | Explicit (in worker setup)   |
 |                   | collective operation)       |                              |
 +-------------------+-----------------------------+------------------------------+
-| Use case          | Declarative, centralized    | Fine-grained control over    |
-|                   | management                  | initialization               |
+| Use case          | Declarative, centralized    | More control over            |
+|                   | management                  | initialization timing        |
 +-------------------+-----------------------------+------------------------------+
 
-Complete Example
-----------------
+Complete Example: Mock Backend using Internal KV
+------------------------------------------------
 
-See ``python/ray/util/collective/examples/mock_internal_kv_example.py`` for a complete working example that demonstrates both approaches:
+The following example demonstrates a complete custom backend implementation using Ray's internal KV store for communication. This ``MockInternalKVGroup`` backend is useful for testing and understanding how custom backends work.
 
-- ``test_mock_backend_create_group()`` - Driver-managed approach
-- ``test_mock_backend_init_group()`` - Worker-managed approach
-
-Doctest Example
----------------
-
-The following demonstrates the driver-managed approach:
-
-.. doctest::
+.. testcode::
     :skipif: True
 
-    >>> import ray
-    >>> import numpy as np
-    >>> from ray.util.collective import allreduce, create_collective_group
-    >>> from ray.util.collective.backend_registry import register_collective_backend
-    >>> from ray.util.collective.types import ReduceOp
-    >>> from ray.util.collective.examples.mock_internal_kv_example import MockInternalKVGroup
-    >>> register_collective_backend("MOCK", MockInternalKVGroup)
-    >>> ray.init()
-    <Ray ... ...>
-    >>> @ray.remote
-    ... class Worker:
-    ...     def __init__(self, rank):
-    ...         self.rank = rank
-    ...     def setup(self):
-    ...         from ray.util.collective.backend_registry import register_collective_backend
-    ...         from ray.util.collective.examples.mock_internal_kv_example import MockInternalKVGroup
-    ...         register_collective_backend("MOCK", MockInternalKVGroup)
-    ...         # Do NOT call init_collective_group - using driver-managed approach
-    ...     def compute(self):
-    ...         tensor = np.array([float(self.rank + 1)], dtype=np.float32)
-    ...         allreduce(tensor, op=ReduceOp.SUM)
-    ...         return tensor.item()
-    >>> actors = [Worker.remote(rank=i) for i in range(2)]
-    >>> create_collective_group(
-    ...     actors=actors,
-    ...     world_size=2,
-    ...     ranks=[0, 1],
-    ...     backend="MOCK",
-    ...     group_name="default",
-    ... )
-    >>> ray.get([a.setup.remote() for a in actors])
-    [None, None]
-    >>> results = ray.get([a.compute.remote() for a in actors])
-    >>> results
-    [3.0, 3.0]
-    >>> ray.shutdown()
+    import ray
+    import numpy as np
+    from ray.util.collective import allreduce, create_collective_group
+    from ray.util.collective.backend_registry import register_collective_backend
+    from ray.util.collective.types import ReduceOp
+    from ray.util.collective.examples.mock_internal_kv_example import MockInternalKVGroup
+
+    # Register the mock backend
+    register_collective_backend("MOCK", MockInternalKVGroup)
+
+    ray.init()
+
+    @ray.remote
+    class Worker:
+        def __init__(self, rank):
+            self.rank = rank
+
+        def setup(self):
+            # Register backend on each worker
+            register_collective_backend("MOCK", MockInternalKVGroup)
+
+        def compute(self):
+            tensor = np.array([float(self.rank + 1)], dtype=np.float32)
+            allreduce(tensor, op=ReduceOp.SUM)
+            return tensor.item()
+
+    # Create workers
+    actors = [Worker.remote(rank=i) for i in range(2)]
+
+    # Create collective group from driver
+    create_collective_group(
+        actors=actors,
+        world_size=2,
+        ranks=[0, 1],
+        backend="MOCK",
+        group_name="default",
+    )
+
+    # Setup workers
+    ray.get([a.setup.remote() for a in actors])
+
+    # Run computation
+    results = ray.get([a.compute.remote() for a in actors])
+    print(f"Results: {results}")  # [3.0, 3.0]
+
+    ray.shutdown()
+
+.. testoutput::
+    :skipif: True
+
+    Results: [3.0, 3.0]
 
 See Also
 --------
 
-- Check ``mock_internal_kv_example.py`` for a complete working example demonstrating both approaches
-- See the ``BaseGroup`` class in the API reference for all required methods
-- See the ``register_collective_backend`` function in the API reference for registration details
+- :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` - Base class for custom backends
+- :func:`~ray.util.collective.backend_registry.register_collective_backend` - Register a custom backend
+- :func:`~ray.util.collective.collective.create_collective_group` - Create a collective group (driver-managed)
+- :func:`~ray.util.collective.collective.init_collective_group` - Initialize a collective group (worker-managed)

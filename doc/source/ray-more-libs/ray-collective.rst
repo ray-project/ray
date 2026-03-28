@@ -10,6 +10,12 @@
 Ray Collective Communication Lib
 ================================
 
+.. toctree::
+    :hidden:
+    :caption: Custom Backends
+
+    ray-collective-custom-backend
+
 The Ray collective communication library (\ ``ray.util.collective``\ ) offers a set of native collective primitives for
 communication between distributed CPUs or GPUs.
 
@@ -358,4 +364,7 @@ API References
 --------------
 
 .. automodule:: ray.util.collective.collective
+    :members:
+
+.. automodule:: ray.util.collective.backend_registry
     :members:

@@ -12,7 +12,6 @@ More Ray ML Libraries
     mars-on-ray
     modin/index
     data_juicer_distributed_data_processing
-    ray-collective-custom-backend
 
 
 .. TODO: we added the three Ray Core examples below, since they don't really belong there.
