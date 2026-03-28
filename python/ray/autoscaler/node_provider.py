@@ -71,6 +71,23 @@ class NodeProvider:
         """
         raise NotImplementedError
 
+    def get_all_node_ids(self, tag_filters: Dict[str, str]) -> List[str]:
+        """Return all node ids matching tag_filters, including terminated nodes.
+
+        Used during teardown to ensure cleanup of external resources (e.g.
+        Docker containers) on nodes whose state may not be accurately tracked
+        by this provider instance. For example, LocalNodeProvider on the
+        machine invoking ``ray down`` may show workers as terminated even
+        though the head node's autoscaler started them and their Docker
+        containers are still running.
+
+        The default delegates to non_terminated_nodes(), which is correct for
+        cloud providers that always query live infrastructure state. Providers
+        that maintain state locally should override this to include all known
+        nodes regardless of recorded state.
+        """
+        return self.non_terminated_nodes(tag_filters)
+
     def is_running(self, node_id: str) -> bool:
         """Return whether the specified node is running."""
         raise NotImplementedError

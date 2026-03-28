@@ -216,6 +216,26 @@ class LocalNodeProvider(NodeProvider):
                 matching_ips.append(worker_ip)
         return matching_ips
 
+    def get_all_node_ids(self, tag_filters):
+        """Return all known node ids matching tag_filters regardless of state.
+
+        The local state file on the machine invoking ``ray down`` may show
+        workers as terminated because only the head node's autoscaler updates
+        them to running.  During teardown we still need to reach these nodes
+        to stop their Docker containers.
+        """
+        workers = self.state.get()
+        matching_ips = []
+        for worker_ip, info in workers.items():
+            ok = True
+            for k, v in tag_filters.items():
+                if info["tags"].get(k) != v:
+                    ok = False
+                    break
+            if ok:
+                matching_ips.append(worker_ip)
+        return matching_ips
+
     def is_running(self, node_id):
         return self.state.get()[node_id]["state"] == "running"
 
