@@ -467,6 +467,46 @@ py_test_module_list_with_env_variants(
     ],
 )
 
+# Test autoscaling with streaming and unary configurations.
+# Regression test for https://github.com/ray-project/ray/issues/61551
+AUTOSCALING_ENV_VARIANTS = {
+    "env_overrides": {
+        "env": {
+            "RAY_SERVE_LOG_TO_STDERR": "0",
+            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
+            "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
+        },
+        "name_suffix": "_env_overrides",
+    },
+    "throughput_optimized": {
+        "env": {
+            "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
+        },
+        "name_suffix": "_throughput_optimized",
+    },
+}
+
+py_test_module_list_with_env_variants(
+    size = "large",
+    args = [
+        "-k",
+        "TestAutoscalingWithRejection",
+    ],
+    env_variants = AUTOSCALING_ENV_VARIANTS,
+    files = [
+        "test_autoscaling_policy.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
