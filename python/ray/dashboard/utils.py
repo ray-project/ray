@@ -342,6 +342,8 @@ def get_all_modules(module_type):
 
 
 def to_posix_time(dt):
+    if dt.tzinfo is not None:
+        return dt.timestamp()
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
