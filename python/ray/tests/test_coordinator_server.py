@@ -76,7 +76,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "type": "local",
             "head_ip": head_ip,
             "worker_ips": worker_ips,
-            "external_head_ip": "0.0.0.0.3",
+            "external_head_ip": "1.2.3.4",
         }
         cluster_name = "random_name"
         node_provider = _get_node_provider(
@@ -108,9 +108,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         assert set(
             provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         ) == set(worker_ips)
-        assert provider.get_all_node_ids(
+        assert set(provider.get_all_node_ids(
             {TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
-        ) == [head_ip]
+        )) == {head_ip}
 
         # Mark head as running; workers stay terminated.
         record_local_head_state_if_needed(provider)
@@ -156,7 +156,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
                 "type": "local",
                 "head_ip": head_ip,
                 "worker_ips": ["0.0.0.0:1"],
-                "external_head_ip": "0.0.0.0.3",
+                "external_head_ip": "1.2.3.4",
             },
         }
         provider_config = cluster_config["provider"]

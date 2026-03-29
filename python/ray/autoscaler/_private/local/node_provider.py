@@ -225,16 +225,11 @@ class LocalNodeProvider(NodeProvider):
         to stop their Docker containers.
         """
         workers = self.state.get()
-        matching_ips = []
-        for worker_ip, info in workers.items():
-            ok = True
-            for k, v in tag_filters.items():
-                if info["tags"].get(k) != v:
-                    ok = False
-                    break
-            if ok:
-                matching_ips.append(worker_ip)
-        return matching_ips
+        return [
+            worker_ip
+            for worker_ip, info in workers.items()
+            if all(info["tags"].get(k) == v for k, v in tag_filters.items())
+        ]
 
     def is_running(self, node_id):
         return self.state.get()[node_id]["state"] == "running"

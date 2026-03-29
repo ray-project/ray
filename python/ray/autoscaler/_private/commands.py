@@ -498,20 +498,8 @@ def teardown_cluster(
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
-    def _collect_nodes(node_retrieval_fn):
-        """Return the set of nodes to act on during teardown.
-
-        Args:
-            node_retrieval_fn: Callable with the same signature as
-                ``provider.non_terminated_nodes`` — accepts a tag-filter dict
-                and returns a list of node ids.  Passing
-                ``provider.non_terminated_nodes`` gives only live nodes (used
-                for the terminate loop); passing ``provider.get_all_node_ids``
-                also includes nodes recorded as terminated (needed for Docker
-                stop on LocalNodeProvider where the invoking machine's state
-                file is stale).
-        """
-        workers = node_retrieval_fn({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+    def remaining_nodes():
+        workers = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         if keep_min_workers:
             min_workers = config.get("min_workers", 0)
@@ -530,13 +518,12 @@ def teardown_cluster(
                 "The head node will not be shut down. " + cf.dimmed("(due to {})"),
                 cf.bold("--workers-only"),
             )
+
             return workers
 
-        head = node_retrieval_fn({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
-        return head + workers
+        head = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
 
-    def remaining_nodes():
-        return _collect_nodes(provider.non_terminated_nodes)
+        return head + workers
 
     def run_docker_stop(node, container_name):
         try:
@@ -571,13 +558,23 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-        # Use get_all_node_ids (which includes nodes recorded as terminated)
-        # to build the docker stop target list.  This is necessary for
-        # LocalNodeProvider: the state file on the machine running "ray down"
-        # may show workers as terminated even though the head node's
-        # autoscaler started them and their Docker containers are still
-        # running.  For cloud providers get_all_node_ids == non_terminated_nodes.
-        docker_stop_nodes = _collect_nodes(provider.get_all_node_ids)
+        # Start with A (which already respects --keep-min-workers and
+        # --workers-only).  On top of that, include nodes the provider
+        # knows about but reports as terminated.  This handles
+        # LocalNodeProvider where the invoking machine's state file
+        # marks workers as terminated even though the head's autoscaler
+        # started them and their Docker containers are still running.
+        # For cloud providers this adds nothing because get_all_node_ids
+        # delegates to non_terminated_nodes.
+        stale_terminated = (
+            set(provider.get_all_node_ids({}))
+            - set(provider.non_terminated_nodes({}))
+        )
+        if workers_only:
+            stale_terminated -= set(provider.get_all_node_ids(
+                {TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
+            ))
+        docker_stop_nodes = list(set(A) | stale_terminated)
 
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
