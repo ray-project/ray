@@ -172,9 +172,27 @@ class CollateFn(Generic[DataBatchType]):
 @DeveloperAPI
 class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
     """Collate function that takes pyarrow.Table as the input batch type.
-    Arrow tables with chunked arrays can be efficiently transferred to GPUs without
-    combining the chunks with the `arrow_batch_to_tensors` utility function.
-    See `DefaultCollateFn` for example.
+
+    Arrow tables with chunked arrays can be efficiently transferred to GPUs
+    without combining the chunks with the ``arrow_batch_to_tensors`` utility
+    function. See ``DefaultCollateFn`` for a reference implementation.
+
+    This is the recommended collate function type for best performance.
+
+    Examples:
+        >>> import pyarrow as pa
+        >>> import torch
+        >>> import ray
+        >>> from ray.data.collate_fn import ArrowBatchCollateFn
+        >>> class MyCollateFn(ArrowBatchCollateFn):
+        ...     def __call__(self, batch: pa.Table) -> torch.Tensor:
+        ...         return torch.as_tensor(batch["id"].to_numpy() + 5)
+        >>> ds = ray.data.range(4)
+        >>> for batch in ds.iterator().iter_torch_batches(
+        ...     batch_size=4, collate_fn=MyCollateFn()
+        ... ):
+        ...     print(batch)
+        tensor([5, 6, 7, 8])
     """
 
     def __call__(self, batch: "pyarrow.Table") -> "CollatedData":
@@ -191,7 +209,24 @@ class ArrowBatchCollateFn(CollateFn["pyarrow.Table"]):
 
 @DeveloperAPI
 class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
-    """Collate function that takes a dictionary of numpy arrays as the input batch type."""
+    """Collate function that takes a dictionary of numpy arrays as the input batch type.
+
+    Examples:
+        >>> from typing import Dict
+        >>> import numpy as np
+        >>> import torch
+        >>> import ray
+        >>> from ray.data.collate_fn import NumpyBatchCollateFn
+        >>> class MyCollateFn(NumpyBatchCollateFn):
+        ...     def __call__(self, batch: Dict[str, np.ndarray]) -> torch.Tensor:
+        ...         return torch.as_tensor(batch["id"] + 5)
+        >>> ds = ray.data.range(4)
+        >>> for batch in ds.iterator().iter_torch_batches(
+        ...     batch_size=4, collate_fn=MyCollateFn()
+        ... ):
+        ...     print(batch)
+        tensor([5, 6, 7, 8])
+    """
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> "CollatedData":
         """Convert a batch of numpy arrays to collated format.
@@ -207,7 +242,23 @@ class NumpyBatchCollateFn(CollateFn[Dict[str, np.ndarray]]):
 
 @DeveloperAPI
 class PandasBatchCollateFn(CollateFn["pandas.DataFrame"]):
-    """Collate function that takes a pandas.DataFrame as the input batch type."""
+    """Collate function that takes a pandas.DataFrame as the input batch type.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import torch
+        >>> import ray
+        >>> from ray.data.collate_fn import PandasBatchCollateFn
+        >>> class MyCollateFn(PandasBatchCollateFn):
+        ...     def __call__(self, batch: pd.DataFrame) -> torch.Tensor:
+        ...         return torch.as_tensor(batch["id"].to_numpy() + 5)
+        >>> ds = ray.data.range(4)
+        >>> for batch in ds.iterator().iter_torch_batches(
+        ...     batch_size=4, collate_fn=MyCollateFn()
+        ... ):
+        ...     print(batch)
+        tensor([5, 6, 7, 8])
+    """
 
     def __call__(self, batch: "pandas.DataFrame") -> "CollatedData":
         """Convert a batch of pandas.DataFrame to collated format.

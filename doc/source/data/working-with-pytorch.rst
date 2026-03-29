@@ -8,6 +8,7 @@ Ray Data integrates with the PyTorch ecosystem.
 This guide describes how to:
 
 * :ref:`Iterate over your dataset as Torch tensors for model training <iterating_pytorch>`
+* :ref:`Customize tensor conversion with collate functions <collate_fn_pytorch>`
 * :ref:`Write transformations that deal with Torch tensors <transform_pytorch>`
 * :ref:`Perform batch inference with Torch models <batch_inference_pytorch>`
 * :ref:`Save Datasets containing Torch tensors <saving_pytorch>`
@@ -79,6 +80,60 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
 
 
 For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
+
+.. _collate_fn_pytorch:
+
+Custom collate functions
+~~~~~~~~~~~~~~~~~~~~~~~~
+Use a custom ``collate_fn`` to control how data batches are converted to tensors
+before being passed to your model. This is useful for last-mile formatting such
+as padding, masking, or packaging tensors into custom data structures.
+
+To define a custom collate function, subclass one of the following base classes
+depending on the input format you want:
+
+* :class:`~ray.data.collate_fn.ArrowBatchCollateFn` -- receives a ``pyarrow.Table`` (recommended for best performance).
+* :class:`~ray.data.collate_fn.NumpyBatchCollateFn` -- receives a ``Dict[str, np.ndarray]``.
+* :class:`~ray.data.collate_fn.PandasBatchCollateFn` -- receives a ``pd.DataFrame``.
+
+.. testcode::
+
+    import pyarrow as pa
+    import torch
+    import ray
+    from ray.data.collate_fn import ArrowBatchCollateFn
+
+    class MyCollateFn(ArrowBatchCollateFn):
+        def __call__(self, batch: pa.Table) -> dict:
+            return {
+                "features": torch.as_tensor(batch["col_1"].to_numpy(), dtype=torch.float32),
+                "labels": torch.as_tensor(batch["col_2"].to_numpy(), dtype=torch.long),
+            }
+
+    ds = ray.data.from_items([
+        {"col_1": 1.0, "col_2": 0},
+        {"col_1": 2.0, "col_2": 1},
+        {"col_1": 3.0, "col_2": 0},
+        {"col_1": 4.0, "col_2": 1},
+    ])
+
+    for batch in ds.iterator().iter_torch_batches(
+        batch_size=2, collate_fn=MyCollateFn()
+    ):
+        print(batch)
+
+.. testoutput::
+
+    {'features': tensor([1., 2.]), 'labels': tensor([0, 1])}
+    {'features': tensor([3., 4.]), 'labels': tensor([0, 1])}
+
+.. note::
+
+    Passing a plain function to ``collate_fn`` is deprecated. Use a callable
+    class that inherits from one of the base classes above.
+
+For scaling expensive collate functions across multiple nodes, see
+:ref:`train-scaling-collation-functions`.
 
 .. _transform_pytorch:
 
