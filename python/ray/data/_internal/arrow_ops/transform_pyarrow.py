@@ -444,6 +444,11 @@ def _backfill_missing_fields(
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
 
+    # If the column is not a struct type but the unified type expects a struct,
+    # replace with nulls of the target struct type.
+    if not pa.types.is_struct(column.type):
+        return pa.nulls(block_length, type=unified_struct_type)
+
     # Extract the current struct field names and their corresponding data
     current_fields = {
         field.name: column.field(i) for i, field in enumerate(column.type)

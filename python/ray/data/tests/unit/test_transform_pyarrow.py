@@ -10,6 +10,7 @@ import pytest
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _backfill_missing_fields,
     concat,
     hash_partition,
     shuffle,
@@ -1627,6 +1628,86 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
     assert result2["level1"].to_pylist() == [
         {"level2": {"level3": {"a": 3, "b": None, "c": True}}},
         {"level2": {"level3": {"a": 4, "b": None, "c": False}}},
+    ]
+
+
+def test_backfill_missing_fields_non_struct_column():
+    """Test that _backfill_missing_fields handles non-struct input gracefully.
+
+    When the unified type is a struct but the input column is a non-struct
+    (e.g., int64), the function should return a null struct array instead of
+    crashing with 'TypeError: pyarrow.lib.DataType object is not iterable'.
+
+    Regression test for https://github.com/ray-project/ray/issues/61656
+    """
+    unified_struct_type = pa.struct([pa.field("a", pa.int64(), nullable=True)])
+    column = pa.array([1, 2, 3], type=pa.int64())
+
+    result = _backfill_missing_fields(
+        column=column,
+        unified_struct_type=unified_struct_type,
+        block_length=3,
+    )
+
+    assert result.type == unified_struct_type
+    assert len(result) == 3
+    # Non-struct input replaced with null struct entries
+    assert result.to_pylist() == [None, None, None]
+    assert all(not result[i].is_valid for i in range(3))
+
+
+def test_backfill_missing_fields_non_struct_chunked_array():
+    """Test _backfill_missing_fields with a non-struct ChunkedArray input."""
+    unified_struct_type = pa.struct(
+        [
+            pa.field("x", pa.float64(), nullable=True),
+            pa.field("y", pa.string(), nullable=True),
+        ]
+    )
+    column = pa.chunked_array([[1, 2], [3]], type=pa.int64())
+
+    result = _backfill_missing_fields(
+        column=column,
+        unified_struct_type=unified_struct_type,
+        block_length=3,
+    )
+
+    assert result.type == unified_struct_type
+    assert len(result) == 3
+    assert result.to_pylist() == [None, None, None]
+
+
+def test_backfill_missing_fields_nested_non_struct():
+    """Test _backfill_missing_fields when a nested field is non-struct but
+    unified type expects a struct (the recursive case from issue #61656)."""
+    # Simulate: outer struct has field "inner" which should be struct<a: int64>
+    # but in the actual data, "inner" is just an int64 array.
+    inner_struct_type = pa.struct([pa.field("a", pa.int64(), nullable=True)])
+    unified_struct_type = pa.struct(
+        [
+            pa.field("name", pa.string(), nullable=True),
+            pa.field("inner", inner_struct_type, nullable=True),
+        ]
+    )
+
+    # Create a struct column where "inner" is int64 instead of struct
+    column = pa.StructArray.from_arrays(
+        [pa.array(["foo", "bar"]), pa.array([10, 20])],
+        names=["name", "inner"],
+    )
+
+    result = _backfill_missing_fields(
+        column=column,
+        unified_struct_type=unified_struct_type,
+        block_length=2,
+    )
+
+    assert result.type == unified_struct_type
+    assert len(result) == 2
+    # "name" should be preserved, "inner" should be replaced with null structs
+    assert result.to_pylist() == [
+        {"name": "foo", "inner": None},
+        {"name": "bar", "inner": None},
     ]
 
 
