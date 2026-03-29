@@ -37,10 +37,19 @@ class MemoryMonitorFactory {
    * On non-Linux platforms, creates a NoopMemoryMonitor that does nothing.
    *
    * @param kill_workers_callback function to execute when the memory usage is refreshed.
+   * @param resource_isolation_enabled When resource isolation is enabled, the
+   * memory monitor will work with the configured cgroup constraints to better
+   * enforce the memory usage limit.
+   * @param cgroup_path the path to the cgroup relevant monitors will use to monitor.
+   * @param cgroup_upper_limit_bytes the upper memory limit of the given cgroup in bytes.
+   * This is used to determine the threshold to monitor for relevant memory monitors.
    * @return a unique pointer to the memory monitor instance.
    */
   static std::unique_ptr<MemoryMonitorInterface> Create(
-      KillWorkersCallback kill_workers_callback);
+      KillWorkersCallback kill_workers_callback,
+      bool resource_isolation_enabled,
+      std::string cgroup_path,
+      int64_t cgroup_upper_limit_bytes);
 };
 
 }  // namespace ray

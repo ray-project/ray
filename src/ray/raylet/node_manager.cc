@@ -239,7 +239,15 @@ NodeManager::NodeManager(
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
-      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback())),
+      memory_monitor_(MemoryMonitorFactory::Create(
+          CreateKillWorkersCallback(),
+          /*resource_isolation_enabled=*/!cgroup_manager->GetUserCgroupPath().empty(),
+          /*cgroup_path=*/cgroup_manager->GetUserCgroupPath(),
+          /*cgroup_upper_limit_bytes=*/
+          std::stoll(
+              cgroup_manager
+                  ->GetConstraintValue(cgroup_manager->GetUserCgroupPath(), "memory.max")
+                  .value()))),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),

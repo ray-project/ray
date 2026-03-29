@@ -456,4 +456,50 @@ Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
   return Status::OK();
 }
 
+StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
+    const std::string &cgroup_path, const std::string &constraint_name) {
+  std::string file_path =
+      cgroup_path + std::filesystem::path::preferred_separator + constraint_name;
+  int fd = open(file_path.c_str(), O_RDONLY);
+  if (fd == -1) {
+    if (errno == ENOENT) {
+      return Status::InvalidArgument(
+          absl::StrFormat("Cgroup or constraint does not exist: %s/%s.\n"
+                          "Error: %s",
+                          cgroup_path,
+                          constraint_name,
+                          strerror(errno)));
+    }
+    return Status::IOError(
+        absl::StrFormat("Failed to read %s from cgroup %s.\n"
+                        "Error: %s",
+                        constraint_name,
+                        cgroup_path,
+                        strerror(errno)));
+  }
+
+  // Cgroup constraint files are typically small,
+  // containing a single integer value (a few bytes to a few hundred bytes).
+  constexpr size_t kBufferSize = 256;
+  std::array<char, kBufferSize> buffer{};
+  ssize_t bytes_read = read(fd, buffer.data(), kBufferSize - 1);
+  if (bytes_read == -1) {
+    close(fd);
+    return Status::IOError(
+        absl::StrFormat("Failed to read %s from cgroup %s.\n"
+                        "Error: %s",
+                        constraint_name,
+                        cgroup_path,
+                        strerror(errno)));
+  }
+  close(fd);
+
+  std::string result(buffer.data(), static_cast<size_t>(bytes_read));
+  if (!result.empty() && result.back() == '\n') {
+    result.pop_back();
+  }
+
+  return result;
+}
+
 }  // namespace ray

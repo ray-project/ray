@@ -38,5 +38,13 @@ class NoopCgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override {
     return Status::OK();
   }
+
+  std::string GetUserCgroupPath() const override { return ""; }
+
+  StatusOr<std::string> GetConstraintValue(
+      const std::string &cgroup_path, const std::string &constraint_name) const override {
+    return Status::InvalidArgument(
+        "NoopCgroupManager does not support constraint values");
+  }
 };  // namespace ray
 }  // namespace ray

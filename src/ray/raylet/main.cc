@@ -288,6 +288,7 @@ int main(int argc, char *argv[]) {
                                         node_id,
                                         system_reserved_cpu_weight,
                                         system_reserved_memory_bytes,
+                                        object_store_memory,
                                         system_pids);
 
   AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
