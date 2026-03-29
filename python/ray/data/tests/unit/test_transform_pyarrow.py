@@ -1653,7 +1653,6 @@ def test_backfill_missing_fields_non_struct_column():
     assert len(result) == 3
     # Non-struct input replaced with null struct entries
     assert result.to_pylist() == [None, None, None]
-    assert all(not result[i].is_valid for i in range(3))
 
 
 def test_backfill_missing_fields_non_struct_chunked_array():
@@ -1679,7 +1678,7 @@ def test_backfill_missing_fields_non_struct_chunked_array():
 
 def test_backfill_missing_fields_nested_non_struct():
     """Test _backfill_missing_fields when a nested field is non-struct but
-    unified type expects a struct (the recursive case from issue #61656)."""
+    the unified type expects a struct."""
     # Simulate: outer struct has field "inner" which should be struct<a: int64>
     # but in the actual data, "inner" is just an int64 array.
     inner_struct_type = pa.struct([pa.field("a", pa.int64(), nullable=True)])
