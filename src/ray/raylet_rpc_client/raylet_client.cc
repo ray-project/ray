@@ -387,6 +387,20 @@ void RayletClient::DrainRaylet(
                             /*method_timeout_ms*/ -1);
 }
 
+void RayletClient::ResizeLocalResourceInstances(
+    google::protobuf::Map<std::string, double> resources,
+    const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) {
+  rpc::ResizeLocalResourceInstancesRequest request;
+  *request.mutable_resources() = std::move(resources);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ResizeLocalResourceInstances,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 void RayletClient::IsLocalWorkerDead(
     const WorkerID &worker_id,
     const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {

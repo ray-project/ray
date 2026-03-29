@@ -222,6 +222,9 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                     ServerConfig(name="api_server1", host="127.0.0.1", port=8001),
                     ServerConfig(name="api_server2", host="127.0.0.1", port=8002),
                 ],
+                fallback_server=ServerConfig(
+                    name="api_fallback_server", host="127.0.0.1", port=8500
+                ),
             ),
             "web_backend": BackendConfig(
                 name="web_backend",
@@ -248,6 +251,8 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 backend_configs=backend_config_stub,
                 config_file_path=config_file_path,
             )
+
+            api.cfg.balance_algorithm = "random(2)"
 
             try:
                 api._generate_config_file_internal()
@@ -287,6 +292,7 @@ defaults
     errorfile 502 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
+    balance random(2)
 frontend prometheus
     bind :9101
     mode http
@@ -320,7 +326,6 @@ backend default_backend
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
 backend api_backend
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -335,9 +340,10 @@ backend api_backend
     # Servers in this backend
     server api_server1 127.0.0.1:8001 check
     server api_server2 127.0.0.1:8002 check
+    # Fallback to head node's Serve proxy when no ingress replicas are available
+    server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
