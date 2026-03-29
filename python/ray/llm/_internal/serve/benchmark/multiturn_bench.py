@@ -96,42 +96,38 @@ class TurnMetric:
 class WorkloadSpec:
     """Workload specification for multi-turn session benchmarks.
 
-    Supports simple mode: specify isl + hit_rate, derive u and s.
+    Supports simple mode: specify isl + hit_rate, derive user_tokens and sys_tokens.
     All parameters are scalar (fixed) values -- no distributions.
     """
 
     # Core parameters
-    num_sessions: Optional[
-        int
-    ] = None  # N_s: total unique sessions (None = duration-based)
-    num_turns: int = 1  # N_t: turns per session
-    osl: int = 1  # o: output sequence length per turn
+    num_sessions: Optional[int] = None  # total unique sessions (None = duration-based)
+    num_turns: int = 1  # turns per session
+    osl: int = 1  # output sequence length per turn
     think_time: float = 0.0  # seconds between turns within a session
 
     # Traffic (use either concurrency or request_rate, not both)
-    concurrency: Optional[int] = None  # C: max concurrent in-flight requests
-    request_rate: Optional[
-        float
-    ] = None  # QPS: requests per second (constant rate mode)
+    concurrency: Optional[int] = None  # max concurrent in-flight requests
+    request_rate: Optional[float] = None  # requests per second (constant rate mode)
     ramp_interval: float = -1.0  # seconds between session launches (-1 = auto)
 
     # Duration-based mode (used with request_rate)
     duration_s: float = 0.0  # seconds to run benchmark (0 = use num_sessions)
 
-    # Cross-sharing: fraction of system prompt shared across all sessions
+    # Fraction of system prompt shared across all sessions
     # 1.0 = identical system prompt, 0.0 = all unique
-    cross_sharing: float = 0.0  # f
+    shared_system_prompt_ratio: float = 0.0
 
-    # Simple mode inputs (derive u, s)
+    # Simple mode inputs (derive user_tokens, sys_tokens)
     isl: Optional[int] = None
     hit_rate: Optional[float] = None
 
     # Resolved values (computed by resolve())
-    _u: int = field(default=0, init=False, repr=False)
-    _s: int = field(default=0, init=False, repr=False)
+    _user_tokens: int = field(default=0, init=False, repr=False)
+    _sys_tokens: int = field(default=0, init=False, repr=False)
 
     def resolve(self) -> "WorkloadSpec":
-        """Resolve the spec: derive u and s from inputs. Call after init."""
+        """Resolve the spec: derive user_tokens and sys_tokens from inputs. Call after init."""
         if self.isl is None or self.hit_rate is None:
             raise ValueError("Simple mode requires both --isl and --hit-rate.")
         self._derive_from_simple()
@@ -139,51 +135,69 @@ class WorkloadSpec:
         return self
 
     def _derive_from_simple(self) -> None:
-        """Solve for u and s from (ISL, hit_rate, num_turns, OSL, cross_sharing)."""
+        """Derive user_tokens and sys_tokens from (ISL, hit_rate, num_turns, OSL, shared_system_prompt_ratio)."""
         isl = self.isl
-        h = self.hit_rate
-        n = self.num_turns
-        o = self.osl
-        f = self.cross_sharing
+        hit_rate = self.hit_rate
+        num_turns = self.num_turns
+        osl = self.osl
+        sharing = self.shared_system_prompt_ratio
 
-        if n == 1:
-            # Single turn: hit rate comes entirely from cross-session system prompt sharing
-            u = isl * (1 - h)
-            s = isl - u
-        elif f == 1.0:
-            # Full cross-sharing: turn 1 caches all of s
-            u = isl * (1 - h)
-            s = isl - u * (n + 1) / 2 - o * (n - 1) / 2
+        if num_turns == 1:
+            # Single turn: hit rate comes entirely from cross-session sharing
+            user_tokens = isl * (1 - hit_rate)
+            sys_tokens = isl - user_tokens
+        elif sharing == 1.0:
+            # Full cross-sharing: turn 1 caches all of sys_tokens
+            user_tokens = isl * (1 - hit_rate)
+            sys_tokens = (
+                isl
+                - user_tokens * (num_turns + 1) / 2
+                - osl * (num_turns - 1) / 2
+            )
         else:
-            # General case: f < 1
-            denom = (n + 1) / 2 - n / (1 - f)
+            # General case: sharing < 1
+            denom = (num_turns + 1) / 2 - num_turns / (1 - sharing)
             if abs(denom) < 1e-9:
                 raise ValueError(
-                    f"Degenerate parameter combination: N_t={n}, f={f}. Cannot solve for u."
+                    f"Degenerate parameter combination: "
+                    f"num_turns={num_turns}, sharing={sharing}. "
+                    f"Cannot solve for user_tokens."
                 )
-            numer = isl - o * (n - 1) / 2 - n * isl * (1 - h) / (1 - f)
-            u = numer / denom
-            s = n * (isl * (1 - h) - u) / (1 - f)
+            numer = (
+                isl
+                - osl * (num_turns - 1) / 2
+                - num_turns * isl * (1 - hit_rate) / (1 - sharing)
+            )
+            user_tokens = numer / denom
+            sys_tokens = (
+                num_turns
+                * (isl * (1 - hit_rate) - user_tokens)
+                / (1 - sharing)
+            )
 
-        self._u = max(1, int(round(u)))
-        self._s = max(0, int(round(s)))
+        # Validate before clamping so infeasible combinations are caught.
+        if user_tokens < 0.5:
+            raise ValueError(
+                f"Derived user_tokens = {user_tokens:.1f} < 1. "
+                f"The (ISL={self.isl}, hit_rate={self.hit_rate}, "
+                f"num_turns={self.num_turns}, OSL={self.osl}, "
+                f"shared_system_prompt_ratio={self.shared_system_prompt_ratio}) combination is infeasible. "
+                f"Try increasing ISL, decreasing hit_rate, or increasing shared_system_prompt_ratio."
+            )
+        if sys_tokens < -0.5:
+            raise ValueError(
+                f"Derived sys_tokens = {sys_tokens:.1f} < 0. "
+                f"The (ISL={self.isl}, hit_rate={self.hit_rate}, "
+                f"num_turns={self.num_turns}, OSL={self.osl}, "
+                f"shared_system_prompt_ratio={self.shared_system_prompt_ratio}) combination is infeasible. "
+                f"Try increasing ISL, increasing hit_rate, or decreasing num_turns."
+            )
+
+        self._user_tokens = max(1, int(round(user_tokens)))
+        self._sys_tokens = max(0, int(round(sys_tokens)))
 
     def _validate(self) -> None:
         """Validate resolved parameters."""
-        if self._u < 1:
-            raise ValueError(
-                f"Derived user_tokens (u) = {self._u} < 1. "
-                f"The (ISL={self.isl}, h={self.hit_rate}, N_t={self.num_turns}, "
-                f"OSL={self.osl}, f={self.cross_sharing}) combination is infeasible. "
-                f"Try increasing ISL, decreasing h, or increasing f."
-            )
-        if self._s < 0:
-            raise ValueError(
-                f"Derived system_prompt_tokens (s) = {self._s} < 0. "
-                f"The (ISL={self.isl}, h={self.hit_rate}, N_t={self.num_turns}, "
-                f"OSL={self.osl}, f={self.cross_sharing}) combination is infeasible. "
-                f"Try increasing ISL, increasing h, or decreasing N_t."
-            )
         if self.num_turns < 1:
             raise ValueError("num_turns must be >= 1.")
         if self.osl < 1:
@@ -194,8 +208,8 @@ class WorkloadSpec:
             raise ValueError(
                 "Must specify either --num-sessions or --duration (> 0) for rate-based mode."
             )
-        if not (0 <= self.cross_sharing <= 1):
-            raise ValueError("cross_sharing must be in [0, 1].")
+        if not (0 <= self.shared_system_prompt_ratio <= 1):
+            raise ValueError("shared_system_prompt_ratio must be in [0, 1].")
         if self.think_time < 0:
             raise ValueError("think_time must be >= 0.")
 
@@ -236,41 +250,41 @@ class WorkloadSpec:
             )
 
     @property
-    def u(self) -> int:
+    def user_tokens(self) -> int:
         """New user tokens per turn."""
-        return self._u
+        return self._user_tokens
 
     @property
-    def s(self) -> int:
+    def sys_tokens(self) -> int:
         """Total system prompt tokens."""
-        return self._s
+        return self._sys_tokens
 
     @property
     def shared_s(self) -> int:
         """Shared portion of system prompt (same across all sessions)."""
-        return int(round(self._s * self.cross_sharing))
+        return int(round(self._sys_tokens * self.shared_system_prompt_ratio))
 
     @property
     def unique_s(self) -> int:
         """Unique portion of system prompt (different per session)."""
-        return self._s - self.shared_s
+        return self._sys_tokens - self.shared_s
 
     def turn_input_tokens(self, k: int) -> int:
         """Total input tokens at turn k (1-indexed)."""
-        return self._s + k * self._u + (k - 1) * self.osl
+        return self._sys_tokens + k * self._user_tokens + (k - 1) * self.osl
 
     @property
     def effective_isl(self) -> float:
         """Average input sequence length across all turns."""
         n = self.num_turns
-        return self._s + self._u * (n + 1) / 2 + self.osl * (n - 1) / 2
+        return self._sys_tokens + self._user_tokens * (n + 1) / 2 + self.osl * (n - 1) / 2
 
     @property
     def effective_h(self) -> float:
         """Token-weighted average hit rate."""
-        f = self.cross_sharing
+        f = self.shared_system_prompt_ratio
         n = self.num_turns
-        avg_new = (1 - f) * self._s / n + self._u
+        avg_new = (1 - f) * self._sys_tokens / n + self._user_tokens
         isl = self.effective_isl
         return 1.0 - avg_new / isl if isl > 0 else 0.0
 
@@ -280,9 +294,9 @@ class WorkloadSpec:
         for k in range(1, self.num_turns + 1):
             total = self.turn_input_tokens(k)
             if k == 1:
-                cached = int(round(self._s * self.cross_sharing))
+                cached = int(round(self._sys_tokens * self.shared_system_prompt_ratio))
             else:
-                cached = self._s + (k - 1) * self._u + (k - 1) * self.osl
+                cached = self._sys_tokens + (k - 1) * self._user_tokens + (k - 1) * self.osl
             new = total - cached
             h_k = cached / total if total > 0 else 0.0
             per_turn.append(
@@ -303,9 +317,9 @@ class WorkloadSpec:
             "think_time": self.think_time,
             "concurrency": self.concurrency,
             "request_rate": self.request_rate,
-            "cross_sharing": self.cross_sharing,
-            "user_tokens_per_turn": self._u,
-            "system_prompt_tokens": self._s,
+            "shared_system_prompt_ratio": self.shared_system_prompt_ratio,
+            "user_tokens_per_turn": self._user_tokens,
+            "system_prompt_tokens": self._sys_tokens,
             "shared_system_prompt": self.shared_s,
             "unique_system_prompt": self.unique_s,
             "effective_isl": round(self.effective_isl, 1),
@@ -338,7 +352,7 @@ class WorkloadSpec:
             print(f"  Ramp interval:            {self.ramp_interval:.3f}s")
         if self.request_rate is not None:
             print(f"  Request rate (QPS):       {self.request_rate}")
-        print(f"  Cross-sharing (f):        {s['cross_sharing']}")
+        print(f"  Shared sys prompt ratio:  {s['shared_system_prompt_ratio']}")
         print(f"  Effective avg ISL:        {s['effective_isl']}")
         print(f"  Effective avg hit rate:   {s['effective_hit_rate']:.1%}")
         print("-" * 70)
@@ -651,7 +665,7 @@ def conversation_factory(
         system_prompt = shared_system_text
 
     # Generate all user messages
-    user_messages = [text_gen.generate(spec.u) for _ in range(spec.num_turns)]
+    user_messages = [text_gen.generate(spec.user_tokens) for _ in range(spec.num_turns)]
 
     return Conversation(
         session_id=session_id,
@@ -1780,7 +1794,7 @@ def run_direct(args) -> int:
         concurrency=args.concurrency,
         request_rate=args.request_rate,
         ramp_interval=args.ramp_interval,
-        cross_sharing=args.cross_sharing,
+        shared_system_prompt_ratio=args.shared_system_prompt_ratio,
         isl=args.isl,
         hit_rate=args.hit_rate,
         duration_s=args.duration or 0.0,
