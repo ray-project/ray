@@ -217,9 +217,9 @@ class ExecutionPlan:
                 # we don't have any cached values, so inferring is the only
                 # option left.
                 if schema is None:
-                    schema = self._logical_plan.dag.infer_schema()
+                    schema = dag.infer_schema()
                 if count is None:
-                    count = self._logical_plan.dag.infer_metadata().num_rows
+                    count = dag.infer_metadata().num_rows
 
         if schema is None:
             schema_str = "Unknown schema"
