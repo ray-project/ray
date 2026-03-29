@@ -1877,6 +1877,20 @@ py_test(
 )
 
 py_test(
+    name = "test_lerobot",
+    size = "medium",
+    srcs = ["tests/datasource/test_lerobot.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_mcap",
     size = "small",
     srcs = ["tests/datasource/test_mcap.py"],

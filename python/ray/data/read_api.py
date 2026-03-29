@@ -50,6 +50,10 @@ from ray.data._internal.datasource.kafka_datasource import (
     KafkaDatasource,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.lerobot_datasource import (
+    LeRobotDatasource,
+    LeRobotPartitioning,
+)
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
@@ -2276,6 +2280,93 @@ def read_mcap(
         memory=memory,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_lerobot(
+    root: Union[str, List[str]],
+    *,
+    partitioning: Union[LeRobotPartitioning, str] = LeRobotPartitioning.FILE_GROUP,
+    override_num_blocks: Optional[int] = None,
+    **kwargs: Any,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a LeRobot v3 dataset.
+
+    `LeRobot <https://huggingface.co/lerobot>`_ is a platform for sharing datasets
+    and pretrained models for real-world robotics. A LeRobot v3 dataset stores
+    low-dimensional data (state, action, timestamps) in chunked Parquet files and
+    camera observations in chunked MP4 video files.  This reader decodes video frames
+    with PyAV and aligns them with parquet data using episode metadata.
+
+    Output columns include ``index``, ``episode_index``, ``frame_index``,
+    ``timestamp``, state/action vectors, decoded camera frames (as variable-shaped
+    uint8 tensors), ``task`` (string), and ``dataset_index`` (int32, identifies the
+    source root when reading multiple datasets).
+
+    Examples:
+        Read a local LeRobot dataset:
+
+        >>> import ray
+        >>> ds = ray.data.read_lerobot("/path/to/dataset")  # doctest: +SKIP
+        >>> ds.schema()  # doctest: +SKIP
+
+        Read from S3 with episode-level partitioning:
+
+        >>> from ray.data.datasource import LeRobotPartitioning  # doctest: +SKIP
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "s3://bucket/lerobot/pusht",
+        ...     partitioning=LeRobotPartitioning.EPISODE,
+        ... )
+
+        Read multiple datasets as one:
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     ["/path/to/ds1", "/path/to/ds2"],
+        ...     partitioning=LeRobotPartitioning.CHAIN,
+        ... )
+
+        Fixed-size row blocks:
+
+        >>> ds = ray.data.read_lerobot(  # doctest: +SKIP
+        ...     "/path/to/dataset",
+        ...     partitioning=LeRobotPartitioning.ROW_BLOCK,
+        ...     block_size=1024,
+        ... )
+
+    Args:
+        root: Path or URI to the dataset root (local, ``gs://``, ``s3://``),
+            or a list of such paths to read multiple datasets as one.
+            All roots must share the same ``video_keys``, ``fps``, and
+            non-video feature names.
+        partitioning: How to partition the dataset into read tasks.
+            Accepts a :class:`~ray.data.datasource.LeRobotPartitioning` member
+            or its string value. Options:
+
+            - ``FILE_GROUP`` (default): one task per unique video-file set.
+            - ``EPISODE``: one task per episode.
+            - ``CHAIN``: one task per connected component of shared files.
+            - ``SEQUENTIAL``: one task for the whole dataset.
+            - ``ROW_BLOCK``: fixed-size blocks (requires ``block_size`` kwarg).
+        override_num_blocks: Override the number of output blocks from all read
+            tasks. By default, the number is dynamically decided based on input
+            data size and available resources.
+        **kwargs: Additional arguments forwarded to
+            :class:`~ray.data.datasource.LeRobotDatasource`.
+            ``block_size`` is required when ``partitioning`` is ``ROW_BLOCK``.
+
+    Returns:
+        :class:`~ray.data.Dataset` of fully-decoded frames with state, action,
+        camera, task, and metadata columns.
+    """
+    datasource = LeRobotDatasource(
+        root=root,
+        partitioning=partitioning,
+        **kwargs,
+    )
+    return read_datasource(
+        datasource,
         override_num_blocks=override_num_blocks,
     )
 
