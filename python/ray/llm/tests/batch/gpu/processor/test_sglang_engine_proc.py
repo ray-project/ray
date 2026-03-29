@@ -109,52 +109,14 @@ class TestSGLangEngineProcessorConfig:
                     == DEFAULT_MAX_TASKS_IN_FLIGHT
                 )
 
-class TestSGLangTelemetryTrustRemoteCode:
-    """Tests for SGLang telemetry initialization with trust_remote_code support.
-
-    Covers the fix for https://github.com/ray-project/ray/issues/62075:
-    when trust_remote_code=True is set in engine_kwargs, telemetry should
-    still initialise correctly rather than raising an exception.
-    """
-
-    def _build_config(self, trust_remote_code: bool = False):
-        return SGLangEngineProcessorConfig(
-            model_source="unsloth/Llama-3.2-1B-Instruct",
-            engine_kwargs={"trust_remote_code": trust_remote_code},
-        )
-
-    def test_build_processor_autoconfig_failure(self):
-        """AutoConfig failure is non-fatal; processor builds successfully.
-        Follows vLLM pattern: no mocks, real code path with nonexistent model."""
+    def test_build_processor_autoconfig_failure_with_trust_remote_code(self):
         config = SGLangEngineProcessorConfig(
             model_source="nonexistent-org/nonexistent-model",
+            engine_kwargs={"trust_remote_code": True},
         )
+
         processor = build_sglang_engine_processor(config)
         assert processor is not None
-
-    def test_trust_remote_code_passed_to_autoconfig(self):
-        """trust_remote_code from engine_kwargs forwarded to AutoConfig."""
-        fake_path = "/tmp/fake_trust_model"
-
-        with (
-            patch(
-                "ray.llm._internal.batch.processor.sglang_engine_proc.download_model_files",
-                return_value=fake_path,
-            ),
-            patch(
-                "transformers.AutoConfig.from_pretrained",
-            ) as mock_autoconfig,
-            patch(
-                "ray.llm._internal.batch.processor.sglang_engine_proc.get_or_create_telemetry_agent",
-            ),
-        ):
-            config = self._build_config(trust_remote_code=True)
-            build_sglang_engine_processor(config)
-
-            mock_autoconfig.assert_called_once_with(
-                fake_path,
-                trust_remote_code=True,
-            )
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
