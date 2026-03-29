@@ -235,13 +235,15 @@ def build_sglang_engine_processor(
             model_path_or_id,
             trust_remote_code=trust_remote_code,
         )
-    except Exception:
+    except OSError as e:
         # Failed to retrieve HuggingFace config for telemetry purposes.
         # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
         # The actual model loading happens later in SGLang, which may support models
         # that aren't available via HuggingFace's AutoConfig.
         logger.warning(
-            f"Failed to retrieve HuggingFace config for {config.model_source}"
+            "Failed to retrieve HuggingFace config for %s: %s",
+            config.model_source,
+            e,
         )
         hf_config = None
 
