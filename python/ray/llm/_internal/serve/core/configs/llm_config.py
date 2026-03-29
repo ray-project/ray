@@ -468,6 +468,18 @@ class LLMConfig(BaseModelExtended):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_vllm_engine_config(self):
+        """Reuse vLLM engine validation at the LLMConfig layer."""
+        if self.llm_engine == LLMEngine.vLLM.value:
+            from ray.llm._internal.serve.engines.vllm.vllm_models import (
+                VLLMEngineConfig,
+            )
+
+            VLLMEngineConfig.from_llm_config(self)
+
+        return self
+
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:

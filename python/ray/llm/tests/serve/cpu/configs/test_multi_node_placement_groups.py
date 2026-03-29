@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 import pytest
+from pydantic import ValidationError
 
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
@@ -209,6 +210,36 @@ def test_llm_serve_accelerator_and_resource_merging():
         assert bundle["GPU"] == 1
         assert "accelerator_type:L4" in bundle
         assert bundle["accelerator_type:L4"] == 0.001
+
+
+@pytest.mark.parametrize(
+    "placement_group_config",
+    [
+        {"bundles": [{"CPU": 4, "GPU": 0}]},
+        {"bundle_per_worker": {"CPU": 2, "GPU": 0}, "strategy": "PACK"},
+    ],
+)
+def test_llm_serve_accelerator_conflicts_with_explicit_cpu_only_pg(
+    placement_group_config,
+):
+    """Test that explicit CPU-only placement groups reject accelerator_type."""
+    with pytest.raises(
+        ValidationError,
+        match="accelerator_type cannot be set when placement_group_config",
+    ):
+        LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+                model_source="facebook/opt-1.3b",
+            ),
+            engine_kwargs=dict(
+                tensor_parallel_size=1,
+                pipeline_parallel_size=1,
+                distributed_executor_backend="ray",
+            ),
+            accelerator_type="L4",
+            placement_group_config=placement_group_config,
+        )
 
 
 def test_llm_serve_data_parallel_placement_override():

@@ -100,6 +100,33 @@ class TestModelConfig:
                 generation_config="invalid_config",  # Should be a dictionary, not a string
             )
 
+    def test_accelerator_type_with_cpu_only_bundles_raises(self):
+        """Test that explicit CPU-only placement bundles reject accelerator_type."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type cannot be set when placement_group_config",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4, "GPU": 0}]},
+            )
+
+    def test_accelerator_type_with_cpu_only_bundle_per_worker_raises(self):
+        """Test that explicit CPU-only bundle_per_worker rejects accelerator_type."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type cannot be set when placement_group_config",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={
+                    "bundle_per_worker": {"CPU": 2, "GPU": 0},
+                    "strategy": "PACK",
+                },
+            )
+
     def test_deployment_type_checking(self, disable_placement_bundles):
         """Test that deployment config type checking works."""
         with pytest.raises(

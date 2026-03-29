@@ -124,6 +124,15 @@ class VLLMEngineConfig(BaseModelExtended):
         validated = PlacementGroupConfig(**value)
         return validated.model_dump()
 
+    @model_validator(mode="after")
+    def validate_accelerator_type_requires_gpu(self):
+        if self.accelerator_type and self._placement_group_is_cpu_only():
+            raise ValueError(
+                "accelerator_type cannot be set when placement_group_config "
+                "resolves to CPU-only GPU resources."
+            )
+        return self
+
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
@@ -240,6 +249,21 @@ class VLLMEngineConfig(BaseModelExtended):
     def ray_accelerator_type(self) -> str:
         """Converts the accelerator type to the Ray Core format."""
         return f"accelerator_type:{self.accelerator_type}"
+
+    def _placement_group_is_cpu_only(self) -> bool:
+        """Returns True when placement_group_config explicitly requests GPU: 0."""
+        if not self.placement_group_config:
+            return False
+
+        bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+        if bundle_per_worker is not None:
+            return bundle_per_worker.get("GPU", 0) == 0
+
+        bundles = self.placement_group_config.get("bundles") or []
+        if not bundles:
+            return False
+
+        return all(bundle.get("GPU", 0) == 0 for bundle in bundles)
 
     @property
     def tensor_parallel_degree(self) -> int:
