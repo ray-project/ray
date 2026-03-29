@@ -224,7 +224,7 @@ class LeRobotDatasourceMetadata:
         """Estimated in-memory size of one fully-decoded frame row (bytes)."""
         features = self.info.get("features", {})
         total = 0
-        for feat in features.values():
+        for feat_name, feat in features.items():
             if feat.get("dtype") == "video":
                 shape = feat.get("shape")
                 if shape:
@@ -234,6 +234,12 @@ class LeRobotDatasourceMetadata:
                 try:
                     total += int(np.prod(shape)) * np.dtype(feat["dtype"]).itemsize
                 except (TypeError, KeyError):
+                    logger.warning(
+                        "Could not estimate size for feature %r in dataset %r, "
+                        "skipping.",
+                        feat_name,
+                        self.root,
+                    )
                     continue
         return total
 
