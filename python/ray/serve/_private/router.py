@@ -1315,6 +1315,7 @@ class AsyncioRouter:
             self._process_finished_request,
             replica.replica_id,
             pr.metadata.internal_request_id,
+            replica.actor_id,
         )
         result.add_done_callback(callback)
 
