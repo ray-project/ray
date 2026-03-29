@@ -41,8 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     server.add_argument(
         "-m",
         "--model",
-        default="test-model",
-        help="Model name to send in requests (default: %(default)s)",
+        required=True,
+        help="Model name to send in requests",
     )
     server.add_argument(
         "--tokenizer",
@@ -60,26 +60,26 @@ def build_parser() -> argparse.ArgumentParser:
     workload.add_argument(
         "--isl",
         type=int,
-        default=None,
-        help="Average input sequence length",
+        default=1000,
+        help="Average input sequence length (default: %(default)s)",
     )
     workload.add_argument(
         "--hit-rate",
         type=float,
-        default=None,
-        help="Prefix cache hit rate [0, 1]",
+        default=0.5,
+        help="Prefix cache hit rate [0, 1] (default: %(default)s)",
     )
     workload.add_argument(
         "--num-turns",
         type=int,
-        default=None,
-        help="Number of turns per session",
+        default=1,
+        help="Number of turns per session (default: %(default)s)",
     )
     workload.add_argument(
         "--osl",
         type=int,
-        default=None,
-        help="Output tokens per turn",
+        default=100,
+        help="Output tokens per turn (default: %(default)s)",
     )
     workload.add_argument(
         "--shared-system-prompt-ratio",
@@ -192,8 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     interactive.add_argument(
         "--num-workers",
         type=int,
-        default=None,
-        help="Number of worker tasks",
+        default=1,
+        help="Number of process-pool workers for conversation generation (default: %(default)s)",
     )
 
     return parser

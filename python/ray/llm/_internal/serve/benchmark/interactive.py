@@ -15,7 +15,7 @@ import logging
 import os
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
@@ -90,18 +90,12 @@ class RuntimeState:
     inflight: int = 0
     measurement_active: bool = False
     measurement_start_ns: Optional[int] = None
-    measurement_metrics: list = None  # type: ignore[assignment]  # list[mt.TurnMetric]
+    measurement_metrics: list[mt.TurnMetric] = field(default_factory=list)
     measurement_target_requests: Optional[int] = None
-    last_window_metrics: list = None  # type: ignore[assignment]  # list[mt.TurnMetric]
+    last_window_metrics: list[mt.TurnMetric] = field(default_factory=list)
     last_window_elapsed_s: float = 0.0
     last_notice: Optional[str] = None
     save_dir: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.measurement_metrics is None:
-            self.measurement_metrics = []
-        if self.last_window_metrics is None:
-            self.last_window_metrics = []
 
 
 def _summarize_metrics(metrics: list[mt.TurnMetric], elapsed_s: float) -> dict:
@@ -162,7 +156,7 @@ def _save_window_result(
             "first_chunk_threshold": args.first_chunk_threshold,
             "num_turns": args.num_turns,
             "osl": args.osl,
-            "cross_sharing": args.cross_sharing,
+            "shared_system_prompt_ratio": args.shared_system_prompt_ratio,
             "isl": args.isl,
             "hit_rate": args.hit_rate,
             "runtime_qps": runtime_qps,
@@ -204,7 +198,7 @@ def _build_spec(
         concurrency=None,
         request_rate=1.0,
         ramp_interval=0.0,
-        cross_sharing=args.cross_sharing,
+        shared_system_prompt_ratio=args.shared_system_prompt_ratio,
         isl=args.isl,
         hit_rate=args.hit_rate,
     )
@@ -277,7 +271,7 @@ class CommandHandler:
                 "Commands: help, rate <qps>, start, measure <n>, stop, "
                 "status, save [path|name], save-dir <path>, quit\n"
                 "Workload: workload [isl=N] [osl=N] [hit-rate=F] "
-                "[cross-sharing=F] [num-turns=N]\n"
+                "[sharing=F] [num-turns=N]\n"
                 "  e.g.  workload isl=2000 osl=200 hit-rate=0.5\n"
                 "  All params optional; unspecified ones keep their current values.\n"
                 "  workload (no args) prints current workload spec."
@@ -342,7 +336,7 @@ class CommandHandler:
                 f"target={self.runtime.measurement_target_requests} "
                 f"save_dir={self.runtime.save_dir}\n"
                 f"workload: isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
-                f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
+                f"sharing={cur.shared_system_prompt_ratio} num-turns={cur.num_turns}"
             )
             if self.runtime.last_notice:
                 status += f"\n{self.runtime.last_notice}"
@@ -384,7 +378,7 @@ class CommandHandler:
             if len(parts) == 1:
                 return (
                     f"isl={cur.isl} osl={cur.osl} hit-rate={cur.hit_rate} "
-                    f"cross-sharing={cur.cross_sharing} num-turns={cur.num_turns}"
+                    f"sharing={cur.shared_system_prompt_ratio} num-turns={cur.num_turns}"
                 )
             _param_aliases = {
                 "isl": "isl",
@@ -392,8 +386,9 @@ class CommandHandler:
                 "hit-rate": "hit_rate",
                 "hitrate": "hit_rate",
                 "hit_rate": "hit_rate",
-                "cross-sharing": "cross_sharing",
-                "cross_sharing": "cross_sharing",
+                "sharing": "shared_system_prompt_ratio",
+                "shared-system-prompt-ratio": "shared_system_prompt_ratio",
+                "shared_system_prompt_ratio": "shared_system_prompt_ratio",
                 "num-turns": "num_turns",
                 "num_turns": "num_turns",
             }
@@ -420,7 +415,7 @@ class CommandHandler:
                 isl=cur.isl,
                 osl=cur.osl,
                 hit_rate=cur.hit_rate,
-                cross_sharing=cur.cross_sharing,
+                shared_system_prompt_ratio=cur.shared_system_prompt_ratio,
                 num_turns=cur.num_turns,
             )
             merged.update(overrides)
@@ -439,7 +434,7 @@ class CommandHandler:
             return (
                 f"Workload updated: isl={new_spec.isl} osl={new_spec.osl} "
                 f"hit-rate={new_spec.hit_rate} "
-                f"cross-sharing={new_spec.cross_sharing} "
+                f"sharing={new_spec.shared_system_prompt_ratio} "
                 f"num-turns={new_spec.num_turns}"
             )
         if op in ("quit", "exit"):
@@ -500,7 +495,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
     next_session_idx = 0
     running_tasks: set[asyncio.Task] = set()
 
-    num_workers = args.num_workers or min(os.cpu_count() or 4, 8)
+    num_workers = args.num_workers
     print(f"Starting process pool with {num_workers} workers")
     cpu_pool = ProcessPoolExecutor(
         max_workers=num_workers,

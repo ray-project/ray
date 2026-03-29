@@ -32,9 +32,9 @@ def _make_args(**overrides) -> argparse.Namespace:
         first_chunk_threshold=16,
         isl=1000,
         hit_rate=0.5,
-        num_turns=3,
+        num_turns=1,
         osl=50,
-        cross_sharing=0.5,
+        shared_system_prompt_ratio=0.0,
         save_result=None,
         save_dir=None,
     )
@@ -154,7 +154,7 @@ class TestBuildSpec:
         spec = _build_spec(args)
         assert spec.isl == 1000
         assert spec.hit_rate == 0.5
-        assert spec.num_turns == 3
+        assert spec.num_turns == 1
         assert spec.osl == 50
 
     def test_overrides(self):
@@ -162,10 +162,12 @@ class TestBuildSpec:
         spec = _build_spec(args, {"isl": 2000, "osl": 100})
         assert spec.isl == 2000
         assert spec.osl == 100
-        assert spec.num_turns == 3  # unchanged
+        assert spec.num_turns == 1  # unchanged
 
     def test_override_num_turns(self):
-        args = _make_args()
+        args = _make_args(
+            isl=5600, hit_rate=0.8, osl=140, shared_system_prompt_ratio=1.0
+        )
         spec = _build_spec(args, {"num_turns": 5})
         assert spec.num_turns == 5
 
