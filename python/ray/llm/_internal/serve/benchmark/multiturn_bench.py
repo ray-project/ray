@@ -1833,10 +1833,10 @@ def run_direct(args) -> int:
     if spec.request_rate is not None:
         if spec.duration_s > 0:
             effective_duration = spec.duration_s
-        elif spec.num_sessions is not None:
-            effective_duration = spec.num_sessions * spec.num_turns / spec.request_rate
         else:
-            effective_duration = 60.0
+            # _validate() ensures num_sessions is set when duration_s <= 0
+            assert spec.num_sessions is not None
+            effective_duration = spec.num_sessions * spec.num_turns / spec.request_rate
         if args.warm_up >= effective_duration:
             logger.error(
                 "--warm-up (%.3fs) must be less than effective duration (%.3fs).",
