@@ -19,6 +19,7 @@ Utility
    ray.util.tpu.get_tpu_slice_name_from_node
    ray.util.tpu.get_tpu_nodes_for_slice
    ray.util.tpu.get_num_ready_tpu_slices
+   ray.util.tpu.get_num_intact_tpu_slices
    ray.util.tpu.get_tpu_num_slices_for_workers
    ray.util.tpu.get_tpu_version_from_type
    ray.util.tpu.get_tpu_worker_resources
