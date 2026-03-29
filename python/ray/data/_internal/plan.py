@@ -180,7 +180,7 @@ class ExecutionPlan:
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
 
-        from ray.data.dataset import Dataset, MaterializedDataset
+        from ray.data.dataset import MaterializedDataset
 
         dataset_cls = dataset.__class__
 
@@ -213,16 +213,13 @@ class ExecutionPlan:
             # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
             if not has_n_ary_operator:
                 assert isinstance(dag, SourceOperator), dag
-                ds = Dataset(
-                    ExecutionPlan(
-                        DatasetStats(metadata={}, parent=None), self._context
-                    ),
-                    LogicalPlan(dag, self._context),
-                )
+                # We infer from logical plan's dag directly as we know that
+                # we don't have any cached values, so inferring is the only
+                # option left.
                 if schema is None:
-                    schema = ds._base_schema(fetch_if_missing=False)
+                    schema = self._logical_plan.dag.infer_schema()
                 if count is None:
-                    count = ds._meta_count()
+                    count = self._logical_plan.dag.infer_metadata().num_rows
 
         if schema is None:
             schema_str = "Unknown schema"
