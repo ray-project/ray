@@ -490,6 +490,7 @@ AUTOSCALING_ENV_VARIANTS = {
     "env_overrides": {
         "env": {
             "RAY_SERVE_LOG_TO_STDERR": "0",
+            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
             "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
         },
         "name_suffix": "_env_overrides",
@@ -658,6 +659,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    env = {"RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0"},
     files = [
         "test_handle_same_loop.py",
         "test_proxy.py",
