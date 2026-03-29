@@ -511,6 +511,8 @@ def teardown_cluster(
             )
             if len(workers) > min_workers:
                 workers = random.sample(workers, len(workers) - min_workers)
+            else:
+                workers = []
 
         # todo: it's weird to kill the head node but not all workers
         if workers_only:
