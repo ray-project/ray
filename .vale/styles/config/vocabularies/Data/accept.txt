@@ -18,6 +18,7 @@ FLAC
 [Ii]nqueue(s)?
 [Ll]ookup(s)?
 LLM(s)?
+LeRobot
 MCAP
 Modin
 [Mm]ultiget(s)?
