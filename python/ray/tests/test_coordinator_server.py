@@ -156,7 +156,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
                 "type": "local",
                 "head_ip": head_ip,
                 "worker_ips": ["0.0.0.0:1"],
-                "external_head_ip": "1.2.3.4",
+                "external_head_ip": "0.0.0.0.3",
             },
         }
         provider_config = cluster_config["provider"]
