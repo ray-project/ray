@@ -150,9 +150,7 @@ class WorkloadSpec:
             # Full cross-sharing: turn 1 caches all of sys_tokens
             user_tokens = isl * (1 - hit_rate)
             sys_tokens = (
-                isl
-                - user_tokens * (num_turns + 1) / 2
-                - osl * (num_turns - 1) / 2
+                isl - user_tokens * (num_turns + 1) / 2 - osl * (num_turns - 1) / 2
             )
         else:
             # General case: sharing < 1
@@ -170,9 +168,7 @@ class WorkloadSpec:
             )
             user_tokens = numer / denom
             sys_tokens = (
-                num_turns
-                * (isl * (1 - hit_rate) - user_tokens)
-                / (1 - sharing)
+                num_turns * (isl * (1 - hit_rate) - user_tokens) / (1 - sharing)
             )
 
         # Validate before clamping so infeasible combinations are caught.
@@ -277,7 +273,9 @@ class WorkloadSpec:
     def effective_isl(self) -> float:
         """Average input sequence length across all turns."""
         n = self.num_turns
-        return self._sys_tokens + self._user_tokens * (n + 1) / 2 + self.osl * (n - 1) / 2
+        return (
+            self._sys_tokens + self._user_tokens * (n + 1) / 2 + self.osl * (n - 1) / 2
+        )
 
     @property
     def effective_h(self) -> float:
@@ -296,7 +294,9 @@ class WorkloadSpec:
             if k == 1:
                 cached = int(round(self._sys_tokens * self.shared_system_prompt_ratio))
             else:
-                cached = self._sys_tokens + (k - 1) * self._user_tokens + (k - 1) * self.osl
+                cached = (
+                    self._sys_tokens + (k - 1) * self._user_tokens + (k - 1) * self.osl
+                )
             new = total - cached
             h_k = cached / total if total > 0 else 0.0
             per_turn.append(
