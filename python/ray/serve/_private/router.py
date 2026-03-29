@@ -23,13 +23,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import (
-    ActorDiedError,
-    ActorUnavailableError,
-    RayActorError,
-    RayError,
-    RayTaskError,
-)
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -81,7 +75,11 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.types import ObjectRef
 from ray.util import metrics
 
@@ -900,6 +898,23 @@ class AsyncioRouter:
             )
             return False
 
+    def _get_upstream_deployment_name(self, e: ActorDiedError) -> str:
+        """Extract the upstream deployment name from an ActorDiedError."""
+        for token in str(e).split():
+            if ReplicaID.is_full_id_str(token):
+                try:
+                    return ReplicaID.from_full_id_str(token).deployment_id.name
+                except ValueError:
+                    pass
+        return "unknown"
+
+    def _make_upstream_crash_error(self, e: ActorDiedError) -> RayServeException:
+        upstream = self._get_upstream_deployment_name(e)
+        return RayServeException(
+            f"Request to deployment '{self.deployment_id.name}' failed "
+            f"because upstream deployment '{upstream}' crashed."
+        )
+
     async def _route_and_send_request_once(
         self,
         pr: PendingRequest,
@@ -1000,15 +1015,11 @@ class AsyncioRouter:
                     # permanently failed — retrying with another replica
                     # won't help. Propagate immediately so the caller gets
                     # a fast error.
-                    raise RayActorError(
-                        error_msg="An upstream deployment in the request chain crashed."
-                    )
+                    raise self._make_upstream_crash_error(e)
             elif not pr.resolved:
                 # ActorDiedError during argument resolution — same upstream
                 # cause as above, caught before a replica was even chosen.
-                raise RayActorError(
-                    error_msg="An upstream deployment in the request chain crashed."
-                )
+                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
