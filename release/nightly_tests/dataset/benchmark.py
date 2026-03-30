@@ -2,8 +2,9 @@ import gc
 import json
 import os
 import time
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -22,7 +23,7 @@ def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
 
 
-class OperatorStartTracker(ExecutionCallback):
+class OperatorStatsTracker(ExecutionCallback):
     """Records per-operator start time and duration.
 
     Tracks when each operator first submits a task (start) and when it
@@ -34,48 +35,61 @@ class OperatorStartTracker(ExecutionCallback):
     Usage::
 
         ctx = ray.data.DataContext.get_current()
-        ctx.custom_execution_callback_classes.append(OperatorStartTracker)
+        ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
 
         # ... run pipeline ...
 
-        metrics = OperatorStartTracker.collect()
+        metrics = OperatorStatsTracker.collect()
     """
 
-    _start_time: float = 0.0
-    _op_start_s: Dict[str, float] = {}
-    _op_duration_s: Dict[str, float] = {}
+    _op_start: Dict[str, float] = {}
+    _op_end: Dict[str, Optional[float]] = {}
 
     def before_execution_starts(self, executor):
-        OperatorStartTracker._start_time = time.perf_counter()
-        OperatorStartTracker._op_start_s.clear()
-        OperatorStartTracker._op_duration_s.clear()
+        OperatorStatsTracker._op_start.clear()
+        OperatorStatsTracker._op_end.clear()
 
     def on_execution_step(self, executor):
         if executor._topology is None:
             return
-        now = time.perf_counter()
         for i, op in enumerate(executor._topology):
             op_key = f"{op.name}_{i}"
-            if op_key not in self._op_start_s and op.metrics.num_tasks_submitted > 0:
-                self._op_start_s[op_key] = now - self._start_time
+            if op_key not in self._op_start and op.metrics.num_tasks_submitted > 0:
+                self._op_start[op_key] = time.time()
+                self._op_end[op_key] = None
             if (
-                op_key in self._op_start_s
-                and op_key not in self._op_duration_s
+                op_key in self._op_start
+                and self._op_end[op_key] is None
                 and op.has_completed()
             ):
-                self._op_duration_s[op_key] = (
-                    now - self._start_time - self._op_start_s[op_key]
-                )
+                self._op_end[op_key] = time.time()
 
     @classmethod
-    def collect(cls) -> Dict[str, float]:
-        """Return metrics dict with ``op_start_s/`` and ``op_duration_s/`` keys."""
-        metrics: Dict[str, float] = {}
-        for k, v in cls._op_start_s.items():
-            metrics[f"op_start_s/{k}"] = v
-        for k, v in cls._op_duration_s.items():
-            metrics[f"op_duration_s/{k}"] = v
-        return metrics
+    def collect(cls) -> Dict[str, Any]:
+        """Return ``{"op_timeline": {name: {start, duration_s}, ...}}``.
+
+        Entries are sorted by start time. ``start`` is an ISO-8601 UTC
+        datetime string and ``duration_s`` is the wall-clock seconds the
+        operator was active (``None`` if it hadn't completed when
+        ``collect()`` was called).
+        """
+        entries: List[Tuple[str, float, Optional[float]]] = []
+        for key, start in cls._op_start.items():
+            end = cls._op_end.get(key)
+            entries.append((key, start, end))
+        entries.sort(key=lambda e: e[1])
+
+        timeline: Dict[str, Dict[str, Any]] = {}
+        for key, start, end in entries:
+            start_dt = datetime.fromtimestamp(start, tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            duration_s = round(end - start, 2) if end is not None else None
+            timeline[key] = {
+                "start": start_dt,
+                "duration_s": duration_s,
+            }
+        return {"op_timeline": timeline}
 
 
 class BenchmarkMetric(Enum):
