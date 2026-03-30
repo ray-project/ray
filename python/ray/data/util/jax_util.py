@@ -11,14 +11,6 @@ logger = logging.getLogger(__name__)
 _GLOBAL_MESH_1D_AXIS = "data"
 
 
-def _get_slice_start(sl: slice) -> int:
-    return 0 if sl.start is None else sl.start
-
-
-def _get_slice_stop(sl: slice, length: int) -> int:
-    return length if sl.stop is None else sl.stop
-
-
 def _convert_ndarray_to_jax_array(
     ndarray: np.ndarray,
 ) -> "jax.Array":  # noqa: F821
@@ -40,35 +32,11 @@ def _convert_ndarray_to_jax_array(
     # Global shape assumes each host gets the exact same local batch size.
     global_shape = (local_batch_size * host_count,) + ndarray.shape[1:]
 
-    # Use index map to deterministically place local chunks onto correct devices
-    device_indices_map = physical_sharding.addressable_devices_indices_map(global_shape)
-    # Filter out devices that don't have any data on this host.
-    device_indices_map = {
-        d: idx for d, idx in device_indices_map.items() if idx is not None
-    }
-
-    # when a tensor is wholly assigned to a single device instead of being partitioned, addressable_devices_indices_map returns slice(None, None, None) for that dimension instead of concrete indices.
-    # _get_slice_start and _get_slice_stop are workarounds to handle this case.
-    host_start_index = min(
-        _get_slice_start(idx[0]) for idx in device_indices_map.values()
-    )
-
-    arrays = []
-    for device, index in device_indices_map.items():
-        # For deterministic behavior, we need to translate the global row-sharding index to this host's local ndarray slice
-        start = _get_slice_start(index[0])
-        stop = _get_slice_stop(index[0], global_shape[0])
-        local_slice = slice(
-            start - host_start_index,
-            stop - host_start_index,
-            index[0].step,
-        )
-        local_index = (local_slice,) + index[1:]
-        arrays.append(jax.device_put(ndarray[local_index], device))
-
-    # Construct the globally aware 1D array
-    physical_array = jax.make_array_from_single_device_arrays(
-        global_shape, physical_sharding, arrays
+    # Construct the globally aware 1D array from process-local data.
+    # This automatically shards the local ndarray across the local devices
+    # assigned to this process by the physical_sharding.
+    physical_array = jax.make_array_from_process_local_data(
+        physical_sharding, ndarray, global_shape
     )
 
     return physical_array
