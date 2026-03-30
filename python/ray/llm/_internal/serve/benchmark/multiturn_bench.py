@@ -116,7 +116,7 @@ class WorkloadSpec:
 
     # Fraction of system prompt shared across all sessions
     # 1.0 = identical system prompt, 0.0 = all unique
-    shared_system_prompt_ratio: float = 0.0
+    shared_system_prompt_ratio: float = 1.0
 
     # Simple mode inputs (derive user_tokens, sys_tokens)
     isl: Optional[int] = None
