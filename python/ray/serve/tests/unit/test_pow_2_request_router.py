@@ -1759,7 +1759,7 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_router):
 )
 async def test_queue_len_cache_decremented_on_request_completion(pow_2_router):
     """
-    Verify that enqueue_cache_decrement + drain decrements the queue length cache.
+    Verify that decrement_queue_len_cache decrements the queue length cache.
     Without this, with max_ongoing_requests=1 the cache gets stuck at 1
     after routing, causing every subsequent pick to require blocking probe RPCs.
     """
@@ -1773,8 +1773,7 @@ async def test_queue_len_cache_decremented_on_request_completion(pow_2_router):
     assert s._replica_queue_len_cache.get(r1.replica_id) == 1
 
     # Request completes - cache should decrement to 0
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
     assert s._replica_queue_len_cache.get(r1.replica_id) == 0
 
 
@@ -1798,16 +1797,13 @@ async def test_queue_len_cache_decremented_multiple_requests(pow_2_router):
     assert s._replica_queue_len_cache.get(r1.replica_id) == 3
 
     # Each completion decrements
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
     assert s._replica_queue_len_cache.get(r1.replica_id) == 2
 
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
     assert s._replica_queue_len_cache.get(r1.replica_id) == 1
 
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
     assert s._replica_queue_len_cache.get(r1.replica_id) == 0
 
 
@@ -1829,8 +1825,7 @@ async def test_queue_len_cache_decrement_does_not_go_negative(pow_2_router):
     s._replica_queue_len_cache.update(r1.replica_id, 0)
 
     # Duplicate or spurious completion - should stay at 0
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
     assert s._replica_queue_len_cache.get(r1.replica_id) == 0
 
 
@@ -1844,7 +1839,7 @@ async def test_queue_len_cache_decrement_does_not_go_negative(pow_2_router):
 )
 async def test_queue_len_cache_decrement_skipped_when_expired(pow_2_router):
     """
-    Verify that enqueue_cache_decrement does not add a cache entry when the
+    Verify that decrement_queue_len_cache does not add a cache entry when the
     replica's cache entry has expired (get returns None).
     """
     s = pow_2_router
@@ -1857,8 +1852,7 @@ async def test_queue_len_cache_decrement_skipped_when_expired(pow_2_router):
     assert s._replica_queue_len_cache.get(r1.replica_id) is None
 
     # Completion should not add an entry (we only update when current is not None)
-    s.enqueue_cache_decrement(r1.replica_id)
-    s.drain_pending_cache_decrements()
+    s.decrement_queue_len_cache(r1.replica_id)
 
     # Cache should still be empty - we don't incorrectly create an entry
     assert s._replica_queue_len_cache.get(r1.replica_id) is None
