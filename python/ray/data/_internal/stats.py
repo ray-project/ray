@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import (
     Any,
+    DefaultDict,
     Dict,
     List,
     Mapping,
@@ -21,6 +22,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
     MetricsGroup,
@@ -110,16 +112,13 @@ class _StatsAccumulator:
             return None
         mean = self.sum / self.count
 
-        def _maybe_round(v: int | float) -> int | float:
-            return round(v, round_digits) if round_digits is not None else v
-
         result = {
-            "min": _maybe_round(self.min_value),
-            "max": _maybe_round(self.max_value),
-            "mean": int(mean) if mean_as_int else _maybe_round(mean),
+            "min": safe_round(self.min_value, round_digits),
+            "max": safe_round(self.max_value, round_digits),
+            "mean": int(mean) if mean_as_int else safe_round(mean, round_digits),
         }
         if include_sum:
-            result["sum"] = _maybe_round(self.sum)
+            result["sum"] = safe_round(self.sum, round_digits)
         if include_count:
             result["count"] = self.count
         return result
@@ -1480,8 +1479,8 @@ class OperatorStatsSummary:
         memory_acc: _StatsAccumulator = _StatsAccumulator()
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
-        rows_per_task: dict[int, int] = collections.defaultdict(int)
-        tasks_per_node: dict[str, set[int]] = collections.defaultdict(set)
+        rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
+        tasks_per_node: DefaultDict[str, Set[int]] = collections.defaultdict(set)
         num_exec = 0
         earliest_start_time, latest_end_time = float("inf"), float("-inf")
 
