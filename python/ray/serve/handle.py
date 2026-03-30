@@ -850,6 +850,27 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             response_serialization=response_serialization,
         )
 
+    def get_request_router(
+        self,
+    ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
+        """Get the request router used by this handle for local routing decisions.
+
+        Returns the underlying RequestRouter instance if the handle has been
+        initialized, or None otherwise. This can be used to make local routing
+        decisions (e.g., via choose_replicas()) without sending a request
+        through the full DeploymentHandle transport path.
+        """
+        if self._router is None:
+            return None
+
+        # The Router wrapper (CurrentLoopRouter or SingletonThreadRouter)
+        # stores the AsyncioRouter which has the request_router property.
+        asyncio_router = getattr(self._router, "_asyncio_router", None)
+        if asyncio_router is not None:
+            return asyncio_router.request_router
+        # Direct access if _router exposes request_router
+        return getattr(self._router, "request_router", None)
+
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:

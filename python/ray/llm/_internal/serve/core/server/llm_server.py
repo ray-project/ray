@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import os
+import types
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -194,6 +195,103 @@ class LLMServer(LLMServerProtocol):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+
+        # Start HTTP sidecar if enabled
+        if os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
+            await self._start_http_sidecar()
+
+    async def _start_http_sidecar(self):
+        """Start a lightweight HTTP server that exposes vLLM's OpenAI API directly.
+
+        This bypasses the Ray actor channel (gRPC + batcher) for streaming responses,
+        reducing per-token overhead from ~3ms to ~0.1ms.
+        """
+        from aiohttp import web
+
+        engine = self.engine
+
+        import orjson as _orjson
+
+        async def _handle_openai(request, request_cls, create_fn):
+            body = _orjson.loads(await request.read())
+            parsed = request_cls(**body)
+            try:
+                result = await create_fn(parsed, raw_request=None)
+            except ValueError as e:
+                return web.json_response(
+                    {"error": {"message": str(e), "type": "invalid_request_error"}},
+                    status=400,
+                )
+            if isinstance(result, types.AsyncGeneratorType):
+                response = web.StreamResponse()
+                response.content_type = "text/event-stream"
+                response.headers["Cache-Control"] = "no-cache"
+                response.headers["X-Accel-Buffering"] = "no"
+                await response.prepare(request)
+                async for chunk in result:
+                    data = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                    await response.write(data)
+                await response.write_eof()
+                return response
+            if hasattr(result, "model_dump"):
+                return web.json_response(result.model_dump())
+            return web.json_response(
+                {"error": {"message": str(result), "type": "server_error"}},
+                status=500,
+            )
+
+        async def handle_chat(request):
+            from vllm.entrypoints.openai.chat_completion.protocol import (
+                ChatCompletionRequest as VLLMChatRequest,
+            )
+
+            return await _handle_openai(
+                request,
+                VLLMChatRequest,
+                engine._oai_serving_chat.create_chat_completion,
+            )
+
+        async def handle_completions(request):
+            from vllm.entrypoints.openai.completion.protocol import (
+                CompletionRequest as VLLMCompletionRequest,
+            )
+
+            return await _handle_openai(
+                request,
+                VLLMCompletionRequest,
+                engine._oai_serving_completion.create_completion,
+            )
+
+        async def handle_models(request):
+            model_id = self._llm_config.model_loading_config.model_id
+            return web.json_response(
+                {
+                    "object": "list",
+                    "data": [
+                        {"id": model_id, "object": "model", "owned_by": "organization"}
+                    ],
+                }
+            )
+
+        app = web.Application()
+        app.router.add_get("/v1/models", handle_models)
+        app.router.add_post("/v1/chat/completions", handle_chat)
+        app.router.add_post("/v1/completions", handle_completions)
+
+        runner = web.AppRunner(app, tcp_nodelay=True)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", 0)
+        await site.start()
+
+        self._http_sidecar_port = site._server.sockets[0].getsockname()[1]
+        self._http_sidecar_host = ray.util.get_node_ip_address()
+        logger.info(
+            f"HTTP sidecar started on {self._http_sidecar_host}:{self._http_sidecar_port}"
+        )
+
+    def get_sidecar_port(self) -> Optional[int]:
+        """Return the sidecar HTTP port, or None if not started."""
+        return getattr(self, "_http_sidecar_port", None)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None

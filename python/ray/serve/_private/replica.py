@@ -1151,6 +1151,13 @@ class Replica:
             and self._user_callable_wrapper.has_user_routing_stats_method
         )
 
+        # Get sidecar port from user callable if available
+        sidecar_port = None
+        if self._user_callable_wrapper is not None:
+            user_callable = self._user_callable_wrapper._callable
+            if hasattr(user_callable, "get_sidecar_port"):
+                sidecar_port = user_callable.get_sidecar_port()
+
         return (
             self._version.deployment_config,
             self._version,
@@ -1164,6 +1171,7 @@ class Replica:
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
             self._gang_context,
+            sidecar_port,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
