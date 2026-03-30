@@ -451,7 +451,7 @@ class ResourceManager:
                 yield from self.get_downstream_eligible_ops(next_op)
 
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
-        if self._op_resource_allocator is None:
+        if self._op_resource_allocator is not None:
             return self._op_resource_allocator.max_task_output_bytes_to_read(op)
         return None
 
