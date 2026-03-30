@@ -1291,8 +1291,18 @@ class DatasetStatsSummary:
 
     @staticmethod
     def _find_start_and_end(summ: "DatasetStatsSummary") -> Tuple[float, float]:
-        earliest_start = min(ops.earliest_start_time for ops in summ.operators_stats)
-        latest_end = max(ops.latest_end_time for ops in summ.operators_stats)
+        start_times = [
+            ops.earliest_start_time
+            for ops in summ.operators_stats
+            if ops.earliest_start_time is not None
+        ]
+        end_times = [
+            ops.latest_end_time
+            for ops in summ.operators_stats
+            if ops.latest_end_time is not None
+        ]
+        earliest_start = min(start_times) if start_times else 0
+        latest_end = max(end_times) if end_times else 0
         return earliest_start, latest_end
 
     def runtime_metrics(self) -> str:
@@ -1406,8 +1416,8 @@ class OperatorStatsSummary:
     # overall runtime of the operator, pulled from the stats actor, whereas the
     # computed walltimes in `self.wall_time` are calculated on a operator level.
     time_total_s: float
-    earliest_start_time: float
-    latest_end_time: float
+    earliest_start_time: Optional[float]
+    latest_end_time: Optional[float]
     # String summarizing high-level statistics from executing the operator
     block_execution_summary_str: str
     # The fields below are dicts with stats aggregated across blocks
@@ -1497,18 +1507,19 @@ class OperatorStatsSummary:
         # Compute timing totals.
         if num_exec:
             time_total_s = latest_end_time - earliest_start_time
+            # Handle -0.0 case.
+            rounded_total = round(time_total_s, 2)
+            if rounded_total <= 0:
+                rounded_total = 0
         else:
             time_total_s = 0
-            earliest_start_time, latest_end_time = 0, 0
+            rounded_total = 0
+            earliest_start_time, latest_end_time = None, None
 
         # Build execution summary string.
         if is_sub_operator:
             exec_summary_str = f"{num_exec} blocks produced\n"
         elif num_exec:
-            # Handle -0.0 case.
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                rounded_total = 0
             exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
         else:
             exec_summary_str = "\n"
