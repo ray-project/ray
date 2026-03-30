@@ -110,23 +110,23 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     # if the total amount of memory is between [0.5GB, 4.8GB] the system cgroup will get 0.5GB + object store memory.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 2)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 0.5 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 1024**3
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 5000
-    assert config.system_reserved_memory == 500 * (1024**2)
+    assert config.system_reserved_memory == 1024**3
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 19)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 4.8 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 9 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 526
-    assert config.system_reserved_memory == 500 * (1024**2)
+    assert config.system_reserved_memory == 1024**3
 
 
 def test_enabled_resource_isolation_with_default_config_values_scale_with_system(
@@ -140,13 +140,13 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
     # if the amount of memory on the system is [5GB, 100GB] the reserved system memory will scale proportionately.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 20)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 5 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 500
-    assert config.system_reserved_memory == 536870912
+    assert config.system_reserved_memory == 1024**3
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 59)
     monkeypatch.setattr(

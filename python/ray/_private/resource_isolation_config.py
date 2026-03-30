@@ -63,6 +63,7 @@ class ResourceIsolationConfig:
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
         self.system_pids = ""
+        self.object_store_memory = object_store_memory
 
         # cgroupv2 cpu.weight calculated from system_reserved_cpu assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
