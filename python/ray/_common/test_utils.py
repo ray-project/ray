@@ -319,17 +319,17 @@ def assert_tensors_equivalent(obj1, obj2):
         # 2. shape
         assert obj1.shape == obj2.shape, f"shape mismatch: {obj1.shape} vs {obj2.shape}"
         # 3. device type must match (cpu/cpu or cuda/cuda), ignore index
-        assert (
-            obj1.device.type == obj2.device.type
-        ), f"Device type mismatch: {obj1.device} vs {obj2.device}"
+        assert obj1.device.type == obj2.device.type, (
+            f"Device type mismatch: {obj1.device} vs {obj2.device}"
+        )
 
         # 4. Compare values safely on CPU
         t1_cpu = obj1.cpu()
         t2_cpu = obj2.cpu()
         if obj1.dtype.is_floating_point or obj1.dtype.is_complex:
-            assert torch.allclose(
-                t1_cpu, t2_cpu, atol=1e-6, rtol=1e-5
-            ), "Floating-point tensors not close"
+            assert torch.allclose(t1_cpu, t2_cpu, atol=1e-6, rtol=1e-5), (
+                "Floating-point tensors not close"
+            )
         else:
             assert torch.equal(t1_cpu, t2_cpu), "Integer/bool tensors not equal"
         return
@@ -480,12 +480,22 @@ def fetch_prometheus(prom_addresses, timeout=None):
 
 
 def fetch_prometheus_timeseries(
-    prom_addreses: List[str],
+    prom_addresses: List[str],
     result: PrometheusTimeseries,
     timeout=None,
 ) -> PrometheusTimeseries:
+    """Fetch Prometheus timeseries data and update `result` in-place.
+
+    Args:
+        prom_addresses: List of metrics_agent addresses to collect metrics from.
+        result: A PrometheusTimeseries object to be updated with new data.
+        timeout: Optional timeout for HTTP requests.
+
+    Returns:
+        The updated PrometheusTimeseries object.
+    """
     components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-        prom_addreses, timeout=timeout
+        prom_addresses, timeout=timeout
     )
     for address, components in components_dict.items():
         if address not in result.components_dict:
@@ -493,7 +503,7 @@ def fetch_prometheus_timeseries(
         result.components_dict[address].update(components)
     result.metric_descriptors.update(metric_descriptors)
     for sample in metric_samples:
-        # udpate sample to the latest value
+        # update sample to the latest value
         result.metric_samples[
             frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
         ] = sample
