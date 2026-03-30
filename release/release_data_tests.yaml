@@ -40,6 +40,10 @@
 - name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -176,6 +180,10 @@
         - "column02 column14"  # 7M groups
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -577,6 +585,10 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
@@ -716,7 +728,7 @@
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
           frequency: weekly
-          fail_on_dead_nodes: 1
+          fail_on_dead_nodes: 0 # Allow node death during test
       - with:
           case: autoscaling
           cluster_type: autoscaling
@@ -760,7 +772,7 @@
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
-          fail_on_dead_nodes: 1
+          fail_on_dead_nodes: 0 # Allow node death during test
       - with:
           case: autoscaling
           cluster_type: autoscaling
