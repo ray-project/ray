@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
 
+RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
+    "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
+)
+
 
 @dataclass
 class OngoingRequest:
@@ -133,10 +137,7 @@ def handle_timeout_errors(
                     ) from exc
 
                 logger.warning(msg)
-                log_traceback = env_bool(
-                    "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
-                )
-                if log_traceback:
+                if RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
                     logger.debug(
                         f"Traceback for {operation_name} failure for {requester_id}:",
                         exc_info=True,
