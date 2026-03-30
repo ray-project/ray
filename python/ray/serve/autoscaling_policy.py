@@ -25,6 +25,13 @@ def _apply_scaling_factors(
     The computation uses the difference between desired and current to scale.
 
     """
+    # When scaling from zero, the scaling factor is not meaningful: the
+    # entire desired count would be treated as the delta and amplified,
+    # creating a feedback loop that compounds every control-loop tick.
+    # Return the raw desired value and let bounds handle the rest.
+    if current_num_replicas == 0:
+        return math.ceil(desired_num_replicas)
+
     replicas_delta = desired_num_replicas - current_num_replicas
     scaling_factor = (
         autoscaling_config.get_upscaling_factor()
@@ -102,18 +109,6 @@ def _apply_delay_logic(
     return decision_num_replicas, policy_state
 
 
-def _apply_bounds(
-    num_replicas: int,
-    capacity_adjusted_min_replicas: int,
-    capacity_adjusted_max_replicas: int,
-) -> int:
-    """Clip replica count to be within capacity-adjusted min/max bounds."""
-    return max(
-        capacity_adjusted_min_replicas,
-        min(capacity_adjusted_max_replicas, num_replicas),
-    )
-
-
 def _apply_default_params(
     desired_num_replicas: Union[int, float],
     ctx: AutoscalingContext,
@@ -124,22 +119,16 @@ def _apply_default_params(
     desired_num_replicas = _apply_scaling_factors(
         desired_num_replicas, ctx.current_num_replicas, ctx.config
     )
-    # Apply bounds
-    bounded_num_replicas = _apply_bounds(
-        desired_num_replicas,
-        ctx.capacity_adjusted_min_replicas,
-        ctx.capacity_adjusted_max_replicas,
-    )
 
     # If curr num replicas is 0 and the policy wants to scale up (e.g. based on internal
     # signals like queue length), bypass the delay logic for immediate scale-up.
-    if ctx.current_num_replicas == 0 and bounded_num_replicas > 0:
-        return bounded_num_replicas, policy_state
+    if ctx.current_num_replicas == 0 and desired_num_replicas > 0:
+        return desired_num_replicas, policy_state
 
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
     final_num_replicas, updated_state = _apply_delay_logic(
-        bounded_num_replicas, ctx.target_num_replicas, ctx.config, policy_state
+        max(0, desired_num_replicas), ctx.target_num_replicas, ctx.config, policy_state
     )
 
     return final_num_replicas, updated_state

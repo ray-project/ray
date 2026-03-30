@@ -36,7 +36,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -238,7 +238,6 @@ class TestResourceManager:
         }
 
         for op in [o1, o2, o3]:
-            op.update_resource_usage = MagicMock()
             op.current_logical_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
@@ -257,7 +256,8 @@ class TestResourceManager:
                 return_value=mock_internal_inqueue[op],
             )
             ref_bundle = MagicMock(
-                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
+                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op]),
+                output_split_idx=None,
             )
             topo[op].add_output(ref_bundle)
 
@@ -307,6 +307,8 @@ class TestResourceManager:
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
+        # Set block metadata size_bytes to 1 (rather than mocking the method on the
+        # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
         block_ref, block_meta = input.blocks[0]
         input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
 
@@ -345,16 +347,11 @@ class TestResourceManager:
         o2.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        # No sample available yet, uses fallback: target_max_block_size * factor * buffer
-        ctx = ray.data.DataContext.get_current()
-        expected_pending_output = (
-            ctx.target_max_block_size
-            * MAX_SAFE_BLOCK_SIZE_FACTOR
-            * ctx._max_num_blocks_in_streaming_gen_buffer
-        )
-        assert o2.metrics.obj_store_mem_pending_task_outputs == expected_pending_output
+        # No sample available yet, returns None
+        assert o2.metrics.obj_store_mem_pending_task_outputs is None
         op2_usage = resource_manager.get_op_usage(o2).object_store_memory
-        assert op2_usage == expected_pending_output
+        # When pending task outputs is None, it's treated as 0
+        assert op2_usage == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # When the task finishes, we move the data from the streaming generator to the
@@ -380,7 +377,10 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].output_queue.pop(), input_index=0)
+        # NOTE: `pop()` returns a copy of the bundle (via `dataclasses.replace`), so we
+        # must use the returned reference for subsequent o3 metric calls.
+        o3_input = topo[o2].output_queue.pop()
+        o3.metrics.on_input_queued(o3_input, input_index=0)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -388,18 +388,19 @@ class TestResourceManager:
 
         # Task inputs count toward the previous operator's object store memory
         # usage. During no-sample phase, pending task outputs uses fallback estimate.
-        o3.metrics.on_input_dequeued(input, input_index=0)
-        o3.metrics.on_task_submitted(0, input)
+        o3.metrics.on_input_dequeued(o3_input, input_index=0)
+        o3.metrics.on_task_submitted(0, o3_input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        # No sample available yet, uses fallback estimate
-        assert o3.metrics.obj_store_mem_pending_task_outputs == expected_pending_output
+        # No sample available yet, returns None
+        assert o3.metrics.obj_store_mem_pending_task_outputs is None
         op3_usage = resource_manager.get_op_usage(o3).object_store_memory
-        assert op3_usage == expected_pending_output
+        # When pending task outputs is None, it's treated as 0
+        assert op3_usage == 0
 
         # Task inputs no longer count once the task is finished.
-        o3.metrics.on_output_queued(input)
+        o3.metrics.on_output_queued(o3_input)
         o3.metrics.on_task_finished(
             0,
             None,
