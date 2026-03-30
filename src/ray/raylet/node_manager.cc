@@ -245,15 +245,18 @@ NodeManager::NodeManager(
       acceptor_(std::move(acceptor)),
       socket_(std::move(socket)) {
   if (config.enable_resource_isolation) {
-    memory_monitor_ = MemoryMonitorFactory::Create(
-        CreateKillWorkersCallback(),
-        config.enable_resource_isolation,
-        /*cgroup_path=*/cgroup_manager_->GetUserCgroupPath(),
-        /*cgroup_upper_limit_bytes=*/
-        std::stoll(
-            cgroup_manager_
-                ->GetConstraintValue(cgroup_manager_->GetUserCgroupPath(), "memory.max")
-                .value()));
+    std::string user_cgroup_path = cgroup_manager_->GetUserCgroupPath();
+    StatusOr<std::string> result =
+        cgroup_manager_->GetConstraintValue(user_cgroup_path, "memory.max");
+    RAY_CHECK(result.ok()) << absl::StrFormat(
+        "Failed to get user cgroup memory limit when setting up memory monitor: %s",
+        result.ToString());
+    int64_t user_memory_max_bytes = std::stoll(result.value());
+    memory_monitor_ = MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                   config.enable_resource_isolation,
+                                                   /*cgroup_path=*/user_cgroup_path,
+                                                   /*cgroup_upper_limit_bytes=*/
+                                                   user_memory_max_bytes);
   } else {
     memory_monitor_ = MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                    config.enable_resource_isolation);

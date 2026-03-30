@@ -45,6 +45,12 @@ std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
     memory_usage_threshold_bytes =
         cgroup_upper_limit_bytes -
         static_cast<int64_t>(RayConfig::instance().kill_memory_buffer_bytes());
+    RAY_CHECK_GE(memory_usage_threshold_bytes, 0) << absl::StrFormat(
+        "Available user task memory is less than the kill memory buffer bytes: "
+        "%d < %d. Please consider using a host with more memory. If the current host "
+        "memory size must be kept, please adjust the kill memory buffer size.",
+        cgroup_upper_limit_bytes,
+        RayConfig::instance().kill_memory_buffer_bytes());
   } else {
     int64_t total_memory_bytes =
         MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path).total_bytes;
