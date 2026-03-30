@@ -119,6 +119,7 @@ class ActorProxyWrapper(ProxyWrapper):
         node_ip_address: Optional[str] = None,
         port: Optional[int] = None,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
+        tracing_config=None,
     ):
         # initialize with provided proxy actor handle or get or create a new one.
         self._actor_handle = actor_handle or self._get_or_create_proxy_actor(
@@ -130,6 +131,7 @@ class ActorProxyWrapper(ProxyWrapper):
             port=port,
             proxy_actor_class=proxy_actor_class,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
         self._ready_check_future = None
         self._health_check_future = None
@@ -152,6 +154,7 @@ class ActorProxyWrapper(ProxyWrapper):
         port: int,
         logging_config: LoggingConfig,
         proxy_actor_class: Type[ProxyActor] = ProxyActor,
+        tracing_config=None,
     ) -> ProxyWrapper:
         """Helper to start or reuse existing proxy.
 
@@ -183,6 +186,7 @@ class ActorProxyWrapper(ProxyWrapper):
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
     @property
@@ -603,8 +607,10 @@ class ProxyStateManager:
         actor_proxy_wrapper_class: Type[ProxyWrapper] = ActorProxyWrapper,
         timer: TimerBase = Timer(),
         running_native_proxies: bool = False,
+        tracing_config=None,
     ):
         self.logging_config = logging_config
+        self._tracing_config = tracing_config
         self._http_options = http_options or HTTPOptions()
         self._grpc_options = grpc_options or gRPCOptions()
         self._proxy_states: Dict[NodeId, ProxyState] = dict()
@@ -861,6 +867,7 @@ class ProxyStateManager:
             node_id=node_id,
             node_ip_address=node_ip_address,
             proxy_actor_class=proxy_actor_class or self._proxy_actor_class,
+            tracing_config=self._tracing_config,
         )
 
     def _start_fallback_proxy_if_needed(

@@ -27,6 +27,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    TracingConfig,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1402,6 +1403,95 @@ def test_serve_instance_details_is_json_serializable():
     deployment = application["deployments"]["deployment1"]
     autoscaling_config = deployment["deployment_config"]["autoscaling_config"]
     assert "_serialized_policy_def" not in autoscaling_config
+
+
+class TestTracingConfig:
+    """Tests for the TracingConfig schema."""
+
+    def test_default_config(self):
+        """Test default TracingConfig values."""
+        config = TracingConfig()
+        # By default (no env var set), enabled should be False and
+        # exporter_import_path should be empty string.
+        assert isinstance(config.enabled, bool)
+        assert isinstance(config.exporter_import_path, str)
+        assert isinstance(config.sampling_ratio, float)
+
+    def test_enabled_true(self):
+        """Test enabling tracing explicitly."""
+        config = TracingConfig(enabled=True)
+        assert config.enabled is True
+
+    def test_enabled_false(self):
+        """Test disabling tracing explicitly."""
+        config = TracingConfig(enabled=False)
+        assert config.enabled is False
+
+    def test_custom_exporter_import_path(self):
+        """Test setting a custom exporter import path."""
+        config = TracingConfig(
+            enabled=True,
+            exporter_import_path="my_module:my_exporter",
+        )
+        assert config.exporter_import_path == "my_module:my_exporter"
+
+    def test_custom_sampling_ratio(self):
+        """Test setting a custom sampling ratio."""
+        config = TracingConfig(sampling_ratio=0.5)
+        assert config.sampling_ratio == 0.5
+
+    def test_sampling_ratio_zero(self):
+        """Test sampling ratio at lower bound."""
+        config = TracingConfig(sampling_ratio=0.0)
+        assert config.sampling_ratio == 0.0
+
+    def test_sampling_ratio_one(self):
+        """Test sampling ratio at upper bound."""
+        config = TracingConfig(sampling_ratio=1.0)
+        assert config.sampling_ratio == 1.0
+
+    def test_sampling_ratio_too_low(self):
+        """Test that sampling ratio below 0.0 raises ValueError."""
+        with pytest.raises(ValidationError, match="sampling_ratio"):
+            TracingConfig(sampling_ratio=-0.1)
+
+    def test_sampling_ratio_too_high(self):
+        """Test that sampling ratio above 1.0 raises ValueError."""
+        with pytest.raises(ValidationError, match="sampling_ratio"):
+            TracingConfig(sampling_ratio=1.1)
+
+    def test_extra_fields_forbidden(self):
+        """Test that extra fields are not allowed."""
+        with pytest.raises(ValidationError):
+            TracingConfig(unknown_field="value")
+
+    def test_enabled_true_empty_exporter_fills_default(self):
+        """Test that when enabled=True and exporter_import_path is empty,
+        the default exporter path is filled in."""
+        config = TracingConfig(enabled=True, exporter_import_path="")
+        assert config.exporter_import_path != ""
+        assert "default_tracing_exporter" in config.exporter_import_path
+
+    def test_enabled_false_empty_exporter_stays_empty(self):
+        """Test that when enabled=False and exporter_import_path is empty,
+        it stays empty."""
+        config = TracingConfig(enabled=False, exporter_import_path="")
+        assert config.exporter_import_path == ""
+
+    def test_serve_deploy_schema_with_tracing_config(self):
+        """Test that ServeDeploySchema accepts tracing_config field."""
+        schema = ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="test_app",
+                    import_path="test_module:app",
+                )
+            ],
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5),
+        )
+        assert schema.tracing_config is not None
+        assert schema.tracing_config.enabled is True
+        assert schema.tracing_config.sampling_ratio == 0.5
 
 
 if __name__ == "__main__":

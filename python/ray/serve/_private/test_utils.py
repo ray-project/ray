@@ -339,6 +339,7 @@ class MockReplicaActorWrapper:
         self,
         replica_id: ReplicaID,
         version: DeploymentVersion,
+        tracing_config=None,
     ):
         self._replica_id = replica_id
         self._actor_name = replica_id.to_full_id_str()

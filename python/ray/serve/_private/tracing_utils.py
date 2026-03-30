@@ -294,7 +294,7 @@ def create_propagated_context() -> Dict[str, str]:
 
 
 def extract_propagated_context(
-    propagated_context: Optional[Dict[str, str]] = None
+    propagated_context: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, str]]:
     """Extract the trace context from a Trace Context Propagator."""
     if is_tracing_enabled() and propagated_context and TraceContextTextMapPropagator:
@@ -499,3 +499,28 @@ def _is_generator_function(func):
 
 def _is_async_function(func):
     return inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func)
+
+
+def get_tracing_kwargs(tracing_config: Optional[Any] = None) -> Dict[str, Any]:
+    """Extract tracing kwargs from a TracingConfig for passing to setup_tracing.
+
+    If tracing_config is None or tracing is not enabled, returns kwargs that
+    will cause setup_tracing to use its default behavior (env var based).
+
+    Args:
+        tracing_config: Optional TracingConfig instance.
+
+    Returns:
+        Dict with tracing_exporter_import_path and tracing_sampling_ratio keys.
+    """
+    if tracing_config is None:
+        return {}
+
+    kwargs = {}
+    if tracing_config.enabled:
+        kwargs["tracing_exporter_import_path"] = tracing_config.exporter_import_path
+        kwargs["tracing_sampling_ratio"] = tracing_config.sampling_ratio
+    else:
+        # Explicitly disable tracing by passing empty exporter path
+        kwargs["tracing_exporter_import_path"] = ""
+    return kwargs

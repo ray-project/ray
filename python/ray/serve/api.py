@@ -74,6 +74,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[None, dict, "TracingConfig"] = None,  # noqa: F821
     **kwargs,
 ):
     """Start Serve on the cluster.
@@ -99,12 +100,15 @@ def start(
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        tracing_config: tracing config options for the serve component (
+            controller, proxy & replica).
     """
     http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config,
         **kwargs,
     )
 
@@ -672,12 +676,14 @@ def _run_many(
                 name=t.name,
                 route_prefix=t.route_prefix,
                 logging_config=t.logging_config,
-                make_deployment_handle=make_local_deployment_handle
-                if _local_testing_mode
-                else None,
-                default_runtime_env=ray.get_runtime_context().runtime_env
-                if not _local_testing_mode
-                else None,
+                make_deployment_handle=(
+                    make_local_deployment_handle if _local_testing_mode else None
+                ),
+                default_runtime_env=(
+                    ray.get_runtime_context().runtime_env
+                    if not _local_testing_mode
+                    else None
+                ),
                 external_scaler_enabled=t.external_scaler_enabled,
             )
         )
