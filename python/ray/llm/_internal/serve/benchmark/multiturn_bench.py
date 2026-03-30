@@ -151,7 +151,8 @@ class WorkloadSpec:
 
         Then s = ISL - (n+1)/2 · u - (n-1)/2 · a.
 
-        Degenerate when denominator = 0, i.e. f=0 and n=1 (no caching source).
+        Special case: when n=1 and f=0, equations (1) and (2) collapse to
+        s + u = ISL with h = s/(s+u), giving s = h·ISL and u = (1-h)·ISL.
         """
         isl = self.isl
         h = self.hit_rate
@@ -161,16 +162,13 @@ class WorkloadSpec:
 
         denom = 1 - (1 - f) * (n + 1) / (2 * n)
         if abs(denom) < 1e-9:
-            raise ValueError(
-                f"Degenerate parameter combination: "
-                f"shared_system_prompt_ratio={f}, num_turns={n}. "
-                f"With no cross-session sharing and a single turn, "
-                f"there is no caching source to achieve a target hit rate."
-            )
-
-        numer = (1 - h) * isl - (1 - f) / n * (isl - (n - 1) * a / 2)
-        user_tokens = numer / denom
-        sys_tokens = isl - (n + 1) / 2 * user_tokens - (n - 1) / 2 * a
+            # n=1, f=0: single turn, no sharing. h determines the split.
+            sys_tokens = h * isl
+            user_tokens = (1 - h) * isl
+        else:
+            numer = (1 - h) * isl - (1 - f) / n * (isl - (n - 1) * a / 2)
+            user_tokens = numer / denom
+            sys_tokens = isl - (n + 1) / 2 * user_tokens - (n - 1) / 2 * a
 
         # Validate before clamping so infeasible combinations are caught.
         if user_tokens < 0.5:
