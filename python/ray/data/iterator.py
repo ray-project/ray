@@ -629,6 +629,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
+        pad_token_id: Optional[Any] = None,
     ) -> Iterable[Any]:
         """Return a batched iterable of JAX Arrays over the dataset.
 
@@ -638,6 +639,15 @@ class DataIterator(abc.ABC):
 
         This iterable will yield a dictionary of column-tensors, or a single
         tensor if the underlying dataset consists of a single unnamed column.
+
+        .. note::
+            The returned JAX Arrays are sharded using an internal 1D mesh created by
+            Ray Data. If you are using these arrays within a `jax.set_mesh` context that
+            defines a different mesh (e.g., a multi-dimensional mesh or a different device
+            ordering), JAX may perform an implicit resharding (communication) when
+            the arrays are first used in a JAX operation. To minimize this overhead,
+            ensure your training loop's device ordering aligns with the one produced
+            by `jax.experimental.mesh_utils.create_device_mesh`.
 
         Args:
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
@@ -667,6 +677,8 @@ class DataIterator(abc.ABC):
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
+            pad_token_id: The value to use for padding the last batch to `batch_size`.
+                If not None, uneven batches will be padded with this value.
 
         Returns:
             An iterable over JAX Array batches.
@@ -708,7 +720,7 @@ class DataIterator(abc.ABC):
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
             batch_format=batch_format,
-            drop_last=False,  # drop_last is handled by jax_sync_generator
+            drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
@@ -720,6 +732,8 @@ class DataIterator(abc.ABC):
         return jax_sync_generator(
             batch_iterable,
             drop_last,
+            batch_size=batch_size,
+            pad_token_id=pad_token_id,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),
         )

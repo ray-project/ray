@@ -6012,6 +6012,7 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
+        pad_token_id: Optional[Any] = None,
     ) -> Iterable[Any]:
         """Return an iterable over batches of data represented as JAX arrays.
 
@@ -6021,6 +6022,15 @@ class Dataset:
         Data types are inferred from the underlying NumPy arrays.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to JAX arrays.
+
+        .. note::
+            The returned JAX Arrays are sharded using an internal 1D mesh created by
+            Ray Data. If you are using these arrays within a `jax.set_mesh` context that
+            defines a different mesh (e.g., a multi-dimensional mesh or a different device
+            ordering), JAX may perform an implicit resharding (communication) when
+            the arrays are first used in a JAX operation. To minimize this overhead,
+            ensure your training loop's device ordering aligns with the one produced
+            by `jax.experimental.mesh_utils.create_device_mesh`.
 
         Examples:
 
@@ -6073,6 +6083,8 @@ class Dataset:
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
+            pad_token_id: The value to use for padding the last batch to `batch_size`.
+                If not None, uneven batches will be padded with this value.
 
         Returns:
             An iterable over JAX Array batches.
@@ -6086,6 +6098,7 @@ class Dataset:
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             synchronize_batches=synchronize_batches,
+            pad_token_id=pad_token_id,
         )
 
     @ConsumptionAPI

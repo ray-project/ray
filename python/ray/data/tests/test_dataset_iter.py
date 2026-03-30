@@ -561,18 +561,20 @@ def test_iter_jax_batches(ray_start_regular_shared):
         {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
     )
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
 
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(batch_size=3):
+        for batch in ds.iter_jax_batches(batch_size=3, pad_token_id=-1):
             iterations.append(
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+        # 8 rows total, batch_size 3, pad_token_id=-1 -> 3 batches of size 3 (9 rows total)
+        assert len(combined_iterations) == 9
+        # The last row should be all -1
+        np.testing.assert_array_equal(combined_iterations[-1], np.array([-1, -1, -1]))
 
 
 def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
@@ -609,6 +611,24 @@ def test_iter_jax_batches_with_collate_fn(ray_start_regular_shared):
     # Expected shape: (10, 2)
     expected = np.stack((np.arange(10), np.arange(10) + 1), axis=1)
     np.testing.assert_array_equal(expected, combined_iterations)
+
+
+def test_iter_jax_batches_batch_size_divisibility_fail(ray_start_regular_shared):
+    try:
+        import jax  # noqa: F401
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    from unittest.mock import patch
+
+    with patch("jax.local_device_count", return_value=2):
+        ds = ray.data.range(10)
+        # batch_size must be divisible by num_local_devices=2
+        with pytest.raises(
+            ValueError,
+            match="must be evenly divisible by the number of local JAX devices",
+        ):
+            list(ds.iter_jax_batches(batch_size=3))
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
