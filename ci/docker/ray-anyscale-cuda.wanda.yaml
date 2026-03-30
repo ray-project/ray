@@ -4,10 +4,10 @@
 #
 # This produces the anyscale test image for GPU release tests.
 #
-name: "ray-anyscale-py$PYTHON_VERSION-cu$CUDA_VERSION$ARCH_SUFFIX"
+name: "ray-anyscale-py$PYTHON_VERSION-$PLATFORM$ARCH_SUFFIX"
 disable_caching: true
 froms:
-  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps"  # CUDA base with test deps
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-$PLATFORM-base-extra-testdeps"  # CUDA base with test deps
   - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"                    # Ray wheel
 dockerfile: ci/docker/ray-image.Dockerfile
 build_args:
@@ -15,6 +15,6 @@ build_args:
   - ARCH_SUFFIX
   - IMAGE_TYPE=ray
   - BASE_VARIANT=base-extra-testdeps
-  - PLATFORM=cu$CUDA_VERSION
+  - PLATFORM
   - RAY_COMMIT=$BUILDKITE_COMMIT
   - RAY_VERSION
