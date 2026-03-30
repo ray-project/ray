@@ -676,6 +676,7 @@ def test_debug_dump_topology(ray_start_regular_shared):
         ExecutionOptions(),
         MagicMock(return_value=ExecutionResources.zero()),
         DataContext.get_current(),
+        output_operator=list(topo.keys())[-1],
     )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.

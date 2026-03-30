@@ -103,6 +103,23 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
     return op
 
 
+def _resource_manager_for_limits_only_test(
+    options: ExecutionOptions,
+    get_total_resources,
+):
+    """``ResourceManager`` requires a sink in the topology; these tests only call
+    ``get_global_limits()`` and never iterate real operators."""
+    sink = MagicMock(spec=PhysicalOperator)
+    topology = {sink: MagicMock()}
+    return ResourceManager(
+        topology,
+        options,
+        get_total_resources,
+        DataContext.get_current(),
+        output_operator=sink,
+    )
+
+
 class TestResourceManager:
     """Unit tests for ResourceManager."""
 
@@ -121,8 +138,8 @@ class TestResourceManager:
         # the cluster resources for CPU/GPU, and
         # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
         options = ExecutionOptions()
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"],
@@ -136,8 +153,8 @@ class TestResourceManager:
         options.resource_limits = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=1,
@@ -152,8 +169,8 @@ class TestResourceManager:
         options.exclude_resources = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"] - 1,
@@ -179,11 +196,9 @@ class TestResourceManager:
             "GLOBAL_LIMITS_UPDATE_INTERVAL_S",
             cache_interval_s,
         ):
-            resource_manager = ResourceManager(
-                MagicMock(),
+            resource_manager = _resource_manager_for_limits_only_test(
                 ExecutionOptions(),
                 get_total_resources,
-                DataContext.get_current(),
             )
             expected_resource = ExecutionResources(4, 1, 0)
             # The first call should call ray.cluster_resources().
@@ -262,7 +277,11 @@ class TestResourceManager:
             topo[op].add_output(ref_bundle)
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
@@ -322,6 +341,7 @@ class TestResourceManager:
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
             DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
         ray.data.DataContext.get_current().target_max_block_size = 2
@@ -434,7 +454,11 @@ class TestResourceManager:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -493,7 +517,11 @@ class TestResourceManager:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -574,6 +602,14 @@ class TestResourceManager:
             == baseline_terminal + 999999
         )
 
+    def test_set_external_consumer_bytes_rejects_negative(self, restore_data_context):
+        resource_manager = _resource_manager_for_limits_only_test(
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+        )
+        with pytest.raises(AssertionError):
+            resource_manager.set_external_consumer_bytes(-1)
+
     def test_external_consumer_bytes_input_data_buffer_sink(self, restore_data_context):
         """When the execute DAG is only an InputDataBuffer, prefetch bytes still
         attach to that sink (output_operator) instead of being dropped by the
@@ -634,7 +670,11 @@ class TestResourceManager:
         topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
 
         # Case 1: Shuffle operator itself is blocking materializing
@@ -661,7 +701,11 @@ class TestResourceManager:
 
         topo2 = build_streaming_topology(o7, ExecutionOptions())
         resource_manager2 = ResourceManager(
-            topo2, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo2,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo2.keys())[-1],
         )
 
         # o5's downstream (o6, o7) has no blocking materializing ops
@@ -689,6 +733,7 @@ class TestResourceManager:
             options=options,
             get_total_resources=lambda: cluster_resources,
             data_context=DataContext.get_current(),
+            output_operator=o2,
         )
         resource_manager.update_usages()
 
@@ -716,7 +761,11 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         allocator = resource_manager._op_resource_allocator
 
@@ -730,7 +779,11 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o4, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         allocator = resource_manager._op_resource_allocator
 
@@ -751,7 +804,11 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         allocator = resource_manager._op_resource_allocator
         o3.num_active_tasks = MagicMock(return_value=0)
@@ -774,7 +831,11 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            output_operator=list(topo.keys())[-1],
         )
         allocator = resource_manager._op_resource_allocator
 
