@@ -533,6 +533,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             A list of ReportedCheckpoint objects that represent the checkpoints and
             corresponding metrics reported by the workers.
         """
+        assert timeout_s is not None
+
         start_time = asyncio.get_event_loop().time()
         if consistency_mode == CheckpointConsistencyMode.COMMITTED:
 
