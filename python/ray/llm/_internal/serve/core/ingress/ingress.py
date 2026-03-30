@@ -506,11 +506,13 @@ class OpenAiIngress(DeploymentProtocol):
 
         try:
             host, port = await self._pick_routed_sidecar_endpoint(model_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Sidecar routing failed, falling through to FastAPI: {e}")
             raise _FallThrough(body_bytes)
 
         url = f"http://{host}:{port}{scope['path']}"
 
+        started = False
         try:
             async with self._sidecar_session.post(
                 url,
@@ -527,6 +529,7 @@ class OpenAiIngress(DeploymentProtocol):
                         ],
                     }
                 )
+                started = True
                 async for chunk in resp.content.iter_any():
                     await send(
                         {
@@ -543,13 +546,14 @@ class OpenAiIngress(DeploymentProtocol):
             error_body = (
                 f'data: {{"error": {{"message": "{e}"}}}}\n\n' f"data: [DONE]\n\n"
             ).encode()
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 502,
-                    "headers": [[b"content-type", b"text/event-stream"]],
-                }
-            )
+            if not started:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 502,
+                        "headers": [[b"content-type", b"text/event-stream"]],
+                    }
+                )
             await send(
                 {"type": "http.response.body", "body": error_body, "more_body": False}
             )
