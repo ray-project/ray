@@ -197,7 +197,9 @@ class TestConversationFactory:
 
         for msg in conv.user_messages:
             token_count = len(tokenizer.encode(msg, add_special_tokens=False))
-            assert token_count == spec.user_tokens, f"Expected {spec.user_tokens} tokens, got {token_count}"
+            assert (
+                token_count == spec.user_tokens
+            ), f"Expected {spec.user_tokens} tokens, got {token_count}"
 
     def test_cross_session_shared_prefix(self, text_gen):
         """Two sessions with cross_sharing > 0 should share the same prefix."""
