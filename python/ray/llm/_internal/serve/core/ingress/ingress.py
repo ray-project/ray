@@ -446,23 +446,120 @@ class OpenAiIngress(DeploymentProtocol):
 
         original_app = self._asgi_app
         ingress = self
+        route_only = os.environ.get("RAYLLM_SIDECAR_ROUTE_ONLY", "0") == "1"
         _SIDECAR_PATHS = {"/v1/chat/completions", "/v1/completions"}
 
         async def sidecar_asgi_wrapper(scope, receive, send):
+            # Routing endpoint for HAProxy Lua — always available
+            if (
+                scope["type"] == "http"
+                and scope["method"] == "POST"
+                and scope["path"] == "/internal/route"
+            ):
+                await ingress._handle_route_endpoint(scope, receive, send)
+                return
+
             if (
                 scope["type"] == "http"
                 and scope["method"] == "POST"
                 and scope["path"] in _SIDECAR_PATHS
             ):
-                try:
-                    await ingress._handle_sidecar_asgi(scope, receive, send)
-                    return
-                except _FallThrough as ft:
-                    receive = _make_receive(ft.body_bytes)
+                if route_only:
+                    # In route-only mode, streaming requests should not
+                    # reach the ingress — HAProxy sends them directly to
+                    # sidecars. If one arrives here, fall through to FastAPI.
+                    pass
+                else:
+                    try:
+                        await ingress._handle_sidecar_asgi(scope, receive, send)
+                        return
+                    except _FallThrough as ft:
+                        receive = _make_receive(ft.body_bytes)
             await original_app(scope, receive, send)
 
         self._asgi_app = sidecar_asgi_wrapper
-        logger.info("Sidecar ASGI middleware installed.")
+        mode = "route-only (HAProxy Lua)" if route_only else "proxy"
+        logger.info(f"Sidecar ASGI middleware installed (mode={mode}).")
+
+    async def _handle_route_endpoint(self, scope, receive, send):
+        """Return sidecar endpoint for a request (called by HAProxy Lua).
+
+        Reads the request body, extracts model, picks a sidecar endpoint via
+        the request router, and returns {"host": ..., "port": ...} as JSON.
+        """
+        import orjson
+
+        message = await receive()
+        body_bytes = message.get("body", b"")
+        if message.get("more_body", False):
+            parts = [body_bytes]
+            while True:
+                message = await receive()
+                parts.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    break
+            body_bytes = b"".join(parts)
+
+        try:
+            parsed = orjson.loads(body_bytes)
+        except Exception:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 400,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {"type": "http.response.body", "body": b'{"error":"invalid json"}'}
+            )
+            return
+
+        default_model_id = (
+            next(iter(self._llm_configs.keys())) if self._llm_configs else None
+        )
+        model = parsed.get("model", default_model_id)
+        if model and model not in self._llm_configs:
+            base = get_base_model_id(model)
+            if base not in self._llm_configs:
+                model = None
+        model_id = model or default_model_id
+
+        if model_id is None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
+            return
+
+        try:
+            host, port = await self._pick_routed_sidecar_endpoint(model_id)
+        except Exception as e:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
+            )
+            return
+
+        resp = orjson.dumps({"host": host, "port": port})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"application/json"]],
+            }
+        )
+        await send({"type": "http.response.body", "body": resp})
 
     async def _handle_sidecar_asgi(self, scope, receive, send):
         """Proxy a streaming request to a sidecar at the raw ASGI level.

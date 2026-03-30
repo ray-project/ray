@@ -278,7 +278,7 @@ class LLMServer(LLMServerProtocol):
         app.router.add_post("/v1/chat/completions", handle_chat)
         app.router.add_post("/v1/completions", handle_completions)
 
-        runner = web.AppRunner(app, tcp_nodelay=True)
+        runner = web.AppRunner(app, tcp_nodelay=True, access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", 0)
         await site.start()
