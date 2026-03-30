@@ -188,28 +188,58 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
 
 
 def test_get_prerequisite_step():
-    config = get_global_config()
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray-ml:abc123-custom", "ray-project/ray-ml:abc123-base"
-        )
-        == config["release_image_step_ray_ml"]
-    )
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray-llm:abc123-custom", "ray-project/ray-llm:abc123-base"
-        )
-        == config["release_image_step_ray_llm"]
-    )
-    assert (
-        get_prerequisite_step(
-            "ray-project/ray:abc123-custom", "ray-project/ray:abc123-base"
-        )
-        == config["release_image_step_ray"]
-    )
+    # anyscale base image → always "forge"
     assert (
         get_prerequisite_step("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base")
         == "forge"
+    )
+
+    # ray-ml has only a python dimension → anyscalemlbuild--python{ver}
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray-ml:abc123-custom",
+            "ray-project/ray-ml:abc123-py310-gpu",
+        )
+        == "anyscalemlbuild--python310"
+    )
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray-ml:abc123-custom",
+            "ray-project/ray-ml:abc123-py311-gpu",
+        )
+        == "anyscalemlbuild--python311"
+    )
+
+    # ray has platform and python dimensions → anyscalebuild--platform{X}-python{Y}
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray:abc123-custom",
+            "ray-project/ray:abc123-py310-cpu",
+        )
+        == "anyscalebuild--platformcpu-python310"
+    )
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray:abc123-custom",
+            "ray-project/ray:abc123-py311-cu123",
+        )
+        == "anyscalebuild--platformcu1232cudnn9-python311"
+    )
+
+    # ray-llm has platform and python dimensions → anyscalellmbuild--platform{X}-python{Y}
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray-llm:abc123-custom",
+            "ray-project/ray-llm:abc123-py311-cu128",
+        )
+        == "anyscalellmbuild--platformcu1281cudnn-python311"
+    )
+    assert (
+        get_prerequisite_step(
+            "ray-project/ray-llm:abc123-custom",
+            "ray-project/ray-llm:abc123-py312-cu130",
+        )
+        == "anyscalellmbuild--platformcu1300cudnn-python312"
     )
 
 

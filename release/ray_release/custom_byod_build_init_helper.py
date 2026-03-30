@@ -1,8 +1,11 @@
 import hashlib
 import os
+import re
 from typing import Dict, List, Optional, Tuple
 
 import yaml
+
+from ci.ray_ci.supported_images import build_platform_reverse_map
 
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -126,19 +129,57 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
+def _sanitize_array_value(value: str) -> str:
+    """Strip dots and dashes from a value for rayci array key construction."""
+    return value.replace(".", "").replace("-", "")
+
+
 def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
-    """Get the base image build step for a job that depends on it."""
+    """Get the base image build step for a job that depends on it.
+
+    Returns the array-suffixed Buildkite step key for the publish step that
+    produces the base image.  For example, for a ray image with python 3.10 and
+    platform cpu the returned key is ``anyscalebuild--platformcpu-python310``.
+    """
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return "forge"
+
+    # Determine bare key from config
     if image_name == "ray-ml":
-        return config["release_image_step_ray_ml"]
+        bare_key = config["release_image_step_ray_ml"]
     elif image_name == "ray-llm":
-        return config["release_image_step_ray_llm"]
+        bare_key = config["release_image_step_ray_llm"]
     else:
-        return config["release_image_step_ray"]
+        bare_key = config["release_image_step_ray"]
+
+    # Parse base_image tag: {build_id}-py{ver}-{suffix}
+    _, tag = base_image.rsplit(":", 1)
+    tag_parts = tag.split("-")
+    py_index = None
+    for i, part in enumerate(tag_parts):
+        if re.match(r"^py\d+$", part):
+            py_index = i
+            break
+
+    if py_index is None:
+        return bare_key
+
+    python_raw = tag_parts[py_index][2:]  # e.g., "310"
+
+    if image_name == "ray-ml":
+        # anyscalemlbuild has only a python dimension
+        return f"{bare_key}--python{python_raw}"
+
+    # ray and ray-llm have two dimensions (platform, python) in alphabetical order
+    tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
+    reverse_map = build_platform_reverse_map()
+    full_platform = reverse_map.get(tag_suffix, tag_suffix)
+    sanitized_platform = _sanitize_array_value(full_platform)
+
+    return f"{bare_key}--platform{sanitized_platform}-python{python_raw}"
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
