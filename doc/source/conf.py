@@ -86,8 +86,50 @@ _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
+    "audio-dataset-curation-llm-judge": {
+        "target": "ray-overview/examples/e2e-audio",
+    },
+    "deepspeed_finetune": {
+        "target": "train/examples/pytorch/deepspeed_finetune",
+    },
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
+    },
+    "distributing-pytorch": {
+        "target": "train/examples/pytorch/distributing-pytorch",
+    },
+    "e2e-rag-deepdive": {
+        "target": "ray-overview/examples/e2e-rag",
+    },
+    "e2e-timeseries-forecasting": {
+        "target": "ray-overview/examples/e2e-timeseries",
+    },
+    "entity-recognition-with-llms": {
+        "target": "ray-overview/examples/entity-recognition-with-llms",
+    },
+    "image-search-and-classification": {
+        "target": "ray-overview/examples/e2e-multimodal-ai-workloads",
+    },
+    "langchain-agent-ray-serve": {
+        "target": "ray-overview/examples/langchain_agent_ray_serve/content",
+    },
+    "llm_finetuning": {
+        "target": "ray-overview/examples/llamafactory-llm-fine-tune",
+    },
+    "mcp-ray-serve": {
+        "target": "ray-overview/examples/mcp-ray-serve",
+    },
+    "object-detection-video-processing": {
+        "target": "ray-overview/examples/object-detection",
+    },
+    "pytorch-fsdp": {
+        "target": "train/examples/pytorch/pytorch-fsdp",
+    },
+    "pytorch-profiling": {
+        "target": "train/examples/pytorch/pytorch-profiling",
+    },
+    "xgboost-training-and-serving": {
+        "target": "ray-overview/examples/e2e-xgboost",
     },
 }
 
@@ -329,9 +371,51 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
+    "_collections/ray-overview/examples/e2e-audio/README.*",
+    "_collections/ray-overview/examples/e2e-audio/*.ipynb",
+    "_collections/ray-overview/examples/e2e-audio/**/*.ipynb",
+    "_collections/train/examples/pytorch/deepspeed_finetune/README.*",
+    "_collections/train/examples/pytorch/deepspeed_finetune/*.ipynb",
+    "_collections/train/examples/pytorch/deepspeed_finetune/**/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    "_collections/train/examples/pytorch/distributing-pytorch/README.*",
+    "_collections/train/examples/pytorch/distributing-pytorch/*.ipynb",
+    "_collections/train/examples/pytorch/distributing-pytorch/**/*.ipynb",
+    "_collections/ray-overview/examples/e2e-rag/README.*",
+    "_collections/ray-overview/examples/e2e-rag/*.ipynb",
+    "_collections/ray-overview/examples/e2e-rag/**/*.ipynb",
+    "_collections/ray-overview/examples/e2e-timeseries/README.*",
+    "_collections/ray-overview/examples/e2e-timeseries/*.ipynb",
+    "_collections/ray-overview/examples/e2e-timeseries/**/*.ipynb",
+    "_collections/ray-overview/examples/entity-recognition-with-llms/README.*",
+    "_collections/ray-overview/examples/entity-recognition-with-llms/*.ipynb",
+    "_collections/ray-overview/examples/entity-recognition-with-llms/**/*.ipynb",
+    "_collections/ray-overview/examples/e2e-multimodal-ai-workloads/README.*",
+    "_collections/ray-overview/examples/e2e-multimodal-ai-workloads/*.ipynb",
+    "_collections/ray-overview/examples/e2e-multimodal-ai-workloads/**/*.ipynb",
+    "_collections/ray-overview/examples/langchain_agent_ray_serve/content/README.*",
+    "_collections/ray-overview/examples/langchain_agent_ray_serve/content/*.ipynb",
+    "_collections/ray-overview/examples/langchain_agent_ray_serve/content/**/*.ipynb",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/*.ipynb",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "_collections/ray-overview/examples/mcp-ray-serve/README.*",
+    "_collections/ray-overview/examples/mcp-ray-serve/*.ipynb",
+    "_collections/ray-overview/examples/mcp-ray-serve/**/*.ipynb",
+    "_collections/ray-overview/examples/object-detection/README.*",
+    "_collections/ray-overview/examples/object-detection/*.ipynb",
+    "_collections/ray-overview/examples/object-detection/**/*.ipynb",
+    "_collections/train/examples/pytorch/pytorch-fsdp/README.*",
+    "_collections/train/examples/pytorch/pytorch-fsdp/*.ipynb",
+    "_collections/train/examples/pytorch/pytorch-fsdp/**/*.ipynb",
+    "_collections/train/examples/pytorch/pytorch-profiling/README.*",
+    "_collections/train/examples/pytorch/pytorch-profiling/*.ipynb",
+    "_collections/train/examples/pytorch/pytorch-profiling/**/*.ipynb",
+    "_collections/ray-overview/examples/e2e-xgboost/README.*",
+    "_collections/ray-overview/examples/e2e-xgboost/*.ipynb",
+    "_collections/ray-overview/examples/e2e-xgboost/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
