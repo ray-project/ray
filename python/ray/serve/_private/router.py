@@ -938,7 +938,7 @@ class AsyncioRouter:
 
             if not with_rejection:
                 result.add_done_callback(
-                    lambda _: self.request_router.decrement_queue_len_cache(
+                    lambda _: self.request_router.enqueue_cache_decrement(
                         replica.replica_id,
                     )
                 )
@@ -949,7 +949,7 @@ class AsyncioRouter:
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
                 result.add_done_callback(
-                    lambda _: self.request_router.decrement_queue_len_cache(
+                    lambda _: self.request_router.enqueue_cache_decrement(
                         replica.replica_id,
                     )
                 )
