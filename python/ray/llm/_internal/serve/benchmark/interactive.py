@@ -449,13 +449,9 @@ class CommandHandler:
 
 
 async def run_interactive(args: argparse.Namespace) -> None:
-    initial_qps = getattr(args, "initial_qps", 0.0)
-    if initial_qps < 0:
-        raise ValueError("--initial-qps must be >= 0")
-
     spec = _build_spec(args)
     spec.print_summary()
-    print("Interactive mode: starts idle at qps=0 unless --initial-qps is set.")
+    print("Interactive mode: starts idle. Use 'rate <qps>' to begin sending traffic.")
 
     from concurrent.futures import ProcessPoolExecutor
 
@@ -486,7 +482,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
         default_save_dir = os.getcwd()
 
     runtime = RuntimeState(
-        current_qps=initial_qps,
+        current_qps=0.0,
         save_dir=str(Path(default_save_dir).expanduser()),
     )
     stop_event = asyncio.Event()
@@ -736,7 +732,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
             await writer.wait_closed()
 
     # Seed the ready queue
-    seed_count = max(1, int(max(initial_qps, 1.0)) + 1)
+    seed_count = 2
     seed_idxs = [_next_session_idx() for _ in range(seed_count)]
     seed_futs = [
         loop.run_in_executor(
