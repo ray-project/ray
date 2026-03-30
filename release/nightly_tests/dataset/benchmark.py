@@ -4,11 +4,12 @@ import os
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 
 def _get_spilled_bytes_total() -> float:
@@ -45,11 +46,11 @@ class OperatorStatsTracker(ExecutionCallback):
     _op_start: Dict[str, float] = {}
     _op_end: Dict[str, Optional[float]] = {}
 
-    def before_execution_starts(self, executor):
+    def before_execution_starts(self, executor: "StreamingExecutor"):
         OperatorStatsTracker._op_start.clear()
         OperatorStatsTracker._op_end.clear()
 
-    def on_execution_step(self, executor):
+    def on_execution_step(self, executor: "StreamingExecutor"):
         if executor._topology is None:
             return
         for i, op in enumerate(executor._topology):
@@ -66,30 +67,19 @@ class OperatorStatsTracker(ExecutionCallback):
 
     @classmethod
     def collect(cls) -> Dict[str, Any]:
-        """Return ``{"op_timeline": {name: {start, duration_s}, ...}}``.
 
-        Entries are sorted by start time. ``start`` is an ISO-8601 UTC
-        datetime string and ``duration_s`` is the wall-clock seconds the
-        operator was active (``None`` if it hadn't completed when
-        ``collect()`` was called).
-        """
-        entries: List[Tuple[str, float, Optional[float]]] = []
+        stats: Dict[str, Dict[str, Any]] = {}
         for key, start in cls._op_start.items():
             end = cls._op_end.get(key)
-            entries.append((key, start, end))
-        entries.sort(key=lambda e: e[1])
-
-        timeline: Dict[str, Dict[str, Any]] = {}
-        for key, start, end in entries:
             start_dt = datetime.fromtimestamp(start, tz=timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             )
             duration_s = round(end - start, 2) if end is not None else None
-            timeline[key] = {
+            stats[key] = {
                 "start": start_dt,
                 "duration_s": duration_s,
             }
-        return {"op_timeline": timeline}
+        return {"op_stats": stats}
 
 
 class BenchmarkMetric(Enum):
