@@ -1022,6 +1022,34 @@ class ReporterAgent(
                     # Get basic process info
                     worker_info = w.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
+                    cpu_pct = float(worker_info.get("cpu_percent", 0.0))
+                    rss_mb = float(
+                        worker_info["memory_info"].rss / 1.0e6
+                        if worker_info.get("memory_info")
+                        else 0.0
+                    )
+                    cmdline_str = str(worker_info.get("cmdline", []))
+
+                    logger.info(
+                        "(karticam) [DEBUG-WORKER-STATS] pid=%s cmdline=%s "
+                        "cpu_percent=%.2f rss_mb=%.2f num_fds=%s",
+                        worker_info.get("pid"),
+                        worker_info.get("cmdline"),
+                        cpu_pct,
+                        rss_mb,
+                        worker_info.get("num_fds", "N/A"),
+                    )
+
+                    if cpu_pct > 10.0 and "IDLE" in cmdline_str:
+                        logger.error(
+                            "(karticam-error) [IDLE-HIGH-CPU] pid=%s "
+                            "cpu_percent=%.2f rss_mb=%.2f cmdline=%s",
+                            worker_info.get("pid"),
+                            cpu_pct,
+                            rss_mb,
+                            worker_info.get("cmdline"),
+                        )
+
                     # Add GPU information if available
                     worker_pid = worker_info["pid"]
                     gpu_memory_usage = 0
@@ -1265,6 +1293,31 @@ class ReporterAgent(
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
             tags["pid"] = pid
+
+        logger.info(
+            "(karticam) [DEBUG-EXPORTED-METRICS] Component=%s num_workers=%d "
+            "total_cpu_percent=%.2f total_rss_mb=%.2f "
+            "total_uss_mb=%.2f total_num_fds=%d "
+            "total_gpu_percent=%.2f total_gpu_mem_mb=%.2f",
+            component_name,
+            len(stats),
+            total_cpu_percentage,
+            total_rss,
+            total_uss,
+            total_num_fds,
+            total_gpu_percentage,
+            total_gpu_memory,
+        )
+
+        if total_cpu_percentage > 10.0 and "IDLE" in component_name:
+            logger.error(
+                "(karticam-error) [IDLE-HIGH-CPU-EXPORTED] Component=%s "
+                "num_workers=%d total_cpu_percent=%.2f total_rss_mb=%.2f",
+                component_name,
+                len(stats),
+                total_cpu_percentage,
+                total_rss,
+            )
 
         records = []
         records.append(

@@ -2814,10 +2814,12 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
+    logger.info("(karticam) [PROCTITLE] changing to title=%s", title)
     ray._raylet.setproctitle(title)
     try:
         yield
     finally:
+        logger.info("(karticam) [PROCTITLE] changing to next_title=%s", next_title)
         ray._raylet.setproctitle(next_title)
 
 
