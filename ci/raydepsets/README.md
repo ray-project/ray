@@ -39,9 +39,13 @@ raydepsets solves this by:
 
 ```
 ci/raydepsets/
-├── raydepsets.py           # Entry point
+├── raydepsets.py           # Bazel entry point
 ├── cli.py                  # CLI and DependencySetManager
 ├── workspace.py            # Config parsing and data models
+├── __init__.py             # Package init
+├── __main__.py             # Standalone/zipapp entry point
+├── build_zipapp.py         # Builds the standalone binary
+├── pyproject.toml          # For pip install support
 ├── BUILD.bazel             # Bazel build targets
 ├── configs/                # Production YAML configs
 │   ├── rayimg.depsets.yaml
@@ -61,7 +65,9 @@ ci/raydepsets/
 
 ## Usage
 
-raydepsets is built and run via Bazel:
+There are three ways to run raydepsets:
+
+### 1. Via Bazel (standard, uses Bazel-managed uv)
 
 ```bash
 # Build all depsets in a config
@@ -77,6 +83,35 @@ bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.depsets.yaml --check
 ```
 
+### 2. Standalone binary (zipapp)
+
+Build a self-contained executable that can be copied to another repo:
+
+```bash
+# Build the binary (vendors all Python deps)
+bazelisk run //ci/raydepsets:build_raydepsets_binary -- /path/to/output/raydepsets
+
+# Run from anywhere — requires Python >= 3.10 and uv on $PATH
+./raydepsets build ci/raydepsets/configs/rayimg.depsets.yaml \
+    --workspace-dir /path/to/ray
+
+# Or specify the uv binary explicitly
+./raydepsets build --all-configs \
+    --workspace-dir /path/to/ray \
+    --uv-path /path/to/uv
+```
+
+### 3. Via pip install
+
+```bash
+cd ci/raydepsets
+uv pip install -e .
+
+# Now available as a CLI command
+raydepsets build ci/raydepsets/configs/rayimg.depsets.yaml \
+    --workspace-dir /path/to/ray
+```
+
 ### CLI Options
 
 | Option | Description |
@@ -85,6 +120,7 @@ bazelisk run //ci/raydepsets:raydepsets -- build ci/raydepsets/configs/rayimg.de
 | `--workspace-dir` | Workspace root directory (default: `$BUILD_WORKSPACE_DIRECTORY`) |
 | `--name` | Build only this depset and its dependencies |
 | `--uv-cache-dir` | Cache directory for uv |
+| `--uv-path` | Explicit path to the `uv` binary (default: Bazel runfiles, then `$PATH`) |
 | `--check` | Validate lock files match what would be generated; exit non-zero on diff |
 | `--all-configs` | Build depsets from all config files, not just the specified one |
 
