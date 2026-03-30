@@ -568,14 +568,13 @@ def teardown_cluster(
         # started them and their Docker containers are still running.
         # For cloud providers this adds nothing because get_all_node_ids
         # delegates to non_terminated_nodes.
-        stale_terminated = (
-            set(provider.get_all_node_ids({}))
-            - set(provider.non_terminated_nodes({}))
+        stale_terminated = set(provider.get_all_node_ids({})) - set(
+            provider.non_terminated_nodes({})
         )
         if workers_only:
-            stale_terminated -= set(provider.get_all_node_ids(
-                {TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
-            ))
+            stale_terminated -= set(
+                provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+            )
         docker_stop_nodes = list(set(A) | stale_terminated)
 
         # This is to ensure that the parallel SSH calls below do not mess with

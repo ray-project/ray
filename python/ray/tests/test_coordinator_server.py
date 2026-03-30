@@ -108,9 +108,9 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         assert set(
             provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         ) == set(worker_ips)
-        assert set(provider.get_all_node_ids(
-            {TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
-        )) == {head_ip}
+        assert set(provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})) == {
+            head_ip
+        }
 
         # Mark head as running; workers stay terminated.
         record_local_head_state_if_needed(provider)
@@ -124,16 +124,12 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # After creating one worker (simulating what the head autoscaler does),
         # both methods should include it, but get_all_node_ids also includes
         # the still-terminated worker.
-        provider.create_node(
-            {}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1
-        )
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1)
         running_workers = provider.non_terminated_nodes(
             {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         )
         assert len(running_workers) == 1
-        all_workers = provider.get_all_node_ids(
-            {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
-        )
+        all_workers = provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert set(all_workers) == set(worker_ips)
 
     def testClusterStateInit(self):
