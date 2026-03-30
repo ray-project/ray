@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray.data._internal.execution.resource_allocator_prometheus_callback import (
+    ResourceAllocatorPrometheusCallback,
+)
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
@@ -989,6 +992,7 @@ class DataContext:
         classes = [
             ExecutionIdxUpdateCallback,
             IssueDetectionExecutionCallback,
+            ResourceAllocatorPrometheusCallback,
         ]
 
         # Parse environment variable for custom callbacks

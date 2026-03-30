@@ -25,9 +25,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_allocator_prometheus_callback import (
-    ResourceAllocatorPrometheusCallback,
-)
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -97,9 +94,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
-        self._callbacks: List["ExecutionCallback"] = [
-            ResourceAllocatorPrometheusCallback()
-        ]
+        self._callbacks: List["ExecutionCallback"] = []
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
