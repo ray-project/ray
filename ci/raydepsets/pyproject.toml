@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "raydepsets"
+version = "0.1.0"
+description = "Ray dependency set manager"
+requires-python = ">=3.10"
+dependencies = [
+    "click",
+    "networkx",
+    "pip-requirements-parser",
+    "pyyaml",
+]
+
+[project.scripts]
+raydepsets = "raydepsets.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["raydepsets*"]

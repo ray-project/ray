@@ -10,11 +10,10 @@ from pathlib import Path
 from typing import List, Optional
 
 import click
-import runfiles
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 from pip_requirements_parser import RequirementsFile
 
-from ci.raydepsets.workspace import Depset, Workspace
+from .workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --no-header
@@ -48,6 +47,11 @@ def cli():
     "--uv-cache-dir", default=None, help="The directory to cache uv dependencies"
 )
 @click.option(
+    "--uv-path",
+    default=None,
+    help="Explicit path to the uv binary. If not set, Bazel runfiles and $PATH are searched.",
+)
+@click.option(
     "--check",
     is_flag=True,
     help="Check the the compiled dependencies are valid. Only compatible with generating all dependency sets.",
@@ -62,6 +66,7 @@ def build(
     workspace_dir: Optional[str],
     name: Optional[str],
     uv_cache_dir: Optional[str],
+    uv_path: Optional[str],
     check: Optional[bool],
     all_configs: Optional[bool],
 ):
@@ -74,6 +79,7 @@ def build(
         config_path=config_path,
         workspace_dir=workspace_dir,
         uv_cache_dir=uv_cache_dir,
+        uv_path=uv_path,
         check=check,
         build_all_configs=all_configs,
     )
@@ -94,6 +100,7 @@ class DependencySetManager:
         config_path: str = None,
         workspace_dir: Optional[str] = None,
         uv_cache_dir: Optional[str] = None,
+        uv_path: Optional[str] = None,
         check: Optional[bool] = False,
         build_all_configs: Optional[bool] = False,
     ):
@@ -103,6 +110,7 @@ class DependencySetManager:
             config_path: Path to the depsets config file.
             workspace_dir: Path to the workspace directory.
             uv_cache_dir: Directory to cache uv dependencies.
+            uv_path: Explicit path to the uv binary.
             check: Whether to check if lock files are up to date.
             build_all_configs: Whether to build all configs or just the specified one.
         """
@@ -111,7 +119,7 @@ class DependencySetManager:
         self.config_name = os.path.basename(config_path)
         self.build_graph = DiGraph()
         self._build(build_all_configs)
-        self._uv_binary = _uv_binary()
+        self._uv_binary = _uv_binary(uv_path)
         self._uv_cache_dir = uv_cache_dir
         if check:
             self.temp_dir = tempfile.mkdtemp()
@@ -581,15 +589,44 @@ def write_lock_file(requirements_file: RequirementsFile, lock_file_path: str):
         f.write(requirements_file.dumps())
 
 
-def _uv_binary():
-    """Get the path to the uv binary for the current platform."""
-    r = runfiles.Create()
-    system = platform.system()
-    processor = platform.processor()
+def _uv_binary(uv_path: Optional[str] = None):
+    """Get the path to the uv binary.
 
-    if system == "Linux" and processor == "x86_64":
-        return r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
-    elif system == "Darwin" and (processor == "arm" or processor == "aarch64"):
-        return r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
-    else:
-        raise RuntimeError(f"Unsupported platform/processor: {system}/{processor}")
+    Resolution order:
+    1. Explicit ``uv_path`` argument (from --uv-path CLI flag).
+    2. Bazel runfiles (when executed via ``bazel run``).
+    3. ``uv`` on ``$PATH``.
+    """
+    if uv_path:
+        if not os.path.isfile(uv_path):
+            raise RuntimeError(f"uv binary not found at: {uv_path}")
+        return uv_path
+
+    # Try Bazel runfiles first.
+    try:
+        import runfiles
+
+        r = runfiles.Create()
+        if r is not None:
+            system = platform.system()
+            machine = platform.machine()
+            if system == "Linux" and machine == "x86_64":
+                loc = r.Rlocation("uv_x86_64-linux/uv-x86_64-unknown-linux-gnu/uv")
+            elif system == "Darwin" and machine in ("arm64", "aarch64"):
+                loc = r.Rlocation("uv_aarch64-darwin/uv-aarch64-apple-darwin/uv")
+            else:
+                loc = None
+            if loc and os.path.isfile(loc):
+                return loc
+    except (ImportError, Exception):
+        pass
+
+    # Fall back to $PATH.
+    uv_on_path = shutil.which("uv")
+    if uv_on_path:
+        return uv_on_path
+
+    raise RuntimeError(
+        "Could not find the uv binary. Either run via `bazel run`, "
+        "pass --uv-path, or ensure `uv` is on your $PATH."
+    )
