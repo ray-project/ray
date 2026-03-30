@@ -170,7 +170,7 @@ def callback(monkeypatch):
         lambda: expected_controller_log_path,
     )
 
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
     callback.after_controller_start(train_run_context=create_dummy_run_context())
     return callback
 
@@ -784,7 +784,7 @@ def test_callback_log_file_paths(
     )
 
     # Create the callback
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
 
     # Initialize the callback
     callback.after_controller_start(train_run_context=create_dummy_run_context())

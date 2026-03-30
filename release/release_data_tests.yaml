@@ -88,19 +88,6 @@
     timeout: 5400
     script: python read_from_uris_benchmark.py
 
-- name: read_images_comparison_microbenchmark_single_node
-  python: "3.10"
-  frequency: manual
-
-  cluster:
-    byod:
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: bash run_image_loader_microbenchmark.sh
-
 ###############
 # Writing tests
 ###############
@@ -266,6 +253,12 @@
 - name: wide_schema_pipeline_{{data_type}}
   python: "3.10"
   cluster:
+    byod:
+      runtime_env:
+        # Preserve the default verbose stats for resource manager.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
+        - RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1
     cluster_compute: fixed_size_cpu_compute.yaml
 
   matrix:
@@ -564,6 +557,22 @@
 #######################
 # Batch inference tests
 #######################
+
+# Tests memory management on a cluster with mixed node types:
+# CPU nodes (small memory) produce data faster than GPU nodes (large memory)
+# can consume it. The global object store threshold is the sum of all nodes,
+# so CPU stages may not trigger backpressure even when CPU nodes are full.
+- name: heterogeneous_memory_batch_inference
+  python: "3.10"
+  frequency: nightly
+  group: data-batch-inference
+
+  cluster:
+    cluster_compute: heterogeneous_memory_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python heterogeneous_memory_batch_inference.py
 
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
