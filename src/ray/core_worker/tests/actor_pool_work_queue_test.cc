@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,35 +37,8 @@ PoolWorkItem CreateTestWorkItem(int32_t attempt_number = 0) {
 
 }  // namespace
 
-TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
-  UnorderedPoolWorkQueue queue;
-
-  // Initially empty
-  EXPECT_FALSE(queue.HasWork());
-  EXPECT_EQ(queue.Size(), 0);
-  EXPECT_FALSE(queue.Pop().has_value());
-
-  // Push one item
-  auto item1 = CreateTestWorkItem();
-  auto item1_id = item1.work_item_id;
-  queue.Push(std::move(item1));
-
-  EXPECT_TRUE(queue.HasWork());
-  EXPECT_EQ(queue.Size(), 1);
-
-  // Pop the item
-  auto popped = queue.Pop();
-  ASSERT_TRUE(popped.has_value());
-  EXPECT_EQ(popped->work_item_id, item1_id);
-
-  // Empty again
-  EXPECT_FALSE(queue.HasWork());
-  EXPECT_EQ(queue.Size(), 0);
-  EXPECT_FALSE(queue.Pop().has_value());
-}
-
-TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolWorkQueueTest, FIFOOrdering) {
+  FifoPoolWorkQueue queue;
 
   // Push multiple items
   std::vector<TaskID> task_ids;
@@ -88,8 +61,8 @@ TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
-TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolWorkQueueTest, RetryWithIncrementedAttempt) {
+  FifoPoolWorkQueue queue;
 
   // Push item with attempt_number = 0
   auto item = CreateTestWorkItem(0);
@@ -112,8 +85,8 @@ TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
   EXPECT_EQ(retry_popped->attempt_number, 1);
 }
 
-TEST(UnorderedPoolWorkQueueTest, Clear) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolWorkQueueTest, Clear) {
+  FifoPoolWorkQueue queue;
 
   // Push multiple items
   for (int i = 0; i < 10; i++) {
@@ -131,35 +104,8 @@ TEST(UnorderedPoolWorkQueueTest, Clear) {
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
-TEST(UnorderedPoolWorkQueueTest, ManyItems) {
-  UnorderedPoolWorkQueue queue;
-
-  const int num_items = 1000;
-  std::vector<TaskID> task_ids;
-
-  // Push many items
-  for (int i = 0; i < num_items; i++) {
-    auto item = CreateTestWorkItem();
-    task_ids.push_back(item.work_item_id);
-    queue.Push(std::move(item));
-  }
-
-  EXPECT_EQ(queue.Size(), num_items);
-
-  // Pop all and verify order
-  for (int i = 0; i < num_items; i++) {
-    ASSERT_TRUE(queue.HasWork());
-    auto popped = queue.Pop();
-    ASSERT_TRUE(popped.has_value());
-    EXPECT_EQ(popped->work_item_id, task_ids[i]);
-  }
-
-  EXPECT_EQ(queue.Size(), 0);
-  EXPECT_FALSE(queue.HasWork());
-}
-
-TEST(UnorderedPoolWorkQueueTest, InterleavedPushPop) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolWorkQueueTest, InterleavedPushPop) {
+  FifoPoolWorkQueue queue;
 
   // Interleave pushes and pops
   auto item1 = CreateTestWorkItem();

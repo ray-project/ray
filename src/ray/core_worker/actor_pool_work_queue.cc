@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,11 +19,9 @@
 namespace ray {
 namespace core {
 
-void UnorderedPoolWorkQueue::Push(PoolWorkItem item) {
-  queue_.push_back(std::move(item));
-}
+void FifoPoolWorkQueue::Push(PoolWorkItem item) { queue_.push_back(std::move(item)); }
 
-std::optional<PoolWorkItem> UnorderedPoolWorkQueue::Pop() {
+std::optional<PoolWorkItem> FifoPoolWorkQueue::Pop() {
   if (queue_.empty()) {
     return std::nullopt;
   }
@@ -33,11 +31,11 @@ std::optional<PoolWorkItem> UnorderedPoolWorkQueue::Pop() {
   return std::move(item);
 }
 
-bool UnorderedPoolWorkQueue::HasWork() const { return !queue_.empty(); }
+bool FifoPoolWorkQueue::HasWork() const { return !queue_.empty(); }
 
-size_t UnorderedPoolWorkQueue::Size() const { return queue_.size(); }
+size_t FifoPoolWorkQueue::Size() const { return queue_.size(); }
 
-void UnorderedPoolWorkQueue::Clear() { queue_.clear(); }
+void FifoPoolWorkQueue::Clear() { queue_.clear(); }
 
 }  // namespace core
 }  // namespace ray

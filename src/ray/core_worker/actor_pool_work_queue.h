@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -53,32 +53,8 @@ struct PoolWorkItem {
   int64_t enqueued_at_ms = 0;
 
   PoolWorkItem() = default;
-
-  /// Move constructor.
-  PoolWorkItem(PoolWorkItem &&other) noexcept
-      : work_item_id(std::move(other.work_item_id)),
-        function(std::move(other.function)),
-        args(std::move(other.args)),
-        arg_ids(std::move(other.arg_ids)),
-        options(std::move(other.options)),
-        attempt_number(other.attempt_number),
-        enqueued_at_ms(other.enqueued_at_ms) {}
-
-  /// Move assignment.
-  PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
-    if (this != &other) {
-      work_item_id = std::move(other.work_item_id);
-      function = std::move(other.function);
-      args = std::move(other.args);
-      arg_ids = std::move(other.arg_ids);
-      options = std::move(other.options);
-      attempt_number = other.attempt_number;
-      enqueued_at_ms = other.enqueued_at_ms;
-    }
-    return *this;
-  }
-
-  // Delete copy constructor and assignment
+  PoolWorkItem(PoolWorkItem &&) noexcept = default;
+  PoolWorkItem &operator=(PoolWorkItem &&) noexcept = default;
   PoolWorkItem(const PoolWorkItem &) = delete;
   PoolWorkItem &operator=(const PoolWorkItem &) = delete;
 };
@@ -113,13 +89,13 @@ class PoolWorkQueue {
   virtual void Clear() = 0;
 };
 
-/// Unordered work queue implementation.
-/// Work items are processed in FIFO order with no ordering guarantees.
+/// FIFO work queue implementation.
+/// Work items are processed in first-in, first-out order.
 /// This is the simplest and highest-throughput implementation.
-class UnorderedPoolWorkQueue : public PoolWorkQueue {
+class FifoPoolWorkQueue : public PoolWorkQueue {
  public:
-  UnorderedPoolWorkQueue() = default;
-  ~UnorderedPoolWorkQueue() override = default;
+  FifoPoolWorkQueue() = default;
+  ~FifoPoolWorkQueue() override = default;
 
   void Push(PoolWorkItem item) override;
 
