@@ -1,6 +1,15 @@
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
+exports_files(
+    [
+        "_images.rayci.yml",
+        "_wheel-build.rayci.yml",
+        "release/build.rayci.yml",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 py_binary(
     name = "copy_files",
     srcs = ["copy_files.py"],
