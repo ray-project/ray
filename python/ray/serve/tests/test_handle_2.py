@@ -440,8 +440,12 @@ def test_chained_deployment_response_upstream_crash_fails_fast(serve_instance):
     # Send requests until we hit the rank-0 replica that will die.
     # The request must raise a RayServeException (not a TimeoutError), with
     # Ray's ActorDiedError text embedded (actor id / replica name, etc.).
-    while True:
-        handle.remote(0).result(timeout_s=10)
+    with pytest.raises(RayServeException) as exc_info:
+        while True:
+            handle.remote(0).result(timeout_s=10)
+    err_text = str(exc_info.value)
+    assert "Multiplier" in err_text
+    assert "Adder" in err_text
 
 
 @pytest.mark.skipif(
