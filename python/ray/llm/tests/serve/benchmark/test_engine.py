@@ -35,10 +35,10 @@ def _make_spec(**overrides) -> WorkloadSpec:
     """Create a resolved WorkloadSpec with sensible defaults."""
     defaults = dict(
         isl=1000,
-        hit_rate=0.5,
+        hit_rate=0.7,
         num_turns=3,
         osl=50,
-        cross_sharing=0.5,
+        shared_system_prompt_ratio=0.5,
         concurrency=4,
         num_sessions=10,
     )
@@ -197,12 +197,12 @@ class TestConversationFactory:
 
         for msg in conv.user_messages:
             token_count = len(tokenizer.encode(msg, add_special_tokens=False))
-            assert token_count == spec.u, f"Expected {spec.u} tokens, got {token_count}"
+            assert token_count == spec.user_tokens, f"Expected {spec.user_tokens} tokens, got {token_count}"
 
     def test_cross_session_shared_prefix(self, text_gen):
         """Two sessions with cross_sharing > 0 should share the same prefix."""
         np.random.seed(42)
-        spec = _make_spec(cross_sharing=0.8)
+        spec = _make_spec(shared_system_prompt_ratio=0.8)
         shared_text = text_gen.generate(spec.shared_s) if spec.shared_s > 0 else ""
 
         conv0 = conversation_factory(0, spec, shared_text, text_gen)
@@ -213,7 +213,7 @@ class TestConversationFactory:
 
     def test_zero_cross_sharing_no_shared_prefix(self, text_gen):
         np.random.seed(42)
-        spec = _make_spec(cross_sharing=0.0, isl=2000, hit_rate=0.3)
+        spec = _make_spec(shared_system_prompt_ratio=0.0, isl=2000, hit_rate=0.3, num_turns=1)
         assert spec.shared_s == 0
 
     def test_session_id_format(self, text_gen):

@@ -16,7 +16,7 @@ class TestWorkloadSpec:
             hit_rate=0.5,
             num_turns=1,
             osl=100,
-            cross_sharing=1.0,
+            shared_system_prompt_ratio=1.0,
             concurrency=1,
             num_sessions=1,
         ).resolve()
@@ -30,7 +30,7 @@ class TestWorkloadSpec:
             hit_rate=0.8,
             num_turns=5,
             osl=140,
-            cross_sharing=1.0,
+            shared_system_prompt_ratio=1.0,
             concurrency=8,
             num_sessions=100,
         ).resolve()
@@ -44,7 +44,7 @@ class TestWorkloadSpec:
             hit_rate=0.6,
             num_turns=3,
             osl=100,
-            cross_sharing=0.5,
+            shared_system_prompt_ratio=0.5,
             concurrency=4,
             num_sessions=50,
         ).resolve()
@@ -58,6 +58,7 @@ class TestWorkloadSpec:
             hit_rate=0.7,
             num_turns=3,
             osl=100,
+            shared_system_prompt_ratio=0.5,
             request_rate=10.0,
             duration_s=60.0,
         ).resolve()
@@ -130,7 +131,7 @@ class TestWorkloadSpec:
             "think_time",
             "concurrency",
             "request_rate",
-            "cross_sharing",
+            "shared_system_prompt_ratio",
             "user_tokens_per_turn",
             "system_prompt_tokens",
             "shared_system_prompt",
