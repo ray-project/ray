@@ -475,7 +475,7 @@ async def test_shutdown_and_callback_both_fail_on_finished_path():
     assert isinstance(controller.get_state().training_failed_error, ControllerError)
     assert (
         "shutdown"
-        in str(controller.get_state().training_failed_error.__cause__).lower()
+        in str(controller.get_state().training_failed_error.controller_failure).lower()
     )
 
 
