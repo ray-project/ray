@@ -327,21 +327,57 @@ def validate_test_cluster_compute(
 ) -> Optional[str]:
     from ray_release.template import load_test_cluster_compute
 
+    is_new_schema = test.uses_anyscale_sdk_2026()
     cluster_compute = load_test_cluster_compute(test, test_definition_root)
-    return validate_cluster_compute(cluster_compute)
+    return validate_cluster_compute(cluster_compute, is_new_schema=is_new_schema)
 
 
-def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
-    aws = cluster_compute.get("aws", {})
-    head_node_aws = cluster_compute.get("head_node_type", {}).get(
-        "aws_advanced_configurations", {}
-    )
+def validate_cluster_compute(
+    cluster_compute: Dict[str, Any], is_new_schema: bool = False
+) -> Optional[str]:
+    compute_keys = set(cluster_compute.keys())
+    found_legacy_keys = compute_keys & LEGACY_COMPUTE_CONFIG_KEYS
+    found_new_keys = compute_keys & NEW_COMPUTE_CONFIG_KEYS
 
-    configs_to_check = [aws, head_node_aws]
-
-    for worker_node in cluster_compute.get("worker_node_types", []):
-        worker_node_aws = worker_node.get("aws_advanced_configurations", {})
-        configs_to_check.append(worker_node_aws)
+    if is_new_schema:
+        # New schema: must not contain legacy keys
+        if found_legacy_keys:
+            return (
+                f"Compute config has legacy schema keys ({found_legacy_keys}) "
+                f"but test expects new schema (anyscale_sdk_2026=true)"
+            )
+        # Validate EBS DeleteOnTermination in new-schema fields
+        head_node_aws = cluster_compute.get("head_node", {}).get(
+            "advanced_instance_config", {}
+        )
+        configs_to_check = [
+            cluster_compute.get("advanced_instance_config", {}),
+            head_node_aws,
+        ]
+        for worker_node in cluster_compute.get("worker_nodes", []):
+            worker_aws = worker_node.get("advanced_instance_config", {})
+            configs_to_check.append(worker_aws)
+    else:
+        # Legacy schema: must contain legacy keys and must not contain new keys
+        if found_new_keys:
+            return (
+                f"Compute config has new schema keys ({found_new_keys}) "
+                f"but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        if not found_legacy_keys:
+            return (
+                "Compute config does not have legacy schema keys "
+                "but test expects legacy schema (anyscale_sdk_2026=false)"
+            )
+        # Validate EBS DeleteOnTermination in legacy-schema fields
+        aws = cluster_compute.get("aws", {})
+        head_node_aws = cluster_compute.get("head_node_type", {}).get(
+            "aws_advanced_configurations", {}
+        )
+        configs_to_check = [aws, head_node_aws]
+        for worker_node in cluster_compute.get("worker_node_types", []):
+            worker_node_aws = worker_node.get("aws_advanced_configurations", {})
+            configs_to_check.append(worker_node_aws)
 
     for config in configs_to_check:
         error = validate_aws_config(config)
