@@ -1,9 +1,9 @@
 import asyncio
-import collections
 import enum
 import logging
 import math
 import random
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -502,10 +502,10 @@ class RequestRouter(ABC):
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
-        # Completed replica IDs pending cache decrement. Appended from
-        # worker threads via add_done_callback (deque.append is GIL-atomic),
-        # drained on the event loop thread before each routing decision.
-        self._pending_cache_decrements: collections.deque = collections.deque()
+        # Lock to protect _replica_queue_len_cache from concurrent access
+        # in decrement_queue_len_cache, which may be called from worker
+        # threads via add_done_callback.
+        self._queue_len_cache_lock = threading.Lock()
 
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
@@ -850,35 +850,27 @@ class RequestRouter(ABC):
     def on_send_request(self, replica_id: ReplicaID):
         """Increment queue length cache when a request is sent to a replica."""
         if self._use_replica_queue_len_cache:
-            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
-            new_queue_len = num_ongoing_requests + 1
-            self._replica_queue_len_cache.update(replica_id, new_queue_len)
+            with self._queue_len_cache_lock:
+                num_ongoing_requests = (
+                    self._replica_queue_len_cache.get(replica_id) or 0
+                )
+                new_queue_len = num_ongoing_requests + 1
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
-    def enqueue_cache_decrement(self, replica_id: ReplicaID):
-        """Enqueue a cache decrement for a replica.
+    def decrement_queue_len_cache(self, replica_id: ReplicaID):
+        """Decrement the queue length cache for a replica.
 
-        Called from worker threads via add_done_callback when a request
-        finishes. deque.append is GIL-atomic so no lock is needed.
-
-        The actual cache update happens on the event loop thread when
-        drain_pending_cache_decrements() is called before each routing
-        decision.
+        Called when a request finishes on a replica, regardless of outcome.
+        Thread-safe: may be called from worker threads via add_done_callback.
         """
-        self._pending_cache_decrements.append(replica_id)
-
-    def drain_pending_cache_decrements(self):
-        """Apply all pending cache decrements. Must be called from the
-        event loop thread (e.g., at the start of each routing decision)."""
-        while self._pending_cache_decrements:
-            try:
-                replica_id = self._pending_cache_decrements.popleft()
-            except IndexError:
-                break
-            current = self._replica_queue_len_cache.get(replica_id)
+        if self._use_replica_queue_len_cache:
+            with self._queue_len_cache_lock:
+                current = self._replica_queue_len_cache.get(replica_id)
+                if current is not None:
+                    new_queue_len = max(0, current - 1)
+                    self._replica_queue_len_cache.update(replica_id, new_queue_len)
             if current is not None:
-                new_queue_len = max(0, current - 1)
-                self._replica_queue_len_cache.update(replica_id, new_queue_len)
                 self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def update_replicas(self, replicas: List[RunningReplica]):
@@ -1055,9 +1047,6 @@ class RequestRouter(ABC):
         Among replicas that respond within the deadline and don't have full queues, the
         one with the lowest queue length is chosen.
         """
-        # Apply any pending cache decrements from completed requests.
-        self.drain_pending_cache_decrements()
-
         lowest_queue_len = math.inf
         chosen_replica_id: Optional[str] = None
         not_in_cache: List[RunningReplica] = []
