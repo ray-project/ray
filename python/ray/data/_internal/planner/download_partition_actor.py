@@ -1,7 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Iterator, List, Optional, cast
+from typing import Iterator, List, Optional, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -92,9 +92,7 @@ class PartitionActor:
         # This is some fancy Python code to compute the file size of each row.
         row_sizes = [
             sum(file_sizes_in_row)
-            for file_sizes_in_row in zip[tuple[Any, ...]](
-                *sampled_file_sizes_by_column.values()
-            )
+            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
         ]
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
