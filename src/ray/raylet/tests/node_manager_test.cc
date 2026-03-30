@@ -110,9 +110,9 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 };
 
 LeaseSpecification BuildLeaseSpec(
-    const std::unordered_map<std::string, double> &resources) {
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::Address &caller_address = rpc::Address()) {
   TaskSpecBuilder builder;
-  rpc::Address empty_address;
   rpc::JobConfig config;
   FunctionDescriptor function_descriptor =
       FunctionDescriptorBuilder::BuildPython("x", "", "", "");
@@ -125,7 +125,7 @@ LeaseSpecification BuildLeaseSpec(
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
-                            empty_address,
+                            caller_address,
                             1,
                             false,
                             false,
@@ -1587,5 +1587,128 @@ TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
 INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ReleaseUnusedBundlesRetriesTest,
                          ::testing::Bool());
+
+TEST_F(NodeManagerTest, TestHandleUnexpectedWorkerFailureCleansUpLease) {
+  std::function<void(rpc::WorkerDeltaData)> publish_worker_failure_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .WillOnce([&](const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                    const rpc::StatusCallback &done) {
+        publish_worker_failure_callback = subscribe;
+        return Status::OK();
+      });
+
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .WillOnce(
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+            pop_worker_callback = callback;
+          });
+
+  node_manager_->RegisterGcs();
+  while (!publish_worker_failure_callback) {
+    io_service_.run_one();
+  }
+
+  // Preparing a task spec for the later RequestWorkerLease rpc.
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+  // Pass owner_address as the caller address so GrantLease will set it correctly.
+  const auto lease_spec = BuildLeaseSpec({{"CPU", 1}}, owner_address);
+
+  // Invoke RequestWorkerLease to request a leased worker for the task.
+  std::promise<Status> promise;
+  rpc::RequestWorkerLeaseReply reply;
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply,
+      [&](Status status, std::function<void()> success, std::function<void()> failure) {
+        promise.set_value(status);
+      });
+
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  worker->SetConnection(ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      local_stream_socket(io_service_),
+      "mock_worker_connection",
+      {}));
+  ON_CALL(mock_worker_pool_,
+          GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .WillByDefault(Return(worker));
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_TRUE(promise.get_future().get().ok());
+
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  rpc::WorkerDeltaData delta_data;
+  delta_data.set_worker_id(owner_worker_id.Binary());
+  publish_worker_failure_callback(std::move(delta_data));
+
+  ASSERT_TRUE(worker->IsKilled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+}
+
+TEST_F(NodeManagerTest, TestNodeRemovedCleansUpLease) {
+  std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
+      publish_node_change_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
+              AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
+      .WillOnce([&](const rpc::SubscribeCallback<NodeID, rpc::GcsNodeAddressAndLiveness>
+                        &subscribe,
+                    const rpc::StatusCallback &done) {
+        publish_node_change_callback = subscribe;
+      });
+
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .WillOnce(
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+            pop_worker_callback = callback;
+          });
+
+  node_manager_->RegisterGcs();
+
+  const auto owner_node_id = NodeID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_node_id(owner_node_id.Binary());
+  const auto lease_spec = BuildLeaseSpec({{"CPU", 1}}, owner_address);
+
+  std::promise<Status> promise;
+  rpc::RequestWorkerLeaseReply reply;
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply,
+      [&](Status status, std::function<void()> success, std::function<void()> failure) {
+        promise.set_value(status);
+      });
+
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+  worker->SetConnection(ClientConnection::Create(
+      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+      local_stream_socket(io_service_),
+      "mock_worker_connection",
+      {}));
+  ON_CALL(mock_worker_pool_,
+          GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .WillByDefault(Return(worker));
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  ASSERT_TRUE(promise.get_future().get().ok());
+
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  rpc::GcsNodeAddressAndLiveness node_info;
+  node_info.set_state(GcsNodeInfo::DEAD);
+  publish_node_change_callback(owner_node_id, std::move(node_info));
+
+  ASSERT_TRUE(worker->IsKilled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+}
 
 }  // namespace ray::raylet

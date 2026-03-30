@@ -952,7 +952,9 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
         << "Killing leased worker because its owner's node died.";
-    worker->KillAsync(io_service_);
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::SYSTEM_ERROR,
+                  "Worker killed because its owner's node died.");
   }
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -996,7 +998,9 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
             .WithField(worker->WorkerId())
             .WithField("owner_worker_id", owner_worker_id)
         << "Killing leased worker because its owner died.";
-    worker->KillAsync(io_service_);
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::SYSTEM_ERROR,
+                  "Worker killed because its owner died.");
   }
 }
 

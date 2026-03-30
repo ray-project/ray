@@ -23,6 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
+#include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/compat.h"
 #include "ray/util/fake_process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -132,7 +133,6 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
   const ActorID &GetActorId() const override {
-    RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
   const std::string GetLeaseIdAsDebugString() const override {
@@ -144,7 +144,12 @@ class MockWorker : public WorkerInterface {
     return lease_.GetLeaseSpecification().IsDetachedActor();
   }
 
-  const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
+  const std::shared_ptr<ClientConnection> Connection() const override {
+    return connection_;
+  }
+  void SetConnection(std::shared_ptr<ClientConnection> connection) {
+    connection_ = std::move(connection);
+  }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
   std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
   void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
@@ -206,6 +211,7 @@ class MockWorker : public WorkerInterface {
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
+  std::shared_ptr<ClientConnection> connection_;
 };
 
 /**
