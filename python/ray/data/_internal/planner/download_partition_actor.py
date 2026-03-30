@@ -180,7 +180,7 @@ class PartitionActor:
         assert all(
             size is not None for size in file_sizes
         ), "File size sampling did not complete for all paths"
-        return [int(size) for size in file_sizes]
+        return [size for size in file_sizes if size is not None]
 
 
 class AsyncPartitionActor(PartitionActor):
