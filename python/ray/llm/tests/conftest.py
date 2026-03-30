@@ -157,6 +157,15 @@ def model_llama_3_2_1B_instruct():
 
 
 @pytest.fixture(scope="session")
+def model_internlm2_1_8b():
+    """
+    Yields the S3 URI so that download_model_files exercises the cloud download
+    path where the TOKENIZER_ONLY vs. EXCLUDE_SAFETENSORS filtering applies.
+    """
+    yield "s3://anonymous@air-example-data/rayllm-ossci/internlm2-1_8b/"
+
+
+@pytest.fixture(scope="session")
 def model_qwen_2_5_omni_3b():
     REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}Qwen2.5-Omni-3B/"
     FILE_LIST = [

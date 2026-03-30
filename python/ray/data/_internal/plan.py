@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
+from ray.data._internal.logical.operators import StreamingSplit
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import (
     LogicalOptimizer,
@@ -77,6 +78,18 @@ class ExecutionPlan:
         self._has_started_execution = False
 
         self._context = data_context
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Flush execution cache before serialization
+        state.pop("_cache", None)
+        return state
+
+    def __setstate__(self, state):
+        from ray.data.dataset import _ExecutionCache
+
+        self.__dict__.update(state)
+        self._cache = _ExecutionCache()
 
     def get_dataset_id(self) -> str:
         """Unique ID of the dataset, including the dataset name,
@@ -373,7 +386,13 @@ class ExecutionPlan:
         """
 
         def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
-            limited_dag = Limit(plan._logical_plan.dag, limit=1)
+            dag = plan._logical_plan.dag
+            # Unwrap `StreamingSplit` if any, as `StreamingSplit` must be a
+            # terminal operator (ie can't be wrapped into other ops)
+            if isinstance(dag, StreamingSplit):
+                dag = dag.input_dependencies[0]
+
+            limited_dag = Limit(dag, limit=1)
             limited_plan = plan.copy()
             limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
             return limited_plan
@@ -478,7 +497,6 @@ class ExecutionPlan:
                 )
         if self._cache.get_bundle(self._logical_plan.dag) is None:
             from ray.data._internal.execution.legacy_compat import (
-                _get_initial_stats_from_plan,
                 execute_to_ref_bundle,
             )
 
@@ -489,7 +507,7 @@ class ExecutionPlan:
                 # If the data is already materialized (e.g., `from_pandas`), we can
                 # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
-                stats = _get_initial_stats_from_plan(self)
+                stats = self.initial_stats()
 
                 # TODO(@bveeramani): Make `ExecutionPlan.execute()` return
                 # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
@@ -581,6 +599,20 @@ class ExecutionPlan:
         if not self._cache.get_stats():
             return DatasetStats(metadata={}, parent=None)
         return self._cache.get_stats()
+
+    def initial_stats(self) -> DatasetStats:
+        if self.has_computed_output():
+            return self._cache.get_stats()
+        # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
+        # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+        # the initial stats. Because the `FromXxx` logical operators will be translated to
+        # "InputDataBuffer" physical operators, which will be ignored when generating
+        # stats, see `StreamingExecutor._generate_stats`.
+        # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+        if self.has_lazy_input():
+            return DatasetStats(metadata={}, parent=None)
+        else:
+            return self._in_stats
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
