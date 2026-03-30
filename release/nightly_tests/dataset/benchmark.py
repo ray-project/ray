@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 
 
 def _get_spilled_bytes_total() -> float:
@@ -19,6 +20,60 @@ def _get_spilled_bytes_total() -> float:
 
 def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
+
+
+class OperatorStartTracker(ExecutionCallback):
+    """Records per-operator start time and duration.
+
+    Tracks when each operator first submits a task (start) and when it
+    completes (duration = completion time - start time).
+
+    Uses class-level state because the planner instantiates callback classes
+    with ``cls()``, so callers can't hold a reference to the instance.
+
+    Usage::
+
+        ctx = ray.data.DataContext.get_current()
+        ctx.custom_execution_callback_classes.append(OperatorStartTracker)
+
+        # ... run pipeline ...
+
+        metrics = OperatorStartTracker.collect()
+    """
+
+    _start_time: float = 0.0
+    _op_start_s: Dict[str, float] = {}
+    _op_duration_s: Dict[str, float] = {}
+
+    def before_execution_starts(self, executor):
+        OperatorStartTracker._start_time = time.perf_counter()
+        OperatorStartTracker._op_start_s.clear()
+        OperatorStartTracker._op_duration_s.clear()
+
+    def on_execution_step(self, executor):
+        if executor._topology is None:
+            return
+        for op in executor._topology:
+            if op.name not in self._op_start_s and op.metrics.num_tasks_submitted > 0:
+                self._op_start_s[op.name] = time.perf_counter() - self._start_time
+            if (
+                op.name in self._op_start_s
+                and op.name not in self._op_duration_s
+                and op.has_completed()
+            ):
+                self._op_duration_s[op.name] = (
+                    time.perf_counter() - self._start_time - self._op_start_s[op.name]
+                )
+
+    @classmethod
+    def collect(cls) -> Dict[str, float]:
+        """Return metrics dict with ``op_start_s/`` and ``op_duration_s/`` keys."""
+        metrics: Dict[str, float] = {}
+        for k, v in cls._op_start_s.items():
+            metrics[f"op_start_s/{k}"] = v
+        for k, v in cls._op_duration_s.items():
+            metrics[f"op_duration_s/{k}"] = v
+        return metrics
 
 
 class BenchmarkMetric(Enum):
