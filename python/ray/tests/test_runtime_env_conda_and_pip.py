@@ -13,6 +13,7 @@ from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.dependency_utils import (
     INTERNAL_PIP_FILENAME,
     MAX_INTERNAL_PIP_FILENAME_TRIES,
+    gen_requirements_txt,
 )
 from ray._private.test_utils import (
     chdir,
@@ -244,6 +245,23 @@ def test_get_requirements_file():
         assert "Could not find a valid filename for the internal " in str(excinfo.value)
 
 
+def test_gen_requirements_txt_expands_env_vars(tmp_path):
+    """Unit test: gen_requirements_txt expands ${VAR} in package lines."""
+    os.environ["_TEST_EXPAND_VAR"] = "/some/path"
+    try:
+        req_file = str(tmp_path / "req.txt")
+        gen_requirements_txt(
+            req_file,
+            ["-r ${_TEST_EXPAND_VAR}/requirements.txt", "numpy"],
+        )
+        with open(req_file) as f:
+            lines = f.read().strip().split("\n")
+        assert lines[0] == "-r /some/path/requirements.txt"
+        assert lines[1] == "numpy"
+    finally:
+        del os.environ["_TEST_EXPAND_VAR"]
+
+
 def test_working_dir_applies_for_pip_creation(start_cluster, tmp_working_dir):
     cluster, address = start_cluster
 
@@ -290,6 +308,29 @@ def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_d
         runtime_env={
             "working_dir": tmp_working_dir,
             "pip": str(Path(tmp_working_dir) / "requirements.txt"),
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_working_dir_applies_for_uv_creation(start_cluster, tmp_working_dir):
+    cluster, address = start_cluster
+
+    with open(Path(tmp_working_dir) / "requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "uv": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
         },
     )
 

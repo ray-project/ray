@@ -17,7 +17,7 @@ def gen_requirements_txt(requirements_file: str, pip_packages: List[str]):
     """Dump [pip_packages] to the given [requirements_file] for later env setup."""
     with open(requirements_file, "w") as file:
         for line in pip_packages:
-            file.write(line + "\n")
+            file.write(os.path.expandvars(line) + "\n")
 
 
 @asynccontextmanager
