@@ -83,6 +83,12 @@ def build_platform_reverse_map() -> Dict[str, str]:
     for image_type_config in images.values():
         for platform in image_type_config.get("platforms", []):
             short = format_platform_tag(platform).lstrip("-")
-            if short not in reverse_map:
+            if short in reverse_map:
+                if reverse_map[short] != platform:
+                    raise ValueError(
+                        f"Ambiguous short platform tag '{short}': "
+                        f"could be '{platform}' or '{reverse_map[short]}'"
+                    )
+            else:
                 reverse_map[short] = platform
     return reverse_map
