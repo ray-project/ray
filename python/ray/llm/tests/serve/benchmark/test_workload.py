@@ -80,7 +80,7 @@ class TestWorkloadSpec:
         with pytest.raises(ValueError, match="--concurrency.*--request-rate"):
             WorkloadSpec(
                 isl=1000,
-                hit_rate=0.5,
+                hit_rate=0.0,
                 num_turns=1,
                 osl=100,
                 num_sessions=10,
@@ -91,7 +91,7 @@ class TestWorkloadSpec:
         with pytest.raises(ValueError, match="Cannot specify both"):
             WorkloadSpec(
                 isl=1000,
-                hit_rate=0.5,
+                hit_rate=0.0,
                 num_turns=1,
                 osl=100,
                 concurrency=4,

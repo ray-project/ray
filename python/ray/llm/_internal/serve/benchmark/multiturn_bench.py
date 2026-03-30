@@ -162,16 +162,7 @@ class WorkloadSpec:
 
         denom = 1 - (1 - f) * (n + 1) / (2 * n)
         if abs(denom) < 1e-9:
-            # n=1, f=0: no caching source (no multi-turn, no cross-session sharing).
-            # Only h=0 is feasible; the split is s=0, u=ISL.
-            if h > 1e-9:
-                raise ValueError(
-                    f"Cannot achieve hit_rate={h} with num_turns=1 and "
-                    f"shared_system_prompt_ratio=0. There is no caching source "
-                    f"(no multi-turn history, no shared prefix). "
-                    f"Set shared_system_prompt_ratio > 0 to enable cross-session "
-                    f"prefix caching, or use num_turns > 1 for multi-turn caching."
-                )
+            # n=1, f=0, h=0 (validated earlier): s=0, u=ISL.
             sys_tokens = 0.0
             user_tokens = float(isl)
         else:
@@ -216,6 +207,19 @@ class WorkloadSpec:
             raise ValueError("shared_system_prompt_ratio must be in [0, 1].")
         if self.think_time < 0:
             raise ValueError("think_time must be >= 0.")
+        if (
+            self.num_turns == 1
+            and self.shared_system_prompt_ratio == 0
+            and self.hit_rate is not None
+            and self.hit_rate > 1e-9
+        ):
+            raise ValueError(
+                f"Cannot achieve hit_rate={self.hit_rate} with num_turns=1 and "
+                f"shared_system_prompt_ratio=0. There is no caching source "
+                f"(no multi-turn history, no shared prefix). "
+                f"Set shared_system_prompt_ratio > 0 to enable cross-session "
+                f"prefix caching, or use num_turns > 1 for multi-turn caching."
+            )
 
         # Validate traffic control: either concurrency or request_rate
         if self.concurrency is None and self.request_rate is None:
