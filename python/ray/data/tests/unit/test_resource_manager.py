@@ -129,7 +129,6 @@ def test_does_not_double_count_usage_from_union():
         ExecutionOptions(),
         lambda: total_resources,
         DataContext.get_current(),
-        output_operator=union_op,
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -188,7 +187,6 @@ def test_per_input_inqueue_attribution_for_union():
         options,
         lambda: total_resources,
         DataContext.get_current(),
-        output_operator=union_op,
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution

@@ -76,7 +76,6 @@ class ResourceManager:
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
-        output_operator: PhysicalOperator,
     ):
         self._topology = topology
         self._options = options
@@ -102,12 +101,10 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
-        # Executor sink (the DAG root passed to StreamingExecutor, same as
-        # ``_output_node[0]``). Iterator / streaming_split prefetch bytes are
-        # charged on this operator's output usage.
-        if output_operator not in topology:
-            raise ValueError("output_operator must be present in topology")
-        self._output_operator = output_operator
+        # Executor sink (DAG root: unique op with no output_dependencies).
+        # Iterator/streaming_split prefetch bytes are charged on this
+        # operator's output usage.
+        self._output_operator = self._terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -124,6 +121,30 @@ class ResourceManager:
         )
 
         self._warn_about_object_store_memory_if_needed()
+
+    def _terminal_operator_from_topology(
+        self, topology: "Topology"
+    ) -> PhysicalOperator:
+        """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+        ``build_streaming_topology`` is rooted at the same node passed to
+        ``StreamingExecutor``; that root is the only operator whose
+        ``output_dependencies`` is empty.
+        """
+        if not topology:
+            raise ValueError("topology must be non-empty")
+        sinks = [op for op in topology if not op.output_dependencies]
+        if len(sinks) == 1:
+            return sinks[0]
+        if not sinks:
+            raise ValueError(
+                "No terminal operator found in topology (expected exactly one "
+                "operator with empty output_dependencies)"
+            )
+        raise ValueError(
+            "Expected exactly one terminal operator in topology, found "
+            f"{len(sinks)}: {sinks!r}"
+        )
 
     def _warn_about_object_store_memory_if_needed(self):
         """Warn if object store memory is configured below 50% of total memory."""

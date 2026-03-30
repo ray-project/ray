@@ -72,7 +72,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
@@ -238,7 +237,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -300,7 +298,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -336,7 +333,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -402,7 +398,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = {o1: 0, o2: 40, o3: 40}
@@ -480,7 +475,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = {o1: 0, o2: 40, o3: 40}
@@ -515,7 +509,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
@@ -579,7 +572,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -628,7 +620,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -672,7 +663,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
@@ -719,7 +709,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2], 0)
@@ -791,7 +780,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4, o5], 0)
@@ -848,7 +836,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
@@ -937,7 +924,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = dict.fromkeys(ops, 0)
@@ -999,7 +985,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
@@ -1097,7 +1082,6 @@ class TestReservationOpResourceAllocator:
             ExecutionOptions(),
             MagicMock(),
             DataContext.get_current(),
-            output_operator=list(topo.keys())[-1],
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager.get_global_limits = MagicMock(
