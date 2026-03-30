@@ -431,7 +431,11 @@ class OpenAiIngress(DeploymentProtocol):
         import aiohttp
 
         # _asgi_app is set by ASGIAppReplicaWrapper.__init__, which runs
-        # after OpenAiIngress.__init__ in the MRO.
+        # after OpenAiIngress.__init__ in the MRO. This task is created from
+        # __init__ and must wait for the MRO chain to complete. A callback
+        # hook from ASGIAppReplicaWrapper would be cleaner but would require
+        # modifying the base class; this polling approach is safe because
+        # _asgi_app is always set within the same __init__ chain.
         while not hasattr(self, "_asgi_app"):
             await asyncio.sleep(0.01)
 
@@ -502,7 +506,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         try:
             parsed = orjson.loads(body_bytes)
-        except Exception:
+        except (orjson.JSONDecodeError, ValueError):
             await send(
                 {
                     "type": "http.response.start",
@@ -539,6 +543,7 @@ class OpenAiIngress(DeploymentProtocol):
         try:
             host, port = await self._pick_routed_sidecar_endpoint(model_id)
         except Exception as e:
+            logger.warning(f"Route endpoint: sidecar routing failed: {e}")
             await send(
                 {
                     "type": "http.response.start",
@@ -547,7 +552,10 @@ class OpenAiIngress(DeploymentProtocol):
                 }
             )
             await send(
-                {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error":"no sidecar available"}',
+                }
             )
             return
 
@@ -582,7 +590,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         try:
             parsed = orjson.loads(body_bytes)
-        except Exception:
+        except (orjson.JSONDecodeError, ValueError):
             raise _FallThrough(body_bytes)
 
         if not parsed.get("stream", False):
@@ -641,7 +649,8 @@ class OpenAiIngress(DeploymentProtocol):
         except Exception as e:
             logger.error(f"Sidecar proxy error: {e}")
             error_body = (
-                f'data: {{"error": {{"message": "{e}"}}}}\n\n' f"data: [DONE]\n\n"
+                'data: {"error": {"message": "An internal error occurred."}}\n\n'
+                "data: [DONE]\n\n"
             ).encode()
             if not started:
                 await send(

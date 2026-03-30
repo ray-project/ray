@@ -235,11 +235,18 @@ class LLMServer(LLMServerProtocol):
                 return response
             if hasattr(result, "model_dump"):
                 return web.json_response(result.model_dump())
+            # Unexpected return type — vLLM's create_* should always return
+            # an AsyncGenerator (streaming) or a pydantic model (non-streaming).
+            logger.error(f"Unexpected result type from vLLM: {type(result)}")
             return web.json_response(
-                {"error": {"message": str(result), "type": "server_error"}},
+                {"error": {"message": "Internal server error", "type": "server_error"}},
                 status=500,
             )
 
+        # NOTE: These handlers use vLLM's internal OpenAI serving layer
+        # (engine._oai_serving_chat, engine._oai_serving_completion).
+        # This is a tight coupling with vLLM internals — verify compatibility
+        # when upgrading vLLM versions.
         async def handle_chat(request):
             from vllm.entrypoints.openai.chat_completion.protocol import (
                 ChatCompletionRequest as VLLMChatRequest,
