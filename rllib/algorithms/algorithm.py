@@ -1587,7 +1587,7 @@ class Algorithm(Checkpointable, Trainable):
                 raise ValueError(
                     "Custom eval function must return "
                     "`Tuple[ResultDict, int, int]` with `int, int` being "
-                    f"`env_steps` and `agent_steps`! Got {env_steps}, {agent_steps}."
+                    f"`env_steps` and `agent_steps`! Got {env_steps} ({type(env_steps)}), {agent_steps} ({type(agent_steps)})."
                 )
         else:
             eval_results = self.config.custom_evaluation_function()
