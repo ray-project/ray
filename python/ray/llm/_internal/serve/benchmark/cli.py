@@ -85,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--shared-system-prompt-ratio",
         dest="shared_system_prompt_ratio",
         type=float,
-        default=0.0,
+        default=1.0,
         help="Fraction of the system prompt shared across all sessions "
         "(1.0 = identical, 0.0 = all unique) (default: %(default)s)",
     )
