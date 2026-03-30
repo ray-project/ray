@@ -485,6 +485,45 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeCounter fake_memory_manager_worker_eviction_total_count_;
   ray::observability::FakeCounter
       fake_node_manager_unexpected_worker_failure_total_count_;
+
+  // Helper: request a worker lease with the given owner address, wait for it to
+  // be granted, and return the leased MockWorker.  The worker is given a real
+  // ClientConnection so that code paths calling client->Close() (e.g.
+  // DestroyWorker -> DisconnectClient) do not crash.
+  std::shared_ptr<MockWorker> LeaseWorkerWithOwner(const rpc::Address &owner_address) {
+    PopWorkerCallback pop_worker_callback;
+    EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+        .WillOnce(
+            [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+              pop_worker_callback = callback;
+            });
+
+    const auto lease_spec = BuildLeaseSpec({{"CPU", 1}}, owner_address);
+    std::promise<Status> promise;
+    rpc::RequestWorkerLeaseReply reply;
+    rpc::RequestWorkerLeaseRequest request;
+    request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+    node_manager_->HandleRequestWorkerLease(
+        request,
+        &reply,
+        [&](Status status,
+            std::function<void()> success,
+            std::function<void()> failure) { promise.set_value(status); });
+
+    const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
+    worker->SetConnection(ClientConnection::Create(
+        [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
+        [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
+        local_stream_socket(io_service_),
+        "mock_worker_connection",
+        {}));
+    ON_CALL(mock_worker_pool_,
+            GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+        .WillByDefault(Return(worker));
+    pop_worker_callback(worker, PopWorkerStatus::OK, "");
+    RAY_CHECK(promise.get_future().get().ok());
+    return worker;
+  }
 };
 
 TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadUnknownWorker) {
@@ -1589,6 +1628,7 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ::testing::Bool());
 
 TEST_F(NodeManagerTest, TestHandleUnexpectedWorkerFailureCleansUpLease) {
+  // Capture the worker-failure subscription callback so we can trigger it later.
   std::function<void(rpc::WorkerDeltaData)> publish_worker_failure_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
               AsyncSubscribeToWorkerFailures(_, _))
@@ -1598,50 +1638,15 @@ TEST_F(NodeManagerTest, TestHandleUnexpectedWorkerFailureCleansUpLease) {
         return Status::OK();
       });
 
-  PopWorkerCallback pop_worker_callback;
-  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-      .WillOnce(
-          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
-            pop_worker_callback = callback;
-          });
-
   node_manager_->RegisterGcs();
   while (!publish_worker_failure_callback) {
     io_service_.run_one();
   }
 
-  // Preparing a task spec for the later RequestWorkerLease rpc.
   const auto owner_worker_id = WorkerID::FromRandom();
   rpc::Address owner_address;
   owner_address.set_worker_id(owner_worker_id.Binary());
-  // Pass owner_address as the caller address so GrantLease will set it correctly.
-  const auto lease_spec = BuildLeaseSpec({{"CPU", 1}}, owner_address);
-
-  // Invoke RequestWorkerLease to request a leased worker for the task.
-  std::promise<Status> promise;
-  rpc::RequestWorkerLeaseReply reply;
-  rpc::RequestWorkerLeaseRequest request;
-  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
-  node_manager_->HandleRequestWorkerLease(
-      request,
-      &reply,
-      [&](Status status, std::function<void()> success, std::function<void()> failure) {
-        promise.set_value(status);
-      });
-
-  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  worker->SetConnection(ClientConnection::Create(
-      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
-      local_stream_socket(io_service_),
-      "mock_worker_connection",
-      {}));
-  ON_CALL(mock_worker_pool_,
-          GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .WillByDefault(Return(worker));
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
-  ASSERT_TRUE(promise.get_future().get().ok());
-
+  const auto worker = LeaseWorkerWithOwner(owner_address);
   ASSERT_EQ(leased_workers_.size(), 1);
 
   rpc::WorkerDeltaData delta_data;
@@ -1653,6 +1658,7 @@ TEST_F(NodeManagerTest, TestHandleUnexpectedWorkerFailureCleansUpLease) {
 }
 
 TEST_F(NodeManagerTest, TestNodeRemovedCleansUpLease) {
+  // Capture the node-change subscription callback so we can trigger it later.
   std::function<void(const NodeID &id, rpc::GcsNodeAddressAndLiveness &&node_info)>
       publish_node_change_callback;
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
@@ -1663,44 +1669,12 @@ TEST_F(NodeManagerTest, TestNodeRemovedCleansUpLease) {
         publish_node_change_callback = subscribe;
       });
 
-  PopWorkerCallback pop_worker_callback;
-  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-      .WillOnce(
-          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
-            pop_worker_callback = callback;
-          });
-
   node_manager_->RegisterGcs();
 
   const auto owner_node_id = NodeID::FromRandom();
   rpc::Address owner_address;
   owner_address.set_node_id(owner_node_id.Binary());
-  const auto lease_spec = BuildLeaseSpec({{"CPU", 1}}, owner_address);
-
-  std::promise<Status> promise;
-  rpc::RequestWorkerLeaseReply reply;
-  rpc::RequestWorkerLeaseRequest request;
-  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
-  node_manager_->HandleRequestWorkerLease(
-      request,
-      &reply,
-      [&](Status status, std::function<void()> success, std::function<void()> failure) {
-        promise.set_value(status);
-      });
-
-  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
-  worker->SetConnection(ClientConnection::Create(
-      [](std::shared_ptr<ClientConnection>, int64_t, const std::vector<uint8_t> &) {},
-      [](std::shared_ptr<ClientConnection>, const boost::system::error_code &) {},
-      local_stream_socket(io_service_),
-      "mock_worker_connection",
-      {}));
-  ON_CALL(mock_worker_pool_,
-          GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
-      .WillByDefault(Return(worker));
-  pop_worker_callback(worker, PopWorkerStatus::OK, "");
-  ASSERT_TRUE(promise.get_future().get().ok());
-
+  const auto worker = LeaseWorkerWithOwner(owner_address);
   ASSERT_EQ(leased_workers_.size(), 1);
 
   rpc::GcsNodeAddressAndLiveness node_info;
