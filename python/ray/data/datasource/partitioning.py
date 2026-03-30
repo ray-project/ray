@@ -131,6 +131,41 @@ class Partitioning:
             self._normalize_base_dir()
         return self._resolved_filesystem
 
+    def to_pyarrow(self) -> "pyarrow.dataset.Partitioning":
+        """Convert to a PyArrow dataset Partitioning.
+
+        Returns:
+            Equivalent ``pyarrow.dataset.Partitioning`` instance.
+
+        Raises:
+            ValueError: If the partition style is not supported.
+        """
+        import pyarrow as pa
+        import pyarrow.dataset as pds
+
+        field_names: List[str] = self.field_names or []
+        field_types: Dict[str, PartitionDataType] = self.field_types or {}
+
+        type_map = {
+            int: pa.int64(),
+            float: pa.float64(),
+            bool: pa.bool_(),
+            str: pa.string(),
+        }
+        fields = []
+        for name in field_names:
+            py_type: PartitionDataType = field_types.get(name, str)
+            pa_type = type_map.get(py_type, pa.string())
+            fields.append(pa.field(name, pa_type))
+        schema = pa.schema(fields)
+
+        if self.style == PartitionStyle.HIVE:
+            return pds.HivePartitioning(schema)
+        elif self.style == PartitionStyle.DIRECTORY:
+            return pds.DirectoryPartitioning(schema)
+        else:
+            raise ValueError(f"Unsupported partition style: {self.style}")
+
     def _normalize_base_dir(self):
         """Normalizes the partition base directory for compatibility with the
         given filesystem.

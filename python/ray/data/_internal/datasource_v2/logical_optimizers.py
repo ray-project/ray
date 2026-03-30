@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.scanners.scanner import Scanner
@@ -84,14 +84,15 @@ class SupportsPartitionPruning(ABC):
     """
 
     @abstractmethod
-    def prune_partitions(
-        self, predicate: "Expr", partition_columns: Set[str]
-    ) -> "Scanner[InputSplit]":
+    def prune_partitions(self, predicate: "Expr") -> "Scanner[InputSplit]":
         """Prune partitions based on a predicate.
+
+        The scanner determines its partition columns from its
+        ``Partitioning`` configuration, which is fully populated
+        by schema inference at planning time.
 
         Args:
             predicate: Expression to evaluate against partition values.
-            partition_columns: Set of column names that are partition columns.
 
         Returns:
             New Scanner instance with partition pruning applied.
