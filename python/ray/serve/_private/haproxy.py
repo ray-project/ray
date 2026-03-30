@@ -986,7 +986,9 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
-        self._haproxy = HAProxyApi(cfg=HAProxyConfig(http_options=http_options, is_head=is_head))
+        self._haproxy = HAProxyApi(
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+        )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:
