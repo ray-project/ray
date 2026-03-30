@@ -184,13 +184,32 @@ If any DP replica in a DP group fails, Ray Serve controller restarts the entire 
 
 You can run data parallel attention on both prefill and decode phases:
 
-```{figure} ../../images/dp_pd.png
----
-width: 700px
-name: dp-pd
----
-Using DP attention pattern along with PD deployments with independent DP sizes.
 ```
+┌─────────────────────────────────────────────┐
+│              OpenAiIngress                  │
+└─────────────┬───────────────────────────────┘
+              │
+              ▼
+        ┌─────────────┐
+        │PDDecodeServer│
+        │    DP-4      │
+        │              │
+        │  Replica 0   │
+        │  Replica 1   │──────────┐
+        │  Replica 2   │          │ remote prefill
+        │  Replica 3   │          │
+        └──────────────┘          ▼
+                           ┌──────────────┐
+                           │PDPrefillServer│
+                           │    DP-2       │
+                           │               │
+                           │  Replica 0    │
+                           │  Replica 1    │
+                           └───────────────┘
+```
+
+Each phase can have an independent `data_parallel_size`.
+`PDDecodeServer` orchestrates remote prefill then runs decode locally.
 
 ## See also
 

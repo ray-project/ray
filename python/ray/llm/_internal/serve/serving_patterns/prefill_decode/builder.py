@@ -23,7 +23,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
     PDPrefillServer,
-    PDProxyServer,
+    PDProxyServer,  # TODO(Kourosh): Remove in Ray 2.56.
 )
 from ray.serve.deployment import Application
 from ray.serve.llm import (
@@ -33,21 +33,22 @@ from ray.serve.llm import (
 )
 
 # ---------------------------------------------------------------------------
-# Deprecated: ProxyClsConfig (kept for one release for YAML compat)
+# Deprecated: ProxyClsConfig
+# TODO(Kourosh): Remove in Ray 2.56.
 # ---------------------------------------------------------------------------
 
 
 class ProxyClsConfig(BaseModelExtended):
-    """Deprecated. Proxy configuration is no longer used in the 3-tier PD graph."""
+    """Deprecated. Unused proxy configuration kept for backwards compatibility."""
 
     proxy_cls: Union[str, type] = Field(
         default=PDProxyServer,
-        description="Deprecated. The proxy class is no longer used.",
+        description="Deprecated.",
     )
 
     proxy_extra_kwargs: Optional[dict] = Field(
         default_factory=dict,
-        description="Deprecated. Proxy extra kwargs are no longer used.",
+        description="Deprecated.",
     )
 
     @field_validator("proxy_cls")
@@ -66,23 +67,23 @@ class ProxyClsConfig(BaseModelExtended):
 class PDServingArgs(BaseModelExtended):
     """Schema for P/D serving args.
 
-    The 3-tier PD graph (ingress -> decode -> prefill) no longer uses a
-    separate proxy deployment.  The ``proxy_cls_config`` and
-    ``proxy_deployment_config`` fields are accepted but ignored with a
-    deprecation warning.
+    Defines the prefill and decode LLMConfigs plus ingress options.
+    The deprecated ``proxy_cls_config`` and ``proxy_deployment_config``
+    fields are accepted for backwards compatibility but ignored.
     """
 
     prefill_config: Union[str, dict, LLMConfig]
     decode_config: Union[str, dict, LLMConfig]
 
+    # TODO(Kourosh): Remove in Ray 2.56.
     # Deprecated proxy fields — accepted for backwards compat, ignored at build time.
     proxy_cls_config: Optional[Union[dict, ProxyClsConfig]] = Field(
         default=None,
-        description="Deprecated. Proxy is no longer used in the PD graph.",
+        description="Deprecated. Accepted but ignored.",
     )
     proxy_deployment_config: Optional[dict] = Field(
         default=None,
-        description="Deprecated. Proxy is no longer used in the PD graph.",
+        description="Deprecated. Accepted but ignored.",
     )
 
     ingress_cls_config: Union[dict, IngressClsConfig] = Field(
@@ -113,8 +114,7 @@ class PDServingArgs(BaseModelExtended):
     ) -> Optional[ProxyClsConfig]:
         if value is not None:
             warnings.warn(
-                "proxy_cls_config is deprecated and ignored. "
-                "The PD graph no longer uses a proxy deployment.",
+                "proxy_cls_config is deprecated and ignored.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -127,8 +127,7 @@ class PDServingArgs(BaseModelExtended):
     def _validate_proxy_deployment_config(cls, value: Optional[dict]) -> Optional[dict]:
         if value is not None:
             warnings.warn(
-                "proxy_deployment_config is deprecated and ignored. "
-                "The PD graph no longer uses a proxy deployment.",
+                "proxy_deployment_config is deprecated and ignored.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -173,42 +172,27 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     """
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
-    # Determine builder + deployment class for each side based on DP size.
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1
     )
     decode_dp_size = pd_config.decode_config.engine_kwargs.get("data_parallel_size", 1)
+    prefill_builder = (
+        build_dp_deployment if prefill_dp_size > 1 else build_llm_deployment
+    )
+    decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
 
-    # -- Prefill deployment (plain LLMServer or DP) --
-    if prefill_dp_size > 1:
-        prefill_deployment = build_dp_deployment(
-            pd_config.prefill_config,
-            name_prefix="Prefill:",
-            deployment_cls=PDPrefillServer,
-        )
-    else:
-        prefill_deployment = build_llm_deployment(
-            pd_config.prefill_config,
-            name_prefix="Prefill:",
-            deployment_cls=PDPrefillServer,
-        )
+    prefill_deployment = prefill_builder(
+        pd_config.prefill_config,
+        name_prefix="Prefill:",
+        deployment_cls=PDPrefillServer,
+    )
 
-    # -- Decode deployment (with prefill handle injected) --
-    decode_bind_kwargs = {"prefill_server": prefill_deployment}
-    if decode_dp_size > 1:
-        decode_deployment = build_dp_deployment(
-            pd_config.decode_config,
-            name_prefix="Decode:",
-            bind_kwargs=decode_bind_kwargs,
-            deployment_cls=PDDecodeServer,
-        )
-    else:
-        decode_deployment = build_llm_deployment(
-            pd_config.decode_config,
-            name_prefix="Decode:",
-            bind_kwargs=decode_bind_kwargs,
-            deployment_cls=PDDecodeServer,
-        )
+    decode_deployment = decode_builder(
+        pd_config.decode_config,
+        name_prefix="Decode:",
+        bind_kwargs={"prefill_server": prefill_deployment},
+        deployment_cls=PDDecodeServer,
+    )
 
     # -- Ingress: binds to decode only (the "model" the client sees) --
     ingress_cls_config = pd_config.ingress_cls_config

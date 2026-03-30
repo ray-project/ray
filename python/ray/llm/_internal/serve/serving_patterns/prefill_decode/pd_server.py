@@ -1,13 +1,14 @@
 """Prefill-Decode disaggregated LLM serving: decode-as-orchestrator architecture.
 
-Replaces the former PDProxyServer (4-tier: ingress -> proxy -> prefill + decode)
-with a 3-tier graph (ingress -> PDDecodeServer -> PDPrefillServer) where the
+3-tier graph (ingress -> PDDecodeServer -> PDPrefillServer) where the
 decode deployment owns a real engine and orchestrates remote prefill.
 """
 
+import asyncio
 import logging
+import uuid
 import warnings
-from typing import Any, AsyncGenerator, Dict, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -21,39 +22,45 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
+# TODO(Kourosh): Remove in Ray 2.56.
 DEFAULT_PD_PROXY_SERVER_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
 }
 
+_PREWARM_PROMPT = " x"
+_PREWARM_MAX_TOKENS = 1
+_PREWARM_RETRY_INTERVAL_S = 5.0
+
 
 # ---------------------------------------------------------------------------
-# Mixin: PD orchestration logic (used by both LLMServer and DPServer bases)
+# Mixin: PD Orchestration Logic
 # ---------------------------------------------------------------------------
 
 
 class PDOrchestratorMixin:
-    """Mixin that adds prefill-decode orchestration to any LLMServer subclass.
+    """Mixin that adds prefill-decode orchestration to an LLMServer subclass.
 
-    The decode deployment holds a handle to the prefill deployment.
     For chat/completions requests it:
       1. Sends a modified prefill request (max_tokens=1, kv_transfer_params).
       2. Receives kv_transfer_params back from the first prefill chunk.
-      3. Runs decode **locally** on its own engine with those params.
+      3. Runs decode locally on its own engine with those params.
     """
 
     # Set by __init__ of the concrete class that mixes this in.
-    _prefill_handle: Optional[DeploymentHandle] = None
+    _prefill_handle: DeploymentHandle
 
-    # ---- request preparation (ported from former PDProxyServer) ----
+    # ---- Request Preparation ----
 
     @staticmethod
     def _prepare_prefill_request(request: RequestType) -> RequestType:
@@ -82,7 +89,7 @@ class PDOrchestratorMixin:
         decode_request.kv_transfer_params = prefill_chunk.kv_transfer_params
         return decode_request
 
-    # ---- orchestrated request flow ----
+    # ---- Orchestrated Request Flow ----
 
     async def _pd_handle_request(
         self,
@@ -126,36 +133,102 @@ class PDOrchestratorMixin:
         async for chunk in local_gen:
             yield chunk
 
-    # ---- optional pre-warm ----
+    # ---- Pre-warm ----
+
+    def _make_dummy_request(self, model_id: str) -> CompletionRequest:
+        """Build the smallest valid completion request for pre-warm."""
+        return CompletionRequest(
+            model=model_id,
+            prompt=_PREWARM_PROMPT,
+            max_tokens=_PREWARM_MAX_TOKENS,
+            stream=False,
+            request_id=f"prewarm-{uuid.uuid4()}",
+        )
 
     async def _maybe_prewarm(self) -> None:
-        """If enabled, run a dummy prefill->decode round-trip for connector handshake."""
+        """Run one prefill->decode round-trip per P replica to complete
+        the connector handshake on both sides before traffic arrives."""
         prewarm_enabled = getattr(
             self, "_llm_config", None
-        ) and self._llm_config.experimental_configs.get("_pre_warm_prefill_decode")
-        if not prewarm_enabled or self._prefill_handle is None:
+        ) and self._llm_config.experimental_configs.get("_prewarm_prefill_decode")
+        if not prewarm_enabled:
             return
 
-        logger.info("Pre-warming prefill-decode connector handshake...")
-        try:
-            prewarm_gen = self._prefill_handle.prewarm_prefill.remote()
-            prewarm_result = await prewarm_gen
+        logger.info("[PDDecodeServer] Starting pre-warm across all P replicas.")
 
-            if prewarm_result and hasattr(prewarm_result, "kv_transfer_params"):
-                logger.info(
-                    "Pre-warm: received kv_transfer_params from prefill, "
-                    "completing local decode handshake."
+        model_id = self._llm_config.model_id
+        dummy = self._make_dummy_request(model_id)
+        prefill_req = self._prepare_prefill_request(dummy)
+
+        # Broadcast to every live P replica; retry until they are up.
+        kv_params_list: List[Any] = []
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                kv_params_list = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: broadcast(
+                        self._prefill_handle,
+                        method_name="prewarm_prefill",
+                        args=[prefill_req],
+                    ),
                 )
-            logger.info("Pre-warm complete.")
-        except Exception:
-            logger.warning(
-                "Pre-warm prefill-decode handshake failed (non-fatal).",
-                exc_info=True,
+                break
+            except DeploymentUnavailableError:
+                logger.info(
+                    "[PDDecodeServer] PrefillServer not available yet (attempt %d); "
+                    "retrying in %.0fs...",
+                    attempt,
+                    _PREWARM_RETRY_INTERVAL_S,
+                )
+                await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
+            except Exception as exc:
+                logger.warning(
+                    "[PDDecodeServer] broadcast() attempt %d failed with %s: %s; "
+                    "retrying in %.0fs...",
+                    attempt,
+                    type(exc).__name__,
+                    exc,
+                    _PREWARM_RETRY_INTERVAL_S,
+                )
+                await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
+
+        logger.info(
+            "[PDDecodeServer] broadcast() reached %d P replica(s); "
+            "driving local decode to complete the handshake.",
+            len(kv_params_list),
+        )
+
+        # Build one decode request per P replica result.
+        decode_reqs: List[CompletionRequest] = []
+        for idx, kv_params in enumerate(kv_params_list):
+            if not kv_params:
+                logger.warning(
+                    "[PDDecodeServer] P replica %d returned empty kv_params; skipping.",
+                    idx,
+                )
+                continue
+            req = dummy.model_copy(deep=True)
+            req.kv_transfer_params = kv_params
+            decode_reqs.append(req)
+
+        # Run all decode requests on the local engine concurrently to trigger
+        # the connector handshake on D side for each P replica.
+        async def _decode_one(req: CompletionRequest, idx: int) -> None:
+            async for _ in self.engine.completions(req, None):
+                pass
+            logger.info(
+                "[PDDecodeServer] Pre-warm handshake done for P replica %d.", idx
             )
+
+        await asyncio.gather(*[_decode_one(r, i) for i, r in enumerate(decode_reqs)])
+
+        logger.info("[PDDecodeServer] Pre-warm complete — all P replicas registered.")
 
 
 # ---------------------------------------------------------------------------
-# PDPrefillServer: real engine, serves as the prefill side
+# PDPrefillServer
 # ---------------------------------------------------------------------------
 
 
@@ -163,21 +236,27 @@ class PDPrefillServer(LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
     This is a standard LLMServer with an additional ``prewarm_prefill``
-    method used during the optional pre-warm handshake.
+    method used during the pre-warm handshake.
     """
 
-    async def prewarm_prefill(self) -> Optional[Any]:
-        """Run a minimal prefill for connector warm-up.
+    async def prewarm_prefill(
+        self, prefill_request: CompletionRequest
+    ) -> Optional[dict]:
+        """Run one prefill pass and return kv_transfer_params as a dict.
 
-        Returns the first chunk (containing kv_transfer_params) so the
-        decode side can complete the handshake.
+        Returns None on error.
         """
-        logger.info("PDPrefillServer: prewarm_prefill called (no-op placeholder).")
+        async for chunk in self.engine.completions(prefill_request, None):
+            if hasattr(chunk, "kv_transfer_params") and chunk.kv_transfer_params:
+                return chunk.kv_transfer_params
+            if isinstance(chunk, ErrorResponse):
+                logger.warning("[PDPrefillServer] prewarm_prefill got error: %s", chunk)
+                return None
         return None
 
 
 # ---------------------------------------------------------------------------
-# PDDecodeServer: real engine + orchestration
+# PDDecodeServer
 # ---------------------------------------------------------------------------
 
 
@@ -193,15 +272,11 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
         self,
         llm_config: LLMConfig,
         *,
-        prefill_server: Optional[DeploymentHandle] = None,
+        prefill_server: DeploymentHandle,
         **kwargs,
     ):
-        self._prefill_handle = (
-            prefill_server.options(stream=True) if prefill_server else None
-        )
-        # Initialize the real engine via LLMServer
+        self._prefill_handle = prefill_server.options(stream=True)
         await super().__init__(llm_config, **kwargs)
-        # Optionally pre-warm the connector
         await self._maybe_prewarm()
 
     async def chat(
@@ -209,22 +284,19 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        if self._prefill_handle is not None:
-            return self._pd_handle_request(request, raw_request_info)
-        return await super().chat(request, raw_request_info)
+        return self._pd_handle_request(request, raw_request_info)
 
     async def completions(
         self,
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        if self._prefill_handle is not None:
-            return self._pd_handle_request(request, raw_request_info)
-        return await super().completions(request, raw_request_info)
+        return self._pd_handle_request(request, raw_request_info)
 
 
 # ---------------------------------------------------------------------------
-# Deprecated: PDProxyServer (kept for one release cycle)
+# Deprecated: PDProxyServer
+# TODO(Kourosh): Remove in Ray 2.56.
 # ---------------------------------------------------------------------------
 
 
@@ -232,10 +304,8 @@ class PDProxyServer(LLMServerProtocol):
     """Proxy between P/D LLM servers.
 
     .. deprecated::
-        ``PDProxyServer`` is deprecated. The PD graph now uses
-        ``PDDecodeServer`` (decode-as-orchestrator) instead of a
-        separate proxy deployment. This class will be removed in a
-        future release.
+        ``PDProxyServer`` is deprecated. Use ``PDDecodeServer`` instead.
+        This class will be removed in a future release.
     """
 
     def __init_subclass__(cls, **kwargs):
@@ -252,10 +322,8 @@ class PDProxyServer(LLMServerProtocol):
         decode_server: DeploymentHandle,
     ):
         warnings.warn(
-            "PDProxyServer is deprecated. The PD graph now uses "
-            "PDDecodeServer (decode-as-orchestrator) instead of a "
-            "separate proxy deployment. PDProxyServer will be removed "
-            "in a future release.",
+            "PDProxyServer is deprecated. Use PDDecodeServer instead. "
+            "PDProxyServer will be removed in a future release.",
             DeprecationWarning,
             stacklevel=2,
         )

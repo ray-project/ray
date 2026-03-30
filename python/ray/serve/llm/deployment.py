@@ -9,7 +9,7 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer as _PDDecodeServer,
     PDPrefillServer as _PDPrefillServer,
-    PDProxyServer as _PDProxyServer,
+    PDProxyServer as _PDProxyServer,  # TODO(Kourosh): Remove in Ray 2.56.
 )
 from ray.util.annotations import PublicAPI
 
@@ -98,14 +98,13 @@ class PDPrefillServer(_PDPrefillServer):
     pass
 
 
+# TODO(Kourosh): Remove in Ray 2.56.
 class PDProxyServer(_PDProxyServer):
     """A proxy server for prefill-decode disaggregation.
 
     .. deprecated::
-        ``PDProxyServer`` is deprecated. The PD graph now uses
-        ``PDDecodeServer`` (decode-as-orchestrator) instead of a separate
-        proxy deployment.  Use ``build_pd_openai_app`` to construct the
-        3-tier graph.
+        ``PDProxyServer`` is deprecated. Use ``PDDecodeServer`` instead.
+        This class will be removed in a future release.
     """
 
     def __init_subclass__(cls, **kwargs):
@@ -166,6 +165,6 @@ __all__ = [
     "LLMServer",
     "PDDecodeServer",
     "PDPrefillServer",
-    "PDProxyServer",
+    "PDProxyServer",  # TODO(Kourosh): Remove in Ray 2.56.
     "DPServer",
 ]

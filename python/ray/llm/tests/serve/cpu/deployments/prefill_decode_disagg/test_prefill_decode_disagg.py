@@ -15,7 +15,6 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
     PDPrefillServer,
-    PDProxyServer,
 )
 from ray.serve.llm import LLMConfig
 
@@ -51,7 +50,7 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
-        # Verify defaults: proxy fields are None (deprecated)
+        # TODO(Kourosh): Remove in Ray 2.56.
         assert args.proxy_cls_config is None
         assert args.proxy_deployment_config is None
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
@@ -76,6 +75,7 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
+    # TODO(Kourosh): Remove in Ray 2.56.
     def test_proxy_config_deprecated(self, pd_configs):
         """Test proxy_cls_config and proxy_deployment_config emit deprecation warnings."""
         prefill, decode = pd_configs
@@ -269,7 +269,6 @@ class TestBuildPDOpenaiApp:
         decode_app = ingress_deployment.init_kwargs["llm_deployments"][0]
         decode_deployment = decode_app._bound_deployment
 
-        # Decode deployment should be PDDecodeServer (not PDProxyServer)
         assert decode_deployment.func_or_class is PDDecodeServer
 
         # Decode should have a prefill_server in its bind kwargs
@@ -304,6 +303,7 @@ class TestBuildPDOpenaiApp:
         assert ingress_deployment.ray_actor_options["memory"] == 4096
         assert ingress_deployment._deployment_config.max_ongoing_requests == 300
 
+    # TODO(Kourosh): Remove in Ray 2.56.
     def test_deprecated_proxy_config_ignored(self, pd_configs):
         """Test that deprecated proxy configs are accepted but ignored."""
         prefill, decode = pd_configs
@@ -321,26 +321,6 @@ class TestBuildPDOpenaiApp:
             )
             # App should still be valid — proxy config is just ignored
             assert app is not None
-
-
-class TestPDProxyServerDeprecated:
-    """Test that PDProxyServer emits deprecation warnings."""
-
-    def test_proxy_server_warns_on_instantiation(self):
-        """PDProxyServer should emit DeprecationWarning on use."""
-        # Just importing is fine; instantiation should warn
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-
-            class MyCustomProxy(PDProxyServer):
-                pass
-
-            deprecation_msgs = [
-                str(warning.message)
-                for warning in w
-                if issubclass(warning.category, DeprecationWarning)
-            ]
-            assert any("PDProxyServer is deprecated" in msg for msg in deprecation_msgs)
 
 
 if __name__ == "__main__":
