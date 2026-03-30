@@ -1,9 +1,10 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List, Optional
+from typing import Any, Iterator, List, Optional, cast
 
 import pyarrow as pa
+import pyarrow.fs as pafs
 
 from ray.data._internal.planner._obstore_download import (
     _FILE_SIZE_COLUMN_PREFIX,
@@ -33,7 +34,7 @@ class PartitionActor:
         self,
         uri_column_names: List[str],
         data_context: DataContext,
-        filesystem: Optional["pa.fs.FileSystem"] = None,
+        filesystem: Optional[pafs.FileSystem] = None,
     ):
         self._uri_column_names = uri_column_names
         self._data_context = data_context
@@ -69,7 +70,8 @@ class PartitionActor:
     ) -> List[Optional[int]]:
         uris = block.column(uri_column_name).to_pylist()
         sample_uris = uris[: self.INIT_SAMPLE_BATCH_SIZE]
-        return self._sample_sizes(sample_uris)
+        # ``_sample_sizes`` returns concrete ``int``s; widen for this API.
+        return cast(List[Optional[int]], self._sample_sizes(sample_uris))
 
     def _estimate_nrows_per_partition(self, block: pa.Table) -> int:
         sampled_file_sizes_by_column = {}
@@ -90,7 +92,9 @@ class PartitionActor:
         # This is some fancy Python code to compute the file size of each row.
         row_sizes = [
             sum(file_sizes_in_row)
-            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
+            for file_sizes_in_row in zip[tuple[Any, ...]](
+                *sampled_file_sizes_by_column.values()
+            )
         ]
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
@@ -100,6 +104,10 @@ class PartitionActor:
                 "Estimated average row size is 0. Falling back to using the number of "
                 "rows in the block as the partition size."
             )
+            return len(block)
+
+        if target_nbytes_per_partition is None:
+            # Target max block size is None--keep the whole block as one partition.
             return len(block)
 
         nrows_per_partition = math.floor(
@@ -153,7 +161,7 @@ class PartitionActor:
             return [0] * len(uris)
 
         # Use ThreadPoolExecutor for concurrent size fetching
-        file_sizes = [None] * len(paths)
+        file_sizes: List[Optional[int]] = [None] * len(paths)
         with ThreadPoolExecutor(max_workers=URI_DOWNLOAD_MAX_WORKERS) as executor:
             # Submit all size fetch tasks
             future_to_file_index = {
@@ -172,9 +180,9 @@ class PartitionActor:
                     file_sizes[file_index] = 0
 
         assert all(
-            fs is not None for fs in file_sizes
+            size is not None for size in file_sizes
         ), "File size sampling did not complete for all paths"
-        return file_sizes
+        return [int(size) for size in file_sizes]
 
 
 class AsyncPartitionActor(PartitionActor):
