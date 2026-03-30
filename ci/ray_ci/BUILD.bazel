@@ -2,6 +2,21 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "supported_images",
+    srcs = ["supported_images.py"],
+    data = [
+        "//:.rayciversion",
+        "//:ray-images.json",
+    ],
+    visibility = [
+        "//ci/build:__pkg__",
+        "//ci/ray_ci:__subpackages__",
+        "//release:__subpackages__",
+    ],
+    deps = [],
+)
+
+py_library(
     name = "ray_image_lib",
     srcs = [
         "configs.py",

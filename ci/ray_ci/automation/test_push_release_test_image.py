@@ -2,10 +2,6 @@ import sys
 
 import pytest
 
-from ci.ray_ci.automation.image_tags_lib import (
-    format_platform_tag,
-    format_python_tag,
-)
 from ci.ray_ci.automation.push_release_test_image import ReleaseTestImagePushContext
 from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import GPU_PLATFORM
@@ -30,36 +26,6 @@ def make_ctx(
         rayci_build_id=rayci_build_id,
         pull_request=pull_request,
     )
-
-
-class TestFormatPythonTag:
-    @pytest.mark.parametrize(
-        ("python_version", "expected"),
-        [
-            ("3.10", "-py310"),
-            ("3.11", "-py311"),
-            ("3.12", "-py312"),
-            ("3.9", "-py39"),
-        ],
-    )
-    def test_format_python_tag(self, python_version, expected):
-        assert format_python_tag(python_version) == expected
-
-
-class TestFormatPlatformTag:
-    @pytest.mark.parametrize(
-        ("platform", "expected"),
-        [
-            ("cpu", "-cpu"),
-            ("cu11.7.1-cudnn8", "-cu117"),
-            ("cu11.8.0-cudnn8", "-cu118"),
-            ("cu12.1.1-cudnn8", "-cu121"),
-            ("cu12.3.2-cudnn9", "-cu123"),
-            ("cu12.8.1-cudnn", "-cu128"),
-        ],
-    )
-    def test_format_platform_tag(self, platform, expected):
-        assert format_platform_tag(platform) == expected
 
 
 class TestWandaImageName:

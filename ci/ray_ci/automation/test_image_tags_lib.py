@@ -3,7 +3,6 @@ import sys
 import pytest
 
 from ci.ray_ci.automation.image_tags_lib import (
-    ImageTagsError,
     format_platform_tag,
     format_python_tag,
     get_platform_suffixes,
@@ -31,7 +30,7 @@ class TestFormatPlatformTag:
         assert format_platform_tag(platform) == expected
 
     def test_invalid_platform_raises_error(self):
-        with pytest.raises(ImageTagsError):
+        with pytest.raises(ValueError):
             format_platform_tag("invalid")
 
 

@@ -1,7 +1,7 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 _RAYCI_VERSION_FILE = ".rayciversion"
 
@@ -45,3 +45,44 @@ def get_exceptions(image_type: str) -> List[dict]:
 
 def get_default(image_type: str, key: str) -> str:
     return get_image_config(image_type)["defaults"][key]
+
+
+def format_platform_tag(platform: str) -> str:
+    """
+    Format platform as -cpu, -tpu, or shortened CUDA version.
+
+    Examples:
+        cpu -> -cpu
+        tpu -> -tpu
+        cu12.1.1-cudnn8 -> -cu121
+        cu12.3.2-cudnn9 -> -cu123
+    """
+    if platform == "cpu":
+        return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
+    # cu12.3.2-cudnn9 -> -cu123
+    platform_base = platform.split("-", 1)[0]
+    parts = platform_base.split(".")
+    if len(parts) < 2:
+        raise ValueError(f"Unrecognized GPU platform format: {platform}")
+    return f"-{parts[0]}{parts[1]}"
+
+
+def build_platform_reverse_map() -> Dict[str, str]:
+    """
+    Build a reverse map from short platform tag to full platform string.
+
+    Uses format_platform_tag on every platform across all image types in
+    ray-images.json.  The returned dict maps the short form (without leading
+    hyphen, e.g. "cu123") to the full platform string (e.g.
+    "cu12.3.2-cudnn9").
+    """
+    reverse_map: Dict[str, str] = {}
+    images = load_supported_images()
+    for image_type_config in images.values():
+        for platform in image_type_config.get("platforms", []):
+            short = format_platform_tag(platform).lstrip("-")
+            if short not in reverse_map:
+                reverse_map[short] = platform
+    return reverse_map
