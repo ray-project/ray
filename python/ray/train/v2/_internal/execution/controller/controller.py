@@ -235,30 +235,6 @@ class TrainController:
             )
         return None
 
-    async def _run_controller_hook_async(
-        self,
-        hook_name: str,
-        *args,
-        invoke_failure_decision_callbacks: bool = True,
-        **context,
-    ) -> Optional["TrainControllerLoopIterationResult"]:
-        """Async variant of _run_controller_hook for hooks that may be async
-        (e.g. before_controller_shutdown)."""
-        try:
-            await self._controller_callback_manager.async_invoke(
-                hook_name, *args, **context
-            )
-        except ControllerError as error:
-            failure_decision = self._failure_policy.make_decision(
-                training_failed_error=error,
-            )
-            return self._execute_failure_decision(
-                failure_decision,
-                training_failed_error=error,
-                invoke_failure_decision_callbacks=invoke_failure_decision_callbacks,
-            )
-        return None
-
     def _execute_resize_decision(
         self, decision: ResizeDecision
     ) -> TrainControllerLoopIterationResult:
