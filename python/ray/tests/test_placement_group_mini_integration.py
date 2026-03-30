@@ -28,69 +28,65 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
         nodes.append(cluster.add_node(num_cpus=3, resources=custom_resources))
     cluster.wait_for_nodes()
     num_nodes = len(nodes)
-
-    ray.init(address=cluster.address)
-    bundles = [{"pg_custom": 1}] * num_nodes
-
-    @ray.remote(num_cpus=0, resources={"pg_custom": 1}, max_calls=0)
-    def mock_task():
-        time.sleep(0.1)
-        return True
-
-    @ray.remote(num_cpus=0)
-    def pg_launcher(num_pgs_to_create):
-        pgs = []
-        for _ in range(num_pgs_to_create):
-            pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
-
-        pgs_removed = []
-        pgs_unremoved = []
-        # Randomly choose placement groups to remove.
-        if pg_removal:
-            print("removing pgs")
-        for pg in pgs:
-            if random() < 0.5 and pg_removal:
-                pgs_removed.append(pg)
-            else:
-                pgs_unremoved.append(pg)
-
-        tasks = []
-        # Randomly schedule tasks or actors on placement groups that
-        # are not removed.
-        for pg in pgs_unremoved:
-            for i in range(num_nodes):
-                tasks.append(
-                    mock_task.options(
-                        scheduling_strategy=PlacementGroupSchedulingStrategy(
-                            placement_group=pg, placement_group_bundle_index=i
-                        )
-                    ).remote()
-                )
-        # Remove the rest of placement groups.
-        if pg_removal:
-            for pg in pgs_removed:
-                remove_placement_group(pg)
-        ray.get(tasks)
-        # Since placement groups are scheduled, remove them.
-        for pg in pgs_unremoved:
-            remove_placement_group(pg)
-
     try:
+        ray.init(address=cluster.address)
+        bundles = [{"pg_custom": 1}] * num_nodes
+
+        @ray.remote(num_cpus=0, resources={"pg_custom": 1}, max_calls=0)
+        def mock_task():
+            time.sleep(0.1)
+            return True
+
+        @ray.remote(num_cpus=0)
+        def pg_launcher(num_pgs_to_create):
+            pgs = []
+            for _ in range(num_pgs_to_create):
+                pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
+
+            pgs_removed = []
+            pgs_unremoved = []
+            # Randomly choose placement groups to remove.
+            if pg_removal:
+                print("removing pgs")
+            for pg in pgs:
+                if random() < 0.5 and pg_removal:
+                    pgs_removed.append(pg)
+                else:
+                    pgs_unremoved.append(pg)
+
+            tasks = []
+            # Randomly schedule tasks or actors on placement groups that
+            # are not removed.
+            for pg in pgs_unremoved:
+                for i in range(num_nodes):
+                    tasks.append(
+                        mock_task.options(
+                            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                                placement_group=pg, placement_group_bundle_index=i
+                            )
+                        ).remote()
+                    )
+            # Remove the rest of placement groups.
+            if pg_removal:
+                for pg in pgs_removed:
+                    remove_placement_group(pg)
+            ray.get(tasks)
+            # Since placement groups are scheduled, remove them.
+            for pg in pgs_unremoved:
+                remove_placement_group(pg)
+
         pg_launchers = []
         for _ in range(3):
             pg_launchers.append(pg_launcher.remote(num_pgs // 3))
 
         ray.get(pg_launchers, timeout=240)
-    finally:
         ray.shutdown()
 
-    ray.init(address=cluster.address)
+        ray.init(address=cluster.address)
 
-    cluster_resources = ray.cluster_resources()
-    cluster_resources.pop("memory")
-    cluster_resources.pop("object_store_memory")
-
-    try:
+        cluster_resources = ray.cluster_resources()
+        cluster_resources.pop("memory")
+        cluster_resources.pop("object_store_memory")
 
         def wait_for_resource_recovered():
             for resource, val in ray.available_resources().items():
