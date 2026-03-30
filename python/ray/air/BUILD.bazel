@@ -125,7 +125,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_integration_trackio.py"],
     # NOTE: This tests the Tune Trackio callback.
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
         "team:ml",
