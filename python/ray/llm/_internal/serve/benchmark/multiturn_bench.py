@@ -130,46 +130,47 @@ class WorkloadSpec:
         """Resolve the spec: derive user_tokens and sys_tokens from inputs. Call after init."""
         if self.isl is None or self.hit_rate is None:
             raise ValueError("Simple mode requires both --isl and --hit-rate.")
-        self._derive_from_simple()
         self._validate()
+        self._derive_from_simple()
         return self
 
     def _derive_from_simple(self) -> None:
-        """Derive user_tokens and sys_tokens from (ISL, hit_rate, num_turns, OSL, shared_system_prompt_ratio)."""
-        isl = self.isl
-        hit_rate = self.hit_rate
-        num_turns = self.num_turns
-        osl = self.osl
-        sharing = self.shared_system_prompt_ratio
+        """Derive user_tokens and sys_tokens from (ISL, hit_rate, num_turns, OSL, shared_system_prompt_ratio).
 
-        if num_turns == 1:
-            # Single turn: hit rate comes entirely from cross-session sharing
-            user_tokens = isl * (1 - hit_rate)
-            sys_tokens = isl - user_tokens
-        elif sharing == 1.0:
-            # Full cross-sharing: turn 1 caches all of sys_tokens
-            user_tokens = isl * (1 - hit_rate)
-            sys_tokens = (
-                isl - user_tokens * (num_turns + 1) / 2 - osl * (num_turns - 1) / 2
+        Two equations, two unknowns (u = user_tokens, s = sys_tokens):
+
+          (1) ISL  = s + (n+1)/2 · u + (n-1)/2 · a          [average input length]
+          (2) (1-h)·ISL = (1-f)·s/n + u                      [average new-token fraction]
+
+        where n = num_turns, a = osl, f = shared_system_prompt_ratio, h = hit_rate.
+
+        Substituting s from (1) into (2) and solving for u:
+
+          u = [ (1-h)·ISL - (1-f)/n · (ISL - (n-1)·a/2) ]
+              / [ 1 - (1-f)·(n+1)/(2n) ]
+
+        Then s = ISL - (n+1)/2 · u - (n-1)/2 · a.
+
+        Degenerate when denominator = 0, i.e. f=0 and n=1 (no caching source).
+        """
+        isl = self.isl
+        h = self.hit_rate
+        n = self.num_turns
+        a = self.osl
+        f = self.shared_system_prompt_ratio
+
+        denom = 1 - (1 - f) * (n + 1) / (2 * n)
+        if abs(denom) < 1e-9:
+            raise ValueError(
+                f"Degenerate parameter combination: "
+                f"shared_system_prompt_ratio={f}, num_turns={n}. "
+                f"With no cross-session sharing and a single turn, "
+                f"there is no caching source to achieve a target hit rate."
             )
-        else:
-            # General case: sharing < 1
-            denom = (num_turns + 1) / 2 - num_turns / (1 - sharing)
-            if abs(denom) < 1e-9:
-                raise ValueError(
-                    f"Degenerate parameter combination: "
-                    f"num_turns={num_turns}, sharing={sharing}. "
-                    f"Cannot solve for user_tokens."
-                )
-            numer = (
-                isl
-                - osl * (num_turns - 1) / 2
-                - num_turns * isl * (1 - hit_rate) / (1 - sharing)
-            )
-            user_tokens = numer / denom
-            sys_tokens = (
-                num_turns * (isl * (1 - hit_rate) - user_tokens) / (1 - sharing)
-            )
+
+        numer = (1 - h) * isl - (1 - f) / n * (isl - (n - 1) * a / 2)
+        user_tokens = numer / denom
+        sys_tokens = isl - (n + 1) / 2 * user_tokens - (n - 1) / 2 * a
 
         # Validate before clamping so infeasible combinations are caught.
         if user_tokens < 0.5:

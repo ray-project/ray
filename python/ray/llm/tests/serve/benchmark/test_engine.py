@@ -213,7 +213,7 @@ class TestConversationFactory:
 
     def test_zero_cross_sharing_no_shared_prefix(self, text_gen):
         np.random.seed(42)
-        spec = _make_spec(shared_system_prompt_ratio=0.0, isl=2000, hit_rate=0.3, num_turns=1)
+        spec = _make_spec(shared_system_prompt_ratio=0.0, isl=2000, hit_rate=0.6)
         assert spec.shared_s == 0
 
     def test_session_id_format(self, text_gen):
@@ -330,7 +330,7 @@ class TestBenchmarkState:
 
     def test_warmup_entropy_check_single_turn_spec(self):
         """With num_turns=1, max_entropy=0 so warmup completes immediately."""
-        spec = _make_spec(num_turns=1)
+        spec = _make_spec(num_turns=1, hit_rate=0.3)
         state = BenchmarkState(spec)
         state.active_turns["s0"] = 0
         result = self._run(state.check_and_complete_warmup())
