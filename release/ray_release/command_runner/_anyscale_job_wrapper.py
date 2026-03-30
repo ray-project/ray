@@ -316,7 +316,8 @@ def main(
             if metrics_path and Path(metrics_path).exists():
                 with open(metrics_path, "r") as f:
                     metrics = json.load(f)
-                oom_kills = metrics.get("worker_oom_kills", [])
+                oom_kills = metrics.get("worker_oom_kills") or []
+                print(oom_kills)
                 if oom_kills:
                     logger.error(
                         "Test failed: OOM worker kills detected. "

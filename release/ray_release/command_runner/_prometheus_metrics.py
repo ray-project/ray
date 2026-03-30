@@ -103,10 +103,10 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
             **kwargs,
         ),
     }
+    metrics = {k: await v for k, v in metrics.items()}
     print("=== METRICS ===")
     print(metrics)
-    print("=== METRICS ===")
-    metrics = {k: await v for k, v in metrics.items()}
+    print("=== METRICS ==="")
     await client.close()
     return metrics
 
