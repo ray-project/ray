@@ -53,16 +53,18 @@ class OperatorStartTracker(ExecutionCallback):
     def on_execution_step(self, executor):
         if executor._topology is None:
             return
-        for op in executor._topology:
-            if op.name not in self._op_start_s and op.metrics.num_tasks_submitted > 0:
-                self._op_start_s[op.name] = time.perf_counter() - self._start_time
+        now = time.perf_counter()
+        for i, op in enumerate(executor._topology):
+            op_key = f"{op.name}_{i}"
+            if op_key not in self._op_start_s and op.metrics.num_tasks_submitted > 0:
+                self._op_start_s[op_key] = now - self._start_time
             if (
-                op.name in self._op_start_s
-                and op.name not in self._op_duration_s
+                op_key in self._op_start_s
+                and op_key not in self._op_duration_s
                 and op.has_completed()
             ):
-                self._op_duration_s[op.name] = (
-                    time.perf_counter() - self._start_time - self._op_start_s[op.name]
+                self._op_duration_s[op_key] = (
+                    now - self._start_time - self._op_start_s[op_key]
                 )
 
     @classmethod
