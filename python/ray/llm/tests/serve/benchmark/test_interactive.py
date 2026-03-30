@@ -34,7 +34,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         hit_rate=0.5,
         num_turns=1,
         osl=50,
-        shared_system_prompt_ratio=0.0,
+        shared_system_prompt_ratio=1.0,
         save_result=None,
         save_dir=None,
     )
