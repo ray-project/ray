@@ -1494,20 +1494,23 @@ class OperatorStatsSummary:
                 if block_meta.num_rows is not None:
                     rows_per_task[es.task_idx] += block_meta.num_rows
 
-        # Build execution summary string.
-        if is_sub_operator:
-            time_total_s = 0
-            earliest_start_time, latest_end_time = 0, 0
-            exec_summary_str = f"{num_exec} blocks produced\n"
-        elif num_exec:
-            # Handle -0.0 case.
-            time_total_s = round(latest_end_time - earliest_start_time, 2)
-            if time_total_s <= 0:
-                time_total_s = 0
-            exec_summary_str = f"{num_exec} blocks produced in {time_total_s}s\n"
+        # Compute timing totals.
+        if num_exec:
+            time_total_s = latest_end_time - earliest_start_time
         else:
             time_total_s = 0
             earliest_start_time, latest_end_time = 0, 0
+
+        # Build execution summary string.
+        if is_sub_operator:
+            exec_summary_str = f"{num_exec} blocks produced\n"
+        elif num_exec:
+            # Handle -0.0 case.
+            rounded_total = round(time_total_s, 2)
+            if rounded_total <= 0:
+                rounded_total = 0
+            exec_summary_str = f"{num_exec} blocks produced in {rounded_total}s\n"
+        else:
             exec_summary_str = "\n"
 
         # Task-level row stats.
