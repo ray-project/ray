@@ -162,9 +162,18 @@ class WorkloadSpec:
 
         denom = 1 - (1 - f) * (n + 1) / (2 * n)
         if abs(denom) < 1e-9:
-            # n=1, f=0: single turn, no sharing. h determines the split.
-            sys_tokens = h * isl
-            user_tokens = (1 - h) * isl
+            # n=1, f=0: no caching source (no multi-turn, no cross-session sharing).
+            # Only h=0 is feasible; the split is s=0, u=ISL.
+            if h > 1e-9:
+                raise ValueError(
+                    f"Cannot achieve hit_rate={h} with num_turns=1 and "
+                    f"shared_system_prompt_ratio=0. There is no caching source "
+                    f"(no multi-turn history, no shared prefix). "
+                    f"Set shared_system_prompt_ratio > 0 to enable cross-session "
+                    f"prefix caching, or use num_turns > 1 for multi-turn caching."
+                )
+            sys_tokens = 0.0
+            user_tokens = float(isl)
         else:
             numer = (1 - h) * isl - (1 - f) / n * (isl - (n - 1) * a / 2)
             user_tokens = numer / denom
@@ -927,8 +936,8 @@ async def run_benchmark(
             """Add a new session (turn 0) to the queue if any remain."""
             session_idx = await state.get_next_session()
             if session_idx is not None:
-                # Add small staggered delay for first few sessions
-                delay = 0.0 if session_idx >= spec.concurrency else session_idx * 0.1
+                # Stagger initial session launches using configured ramp_interval
+                delay = session_idx * spec.ramp_interval
                 await turn_queue.put((session_idx, 0, time.perf_counter() + delay))
                 return True
             return False
