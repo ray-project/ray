@@ -98,7 +98,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - raycpubase
+      - raycpubase(*)
 
   - name: ray-image-tpu-build
     label: "wanda: ray py{{matrix}} tpu (x86_64)"
@@ -118,7 +118,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - raytpubase
+      - raytpubase(*)
 
   - label: ":tapioca: smoke test: ray tpu image"
     instance_type: small
@@ -166,7 +166,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - raycudabase
+      - raycudabase(*)
 
   - label: ":crane: publish: ray py{{matrix}} (x86_64)"
     key: ray_images_push
@@ -221,7 +221,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - raycpubaseextra
+      - raycpubaseextra(*)
 
   - name: ray-extra-image-cuda-build
     label: "wanda: ray-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
@@ -254,7 +254,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - raycudabaseextra
+      - raycudabaseextra(*)
 
   - name: ray-llm-image-cuda-build
     label: "wanda: ray-llm py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
@@ -280,7 +280,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - ray-llmbase
+      - ray-llmbase(*)
 
   - name: ray-llm-extra-image-cuda-build
     label: "wanda: ray-llm-extra py{{matrix.python}} cu{{matrix.cuda}} (x86_64)"
@@ -306,7 +306,7 @@ steps:
       - oss
     depends_on:
       - ray-wheel-build
-      - ray-llmbaseextra
+      - ray-llmbaseextra(*)
 
   - label: ":crane: publish: ray-extra py{{matrix}} (x86_64)"
     key: ray_extra_images_push
