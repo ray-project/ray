@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -989,21 +990,46 @@ def _try_set_exception(fut: asyncio.Future, e: Exception):
         fut.set_exception(e)
 
 
+def _propagate_concurrent_future_state(
+    source_fut: concurrent.futures.Future, dest_fut: asyncio.Future
+):
+    if source_fut.cancelled():
+        if not dest_fut.done():
+            dest_fut.cancel()
+        return
+
+    exception = source_fut.exception()
+    if exception is not None:
+        _try_set_exception(dest_fut, exception)
+        return
+
+    if not dest_fut.done():
+        dest_fut.set_result(source_fut.result())
+
+
 def wrap_as_future(ref: ObjectRef, timeout_s: Optional[float] = None) -> asyncio.Future:
     loop = asyncio.get_running_loop()
+    source_fut = ref.future()
 
-    aio_fut = asyncio.wrap_future(ref.future())
+    if timeout_s is None:
+        return asyncio.wrap_future(source_fut)
 
-    if timeout_s is not None:
-        assert timeout_s >= 0, "Timeout value should be non-negative"
-        # Schedule handler to complete future exceptionally
-        timeout_handler = loop.call_later(
-            max(timeout_s, 0),
-            _try_set_exception,
-            aio_fut,
-            TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    result_fut = loop.create_future()
+    source_fut.add_done_callback(
+        lambda fut: loop.call_soon_threadsafe(
+            _propagate_concurrent_future_state, fut, result_fut
         )
-        # Cancel timeout handler upon completion of the future
-        aio_fut.add_done_callback(lambda _: timeout_handler.cancel())
+    )
 
-    return aio_fut
+    assert timeout_s >= 0, "Timeout value should be non-negative"
+    # Apply timeout to an outer future so the wrapped future is only completed
+    # by asyncio's chaining callback.
+    timeout_handler = loop.call_later(
+        max(timeout_s, 0),
+        _try_set_exception,
+        result_fut,
+        TimeoutError(f"Future cancelled after timeout {timeout_s}s"),
+    )
+    result_fut.add_done_callback(lambda _: timeout_handler.cancel())
+
+    return result_fut
