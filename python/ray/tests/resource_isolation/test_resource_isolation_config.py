@@ -236,7 +236,7 @@ def test_enabled_with_resource_overrides_gte_than_available_resources_raise_valu
     )
     with pytest.raises(
         ValueError,
-        match="The total requested system_reserved_memory=11811160064 is greater than the amount of memory available=10737418240",
+        match=r"The total requested system_reserved_memory=11811160064 \(including object store memory\) is greater than the amount of memory available=10737418240\.",
     ):
         ResourceIsolationConfig(
             enable_resource_isolation=True,
