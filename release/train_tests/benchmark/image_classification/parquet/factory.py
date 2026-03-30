@@ -49,9 +49,11 @@ class ImageClassificationParquetRayDataLoaderFactory(
                 - "val": Validation dataset without transforms
         """
         # Create training dataset with image decoding and transforms
+        # include_paths=True adds a "path" column for shuffle quality tracking
         train_ds = ray.data.read_parquet(
             self._data_dirs[DatasetKey.TRAIN],
             columns=["image", "label"],
+            include_paths=True,
         ).map(get_preprocess_map_fn(decode_image=True, random_transforms=True))
 
         if self.get_dataloader_config().limit_training_rows > 0:

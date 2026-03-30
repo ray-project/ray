@@ -53,6 +53,10 @@ def get_preprocess_map_fn(
         row["image"] = np.array(crop_resize_transform(row["image"]))
         row["label"] = IMAGENET_WNID_TO_ID[row["label"]]
 
-        return {"image": row["image"], "label": row["label"]}
+        result = {"image": row["image"], "label": row["label"]}
+        # Preserve path column for shuffle quality tracking if present
+        if "path" in row:
+            result["path"] = row["path"]
+        return result
 
     return map_fn
