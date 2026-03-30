@@ -1,64 +1,113 @@
-# SGLang Compatibility
+# SGLang on Ray Serve LLM
 
 :::{warning}
-This is an example only and isn't in active maintenance. Use it as a reference for your own implementations.
+This directory is a **demonstration and reference only**. It is not actively maintained and is not part of Ray's officially supported feature set. Use it as a starting point for your own implementations.
 :::
 
-Ray Serve LLM provides an OpenAI-compatible API that aligns with SGLang's OpenAI-compatible server. Most of the `engine_kwargs` that work with `sglang serve` work with Ray Serve LLM, giving you access to SGLang's feature set through Ray Serve's distributed deployment capabilities.
+:::{note}
+Community SGLang support is in early development. Track progress and provide feedback at [ray-project/ray#61114](https://github.com/ray-project/ray/issues/61114).
+:::
 
-This compatibility means you can:
+## Overview
 
-- Use the same model configurations and engine arguments as SGLang
-- Leverage SGLang's latest features supported by SGLang's ServerArgs
-- Switch between `sglang serve` and Ray Serve LLM with no code changes and scale
+Ray Serve LLM provides an OpenAI-compatible API that integrates with SGLang via the `server_cls` parameter on `LLMConfig`. Most `engine_kwargs` that work with `sglang serve` also work here, giving you SGLang's feature set through Ray Serve's distributed deployment capabilities.
 
-This document provides a guide for deploying and interacting with the custom **SGLang engine** wrapped within a Ray Serve infrastructure. This setup leverages SGLang's efficient batching capabilities while providing a scalable, production-ready **OpenAI-compatible API**.
+The integration uses a custom `SGLangServer` class (in `modules/sglang_engine.py`) that wraps SGLang's in-process engine and exposes chat, completions, embeddings, tokenize, and detokenize endpoints.
 
-What is NOT supported in this implementation:
+## Prerequisites
 
-- Support for engine replicas
-- SGLangServer implements chat, completions, embeddings, tokenize, and detokenize methods but no transcriptions and score methods
-- DP (Data Parallelism): Requires a separate coordinator pattern and is not supported in this example.
+```bash
+pip install ray[serve,llm] "sglang[all]"
+```
 
-**Note on Multi-GPU support:** TP (tensor parallelism) and PP (pipeline parallelism) are supported on a single node. Set `tp_size` and/or `pp_size` in `engine_kwargs` to distribute model execution across multiple GPUs.
+Set the following environment variable before running any example:
 
-## Core Components
-Your custom deployment consists of two main components:
-1. `SGLangServer` (**Backend**): The core Ray Serve deployment that initializes the SGLang runtime and model. This deployment contains the model's business logic, including resource requirements and generation methods (`completions`, `chat_completions`, `embeddings`, `tokenize`, and `detokenize`).
-2. enable ENV-VAR: `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0` on CUDA device or `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0` on ROCm device
-### Deploy an LLM model using SGLang Engine
+- **CUDA:** `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
+- **ROCm:** `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0`
 
+## Examples
 
+### 1. Online Serving (Single Node)
 
-Server
+Deploys a single-node SGLang model with autoscaling.
 
-```{literalinclude} ../../../../../python/ray/llm/examples/sglang/serve_sglang.py
+**File:** `serve_sglang_example.py`
+
+```{literalinclude} ../../../../../python/ray/llm/examples/sglang/serve_sglang_example.py
 :language: python
 ```
 
-Python Client
-client for v1/chat/completions endpoint
-```python
-import openai
+**Run:**
 
-client = openai.Client(base_url=f"http://127.0.0.1:8000/v1", api_key="None")
-
-response = client.chat.completions.create(
-    model="Llama-3.1-8B-Instruct",
-    messages=[
-        {"role": "user", "content": "List 3 countries and their capitals."},
-    ],
-    temperature=0,
-    max_tokens=64,
-)
-
-print(f"Response: {response}")
+```bash
+RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_example:app
 ```
 
-cURL
-client for v1/completions endpoint
+### 2. Online Serving (Multi-Node TP+PP)
+
+Deploys a large model across multiple nodes using tensor parallelism (TP=4) and pipeline parallelism (PP=2). Requires 2 nodes with 4 GPUs each (8 GPUs total).
+
+**File:** `serve_sglang_multinode_example.py`
+
+```{literalinclude} ../../../../../python/ray/llm/examples/sglang/serve_sglang_multinode_example.py
+:language: python
+```
+
+**Run:**
+
 ```bash
-curl http://127.0.0.1:8000/v1/completions \
+RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
+```
+
+The `placement_group_strategy: "SPREAD"` distributes GPU bundles across nodes. The `SGLangServer.get_deployment_options()` method constructs placement groups from the `placement_group_config`.
+
+### 3. Batch Inference
+
+Runs offline batch inference using `SGLangEngineProcessorConfig` from `ray.data.llm`.
+
+**File:** `batch_sglang_example.py`
+
+```{literalinclude} ../../../../../python/ray/llm/examples/sglang/batch_sglang_example.py
+:language: python
+```
+
+**Run:**
+
+```bash
+RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 python batch_sglang_example.py
+```
+
+### 4. Query Client
+
+Queries a running SGLang deployment using the OpenAI Python SDK. Start one of the serving examples first.
+
+**File:** `query_example.py`
+
+```{literalinclude} ../../../../../python/ray/llm/examples/sglang/query_example.py
+:language: python
+```
+
+**Run:**
+
+```bash
+python query_example.py
+```
+
+**cURL alternative:**
+
+```bash
+# Chat completions
+curl http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "Llama-3.1-8B-Instruct",
+        "messages": [{"role": "user", "content": "List 3 countries and their capitals."}],
+        "temperature": 0,
+        "max_tokens": 64
+    }'
+
+# Text completions
+curl http://localhost:8000/v1/completions \
     -H "Content-Type: application/json" \
     -d '{
         "model": "Llama-3.1-8B-Instruct",
@@ -68,10 +117,20 @@ curl http://127.0.0.1:8000/v1/completions \
     }'
 ```
 
+## Limitations
 
+- **Engine replicas:** Not supported
+- **Data parallelism (DP):** Requires a separate coordinator pattern; not supported in these examples
+- **Transcriptions and score:** Not implemented in `SGLangServer`
 
-## See also
+## Dependencies
 
-- [SGLang supported models](https://docs.sglang.ai/supported_models/classify_models.html#supported-models) - Complete list of supported models and features
-- [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html) - SGLang's OpenAI-compatible server documentation
-- [Ray Serve LLM + SGLang PRD](https://docs.google.com/document/d/1FLaormOPANCCLBI_UBJLwPl6a9njIyT-kSJfhxLERXA/edit?usp=sharing) - On going working doc for Ray Serve LLM + SGLang PRD
+SGLang's in-process engine overrides Python signal handlers on startup. The `SGLangServer.__init__` includes a workaround that saves and restores signal handlers around engine initialization. If you encounter issues with graceful shutdown, this is a known area of friction.
+
+## See Also
+
+- [SGLang supported models](https://docs.sglang.ai/supported_models/classify_models.html#supported-models)
+- [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html)
+- [Ray Serve LLM documentation](https://docs.ray.io/en/latest/serve/llm/serving-llms.html)
+- [Ray Data batch inference](https://docs.ray.io/en/latest/data/batch-inference.html)
+- [SGLang support tracking issue](https://github.com/ray-project/ray/issues/61114)
