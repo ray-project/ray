@@ -140,6 +140,7 @@ from ray.widgets.util import repr_with_fallback
 if TYPE_CHECKING:
     import daft
     import dask
+    import jax
     import mars
     import modin
     import pandas
@@ -6007,19 +6008,23 @@ class Dataset:
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
+        dtypes: Optional[
+            Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+        ] = None,
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_id: Optional[Any] = None,
+        pad_token_ids: Optional[Any] = None,
     ) -> Iterable[Any]:
         """Return an iterable over batches of data represented as JAX arrays.
 
         This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
         The returned batches will be the global view of the 1D data parallel JAX arrays (sharded along
         the batch dimension) put on all the jax devices.
-        Data types are inferred from the underlying NumPy arrays.
+        Data types are inferred from the underlying NumPy arrays,
+        unless specified via ``dtypes``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to JAX arrays.
 
@@ -6054,6 +6059,8 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch. Must be divisible
                 by the number of local devices. Defaults to 256.
+            dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
+                will be inferred from the NumPy ndarray data.
             collate_fn: [Alpha] A function to customize how data batches are collated
                 before being passed to the model. This is useful for last-mile data
                 formatting such as padding, masking, or packaging tensors into custom
@@ -6083,8 +6090,10 @@ class Dataset:
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
-            pad_token_id: The value to use for padding the last batch to `batch_size`.
+            pad_token_ids: The value to use for padding the last batch to `batch_size`.
+                If a dictionary is provided, it must map column names to padding values.
                 If not None, uneven batches will be padded with this value.
+                Must be castable to the user-provided dtypes.
 
         Returns:
             An iterable over JAX Array batches.
@@ -6093,12 +6102,13 @@ class Dataset:
         return self.iterator().iter_jax_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
+            dtypes=dtypes,
             collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             synchronize_batches=synchronize_batches,
-            pad_token_id=pad_token_id,
+            pad_token_ids=pad_token_ids,
         )
 
     @ConsumptionAPI

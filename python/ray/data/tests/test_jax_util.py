@@ -75,7 +75,7 @@ def test_jax_sync_generator_padding(ray_start_regular_shared):
         batches(),
         drop_last=False,
         batch_size=3,
-        pad_token_id=-1,
+        pad_token_ids=-1,
         synchronize_batches=False,
     )
     results = list(gen)
@@ -106,7 +106,7 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
         batches(),
         drop_last=False,
         batch_size=3,
-        pad_token_id=None,
+        pad_token_ids=None,
         synchronize_batches=False,
     )
     results = list(gen)
@@ -120,7 +120,7 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
             batches(),
             drop_last=True,
             batch_size=3,
-            pad_token_id=None,
+            pad_token_ids=None,
             synchronize_batches=False,
         )
         with pytest.raises(
@@ -148,7 +148,8 @@ def test_jax_sync_generator_multi_host_uneven_batches_with_padding(
     with patch("jax.process_count", return_value=2), patch(
         "jax.local_device_count", return_value=1
     ), patch(
-        "ray.data.util.jax_util._convert_batch", side_effect=lambda x, sharding: x
+        "ray.data.util.jax_util._convert_batch",
+        side_effect=lambda x, sharding, **kwargs: x,
     ):
 
         def mock_process_allgather(arr):
@@ -177,7 +178,7 @@ def test_jax_sync_generator_multi_host_uneven_batches_with_padding(
                 batches(),
                 drop_last=False,
                 batch_size=3,
-                pad_token_id=-1,
+                pad_token_ids=-1,
                 synchronize_batches=True,
             )
             # Should yield 2 batches: one real, one dummy
@@ -204,7 +205,8 @@ def test_jax_sync_generator_multi_host_uneven_batches_drop_last(
     with patch("jax.process_count", return_value=2), patch(
         "jax.local_device_count", return_value=1
     ), patch(
-        "ray.data.util.jax_util._convert_batch", side_effect=lambda x, sharding: x
+        "ray.data.util.jax_util._convert_batch",
+        side_effect=lambda x, sharding, **kwargs: x,
     ):
 
         def mock_process_allgather(arr):
@@ -249,7 +251,8 @@ def test_jax_sync_generator_multi_host_uneven_batch_sizes_fail(
     with patch("jax.process_count", return_value=2), patch(
         "jax.local_device_count", return_value=1
     ), patch(
-        "ray.data.util.jax_util._convert_batch", side_effect=lambda x, sharding: x
+        "ray.data.util.jax_util._convert_batch",
+        side_effect=lambda x, sharding, **kwargs: x,
     ):
 
         def mock_process_allgather(arr):
@@ -293,7 +296,8 @@ def test_jax_sync_generator_multi_host_uneven_num_batches_fail(
     with patch("jax.process_count", return_value=2), patch(
         "jax.local_device_count", return_value=1
     ), patch(
-        "ray.data.util.jax_util._convert_batch", side_effect=lambda x, sharding: x
+        "ray.data.util.jax_util._convert_batch",
+        side_effect=lambda x, sharding, **kwargs: x,
     ):
 
         def mock_process_allgather(arr):
@@ -320,6 +324,38 @@ def test_jax_sync_generator_multi_host_uneven_num_batches_fail(
                 match="Uneven number of batches detected across JAX workers",
             ):
                 list(gen)
+
+
+def test_jax_sync_generator_with_dtypes(ray_start_regular_shared):
+    try:
+        import jax  # noqa: F401
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    from unittest.mock import MagicMock, patch
+
+    def batches():
+        yield {"a": np.array([1, 2, 3])}
+
+    import jax.numpy as jnp
+
+    dtypes = {"a": jnp.float16}
+
+    # Mock _convert_batch to capture dtypes
+    mock_convert = MagicMock(side_effect=lambda x, sharding, dtypes=None: x)
+
+    with patch("ray.data.util.jax_util._convert_batch", mock_convert):
+        gen = jax_sync_generator(
+            batches(),
+            drop_last=False,
+            dtypes=dtypes,
+            synchronize_batches=False,
+        )
+        list(gen)
+
+    # Verify that dtypes was passed to _convert_batch
+    mock_convert.assert_called_once()
+    assert mock_convert.call_args[1]["dtypes"] == dtypes
 
 
 if __name__ == "__main__":

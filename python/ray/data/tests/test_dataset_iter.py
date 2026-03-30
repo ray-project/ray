@@ -566,7 +566,7 @@ def test_iter_jax_batches(ray_start_regular_shared):
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in ds.iter_jax_batches(batch_size=3, pad_token_id=-1):
+        for batch in ds.iter_jax_batches(batch_size=3, pad_token_ids=-1):
             iterations.append(
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
@@ -611,6 +611,54 @@ def test_iter_jax_batches_with_collate_fn(ray_start_regular_shared):
     # Expected shape: (10, 2)
     expected = np.stack((np.arange(10), np.arange(10) + 1), axis=1)
     np.testing.assert_array_equal(expected, combined_iterations)
+
+
+def test_iter_jax_batches_with_dtypes(ray_start_regular_shared):
+    try:
+        import jax.numpy as jnp
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    ds = ray.data.from_items([{"one": i, "two": i + 0.5} for i in range(10)])
+
+    # Test single dtype
+    for batch in ds.iter_jax_batches(batch_size=2, dtypes=jnp.float32):
+        assert batch["one"].dtype == jnp.float32
+        assert batch["two"].dtype == jnp.float32
+
+    # Test dict of dtypes
+    dtypes = {"one": jnp.int32, "two": jnp.float16}
+    for batch in ds.iter_jax_batches(batch_size=2, dtypes=dtypes):
+        assert batch["one"].dtype == jnp.int32
+        assert batch["two"].dtype == jnp.float16
+
+    # Test padding with dtypes
+    # ds has 10 rows, batch_size=4 -> 3 batches (4, 4, 2)
+    # Without drop_last, 3rd batch is padded to 4.
+    for batch in ds.iter_jax_batches(
+        batch_size=4, dtypes=jnp.float16, pad_token_ids=-1, drop_last=False
+    ):
+        assert batch["one"].dtype == jnp.float16
+        assert batch["two"].dtype == jnp.float16
+
+
+def test_iter_jax_batches_with_dict_padding(ray_start_regular_shared):
+    try:
+        import jax.numpy as jnp
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    ds = ray.data.from_items([{"one": i, "two": i + 0.5} for i in range(10)])
+
+    # ds has 10 rows, batch_size=4 -> 3 batches (4, 4, 2)
+    # 3rd batch should have 2 padded rows.
+    pad_token_ids = {"one": -1, "two": -0.5}
+    batches = list(ds.iter_jax_batches(batch_size=4, pad_token_ids=pad_token_ids))
+    assert len(batches) == 3
+    last_batch = batches[-1]
+    # last_batch has 4 rows (2 original, 2 padded)
+    np.testing.assert_array_equal(last_batch["one"][2:], jnp.array([-1, -1]))
+    np.testing.assert_array_equal(last_batch["two"][2:], jnp.array([-0.5, -0.5]))
 
 
 def test_iter_jax_batches_batch_size_divisibility_fail(ray_start_regular_shared):

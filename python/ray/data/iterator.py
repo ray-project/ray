@@ -39,6 +39,7 @@ from ray.data.context import DataContext
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
+    import jax
     import tensorflow as tf
     import torch
 
@@ -622,6 +623,9 @@ class DataIterator(abc.ABC):
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
+        dtypes: Optional[
+            Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+        ] = None,
         collate_fn: Optional[
             Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
         ] = None,
@@ -629,13 +633,14 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_id: Optional[Any] = None,
+        pad_token_ids: Optional[Any] = None,
     ) -> Iterable[Any]:
         """Return a batched iterable of JAX Arrays over the dataset.
 
         This iterator fetches data blocks, converts them to NumPy arrays, and
         loads them directly onto JAX-addressable devices using Global Data Parallel
-        sharding. Data types are inferred from the underlying NumPy arrays.
+        sharding. Data types are inferred from the underlying NumPy arrays,
+        unless specified via ``dtypes``.
 
         This iterable will yield a dictionary of column-tensors, or a single
         tensor if the underlying dataset consists of a single unnamed column.
@@ -653,6 +658,8 @@ class DataIterator(abc.ABC):
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
             batch_size: The number of rows in each batch for each host. Must be divisible
                 by the number of local devices. Defaults to 256.
+            dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
+                will be inferred from the NumPy ndarray data.
             collate_fn: [Alpha] A function to customize how data batches are collated
                 before being passed to the model. This is useful for last-mile data
                 formatting such as padding, masking, or packaging tensors into custom
@@ -677,8 +684,10 @@ class DataIterator(abc.ABC):
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
-            pad_token_id: The value to use for padding the last batch to `batch_size`.
+            pad_token_ids: The value to use for padding the last batch to `batch_size`.
+                If a dictionary is provided, it must map column names to padding values.
                 If not None, uneven batches will be padded with this value.
+                Must be castable to the dtypes of the created arrays.
 
         Returns:
             An iterable over JAX Array batches.
@@ -733,7 +742,8 @@ class DataIterator(abc.ABC):
             batch_iterable,
             drop_last,
             batch_size=batch_size,
-            pad_token_id=pad_token_id,
+            pad_token_ids=pad_token_ids,
+            dtypes=dtypes,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),
         )

@@ -561,7 +561,7 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
 
     # Create 44 rows. Batch size 16.
     # 44 / 16 = 2 batches of 16, and 1 batch of 12.
-    # With pad_token_id, we expect 3 batches of 16.
+    # With pad_token_ids, we expect 3 batches of 16.
     ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(44)])
 
     def train_func():
@@ -571,7 +571,7 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
         batches = []
         for batch in ds_shard.iter_jax_batches(
             batch_size=16,
-            pad_token_id=-1,
+            pad_token_ids=-1,
         ):
             batches.append(batch["features"].shape)
         train.report({"batches": batches})
@@ -602,6 +602,65 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
     reports = ray.get(verify_actor.get_reports.remote())
     assert len(reports) == 1
     assert len(reports[0]["batches"]) == 3
+    for shape in reports[0]["batches"]:
+        assert shape == (16, 8)
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_single_host_data_iterator_dtypes(ray_tpu_single_host, tmp_path):
+    actor_name = "test_single_host_data_iterator_dtypes"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    import numpy as np
+
+    import ray
+
+    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(32)])
+
+    def train_func():
+        import jax.numpy as jnp
+
+        from ray import train
+
+        ds_shard = train.get_dataset_shard("train")
+        batches = []
+        for batch in ds_shard.iter_jax_batches(
+            batch_size=16,
+            dtypes=jnp.float16,
+        ):
+            assert batch["features"].dtype == jnp.float16
+            batches.append(batch["features"].shape)
+        train.report({"batches": batches})
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=8",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 1
+    assert len(reports[0]["batches"]) == 2
     for shape in reports[0]["batches"]:
         assert shape == (16, 8)
 
