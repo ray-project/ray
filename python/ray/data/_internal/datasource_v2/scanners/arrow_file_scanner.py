@@ -45,7 +45,7 @@ class ArrowFileScanner(
     """
 
     schema: pa.Schema
-    batch_size: int
+    batch_size: Optional[int] = None
     columns: Optional[Tuple[str, ...]] = None
     predicate: Optional[pc.Expression] = None
     partition_predicate: Optional[Expr] = None

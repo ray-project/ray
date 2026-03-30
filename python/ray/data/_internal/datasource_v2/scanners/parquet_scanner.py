@@ -39,7 +39,7 @@ class ParquetScanner(ArrowFileScanner):
             ParquetFileReader with all pushdowns and adaptive batch sizing.
         """
         return ParquetFileReader(
-            batch_size=self.batch_size if self.batch_size else None,
+            batch_size=self.batch_size,
             columns=list(self.columns) if self.columns else None,
             predicate=self.predicate,
             limit=self.limit,
