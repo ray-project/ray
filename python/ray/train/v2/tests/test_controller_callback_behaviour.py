@@ -312,6 +312,98 @@ async def test_callback_error_during_shutdown_hook_on_errored_path():
     assert controller.get_state().training_failed_error is original_error
 
 
+@pytest.mark.asyncio
+async def test_async_shutdown_callback_is_awaited():
+    """Verify that an async before_controller_shutdown callback is actually
+    awaited (not silently dropped)."""
+
+    class AsyncShutdownCallback(ControllerCallback):
+        def __init__(self):
+            self.shutdown_called = False
+
+        async def before_controller_shutdown(self):
+            self.shutdown_called = True
+
+    callback = AsyncShutdownCallback()
+    controller, _, _ = await _create_controller_and_drive_to_running(
+        callbacks=[callback]
+    )
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    await controller._run_control_loop_iteration()  # ShuttingDown -> Finished
+    assert isinstance(controller.get_state(), FinishedState)
+    assert callback.shutdown_called
+
+
+@pytest.mark.asyncio
+async def test_async_shutdown_callback_error_is_caught():
+    """An async before_controller_shutdown callback that raises is caught
+    and transitions to ErroredState on the finished path."""
+
+    class FailingAsyncShutdownCallback(ControllerCallback):
+        async def before_controller_shutdown(self):
+            raise ValueError("Async shutdown callback failure")
+
+    controller, _, _ = await _create_controller_and_drive_to_running(
+        callbacks=[FailingAsyncShutdownCallback()]
+    )
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
+
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ErroredState)
+    assert isinstance(controller.get_state().training_failed_error, ControllerError)
+
+
+@pytest.mark.asyncio
+async def test_top_level_safety_net_catches_unhandled_error():
+    """The top-level safety net in run() catches exceptions that escape
+    _run_control_loop_iteration and forces the controller into ErroredState."""
+
+    class CrashingStateUpdateCallback(ControllerCallback):
+        """Raises a non-ControllerError that bypasses _set_state's handling."""
+
+        def __init__(self):
+            self._crash_count = 0
+
+        def after_controller_state_update(
+            self,
+            previous_state: TrainControllerState,
+            current_state: TrainControllerState,
+        ):
+            # Only crash on the first few transitions to test the safety net,
+            # then allow terminal transitions to proceed.
+            if isinstance(current_state, (ErroredState, ShuttingDownState)):
+                return
+            self._crash_count += 1
+            if self._crash_count <= 1:
+                raise RuntimeError("Unexpected crash in state update")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[CrashingStateUpdateCallback()],
+    )
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+
+    # The run() method should not raise — the safety net catches it.
+    await controller.run()
+    assert controller.get_state().is_terminal()
+
+
 if __name__ == "__main__":
     import sys
 

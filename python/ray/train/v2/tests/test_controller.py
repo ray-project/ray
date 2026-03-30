@@ -8,6 +8,8 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
+from ray.train.v2._internal.execution.callback import ControllerCallback
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
@@ -20,6 +22,7 @@ from ray.train.v2._internal.execution.controller.state import (
     RunningState,
     SchedulingState,
     ShuttingDownState,
+    TrainControllerState,
 )
 from ray.train.v2._internal.execution.failure_handling import FailureDecision
 from ray.train.v2._internal.execution.scaling_policy import (
@@ -310,7 +313,6 @@ async def test_controller_callback(monkeypatch):
         callbacks=[callback],
     )
 
-    controller._start()
     assert callback.start_called
 
     mock_exit_actor = create_autospec(ray.actor.exit_actor)
@@ -432,6 +434,74 @@ async def test_shutdown_failure_on_errored_path():
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
     assert controller.get_state().training_failed_error is original_error
+
+
+@pytest.mark.asyncio
+async def test_shutdown_and_callback_both_fail_on_finished_path():
+    """When both worker group shutdown and shutdown callback fail on the finished
+    path, the shutdown error takes precedence (callback error is logged)."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
+    class FailingShutdownHookCallback(ControllerCallback):
+        def before_controller_shutdown(self):
+            raise ValueError("Intentional error in shutdown callback")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingShutdownHookCallback()],
+    )
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
+
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
+
+    controller.get_worker_group().shutdown = failing_shutdown
+    await controller._run_control_loop_iteration()
+    # Shutdown error takes precedence over callback error.
+    assert isinstance(controller.get_state(), ErroredState)
+    assert isinstance(controller.get_state().training_failed_error, ControllerError)
+    assert (
+        "shutdown"
+        in str(controller.get_state().training_failed_error.__cause__).lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_abort_resilient_to_callback_failure(monkeypatch):
+    """abort() completes even when a callback raises."""
+
+    class FailingAbortCallback(ControllerCallback):
+        def before_controller_abort(self):
+            raise ValueError("Intentional error in abort callback")
+
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingAbortCallback()],
+    )
+    await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
 if __name__ == "__main__":
