@@ -66,7 +66,8 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     replica_version_hash = None
     for replica in deployment_dict[id]:
         ref = replica.get_actor_handle().initialize_and_get_metadata.remote()
-        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
+        metadata = ray.get(ref)
+        version = metadata[1]
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -119,7 +120,8 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
         ref = actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
+        metadata = ray.get(ref)
+        version = metadata[1]
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
