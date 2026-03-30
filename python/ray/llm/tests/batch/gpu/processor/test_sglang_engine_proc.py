@@ -74,6 +74,7 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
     }
 
+
 class TestSGLangEngineProcessorConfig:
     @pytest.mark.parametrize(
         "experimental_config",
@@ -117,6 +118,7 @@ class TestSGLangEngineProcessorConfig:
 
         processor = build_sglang_engine_processor(config)
         assert processor is not None
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
