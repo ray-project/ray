@@ -82,10 +82,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output tokens per turn",
     )
     workload.add_argument(
-        "--cross-sharing",
+        "--shared-system-prompt-ratio",
+        dest="shared_system_prompt_ratio",
         type=float,
         default=1.0,
-        help="Cross-session prefix sharing factor (default: %(default)s)",
+        help="Fraction of the system prompt shared across all sessions "
+        "(1.0 = identical, 0.0 = all unique) (default: %(default)s)",
     )
     workload.add_argument(
         "--think-time",
@@ -134,10 +136,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Warm-up period in seconds (default: %(default)s)",
     )
     traffic.add_argument(
+        "--warmup-jitter-max",
+        type=float,
+        default=10.0,
+        help="Max random delay (seconds) between turns during entropy warm-up "
+        "in concurrency mode. Jitter desynchronizes sessions so the benchmark "
+        "reaches steady-state faster (default: %(default)s)",
+    )
+    traffic.add_argument(
         "--ramp-interval",
         type=float,
         default=-1,
-        help="Ramp interval in seconds (default: %(default)s)",
+        help="Seconds between launching successive sessions at benchmark start. "
+        "Use this to avoid a thundering-herd of simultaneous first requests. "
+        "-1 = auto-derive from request rate or concurrency (default: %(default)s)",
     )
 
     ## Interactive-only ##
@@ -202,8 +214,9 @@ def main() -> None:
         print("Interactive server mode is not implemented yet.", file=sys.stderr)
         sys.exit(1)
     elif args.concurrency or args.request_rate:
-        print("Direct benchmark mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
+        from ray.llm._internal.serve.benchmark.multiturn_bench import run_direct
+
+        sys.exit(run_direct(args))
     else:
         parser.print_help()
         sys.exit(1)
