@@ -43,8 +43,7 @@ class NoopCgroupManager : public CgroupManagerInterface {
 
   StatusOr<std::string> GetConstraintValue(
       const std::string &cgroup_path, const std::string &constraint_name) const override {
-    return Status::InvalidArgument(
-        "NoopCgroupManager does not support constraint values");
+    return std::string{};
   }
 };  // namespace ray
 }  // namespace ray

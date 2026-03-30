@@ -40,14 +40,18 @@ std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
       << "Invalid configuration: usage_threshold must be >= 0";
   RAY_CHECK_LE(usage_threshold, 1)
       << "Invalid configuration: usage_threshold must be <= 1";
-  int64_t total_memory_bytes =
-      MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path).total_bytes;
-  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      total_memory_bytes, usage_threshold, RayConfig::instance().min_memory_free_bytes());
+  int64_t memory_usage_threshold_bytes;
   if (resource_isolation_enabled) {
     memory_usage_threshold_bytes =
         cgroup_upper_limit_bytes -
         static_cast<int64_t>(RayConfig::instance().kill_memory_buffer_bytes());
+  } else {
+    int64_t total_memory_bytes =
+        MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path).total_bytes;
+    memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+        total_memory_bytes,
+        usage_threshold,
+        RayConfig::instance().min_memory_free_bytes());
   }
   return std::make_unique<ThresholdMemoryMonitor>(
       std::move(kill_workers_callback),
