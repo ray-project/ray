@@ -21,7 +21,6 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     resource_quantity = num_pgs
     num_nodes = 5
     custom_resources = {"pg_custom": resource_quantity}
-    num_pg = resource_quantity
 
     # TODO(sang): Cluster setup. Remove when running in real clusters.
     nodes = []
@@ -40,9 +39,8 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
 
     @ray.remote(num_cpus=0)
     def pg_launcher(num_pgs_to_create):
-        print("Creating pgs")
         pgs = []
-        for i in range(num_pgs_to_create):
+        for _ in range(num_pgs_to_create):
             pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
 
         pgs_removed = []
@@ -55,7 +53,6 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
                 pgs_removed.append(pg)
             else:
                 pgs_unremoved.append(pg)
-        print(len(pgs_unremoved))
 
         tasks = []
         # Randomly schedule tasks or actors on placement groups that
@@ -78,27 +75,34 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
         for pg in pgs_unremoved:
             remove_placement_group(pg)
 
-    pg_launchers = []
-    for _ in range(3):
-        pg_launchers.append(pg_launcher.remote(num_pg // 3))
+    try:
+        pg_launchers = []
+        for _ in range(3):
+            pg_launchers.append(pg_launcher.remote(num_pgs // 3))
 
-    ray.get(pg_launchers, timeout=240)
-    ray.shutdown()
+        ray.get(pg_launchers, timeout=240)
+    finally:
+        ray.shutdown()
+
     ray.init(address=cluster.address)
 
     cluster_resources = ray.cluster_resources()
     cluster_resources.pop("memory")
     cluster_resources.pop("object_store_memory")
 
-    def wait_for_resource_recovered():
-        for resource, val in ray.available_resources().items():
-            if resource in cluster_resources and cluster_resources[resource] != val:
-                return False
-            if "_group_" in resource:
-                return False
-        return True
+    try:
 
-    wait_for_condition(wait_for_resource_recovered)
+        def wait_for_resource_recovered():
+            for resource, val in ray.available_resources().items():
+                if resource in cluster_resources and cluster_resources[resource] != val:
+                    return False
+                if "_group_" in resource:
+                    return False
+            return True
+
+        wait_for_condition(wait_for_resource_recovered)
+    finally:
+        ray.shutdown()
 
 
 @pytest.mark.parametrize("execution_number", range(1))
