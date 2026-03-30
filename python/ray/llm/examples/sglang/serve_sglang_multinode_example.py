@@ -30,10 +30,11 @@ llm_config = LLMConfig(
             "target_ongoing_requests": 4,
         }
     },
-    # SPREAD distributes GPU bundles across nodes for multi-node TP/PP.
+    # PACK fills GPUs on each node before moving to the next.
+    # With 8 bundles across 2 nodes (4 GPUs each), each node gets 4 bundles.
     placement_group_config={
         "placement_group_bundles": [{"GPU": 1}] * 8,
-        "placement_group_strategy": "SPREAD",
+        "placement_group_strategy": "PACK",
     },
     server_cls=SGLangServer,
     engine_kwargs={
@@ -45,5 +46,6 @@ llm_config = LLMConfig(
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
-serve.start()
-serve.run(app, blocking=True)
+
+if __name__ == "__main__":
+    serve.run(app, blocking=True)

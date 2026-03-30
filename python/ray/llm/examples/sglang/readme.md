@@ -59,7 +59,7 @@ Deploys a large model across multiple nodes using tensor parallelism (TP=4) and 
 RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
 ```
 
-The `placement_group_strategy: "SPREAD"` distributes GPU bundles across nodes. The `SGLangServer.get_deployment_options()` method constructs placement groups from the `placement_group_config`.
+The `placement_group_strategy: "PACK"` fills GPUs on each node before moving to the next, so with 2 nodes (4 GPUs each) each node gets one pipeline stage. The `SGLangServer.get_deployment_options()` method constructs placement groups from the `placement_group_config`.
 
 ### 3. Batch Inference
 
