@@ -898,22 +898,16 @@ class AsyncioRouter:
             )
             return False
 
-    def _get_upstream_deployment_name(self, e: ActorDiedError) -> str:
-        """Extract the upstream deployment name from an ActorDiedError."""
-        for token in str(e).split():
-            if ReplicaID.is_full_id_str(token):
-                try:
-                    return ReplicaID.from_full_id_str(token).deployment_id.name
-                except ValueError:
-                    pass
-        return "unknown"
-
     def _make_upstream_crash_error(self, e: ActorDiedError) -> RayServeException:
-        upstream = self._get_upstream_deployment_name(e)
-        return RayServeException(
-            f"Request to deployment '{self.deployment_id.name}' failed "
-            f"because upstream deployment '{upstream}' crashed."
+        """Surface a clear Serve error while preserving Ray's actor death details."""
+        msg = (
+            f"Request to deployment '{self.deployment_id.name}' failed because "
+            f"an upstream actor died before finishing a dependent task. "
+            f"Ray reported:\n{e}"
         )
+        wrapped = RayServeException(msg)
+        wrapped.__cause__ = e
+        return wrapped
 
     async def _route_and_send_request_once(
         self,
