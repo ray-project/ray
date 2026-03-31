@@ -274,9 +274,12 @@ class ActorPoolManager {
   ///
   /// \param pool_id The ID of the pool.
   /// \param arg_ids Object IDs of task arguments (for locality).
+  /// \param exclude_actor_id Actor to exclude from selection (e.g. the actor
+  ///   that just failed). Pass Nil to exclude nothing.
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorForTask(const ActorPoolID &pool_id,
-                             const std::vector<ObjectID> &arg_ids = {});
+                             const std::vector<ObjectID> &arg_ids = {},
+                             const ActorID &exclude_actor_id = ActorID::Nil());
 
   /// Called when a pool task terminally completes (success or exhausted retries).
   /// Updates num_tasks_in_flight and drains queued work on success.
@@ -336,9 +339,11 @@ class ActorPoolManager {
   ///
   /// \param pool_id The ID of the pool.
   /// \param arg_ids Object IDs of task arguments (for locality).
+  /// \param exclude_actor_id Actor to skip during selection.
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorFromPool(const ActorPoolID &pool_id,
-                              const std::vector<ObjectID> &arg_ids)
+                              const std::vector<ObjectID> &arg_ids,
+                              const ActorID &exclude_actor_id = ActorID::Nil())
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Rank an actor for scheduling (lower is better).

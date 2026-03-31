@@ -871,7 +871,12 @@ void CoreWorker::InternalHeartbeat() {
         const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
         ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
         if (actor_pool_manager_->HasPool(pool_id)) {
-          ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(pool_id);
+          // Exclude the actor the task just failed on so we don't
+          // route right back to it (the GCS RESTARTING notification
+          // may not have arrived yet).
+          ActorID failed_actor_id = spec.ActorId();
+          ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(
+              pool_id, /*arg_ids=*/{}, /*exclude_actor_id=*/failed_actor_id);
           if (new_actor_id.IsNil()) {
             // No healthy actors — re-enqueue with a short delay.
             absl::MutexLock lock(&mutex_);
@@ -880,6 +885,11 @@ void CoreWorker::InternalHeartbeat() {
             to_resubmit_.push(task_to_retry);
             continue;
           }
+          // Ensure the target actor is subscribed for state updates
+          // (actors to which tasks have not yet been submitted will not be subscribed)
+          // so ConnectActor fires and the submitter learns its address.
+          // This api is idempotent so multiple calls are safe.
+          actor_manager_->SubscribeActorState(new_actor_id);
           // Redirect the task to the selected actor.
           const ObjectID old_dummy_obj_id = spec.ActorCreationDummyObjectId();
           auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();

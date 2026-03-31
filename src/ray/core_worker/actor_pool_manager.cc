@@ -308,9 +308,10 @@ int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
 }
 
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
-                                             const std::vector<ObjectID> &arg_ids) {
+                                             const std::vector<ObjectID> &arg_ids,
+                                             const ActorID &exclude_actor_id) {
   absl::MutexLock lock(&mu_);
-  return SelectActorFromPool(pool_id, arg_ids);
+  return SelectActorFromPool(pool_id, arg_ids, exclude_actor_id);
 }
 
 void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
@@ -432,7 +433,8 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
 }
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
-                                              const std::vector<ObjectID> &arg_ids) {
+                                              const std::vector<ObjectID> &arg_ids,
+                                              const ActorID &exclude_actor_id) {
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
     RAY_LOG(WARNING) << "Pool not found: " << pool_id;
@@ -453,7 +455,7 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
 
     const auto &state = state_it->second;
-    if (!state.is_alive) {
+    if (!state.is_alive || actor_id == exclude_actor_id) {
       continue;
     }
     alive_actors.push_back(actor_id);

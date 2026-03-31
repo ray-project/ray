@@ -370,15 +370,28 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     }
 
     if (task_entry.spec_.IsStreamingGenerator() &&
-        task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
-      if (task_entry.num_retries_left_ == 0) {
+        task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
+        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
+      // Pool tasks: cross-actor retry is handled by InternalHeartbeat,
+      // so skip the generator-specific resubmit to avoid racing with
+      // the retry that is already in progress.
+      if (task_entry.spec_.IsPoolTask()) {
+        return std::nullopt;
+      }
+      if (task_entry.num_retries_left_ == 0 &&
+          task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
         // If the last attempt is in progress.
         return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
-      // If the task is a running streaming generator, the object may have been created,
-      // deleted, and then needed again for recovery. When the task is finished / failed,
-      // ResubmitTask will be called again.
-      should_queue_generator_resubmit = true;
+      if (task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+        // If the task is a running streaming generator, the object may have been created,
+        // deleted, and then needed again for recovery. When the task is finished /
+        // failed, ResubmitTask will be called again.
+        should_queue_generator_resubmit = true;
+      } else {
+        // Assuming the task retry is already submitted / running.
+        return std::nullopt;
+      }
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
