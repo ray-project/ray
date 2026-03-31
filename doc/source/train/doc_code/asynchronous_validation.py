@@ -276,6 +276,6 @@ def train_func():
             ray.train.report({}, None)
 
     if ray.train.get_context().get_world_rank() == 0:
-        mlflow.end_run()
+        client.set_terminated(run.info.run_id)
 
 # __exp_tracking_same_run_mlflow_end__

@@ -174,7 +174,7 @@ Ray task.
 Most modern experiment tracking configurations (for example,
 `W&B distributed training <https://docs.wandb.ai/models/track/log/distributed-training#track-all-processes-to-a-single-run>`_)
 support writing to the same run from different threads or processes. Other configurations,
-such as the `MLflow fluent API <https://mlflow.org/docs/latest/ml/traditional-ml/getting-started/logging-first-model/step2-mlflow-tracking.html#using-the-mlflow-fluent-api>`_, may not.
+such as the `MLflow fluent API <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html>`_, may not.
 
 Writing to the same run
 ~~~~~~~~~~~~~~~~~~~~~~~
