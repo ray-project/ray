@@ -21,15 +21,17 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
+    DPPDDecodeServer,
+    DPPDPrefillServer,
     PDDecodeServer,
     PDPrefillServer,
     PDProxyServer,  # TODO(Kourosh): Remove in Ray 2.56.
 )
 from ray.serve.deployment import Application
-from ray.serve.llm import (
-    LLMConfig,
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
-    build_llm_deployment,
 )
 
 # ---------------------------------------------------------------------------
@@ -181,17 +183,22 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
     decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment
 
+    # When DP > 1, use combined DP+PD server classes that inherit from both
+    # the PD server and DPServer (for gang scheduling, DP master info, etc.).
+    prefill_cls = DPPDPrefillServer if prefill_dp_size > 1 else PDPrefillServer
+    decode_cls = DPPDDecodeServer if decode_dp_size > 1 else PDDecodeServer
+
     prefill_deployment = prefill_builder(
         pd_config.prefill_config,
         name_prefix="Prefill:",
-        deployment_cls=PDPrefillServer,
+        deployment_cls=prefill_cls,
     )
 
     decode_deployment = decode_builder(
         pd_config.decode_config,
         name_prefix="Decode:",
         bind_kwargs={"prefill_server": prefill_deployment},
-        deployment_cls=PDDecodeServer,
+        deployment_cls=decode_cls,
     )
 
     # -- Ingress: binds to decode only (the "model" the client sees) --

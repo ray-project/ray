@@ -22,6 +22,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
@@ -292,6 +293,36 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
         return self._pd_handle_request(request, raw_request_info)
+
+
+# ---------------------------------------------------------------------------
+# DP + PD combined servers
+# ---------------------------------------------------------------------------
+
+
+class DPPDPrefillServer(PDPrefillServer, DPServer):
+    """PDPrefillServer with data-parallel gang scheduling.
+
+    MRO: DPPDPrefillServer -> PDPrefillServer -> DPServer -> LLMServer
+    - get_deployment_options comes from DPServer (adds gang scheduling).
+    - __init__ falls through to DPServer (DP master info, bundle indices)
+      then LLMServer (engine setup).
+    """
+
+    pass
+
+
+class DPPDDecodeServer(PDDecodeServer, DPServer):
+    """PDDecodeServer with data-parallel gang scheduling.
+
+    MRO: DPPDDecodeServer -> PDDecodeServer -> PDOrchestratorMixin
+         -> DPServer -> LLMServer
+    - get_deployment_options comes from DPServer (adds gang scheduling).
+    - __init__ from PDDecodeServer sets _prefill_handle, then super().__init__
+      flows through DPServer (DP setup) then LLMServer (engine setup).
+    """
+
+    pass
 
 
 # ---------------------------------------------------------------------------
