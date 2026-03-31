@@ -230,18 +230,6 @@ class ShuffleQualityTracker:
             metrics["shuffle_quality/min_unique_files_per_2k_rows"] = min(window_counts)
             metrics["shuffle_quality/max_unique_files_per_2k_rows"] = max(window_counts)
 
-        # Max run length (consecutive rows from same file)
-        if ids:
-            max_run = 1
-            current_run = 1
-            for i in range(1, len(ids)):
-                if ids[i] == ids[i - 1]:
-                    current_run += 1
-                    max_run = max(max_run, current_run)
-                else:
-                    current_run = 1
-            metrics["shuffle_quality/max_run_length"] = max_run
-
         return metrics
 
 
