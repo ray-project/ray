@@ -76,11 +76,12 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         scaling_config=ray.train.ScalingConfig(
             num_workers=2, use_gpu=True, accelerator_type="A10G"
         ),
-        # Name validation run to easily associate it with training run
+        # Give unique name to validation run so it does not attempt to load placeholder checkpoint.
+        # Also allows you to better associate training runs with validation runs.
         run_config=ray.train.RunConfig(
             name=f"{train_run_name}_validation_epoch_{epoch}"
         ),
-        # User weaker GPUs for validation
+        # Use weaker GPUs for validation
         datasets={"validation": validation_dataset},
     )
     result = trainer.fit()

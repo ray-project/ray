@@ -122,7 +122,8 @@ Example: validation with Ray Train TorchTrainer
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
 loss on a validation set. Note the following about this example:
 
-* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
+* It ``report``\s a placeholder checkpoint so that the ``TorchTrainer`` keeps the metrics. It also
+  gives each validation run a unique name so it does not attempt to load this placeholder checkpoint.
 * While you typically use the ``TorchTrainer`` for training, you can use it solely for validation like in this example.
 * Because training generally has a higher GPU memory requirement than inference, you can set different
   resource requirements for training and validation, for example, A100 for training and A10G for validation.
