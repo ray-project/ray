@@ -89,6 +89,12 @@ NUM_CPUS_FOR_META_FETCH_TASK = 0.5
 DEFAULT_PARQUET_READER_ROW_BATCH_SIZE = 10_000
 FILE_READING_RETRY = 8
 
+# `ParquetFileFragment.to_batches` passes `batch_size` through PyArrow's Cython
+# layer as a C ``int`` (32-bit). Larger values raise
+# `OverflowError: value too large to convert to int` (e.g. when estimated batch
+# size from bytes-per-row blows up for sparse or highly compressed batches).
+_MAX_PYARROW_TO_BATCHES_BATCH_SIZE = 2**31 - 1
+
 # The default size multiplier for reading Parquet data source in Arrow.
 # Parquet data format is encoded with various encoding techniques (such as
 # dictionary, RLE, delta), so Arrow in-memory representation uses much more memory
@@ -873,6 +879,21 @@ def read_fragments(
                     yield table
 
 
+def _coerce_pyarrow_fragment_batch_size(batch_size: Any) -> int:
+    """Coerce and clamp batch size for `ParquetFileFragment.to_batches` (C int range)."""
+    bs = int(batch_size)
+    coerced = min(max(bs, 1), _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
+    if coerced != bs:
+        logger.debug(
+            "Clamping Parquet fragment read batch_size from %s to %s "
+            "(PyArrow ``to_batches`` requires batch_size in [1, %s]).",
+            bs,
+            coerced,
+            _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
+        )
+    return coerced
+
+
 def _read_batches_from(
     fragment: "ParquetFileFragment",
     *,
@@ -910,6 +931,11 @@ def _read_batches_from(
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
+
+    if to_batches_kwargs.get("batch_size") is not None:
+        to_batches_kwargs["batch_size"] = _coerce_pyarrow_fragment_batch_size(
+            to_batches_kwargs["batch_size"]
+        )
 
     partition_col_values = _parse_partition_column_values(
         fragment, partition_columns, partitioning

@@ -4,6 +4,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from typing import Optional, Union
+from unittest.mock import MagicMock
 
 import fsspec
 import numpy as np
@@ -19,7 +20,10 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
+    _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
     ParquetDatasource,
+    _coerce_pyarrow_fragment_batch_size,
+    _read_batches_from,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -2668,6 +2672,75 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
     expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
     assert actual_data == expected_data, (actual_data, expected_data)
+
+
+class TestParquetFragmentBatchSizeCoercion:
+    """Regression: PyArrow ``Fragment.to_batches`` uses a C int for ``batch_size``."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (2**31, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (10**12, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (_MAX_PYARROW_TO_BATCHES_BATCH_SIZE, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (0, 1),
+            (-5, 1),
+            (10_000, 10_000),
+            (np.int64(10_000), 10_000),
+        ],
+    )
+    def test_coerce_pyarrow_fragment_batch_size(self, raw, expected):
+        assert _coerce_pyarrow_fragment_batch_size(raw) == expected
+
+    @pytest.mark.parametrize(
+        "batch_size,to_batches_kwargs",
+        [
+            (10**12, None),
+            (None, {"batch_size": 2**31}),
+            (10_000, None),
+            (None, {"batch_size": np.int64(10_000)}),
+        ],
+    )
+    def test_read_batches_from_clamps_batch_size_kwarg(
+        self, batch_size, to_batches_kwargs
+    ):
+        captured: dict = {}
+
+        def fake_to_batches(
+            *, columns=None, filter=None, schema=None, use_threads=False, **kwargs
+        ):
+            captured["batch_size"] = kwargs.get("batch_size")
+            return iter([])
+
+        fragment = MagicMock()
+        fragment.path = "/tmp/test.parquet"
+        fragment.to_batches = fake_to_batches
+
+        schema = pa.schema([("x", pa.int64())])
+        out = list(
+            _read_batches_from(
+                fragment,
+                schema=schema,
+                data_columns=["x"],
+                data_columns_rename_map=None,
+                partition_columns=None,
+                partitioning=Partitioning("hive"),
+                batch_size=batch_size,
+                to_batches_kwargs=to_batches_kwargs,
+            )
+        )
+        assert out == []
+        if batch_size is not None:
+            if batch_size < _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
+                assert captured["batch_size"] == int(batch_size)
+            else:
+                assert captured["batch_size"] == _MAX_PYARROW_TO_BATCHES_BATCH_SIZE
+        else:
+            tb_bs = to_batches_kwargs["batch_size"]
+            if int(tb_bs) < _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
+                assert captured["batch_size"] == int(tb_bs)
+            else:
+                assert captured["batch_size"] == _MAX_PYARROW_TO_BATCHES_BATCH_SIZE
 
 
 if __name__ == "__main__":
