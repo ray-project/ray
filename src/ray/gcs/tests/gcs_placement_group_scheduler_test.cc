@@ -143,6 +143,15 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_resource_manager_->OnNodeAdd(*node);
   }
 
+  void AddNodeWithGpu(const std::shared_ptr<rpc::GcsNodeInfo> &node,
+                      int cpu_num = 4,
+                      int gpu_num = 2) {
+    (*node->mutable_resources_total())["CPU"] = cpu_num;
+    (*node->mutable_resources_total())["GPU"] = gpu_num;
+    gcs_node_manager_->AddNode(node);
+    gcs_resource_manager_->OnNodeAdd(*node);
+  }
+
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
     rpc::NodeDeathInfo death_info;
     gcs_node_manager_->RemoveNode(
@@ -249,7 +258,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
     // Make sure the resources are not used.
     for (const auto &[node_id, node] : resource_view_before_scheduling) {
-      if (node.GetLocalView().total != node.GetLocalView().available) {
+      if (!(node.GetLocalView().available ==
+            NodeResourceInstanceSet(node.GetLocalView().total))) {
         return false;
       }
     }
@@ -1424,6 +1434,59 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
   // There shouldn't be any remaining bundles to be removed since the node is
   // already removed. The bundles are already removed when the node is removed.
   ASSERT_EQ(scheduler_->waiting_removed_bundles_.size(), 0);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestGpuPgPrepareFailureRollback) {
+  // Add a node with 4 CPUs and 2 GPUs.
+  auto node = GenNodeInfo(0);
+  AddNodeWithGpu(node, /*cpu_num=*/4, /*gpu_num=*/2);
+
+  scheduling::NodeID scheduling_node_id(node->node_id());
+  const auto &view =
+      cluster_resource_scheduler_->GetClusterResourceManager().GetResourceView();
+
+  // Verify GPU per-instance: 2 instances, each 1.0.
+  auto gpu_before = view.at(scheduling_node_id)
+                        .GetLocalView()
+                        .available.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_before.size(), 2);
+  ASSERT_EQ(gpu_before[0], FixedPoint(1.0));
+  ASSERT_EQ(gpu_before[1], FixedPoint(1.0));
+
+  // Create a PG with 1 bundle requiring 1 GPU (using GenCreatePlacementGroupRequest
+  // with cpu_num=0, then manually add GPU to the bundle spec is hard, so we create
+  // the request with 1 CPU per bundle and rely on the node having both).
+  auto request = GenCreatePlacementGroupRequest(
+      /*name=*/"",
+      /*strategy=*/rpc::PlacementStrategy::SPREAD,
+      /*bundles_count=*/1,
+      /*cpu_num=*/1.0);
+  // Add GPU to the bundle.
+  auto *bundle = request.mutable_placement_group_spec()->mutable_bundles(0);
+  (*bundle->mutable_unit_resources())["GPU"] = 1.0;
+
+  auto pg = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+  ScheduleUnplacedBundles(pg);
+
+  // After speculative deduction: 1 GPU instance should be deducted.
+  auto gpu_after = view.at(scheduling_node_id)
+                       .GetLocalView()
+                       .available.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_after.size(), 2);
+  ASSERT_EQ(gpu_after[0] + gpu_after[1], FixedPoint(1.0));
+
+  // Prepare fails → rollback should restore per-instance GPU state.
+  ASSERT_TRUE(
+      raylet_clients_[0]->GrantPrepareBundleResources(/*success=*/false, Status::OK()));
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  ASSERT_TRUE(EnsureClusterResourcesAreNotInUse());
+  auto gpu_restored = view.at(scheduling_node_id)
+                          .GetLocalView()
+                          .available.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_restored.size(), 2);
+  ASSERT_EQ(gpu_restored[0], FixedPoint(1.0));
+  ASSERT_EQ(gpu_restored[1], FixedPoint(1.0));
 }
 
 }  // namespace gcs

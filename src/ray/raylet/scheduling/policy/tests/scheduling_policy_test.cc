@@ -30,9 +30,21 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu)
-      .Set(ResourceID::Memory(), available_memory)
-      .Set(ResourceID::GPU(), available_gpu);
+  resources.available.Set(ResourceID::CPU(), {FixedPoint(available_cpu)})
+      .Set(ResourceID::Memory(), {FixedPoint(available_memory)});
+  size_t num_gpu = static_cast<size_t>(total_gpu);
+  if (num_gpu > 0) {
+    std::vector<FixedPoint> gpu_instances;
+    double remaining_avail = available_gpu;
+    for (size_t i = 0; i < num_gpu; i++) {
+      double per_instance = std::min(remaining_avail, 1.0);
+      gpu_instances.push_back(FixedPoint(std::max(per_instance, 0.0)));
+      remaining_avail -= per_instance;
+    }
+    resources.available.Set(ResourceID::GPU(), std::move(gpu_instances));
+  } else if (available_gpu > 0) {
+    resources.available.Set(ResourceID::GPU(), {FixedPoint(available_gpu)});
+  }
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -232,7 +244,7 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.available.Set(ResourceID::CPU(), {FixedPoint(2.0)});
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
@@ -241,17 +253,17 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.available.Set(ResourceID::CPU(), {FixedPoint(1.0)});
     resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 1)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.available.Set(ResourceID::CPU(), {FixedPoint(1.0)})
+        .Set(ResourceID::Memory(), {FixedPoint(0.25)})
+        .Set(ResourceID::GPU(), {FixedPoint(1), FixedPoint(0)})
+        .Set(ResourceID::ObjectStoreMemory(), {FixedPoint(50)});
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -262,10 +274,10 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Skip GPU
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 0)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.available.Set(ResourceID::CPU(), {FixedPoint(1.0)})
+        .Set(ResourceID::Memory(), {FixedPoint(0.25)})
+        .Set(ResourceID::GPU(), {FixedPoint(0), FixedPoint(0)})
+        .Set(ResourceID::ObjectStoreMemory(), {FixedPoint(50)});
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -563,6 +575,27 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
                     .Schedule(req_list, strict_pack_op);
   ASSERT_TRUE(to_schedule.status.IsSuccess());
   ASSERT_EQ(to_schedule.selected_nodes[0], local_node);
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackFractionalUnitResourceTest) {
+  NodeResources fragmented;
+  fragmented.available.Set(ResourceID::CPU(), {FixedPoint(10)});
+  fragmented.available.Set(ResourceID::GPU(), {FixedPoint(0.7), FixedPoint(0.3)});
+  fragmented.total.Set(ResourceID::CPU(), 10);
+  fragmented.total.Set(ResourceID::GPU(), 2.0);
+  nodes.emplace(local_node, fragmented);
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"GPU", 0.5}}, false);
+  std::vector<const ResourceRequest *> two_bundles(2, &req);
+
+  auto op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+                    *cluster_resource_manager, [](auto) { return true; })
+                    .Schedule(two_bundles, op);
+  // bundle1 takes 0.5 from the 0.7 instance -> [0.2, 0.3].
+  // bundle2 needs 0.5 but max available is 0.3 -> rejected.
+  ASSERT_FALSE(result.status.IsSuccess());
 }
 
 TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {

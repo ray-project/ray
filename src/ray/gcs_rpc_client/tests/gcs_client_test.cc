@@ -686,8 +686,14 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   syncer::ResourceViewSyncMessage resource;
   // Set this flag to indicate resources has changed.
-  (*resource.mutable_resources_available())["CPU"] = 1.0;
-  (*resource.mutable_resources_available())["GPU"] = 10.0;
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(1.0);
+  rpc::syncer::ResourceInstances gpu_instances;
+  for (int i = 0; i < 10; i++) {
+    gpu_instances.add_values(1.0);
+  }
+  (*resource.mutable_resources_available_instances())["CPU"] = cpu_instances;
+  (*resource.mutable_resources_available_instances())["GPU"] = gpu_instances;
   (*resource.mutable_resources_total())["CPU"] = 1.0;
   (*resource.mutable_resources_total())["GPU"] = 10.0;
   gcs_server_->UpdateGcsResourceManagerInTest(node_id, resource);

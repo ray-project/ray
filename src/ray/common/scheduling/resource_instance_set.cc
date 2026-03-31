@@ -14,6 +14,7 @@
 
 #include "ray/common/scheduling/resource_instance_set.h"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -49,24 +50,26 @@ bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
 void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
   resources_.erase(resource_id);
 
-  // Remove from the pg_indexed_resources_ as well
-  auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                       /*for_wildcard_resource=*/false,
-                                       /*for_indexed_resource=*/true);
-  if (data) {
-    ResourceID original_resource_id(data->original_resource);
+  if (track_pg_index_) {
+    // Remove from the pg_indexed_resources_ as well
+    auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                         /*for_wildcard_resource=*/false,
+                                         /*for_indexed_resource=*/true);
+    if (data) {
+      ResourceID original_resource_id(data->original_resource);
 
-    auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
-    if (pg_resource_map_it != pg_indexed_resources_.end()) {
-      auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
+      auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
+      if (pg_resource_map_it != pg_indexed_resources_.end()) {
+        auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
 
-      if (resource_set_it != pg_resource_map_it->second.end()) {
-        resource_set_it->second.erase(resource_id);
-        if (resource_set_it->second.empty()) {
-          pg_resource_map_it->second.erase(data->group_id);
-        }
-        if (pg_resource_map_it->second.empty()) {
-          pg_indexed_resources_.erase(original_resource_id);
+        if (resource_set_it != pg_resource_map_it->second.end()) {
+          resource_set_it->second.erase(resource_id);
+          if (resource_set_it->second.empty()) {
+            pg_resource_map_it->second.erase(data->group_id);
+          }
+          if (pg_resource_map_it->second.empty()) {
+            pg_indexed_resources_.erase(original_resource_id);
+          }
         }
       }
     }
@@ -98,22 +101,24 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
   } else {
     resources_[resource_id] = std::move(instances);
 
-    // Popluate the pg_indexed_resources_map_
-    // TODO(myan): The parsing of the resource_id String can be costly and impact the
-    // task creation throughput if the parting is required every time we allocate
-    // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the future, ideas of improvement are:
-    // (1) to add the placement group id as well as the bundle index inside the
-    // ResourceID class. And instead of parse the String, leveraging the fields in the
-    // ResourceID class directly; (2) to update the pg resource id format to start with
-    // a special prefix so that we can do "startwith" instead of regex match which is
-    // less costly
-    auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                         /*for_wildcard_resource=*/false,
-                                         /*for_indexed_resource=*/true);
-    if (data) {
-      pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id].emplace(
-          resource_id);
+    if (track_pg_index_) {
+      // Populate the pg_indexed_resources_map_
+      // TODO(myan): The parsing of the resource_id String can be costly and impact the
+      // task creation throughput if the parting is required every time we allocate
+      // resources for a task and updating the available resources. The current benchmark
+      // shows no observable impact for now. But in the future, ideas of improvement are:
+      // (1) to add the placement group id as well as the bundle index inside the
+      // ResourceID class. And instead of parse the String, leveraging the fields in the
+      // ResourceID class directly; (2) to update the pg resource id format to start with
+      // a special prefix so that we can do "startwith" instead of regex match which is
+      // less costly
+      auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/false,
+                                           /*for_indexed_resource=*/true);
+      if (data) {
+        pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id]
+            .emplace(resource_id);
+      }
     }
   }
   return *this;
@@ -134,6 +139,80 @@ FixedPoint NodeResourceInstanceSet::Sum(ResourceID resource_id) const {
 
 bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) const {
   return this->resources_ == other.resources_;
+}
+
+/*static*/ std::optional<std::vector<FixedPoint>>
+NodeResourceInstanceSet::ComputeAllocation(const std::vector<FixedPoint> &available,
+                                           FixedPoint demand) {
+  if (available.empty()) {
+    return std::nullopt;
+  }
+
+  if (available.size() == 1) {
+    if (available[0] >= demand) {
+      return std::vector<FixedPoint>{demand};
+    }
+    return std::nullopt;
+  }
+
+  // If resources has multiple instances, each instance has total capacity of 1.
+  //
+  // As long as remaining_demand is greater than 1.,
+  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
+  // Then try to find the best fit for the fractional remaining_demand. Best fit means
+  // allocating the resource instance with the smallest available capacity greater than
+  // remaining_demand.
+  std::vector<FixedPoint> allocation(available.size(), FixedPoint(0));
+  std::vector<FixedPoint> remaining_available = available;
+  FixedPoint remaining_demand = demand;
+
+  if (remaining_demand >= 1.) {
+    for (size_t i = 0; i < remaining_available.size(); i++) {
+      if (remaining_available[i] == 1.) {
+        allocation[i] = 1.;
+        remaining_available[i] = 0;
+        remaining_demand -= 1.;
+      }
+      if (remaining_demand < 1.) {
+        break;
+      }
+    }
+  }
+
+  if (remaining_demand >= 1.) {
+    // Not enough full-capacity instances to cover the integer part.
+    return std::nullopt;
+  }
+
+  // Remaining demand is fractional. Find the best fit, if one exists.
+  if (remaining_demand > 0.) {
+    int64_t idx_best_fit = -1;
+    FixedPoint remaining_after_fit = 1.;
+    for (size_t i = 0; i < remaining_available.size(); i++) {
+      if (remaining_available[i] >= remaining_demand) {
+        if (idx_best_fit == -1 ||
+            (remaining_available[i] - remaining_demand < remaining_after_fit)) {
+          remaining_after_fit = remaining_available[i] - remaining_demand;
+          idx_best_fit = static_cast<int64_t>(i);
+        }
+      }
+    }
+    if (idx_best_fit == -1) {
+      return std::nullopt;
+    }
+    allocation[idx_best_fit] = remaining_demand;
+  }
+
+  return allocation;
+}
+
+bool NodeResourceInstanceSet::CanAllocate(const ResourceSet &resource_demands) const {
+  for (const auto &[resource_id, demand] : resource_demands.Resources()) {
+    if (!ComputeAllocation(Get(resource_id), demand).has_value()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
@@ -295,75 +374,16 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     ResourceID resource_id, FixedPoint demand) {
   std::vector<FixedPoint> available = Get(resource_id);
-  if (available.empty()) {
+  auto allocation = ComputeAllocation(available, demand);
+  if (!allocation) {
     return std::nullopt;
   }
 
-  std::vector<FixedPoint> allocation(available.size());
-  FixedPoint remaining_demand = demand;
-
-  if (available.size() == 1) {
-    // This resource has just one instance.
-    if (available[0] >= remaining_demand) {
-      available[0] -= remaining_demand;
-      allocation[0] = remaining_demand;
-      Set(resource_id, std::move(available));
-      return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
-    } else {
-      // Not enough capacity.
-      return std::nullopt;
-    }
+  for (size_t i = 0; i < available.size(); i++) {
+    available[i] -= (*allocation)[i];
   }
-
-  // If resources has multiple instances, each instance has total capacity of 1.
-  //
-  // As long as remaining_demand is greater than 1.,
-  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
-  // Then try to find the best fit for the fractional remaining_resources. Best fit means
-  // allocating the resource instance with the smallest available capacity greater than
-  // remaining_demand
-  if (remaining_demand >= 1.) {
-    for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] == 1.) {
-        // Allocate a full unit-capacity instance.
-        allocation[i] = 1.;
-        available[i] = 0;
-        remaining_demand -= 1.;
-      }
-      if (remaining_demand < 1.) {
-        break;
-      }
-    }
-  }
-
-  if (remaining_demand >= 1.) {
-    // Cannot satisfy a demand greater than one if no unit capacity resource is available.
-    return std::nullopt;
-  }
-
-  // Remaining demand is fractional. Find the best fit, if exists.
-  if (remaining_demand > 0.) {
-    int64_t idx_best_fit = -1;
-    FixedPoint available_best_fit = 1.;
-    for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] >= remaining_demand) {
-        if (idx_best_fit == -1 ||
-            (available[i] - remaining_demand < available_best_fit)) {
-          available_best_fit = available[i] - remaining_demand;
-          idx_best_fit = static_cast<int64_t>(i);
-        }
-      }
-    }
-    if (idx_best_fit == -1) {
-      return std::nullopt;
-    } else {
-      allocation[idx_best_fit] = remaining_demand;
-      available[idx_best_fit] -= remaining_demand;
-    }
-  }
-
   Set(resource_id, std::move(available));
-  return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
+  return allocation;
 }
 
 void NodeResourceInstanceSet::AllocateWithReference(

@@ -21,26 +21,21 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     resource_quantity = num_pgs
     num_nodes = 5
     custom_resources = {"pg_custom": resource_quantity}
-    # Create pg that uses 1 resource of cpu & custom resource.
     num_pg = resource_quantity
 
     # TODO(sang): Cluster setup. Remove when running in real clusters.
     nodes = []
     for _ in range(num_nodes):
-        nodes.append(
-            cluster.add_node(
-                num_cpus=3, num_gpus=resource_quantity, resources=custom_resources
-            )
-        )
+        nodes.append(cluster.add_node(num_cpus=3, resources=custom_resources))
     cluster.wait_for_nodes()
     num_nodes = len(nodes)
 
     ray.init(address=cluster.address)
     while not ray.is_initialized():
         time.sleep(0.1)
-    bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
+    bundles = [{"pg_custom": 1}] * num_nodes
 
-    @ray.remote(num_cpus=0, num_gpus=1, max_calls=0)
+    @ray.remote(num_cpus=0, resources={"pg_custom": 1}, max_calls=0)
     def mock_task():
         time.sleep(0.1)
         return True

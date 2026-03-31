@@ -46,8 +46,18 @@ class GcsResourceManagerTest : public ::testing::Test {
       int64_t draining_deadline_timestamp_ms = -1) {
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     for (const auto &resource : available_resources) {
-      (*resource_view_sync_message.mutable_resources_available())[resource.first] =
-          resource.second;
+      rpc::syncer::ResourceInstances instances;
+      auto resource_id = scheduling::ResourceID(resource.first);
+      if (resource_id.IsUnitInstanceResource()) {
+        size_t num = static_cast<size_t>(resource.second);
+        for (size_t i = 0; i < num; i++) {
+          instances.add_values(1.0);
+        }
+      } else {
+        instances.add_values(resource.second);
+      }
+      (*resource_view_sync_message
+            .mutable_resources_available_instances())[resource.first] = instances;
     }
     for (const auto &resource : total_resources) {
       (*resource_view_sync_message.mutable_resources_total())[resource.first] =
@@ -90,16 +100,66 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
       scheduling_node_id,
       resource_request,
       /*ignore_object_store_memory_requirement=*/true));
-  ASSERT_TRUE(cluster_resource_manager_.SubtractNodeAvailableResources(scheduling_node_id,
-                                                                       resource_request));
+  auto allocation = cluster_resource_manager_.SubtractNodeAvailableResources(
+      scheduling_node_id, resource_request);
+  ASSERT_TRUE(allocation.has_value());
   ASSERT_FALSE(cluster_resource_manager_.HasAvailableResources(
       scheduling_node_id,
       resource_request,
       /*ignore_object_store_memory_requirement=*/true));
 
   // Test `ReleaseResources`.
-  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(
-      scheduling_node_id, resource_request.GetResourceSet()));
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
+                                                                  allocation.value()));
+}
+
+TEST_F(GcsResourceManagerTest, TestPerInstanceGpuResources) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({{"GPU", 4}});
+  gcs_resource_manager_->OnNodeAdd(*node);
+
+  auto node_id = NodeID::FromBinary(node->node_id());
+  scheduling::NodeID scheduling_node_id(node->node_id());
+
+  // Syncer reports 4 GPUs, each with 1.0 capacity.
+  UpdateFromResourceViewSync(node_id, {{"GPU", 4}}, {{"GPU", 4}});
+
+  // Verify per-instance: 4 instances, each 1.0.
+  const auto &view = cluster_resource_manager_.GetResourceView();
+  const auto &available = view.at(scheduling_node_id).GetLocalView().available;
+  auto gpu_instances = available.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_instances.size(), 4);
+  for (const auto &inst : gpu_instances) {
+    ASSERT_EQ(inst, FixedPoint(1.0));
+  }
+
+  // Allocate 0.5 GPU (should take from one instance).
+  absl::flat_hash_map<std::string, double> demand_map = {{"GPU", 0.5}};
+  auto request =
+      ResourceMapToResourceRequest(demand_map, /*requires_object_store_memory=*/false);
+  auto alloc = cluster_resource_manager_.SubtractNodeAvailableResources(
+      scheduling_node_id, request);
+  ASSERT_TRUE(alloc.has_value());
+
+  // One instance should have 0.5 remaining, others still 1.0.
+  const auto &after_alloc = view.at(scheduling_node_id).GetLocalView().available;
+  auto gpu_after = after_alloc.Get(scheduling::ResourceID("GPU"));
+  ASSERT_EQ(gpu_after.size(), 4);
+  FixedPoint sum(0);
+  for (const auto &inst : gpu_after) {
+    sum += inst;
+  }
+  ASSERT_EQ(sum, FixedPoint(3.5));
+
+  // Free it back.
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
+                                                                  alloc.value()));
+  auto gpu_freed = view.at(scheduling_node_id)
+                       .GetLocalView()
+                       .available.Get(scheduling::ResourceID("GPU"));
+  for (const auto &inst : gpu_freed) {
+    ASSERT_EQ(inst, FixedPoint(1.0));
+  }
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
@@ -117,7 +177,6 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   gcs_resource_manager_->OnNodeAdd(*node);
 
   syncer::ResourceViewSyncMessage resource_view_sync_message;
-  (*resource_view_sync_message.mutable_resources_available())["CPU"] = 2;
   (*resource_view_sync_message.mutable_resources_total())["CPU"] = 2;
   gcs_resource_manager_->UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 
@@ -146,9 +205,10 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageFromDifferentSyncMsgs) {
 
   syncer::ResourceViewSyncMessage resource_view_sync_message;
   resource_view_sync_message.mutable_resources_total()->insert({"CPU", 5});
-  resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
+  rpc::syncer::ResourceInstances cpu_inst;
+  cpu_inst.add_values(5);
+  (*resource_view_sync_message.mutable_resources_available_instances())["CPU"] = cpu_inst;
 
-  // Update resource usage from resource view.
   gcs_resource_manager_->UpdateFromResourceView(NodeID::FromBinary(node->node_id()),
                                                 resource_view_sync_message);
   ASSERT_EQ(
@@ -171,7 +231,10 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
 
   syncer::ResourceViewSyncMessage resource_view_sync_message;
   resource_view_sync_message.mutable_resources_total()->insert({"CPU", 5});
-  resource_view_sync_message.mutable_resources_available()->insert({"CPU", 5});
+  rpc::syncer::ResourceInstances cpu_inst2;
+  cpu_inst2.add_values(5);
+  (*resource_view_sync_message.mutable_resources_available_instances())["CPU"] =
+      cpu_inst2;
   gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
