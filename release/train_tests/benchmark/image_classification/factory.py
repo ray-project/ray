@@ -174,6 +174,73 @@ class ImageClassificationTorchDataLoaderFactory(TorchDataLoaderFactory):
             raise
 
 
+class ShuffleQualityTracker:
+    """Tracks shuffle quality metrics by observing file source diversity in batches."""
+
+    def __init__(self):
+        self._unique_files_per_batch: list = []
+        self._all_file_ids: list = []
+        self._file_id_map: Dict[str, int] = {}
+
+    def _path_to_id(self, path: str) -> int:
+        if path not in self._file_id_map:
+            self._file_id_map[path] = len(self._file_id_map)
+        return self._file_id_map[path]
+
+    def observe(self, batch: "pyarrow.Table") -> None:
+        """Record shuffle quality stats from a batch containing a 'path' column."""
+        if "path" not in batch.column_names:
+            return
+        paths = batch.column("path").to_pylist()
+        self._unique_files_per_batch.append(len(set(paths)))
+        self._all_file_ids.extend(self._path_to_id(p) for p in paths)
+
+    def get_metrics(self) -> Dict[str, float]:
+        """Return shuffle quality metrics accumulated across batches."""
+        if not self._unique_files_per_batch:
+            return {}
+        total = sum(self._unique_files_per_batch)
+        count = len(self._unique_files_per_batch)
+        metrics = {
+            "shuffle_quality/mean_unique_files_per_batch": total / count,
+            "shuffle_quality/min_unique_files_per_batch": min(
+                self._unique_files_per_batch
+            ),
+            "shuffle_quality/max_unique_files_per_batch": max(
+                self._unique_files_per_batch
+            ),
+            "shuffle_quality/num_batches_measured": count,
+        }
+
+        # Compute unique files in sliding windows of ~2000 rows
+        window_size = 2000
+        ids = self._all_file_ids
+        if len(ids) >= window_size:
+            window_counts = []
+            for start in range(0, len(ids) - window_size + 1, window_size):
+                window = ids[start : start + window_size]
+                window_counts.append(len(set(window)))
+            metrics["shuffle_quality/mean_unique_files_per_2k_rows"] = sum(
+                window_counts
+            ) / len(window_counts)
+            metrics["shuffle_quality/min_unique_files_per_2k_rows"] = min(window_counts)
+            metrics["shuffle_quality/max_unique_files_per_2k_rows"] = max(window_counts)
+
+        # Max run length (consecutive rows from same file)
+        if ids:
+            max_run = 1
+            current_run = 1
+            for i in range(1, len(ids)):
+                if ids[i] == ids[i - 1]:
+                    current_run += 1
+                    max_run = max(max_run, current_run)
+                else:
+                    current_run = 1
+            metrics["shuffle_quality/max_run_length"] = max_run
+
+        return metrics
+
+
 class CustomArrowCollateFn(ArrowBatchCollateFn):
     """Custom collate function for converting Arrow batches to PyTorch tensors."""
 
@@ -206,69 +273,10 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         self.num_workers = num_workers
         self._threadpool: Optional[ThreadPoolExecutor] = None
 
-        # Shuffle quality tracking
-        self._unique_files_per_batch: list = []
-        self._all_file_ids: list = []
-        self._file_id_map: Dict[str, int] = {}
-
     def __del__(self):
         """Clean up threadpool on destruction."""
         if getattr(self, "_threadpool", None):
             self._threadpool.shutdown(wait=False)
-
-    def _path_to_id(self, path: str) -> int:
-        if path not in self._file_id_map:
-            self._file_id_map[path] = len(self._file_id_map)
-        return self._file_id_map[path]
-
-    def get_shuffle_quality_metrics(self) -> Dict[str, float]:
-        """Return shuffle quality metrics accumulated across batches."""
-        if not self._unique_files_per_batch:
-            return {}
-        total = sum(self._unique_files_per_batch)
-        count = len(self._unique_files_per_batch)
-        metrics = {
-            "shuffle_quality/mean_unique_files_per_batch": total / count,
-            "shuffle_quality/min_unique_files_per_batch": min(
-                self._unique_files_per_batch
-            ),
-            "shuffle_quality/max_unique_files_per_batch": max(
-                self._unique_files_per_batch
-            ),
-            "shuffle_quality/num_batches_measured": count,
-        }
-
-        # Compute unique files in sliding windows of ~2000 rows
-        window_size = 2000
-        ids = self._all_file_ids
-        if len(ids) >= window_size:
-            window_counts = []
-            for start in range(0, len(ids) - window_size + 1, window_size):
-                window = ids[start : start + window_size]
-                window_counts.append(len(set(window)))
-            metrics["shuffle_quality/mean_unique_files_per_2k_rows"] = sum(
-                window_counts
-            ) / len(window_counts)
-            metrics["shuffle_quality/min_unique_files_per_2k_rows"] = min(
-                window_counts
-            )
-            metrics["shuffle_quality/max_unique_files_per_2k_rows"] = max(
-                window_counts
-            )
-
-        # Max run length (consecutive rows from same file)
-        if ids:
-            max_run = 1
-            current_run = 1
-            for i in range(1, len(ids)):
-                if ids[i] == ids[i - 1]:
-                    current_run += 1
-                    max_run = max(max_run, current_run)
-                else:
-                    current_run = 1
-            metrics["shuffle_quality/max_run_length"] = max_run
-
-        return metrics
 
     def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
         """Convert an Arrow batch to PyTorch tensors.
@@ -285,13 +293,6 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
 
         if self.num_workers > 0 and self._threadpool is None:
             self._threadpool = ThreadPoolExecutor(max_workers=self.num_workers)
-
-        # Track shuffle quality: count unique source files in this batch
-        if "path" in batch.column_names:
-            paths = batch.column("path").to_pylist()
-            unique_files = len(set(paths))
-            self._unique_files_per_batch.append(unique_files)
-            self._all_file_ids.extend(self._path_to_id(p) for p in paths)
 
         # For GPU transfer, we can skip the combining chunked arrays. This is because
         # we can convert the chunked arrays to corresponding numpy format and then to
@@ -310,24 +311,37 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         return tensors["image"], tensors["label"]
 
 
+class TrackingCollateFn(CollateFn):
+    """Wraps a collate function with shuffle quality tracking."""
+
+    def __init__(self, inner: CollateFn, tracker: ShuffleQualityTracker):
+        self._inner = inner
+        self._tracker = tracker
+
+    def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
+        self._tracker.observe(batch)
+        return self._inner(batch)
+
+
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     """Factory for creating Ray DataLoader for image classification tasks."""
 
     def __init__(self, benchmark_config: BenchmarkConfig):
         super().__init__(benchmark_config)
-        self._collate_fn_instance: Optional[CustomArrowCollateFn] = None
+        self._shuffle_tracker: Optional[ShuffleQualityTracker] = None
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
-        self._collate_fn_instance = CustomArrowCollateFn(
+        collate_fn = CustomArrowCollateFn(
             device=ray.train.torch.get_device(),
             pin_memory=self.get_dataloader_config().ray_data_pin_memory,
         )
-        return self._collate_fn_instance
+        self._shuffle_tracker = ShuffleQualityTracker()
+        return TrackingCollateFn(collate_fn, self._shuffle_tracker)
 
     def get_metrics(self) -> Dict:
         metrics = super().get_metrics()
-        if self._collate_fn_instance is not None:
-            metrics.update(self._collate_fn_instance.get_shuffle_quality_metrics())
+        if self._shuffle_tracker is not None:
+            metrics.update(self._shuffle_tracker.get_metrics())
         return metrics
 
 
