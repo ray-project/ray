@@ -127,7 +127,12 @@ from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -6602,10 +6607,6 @@ class Dataset:
             provides efficient distributed random access to records in the dataset
             by the specified key.
         """
-        import warnings
-
-        from ray.util.annotations import RayDeprecationWarning
-
         warnings.warn(
             "`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
             RayDeprecationWarning,
