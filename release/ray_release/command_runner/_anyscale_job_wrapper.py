@@ -245,6 +245,11 @@ def run_oom_check():
                 "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
             )
             return_code = 1
+    else:
+        logger.error(
+            "RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
+        )
+        return_code = 1
     return return_code
 
 
