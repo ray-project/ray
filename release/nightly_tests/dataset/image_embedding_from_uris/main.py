@@ -6,7 +6,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark
+from benchmark import Benchmark, OperatorStatsTracker
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -195,6 +195,9 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
@@ -223,6 +226,7 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(WRITE_PATH)
         )
+        return OperatorStatsTracker.collect()
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
