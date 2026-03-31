@@ -245,6 +245,8 @@ def run_oom_check():
                 "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
             )
             return_code = 1
+    return return_code
+
 def run_dead_node_check():
     # Connect to the cluster and check for dead nodes
     import ray
