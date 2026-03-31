@@ -570,20 +570,32 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
         res = pac.mean(self._column, skip_nulls=ignore_nulls)
         return res.as_py() if as_py else res
 
+    def _numeric_column(self) -> "pyarrow.ChunkedArray":
+        """Return the column cast to a numeric type if needed.
+
+        PyArrow arithmetic/quantile kernels do not operate on boolean arrays,
+        so we cast bool -> int8 (True=1, False=0).
+        """
+        import pyarrow as pa
+
+        if pa.types.is_boolean(self._column.type):
+            return self._column.cast(pa.int8())
+        return self._column
+
     def sum_of_squared_diffs_from_mean(
         self, ignore_nulls: bool, mean: Optional[U] = None, as_py: bool = True
     ) -> Optional[U]:
         import pyarrow.compute as pac
 
-        # Calculate mean if not provided
         if mean is None:
             mean = self.mean(ignore_nulls=ignore_nulls)
 
         if mean is None:
             return None
 
+        column = self._numeric_column()
         res = pac.sum(
-            pac.power(pac.subtract(self._column, mean), 2), skip_nulls=ignore_nulls
+            pac.power(pac.subtract(column, mean), 2), skip_nulls=ignore_nulls
         )
         return res.as_py() if as_py else res
 
@@ -592,8 +604,8 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
     ) -> Optional[U]:
         import pyarrow.compute as pac
 
-        array = pac.quantile(self._column, q=q, skip_nulls=ignore_nulls)
-        # NOTE: That quantile method still returns an array
+        column = self._numeric_column()
+        array = pac.quantile(column, q=q, skip_nulls=ignore_nulls)
         res = array[0]
         return res.as_py() if as_py else res
 

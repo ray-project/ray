@@ -19,6 +19,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 import pyarrow.compute as pc
 
 from ray.data._internal.util import is_null
@@ -1541,8 +1542,10 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
             return [0, 0]
 
         arrow_compatible = column_accessor._to_arrow_compatible_container()
-        # Use PyArrow compute to count zeros
-        # First create a boolean mask for zero values
+        if not isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
+            arrow_compatible = pa.array(arrow_compatible)
+        if pa.types.is_boolean(arrow_compatible.type):
+            arrow_compatible = arrow_compatible.cast(pa.int8())
         zero_mask = pc.equal(arrow_compatible, 0)
 
         # Sum the boolean mask to get count of True values (zeros)
