@@ -57,10 +57,18 @@ class CombineShuffles(Rule):
             op, StreamingRepartition
         ):
             strict = input_op.strict or op.strict
+            combined_concurrency = input_op.concurrency
+            if combined_concurrency is None:
+                combined_concurrency = op.concurrency
+            elif op.concurrency is not None:
+                # Preserve the tighter upper bound when combining chained
+                # streaming repartition operators.
+                combined_concurrency = min(combined_concurrency, op.concurrency)
             return StreamingRepartition(
                 target_num_rows_per_block=op.target_num_rows_per_block,
                 input_dependencies=[input_op.input_dependencies[0]],
                 strict=strict,
+                concurrency=combined_concurrency,
             )
         elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
             return Aggregate(

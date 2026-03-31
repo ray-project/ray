@@ -179,25 +179,35 @@ def test_repartition_target_num_rows_per_block(
 
 
 @pytest.mark.parametrize(
-    "num_blocks, target_num_rows_per_block, shuffle, expected_exception_msg",
+    "num_blocks, target_num_rows_per_block, shuffle, concurrency, expected_exception_msg",
     [
         (
             4,
             10,
             False,
+            None,
             "Only one of `num_blocks` or `target_num_rows_per_block` must be set, but not both.",
         ),
         (
             None,
             None,
             False,
+            None,
             "Either `num_blocks` or `target_num_rows_per_block` must be set",
         ),
         (
             None,
             10,
             True,
+            None,
             "`shuffle` must be False when `target_num_rows_per_block` is set.",
+        ),
+        (
+            4,
+            None,
+            False,
+            2,
+            "`concurrency` is only supported when `target_num_rows_per_block` is set.",
         ),
     ],
 )
@@ -206,6 +216,7 @@ def test_repartition_invalid_inputs(
     num_blocks,
     target_num_rows_per_block,
     shuffle,
+    concurrency,
     expected_exception_msg,
     disable_fallback_to_object_extension,
 ):
@@ -214,6 +225,7 @@ def test_repartition_invalid_inputs(
             num_blocks=num_blocks,
             target_num_rows_per_block=target_num_rows_per_block,
             shuffle=shuffle,
+            concurrency=concurrency,
         )
 
 

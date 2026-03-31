@@ -1686,6 +1686,7 @@ class Dataset:
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
+        concurrency: Optional[int] = None,
     ) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of
         :ref:`blocks <dataset_concept>`.
@@ -1752,6 +1753,9 @@ class Dataset:
                 is set to True.
             sort: Whether the blocks should be sorted after repartitioning. Note,
                 that by default blocks will be sorted in the ascending order.
+            concurrency: Maximum number of concurrent tasks for streaming
+                repartition. This argument is only supported when
+                `target_num_rows_per_block` is set.
 
         Note that you must set either `num_blocks` or `target_num_rows_per_block`
         but not both.
@@ -1794,6 +1798,12 @@ class Dataset:
                 "but not both."
             )
 
+        if target_num_rows_per_block is None and concurrency is not None:
+            raise ValueError(
+                "`concurrency` is only supported when `target_num_rows_per_block` "
+                "is set."
+            )
+
         if target_num_rows_per_block is not None and shuffle:
             raise ValueError(
                 "`shuffle` must be False when `target_num_rows_per_block` is set."
@@ -1804,6 +1814,7 @@ class Dataset:
                 target_num_rows_per_block=target_num_rows_per_block,
                 input_dependencies=[self._logical_plan.dag],
                 strict=strict,
+                concurrency=concurrency,
             )
         else:
             op = Repartition(

@@ -26,9 +26,13 @@ from ray.data._internal.logical.operators import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
+from ray.data._internal.logical.operators.map_operator import (
+    MapBatches,
+    StreamingRepartition,
+)
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
@@ -182,6 +186,124 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
 
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_operators == [op]
+
+
+def test_streaming_repartition_operator_concurrency(ray_start_regular_shared_2_cpus):
+    ctx = DataContext.get_current()
+    concurrency = 7
+    planner = create_planner()
+    read_op = get_parquet_read_logical_op()
+    op = StreamingRepartition(
+        target_num_rows_per_block=10,
+        input_dependencies=[read_op],
+        concurrency=concurrency,
+    )
+    plan = LogicalPlan(op, ctx)
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
+
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._max_concurrency == concurrency
+    assert physical_op._logical_operators == [op]
+
+
+def test_dataset_streaming_repartition_concurrency(ray_start_regular_shared_2_cpus):
+    planner = create_planner()
+    ds = ray.data.range(100, override_num_blocks=10).repartition(
+        target_num_rows_per_block=10,
+        concurrency=7,
+    )
+
+    logical_op = ds._logical_plan.dag
+    assert isinstance(logical_op, StreamingRepartition)
+    assert logical_op.concurrency == 7
+    assert logical_op.compute == TaskPoolStrategy(7)
+
+    physical_plan, _ = planner.plan(ds._logical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._max_concurrency == 7
+    assert physical_op._logical_operators == [logical_op]
+
+
+def test_streaming_repartition_operator_respects_explicit_compute(
+    ray_start_regular_shared_2_cpus,
+):
+    planner = create_planner()
+    read_op = get_parquet_read_logical_op()
+    ctx = DataContext.get_current()
+    op = StreamingRepartition(
+        target_num_rows_per_block=10,
+        input_dependencies=[read_op],
+        concurrency=7,
+        compute=TaskPoolStrategy(3),
+    )
+    plan = LogicalPlan(op, ctx)
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
+
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._max_concurrency == 3
+    assert physical_op._logical_operators == [op]
+
+
+def test_fused_streaming_repartition_operator_concurrency(
+    ray_start_regular_shared_2_cpus,
+):
+    planner = create_planner()
+    read_op = get_parquet_read_logical_op()
+    ctx = DataContext.get_current()
+    map_batches = MapBatches(
+        fn=lambda batch: batch,
+        input_dependencies=[read_op],
+        batch_size=20,
+    )
+    op = StreamingRepartition(
+        target_num_rows_per_block=10,
+        input_dependencies=[map_batches],
+        concurrency=7,
+    )
+    plan = LogicalPlan(op, ctx)
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
+
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._max_concurrency == 7
+    assert (
+        physical_op.name
+        == "MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block=10,strict=False]"
+    )
+    assert physical_op._logical_operators == [map_batches, op]
+
+
+def test_combined_streaming_repartition_operator_preserves_tighter_concurrency(
+    ray_start_regular_shared_2_cpus,
+):
+    ctx = DataContext.get_current()
+    planner = create_planner()
+    read_op = get_parquet_read_logical_op()
+    op = StreamingRepartition(
+        target_num_rows_per_block=10,
+        input_dependencies=[
+            StreamingRepartition(
+                target_num_rows_per_block=20,
+                input_dependencies=[read_op],
+                concurrency=3,
+            )
+        ],
+        concurrency=7,
+    )
+    optimized_plan = LogicalOptimizer().optimize(LogicalPlan(op, ctx))
+    optimized_op = optimized_plan.dag
+    physical_plan, _ = planner.plan(optimized_plan)
+    physical_op = physical_plan.dag
+
+    assert isinstance(optimized_op, StreamingRepartition)
+    assert optimized_op.target_num_rows_per_block == 10
+    assert optimized_op.concurrency == 3
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert physical_op._max_concurrency == 3
+    assert physical_op._logical_operators == [optimized_op]
 
 
 def test_sort_operator(
