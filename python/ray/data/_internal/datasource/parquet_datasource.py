@@ -879,22 +879,19 @@ def read_fragments(
                     yield table
 
 
-def _coerce_pyarrow_fragment_batch_size(batch_size: object) -> int:
-    """Coerce and clamp batch size for `ParquetFileFragment.to_batches` (C int range).
+def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
+    """Clamp batch size for ``ParquetFileFragment.to_batches`` to PyArrow's C int range.
 
-    The parameter is typed as :class:`object` because values often come from untyped
-    containers (e.g. `to_batches_kwargs`).
-
-    Values are converted with :func:`int` (Python's usual rules: `bool` becomes 0/1,
-    `float` truncates toward zero) then clamped to `[1, MAX]`.
+    Expects a value already converted with :func:`int` (callers reading from untyped
+    kwargs should do ``int(...)`` before calling). Values outside
+    ``[1, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE]`` are clamped.
     """
-    bs = int(batch_size)
-    coerced = min(max(bs, 1), _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
-    if coerced != bs:
+    coerced = min(max(batch_size, 1), _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
+    if coerced != batch_size:
         logger.debug(
             "Clamping Parquet fragment read batch_size from %s to %s "
             "(PyArrow ``to_batches`` requires batch_size in [1, %s]).",
-            bs,
+            batch_size,
             coerced,
             _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
         )
@@ -941,7 +938,7 @@ def _read_batches_from(
 
     if to_batches_kwargs.get("batch_size") is not None:
         to_batches_kwargs["batch_size"] = _coerce_pyarrow_fragment_batch_size(
-            to_batches_kwargs["batch_size"]
+            int(to_batches_kwargs["batch_size"])
         )
 
     partition_col_values = _parse_partition_column_values(
