@@ -96,12 +96,13 @@ class ConfigureMapTaskMemoryUsingOpMetrics(ConfigureMapTaskMemoryRule):
         # "memory" resource is exclusive of the Object Store memory allocated on the
         # node (i.e., its total allocatable value is Total memory - Object Store
         # memory).
-        if op.metrics.average_max_uss_per_task and op.metrics.average_bytes_per_output:
-            return max(
-                op.metrics.average_max_uss_per_task,
-                op.metrics.average_bytes_per_output,
-            )
-        elif op.metrics.average_max_uss_per_task:
-            return op.metrics.average_max_uss_per_task
+        uss = op.metrics.average_max_uss_per_task
+        output = op.metrics.average_bytes_per_output
+        if uss is not None and output is not None:
+            return int(max(uss, output))
+        elif uss is not None:
+            return int(uss)
+        elif output is not None:
+            return int(output)
         else:
-            return op.metrics.average_bytes_per_output
+            return None
