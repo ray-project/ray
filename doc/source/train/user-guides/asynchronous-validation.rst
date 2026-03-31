@@ -199,6 +199,18 @@ join it and log validation metrics directly.
             :start-after: __exp_tracking_same_run_mlflow_start__
             :end-before: __exp_tracking_same_run_mlflow_end__
 
+Reliability
+~~~~~~~~~~~
+
+If experiment tracking logging fails (for example, due to a transient network error),
+you have two options for retrying:
+
+1. **Wrap your logging calls in a try/except block** within the ``validation_fn`` and
+   retry the logging manually with your experiment tracker's API.
+2. **Use** :func:`ray.train.get_all_reported_checkpoints` **periodically during training** to
+   retrieve all reported checkpoints and their associated metrics, then re-log any missing
+   entries to your experiment tracker.
+
 Writing to different runs
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
