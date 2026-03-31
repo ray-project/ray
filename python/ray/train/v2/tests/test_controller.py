@@ -445,7 +445,7 @@ async def test_shutdown_and_callback_both_fail_on_finished_path():
         raise RuntimeError("Simulated shutdown failure")
 
     class FailingShutdownHookCallback(ControllerCallback):
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             raise ValueError("Intentional error in shutdown callback")
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
