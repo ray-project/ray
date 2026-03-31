@@ -245,6 +245,22 @@ def run_oom_check():
                 "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
             )
             return_code = 1
+def run_dead_node_check():
+    # Connect to the cluster and check for dead nodes
+    import ray
+
+    return_code = 0
+    try:
+        ray.init(address="auto")  # Connect to the local cluster
+        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        if dead_nodes:
+            logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
+            return_code = 1
+    except Exception as e:
+        logger.error(f"Error during dead node check: {e}")
+        return_code = 1
+    finally:
+        ray.shutdown()  # Disconnect from the cluster
     return return_code
 
 
@@ -312,6 +328,11 @@ def main(
                 f"Finished with return code {return_code}. "
                 f"Time taken: {workload_time_taken}"
             )
+
+        test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
+
+        if return_code == 0 and test_fail_on_dead_nodes:
+            return_code = run_dead_node_check()
 
         # Upload results.json
         uploaded_results = run_storage_cp(
