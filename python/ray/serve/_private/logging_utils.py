@@ -12,6 +12,7 @@ from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTAT
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_LOG_CLIENT_ADDRESS,
     RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
@@ -179,8 +180,42 @@ class ServeFormatter(TextFormatter):
             return self.base_formatter.format(record)
 
 
-def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
+def format_grpc_peer_address(peer: str) -> str:
+    """Extract the client address from a gRPC peer() string.
+
+    gRPC peer() returns "ipv4:host:port" or "ipv6:%5Bhost%5D:port".
+    Strips the protocol prefix and URL-decodes IPv6 brackets.
+    """
+    if not peer:
+        return ""
+    for prefix in ("ipv4:", "ipv6:"):
+        if peer.startswith(prefix):
+            addr = peer[len(prefix) :]
+            return addr.replace("%5B", "[").replace("%5D", "]")
+    return peer
+
+
+def format_client_address(client) -> str:
+    """Format a raw ASGI scope client value into a string."""
+    if isinstance(client, (tuple, list)):
+        if len(client) != 2:
+            return ":".join(str(x) for x in client)
+        host, port = str(client[0]), str(client[1])
+        # Wrap IPv6 addresses in brackets to avoid ambiguity (e.g. [::1]:54321).
+        if ":" in host:
+            return f"[{host}]:{port}"
+        return f"{host}:{port}"
+    elif isinstance(client, str):
+        return client
+    return str(client) if client else ""
+
+
+def access_log_msg(
+    *, method: str, route: str, status: str, latency_ms: float, client: str = ""
+):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
+    if client and RAY_SERVE_LOG_CLIENT_ADDRESS:
+        return f"{client} {method} {route} {status} {latency_ms:.1f}ms"
     return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
@@ -406,42 +441,6 @@ def configure_component_logger(
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)
-
-
-# Configure a dedicated rotating file logger for autoscaling snapshots.
-def configure_autoscaling_snapshot_logger(
-    *, component_id: str, logging_config: LoggingConfig
-) -> logging.Logger:
-    """Configure a dedicated logger for autoscaling snapshots.
-
-    - Writes to `autoscaling_snapshot_<pid>.log` under the Serve logs dir.
-    """
-    logger_obj = logging.getLogger(f"{SERVE_LOGGER_NAME}.snapshot")
-    logger_obj.propagate = False
-    logger_obj.setLevel(logging_config.log_level)
-    logger_obj.handlers.clear()
-
-    logs_dir = logging_config.logs_dir or get_serve_logs_dir()
-    os.makedirs(logs_dir, exist_ok=True)
-
-    max_bytes = ray._private.worker._global_node.max_bytes
-    backup_count = ray._private.worker._global_node.backup_count
-
-    file_name = get_component_file_name(
-        component_name="autoscaling_snapshot",
-        component_id=component_id,
-        component_type=None,
-        suffix=".log",
-    )
-    file_path = os.path.join(logs_dir, file_name)
-
-    handler = logging.handlers.RotatingFileHandler(
-        file_path, maxBytes=max_bytes, backupCount=backup_count
-    )
-    handler.setFormatter(JSONFormatter())
-
-    logger_obj.addHandler(handler)
-    return logger_obj
 
 
 def configure_default_serve_logger():

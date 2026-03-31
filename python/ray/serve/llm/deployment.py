@@ -69,7 +69,7 @@ class LLMServer(InternalLLMServer):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class PDProxyServer(_PDProxyServer):
     """A proxy server for prefill-decode disaggregation.
 
@@ -85,7 +85,7 @@ class PDProxyServer(_PDProxyServer):
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class DPServer(_DPServer):
     """Data Parallel LLM Server.
 

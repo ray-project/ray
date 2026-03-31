@@ -26,3 +26,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "percentile_tracker_test",
+    size = "small",
+    srcs = ["percentile_tracker_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/stats:percentile_tracker",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

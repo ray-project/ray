@@ -957,6 +957,20 @@ def test_send_fails(ray_start_regular):
         ray.get(result_ref)
 
 
+def test_send_actor_dies_before_creating(ray_start_regular):
+    actors = [ErrorActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="torch_gloo")
+
+    # Block the main thread so the object doesn't get created before the kill
+    actors[0].block_main_thread.remote()
+    gpu_obj_ref = actors[0].send.remote(torch.randn(100, 100))
+    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    ray.kill(actors[0])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(result_ref)
+
+
 def test_send_actor_dies_before_sending(ray_start_regular):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
