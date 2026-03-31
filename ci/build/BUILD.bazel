@@ -1,4 +1,5 @@
-load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
     name = "container_resource_utils",
@@ -50,6 +51,41 @@ py_test(
         "team:ci",
     ],
     deps = [":build_wheel"],
+)
+
+_WANDA_DATA = select({
+    "//bazel:linux_x86_64_config": ["@wanda_linux_x86_64//file"],
+    "//bazel:osx_arm64_config": ["@wanda_darwin_arm64//file"],
+    "//conditions:default": [],
+})
+
+py_binary(
+    name = "wanda",
+    srcs = ["wanda.py"],
+    data = _WANDA_DATA,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":build_common",
+        ci_require("bazel-runfiles"),
+    ],
+)
+
+py_test(
+    name = "wanda_version_test",
+    size = "small",
+    srcs = ["wanda_version_test.py"],
+    data = [
+        "//:.rayciversion",
+        "//bazel:wanda.bzl",
+    ],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("pytest"),
+        ci_require("bazel-runfiles"),
+    ],
 )
 
 py_library(

@@ -5,6 +5,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", 
 exports_files([
     "pytest_wrapper.py",
     "default_doctest_pytest_plugin.py",
+    "wanda.bzl",
 ])
 
 py_binary(
