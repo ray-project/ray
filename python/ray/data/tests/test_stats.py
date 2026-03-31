@@ -179,6 +179,12 @@ def assert_basic_operator_metrics(
         assert "mean" in op.cpu_time, "cpu_time should have 'mean'"
         assert "sum" in op.cpu_time, "cpu_time should have 'sum'"
 
+    # Check memory stats
+    assert op.memory is not None, "memory should not be None"
+    assert "min" in op.memory, "memory should have 'min'"
+    assert "max" in op.memory, "memory should have 'max'"
+    assert "mean" in op.memory, "memory should have 'mean'"
+
     # Check output rows
     assert op.output_num_rows is not None, "output_num_rows should not be None"
     assert "min" in op.output_num_rows, "output_num_rows should have 'min'"
@@ -261,28 +267,6 @@ def assert_single_operator_pipeline(
     return op
 
 
-def assert_memory_stats_present(
-    op: OperatorStatsSummary,
-) -> None:
-    """Assert that memory stats are present.
-
-    Args:
-        op: OperatorStatsSummary object.
-
-    Raises:
-        AssertionError: if memory stats are missing.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        op = get_operator(stats_summary, index=0)
-        assert_memory_stats_present(op)
-    """
-    assert op.memory is not None, "memory should not be None"
-    assert "min" in op.memory, "memory should have 'min'"
-    assert "max" in op.memory, "memory should have 'max'"
-    assert "mean" in op.memory, "memory should have 'mean'"
-
-
 def assert_global_memory_stats(
     stats_summary: DatasetStatsSummary,
     expect_spilled: bool = False,
@@ -328,6 +312,7 @@ def assert_iteration_stats_present(
         assert_iteration_stats_present(stats_summary)
     """
     assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
 
 
 @pytest.mark.skipif(
@@ -789,7 +774,8 @@ def test_dataset_stats_basic(
     assert_basic_operator_metrics(op1)
     assert_output_row_count(op1, expected_total=1000)
 
-    op2 = assert_operator_exists(stats_summary, "Map")
+    # Use regex to match exactly "Map(" at the start to avoid matching "MapBatches"
+    op2 = assert_operator_exists(stats_summary, r"^Map\(")
     assert_basic_operator_metrics(op2)
     assert_output_row_count(op2, expected_total=1000)
 
@@ -816,11 +802,10 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     # Verify iteration stats are present
     assert_iteration_stats_present(stats_summary)
 
-    # Verify block location stats are present in iter_stats
-    # The locations are tracked in iter_stats, and we just verify they're set
-    assert stats_summary.iter_stats.iter_blocks_local is not None
-    assert stats_summary.iter_stats.iter_blocks_remote is not None
-    assert stats_summary.iter_stats.iter_unknown_location is not None
+    # Verify block location stats - local and remote should be 0, unknown > 0
+    assert stats_summary.iter_stats.iter_blocks_local == 0
+    assert stats_summary.iter_stats.iter_blocks_remote == 0
+    assert stats_summary.iter_stats.iter_unknown_location > 0
 
 
 def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
@@ -1246,25 +1231,10 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     # Should have 2 top-level operators: RandomShuffle and Repartition
     assert_operator_count(stats_summary, expected_count=2)
 
-    # Verify both operators exist
-    assert_operator_exists(stats_summary, "RandomShuffle")
-    assert_operator_exists(stats_summary, "Repartition")
-
-    # The final output should have 1000 rows
-    # Find the last operator (repartition) and check its output
-    # Check that we have operators with sub-operators
-    # The stats_summary contains top-level operators which contain suboperators
-    # For this test, we just verify the basics and that the final row count is 1000
-
-    # Find the last operator's output (should be 1000 rows total)
-    # We need to check either the top-level operators or look for the final output
-    found_output = False
+    # Verify both operators exist and have valid metrics with 1000 output rows
     for op in stats_summary.operators_stats:
-        if op.output_num_rows and op.output_num_rows["sum"] == 1000:
-            found_output = True
-            assert_basic_operator_metrics(op)
-            break
-    assert found_output, "Should find an operator with 1000 output rows"
+        assert_basic_operator_metrics(op)
+        assert_output_row_count(op, expected_total=1000)
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
