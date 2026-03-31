@@ -305,6 +305,14 @@ def _resolve_paths_and_filesystem(
             None, the provided filesystem will still be validated against all
             filesystems inferred from the provided paths to ensure
             compatibility.
+
+    Returns:
+        ``(resolved_paths, filesystem)`` where ``filesystem`` is the one that was
+        actually used to resolve and normalize each path (after each successful
+        path, the working filesystem may be updated). It may differ from the
+        ``filesystem`` argument when that argument is incompatible with a URI and
+        resolution falls back to an inferred filesystem; callers should open
+        reads with this returned instance.
     """
     paths = _normalize_paths_to_strings(paths)
 
