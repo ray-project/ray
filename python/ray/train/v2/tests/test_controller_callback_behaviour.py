@@ -360,8 +360,8 @@ async def test_async_shutdown_callback_error_is_caught():
 
 @pytest.mark.asyncio
 async def test_top_level_safety_net_catches_unhandled_error():
-    """The top-level safety net in run() catches exceptions that escape
-    _run_control_loop_iteration and forces the controller into ErroredState."""
+    """The safety net in _run_control_loop_iteration catches exceptions that
+    escape _step and forces the controller into ErroredState."""
 
     class CrashingStateUpdateCallback(ControllerCallback):
         """Raises a non-ControllerError that bypasses _set_state's handling."""

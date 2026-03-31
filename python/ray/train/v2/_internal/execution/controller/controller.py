@@ -711,6 +711,10 @@ class TrainController:
         if self.get_state().is_terminal():
             return
 
+        # Use a manual for-loop instead of CallbackManager here because abort
+        # requires best-effort semantics: every callback must be attempted even
+        # if earlier ones fail. CallbackManager.invoke is fail-fast (raises on
+        # the first error), which would skip remaining callbacks.
         for callback in self._controller_callbacks:
             try:
                 callback.before_controller_abort()

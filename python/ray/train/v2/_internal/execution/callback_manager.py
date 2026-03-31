@@ -1,4 +1,3 @@
-import inspect
 import logging
 
 from ray.train.v2.api.exceptions import ControllerError
@@ -37,14 +36,12 @@ class CallbackManager:
                 raise ControllerError(e) from e
 
     async def async_invoke(self, hook_name: str, *args, **context) -> None:
-        """Invoke a hook that may be sync or async (e.g. before_controller_shutdown)."""
         for callback in self._callbacks:
             method, callback_name = self._get_method(callback, hook_name)
             try:
-                result = method(*args, **context)
-                if inspect.isawaitable(result):
-                    await result
+                await method(*args, **context)
             except Exception as e:
+                # TODO: Enable configuration to suppress exceptions.
                 logger.exception(
                     f"Exception raised in callback hook '{hook_name}' from callback "
                     f"'{callback_name}'."
