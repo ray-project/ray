@@ -42,6 +42,19 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
   static StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError> Create(
       std::string cgroup_path, KillWorkersCallback kill_workers_callback);
 
+  /**
+   * @param cgroup_path the path to the cgroup whose memory events will be monitored.
+   * @param memory_events_path the path to the memory.events file within the cgroup.
+   * @param inotify_fd fd to listen to memory events on.
+   * @param inotify_wd watch descriptor for the memory events file.
+   * @param kill_workers_callback function to invoke when memory.high is exceeded.
+   */
+  EventMemoryMonitor(std::string cgroup_path,
+                     std::string memory_events_path,
+                     int inotify_fd,
+                     int inotify_wd,
+                     KillWorkersCallback kill_workers_callback);
+
   ~EventMemoryMonitor() override;
 
   /**
@@ -57,23 +70,10 @@ class EventMemoryMonitor : public MemoryMonitorInterface {
   /**
    * @return True if the memory monitor is enabled, false otherwise.
    */
-  bool IsEnabled() override;
+  bool IsEnabled() const override;
 
  private:
   enum class DrainResult { kDrained, kInterrupted, kError };
-
-  /**
-   * @param cgroup_path the path to the cgroup whose memory events will be monitored.
-   * @param memory_events_path the path to the memory.events file within the cgroup.
-   * @param inotify_fd fd to listen to memory events on.
-   * @param inotify_wd watch descriptor for the memory events file.
-   * @param kill_workers_callback function to invoke when memory.high is exceeded.
-   */
-  EventMemoryMonitor(std::string cgroup_path,
-                     std::string memory_events_path,
-                     int inotify_fd,
-                     int inotify_wd,
-                     KillWorkersCallback kill_workers_callback);
 
   /**
    * @brief Monitoring loop that polls on the memory events file,

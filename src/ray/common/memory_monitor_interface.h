@@ -78,7 +78,7 @@ class MemoryMonitorInterface {
   /**
    * @return True if the memory monitor is enabled, false otherwise.
    */
-  virtual bool IsEnabled() = 0;
+  virtual bool IsEnabled() const = 0;
 
   static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
   static constexpr int64_t kNull = -1;

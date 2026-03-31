@@ -19,11 +19,9 @@
 #include <sys/poll.h>
 #include <unistd.h>
 
-#include <boost/algorithm/string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <vector>
 
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/util/logging.h"
@@ -59,12 +57,12 @@ EventMemoryMonitor::Create(std::string cgroup_path,
     return StatusT::IOError(error_msg);
   }
 
-  std::unique_ptr<EventMemoryMonitor> monitor(
-      new EventMemoryMonitor(std::move(cgroup_path),
-                             memory_events_path,
-                             inotify_fd,
-                             inotify_wd,
-                             std::move(kill_workers_callback)));
+  std::unique_ptr<EventMemoryMonitor> monitor =
+      std::make_unique<EventMemoryMonitor>(std::move(cgroup_path),
+                                           memory_events_path,
+                                           inotify_fd,
+                                           inotify_wd,
+                                           std::move(kill_workers_callback));
 
   RAY_LOG(INFO) << absl::StrFormat(
       "Event memory monitor successfully initialized with "
@@ -103,22 +101,22 @@ EventMemoryMonitor::~EventMemoryMonitor() {
   if (write(shutdown_eventfd_, &val, sizeof(val)) != sizeof(val)) {
     RAY_LOG(ERROR) << absl::StrFormat(
         "Failed to signal shutdown to event monitoring thread, errno: %d", errno);
-  }
+  } else {
+    if (event_monitoring_thread_.joinable()) {
+      event_monitoring_thread_.join();
+    }
 
-  if (event_monitoring_thread_.joinable()) {
-    event_monitoring_thread_.join();
+    close(shutdown_eventfd_);
+    inotify_rm_watch(inotify_fd_, inotify_wd_);
+    close(inotify_fd_);
   }
-
-  close(shutdown_eventfd_);
-  inotify_rm_watch(inotify_fd_, inotify_wd_);
-  close(inotify_fd_);
 }
 
 void EventMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }
 
 void EventMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
-bool EventMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.load(); }
+bool EventMemoryMonitor::IsEnabled() const { return !worker_killing_in_progress_.load(); }
 
 void EventMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
@@ -151,8 +149,10 @@ void EventMemoryMonitor::MonitoringThreadMain() {
       // only return on next new event.
       DrainResult drain_result = DrainInotifyBuffer(inotify_fd_);
       if (drain_result == DrainResult::kInterrupted) {
-        // Re-enter poll loop if interrupt was signaled in case a terminate
-        // signal was received.
+        // Re-enter poll loop if interrupt was signaled. This way,
+        // if the interrupt was signaled by a terminate, the shutdown
+        // event will be triggered to gracefully shutdown the thread.
+        // If the interrupt was ephemeral, the thread will continue monitoring.
         continue;
       }
       if (drain_result == DrainResult::kError) {
@@ -167,23 +167,18 @@ void EventMemoryMonitor::MonitoringThreadMain() {
       bool high_modified = false;
       std::ifstream mem_events_file(memory_events_path_);
       if (mem_events_file) {
-        std::string line;
-        while (std::getline(mem_events_file, line)) {
-          std::vector<std::string> tokens;
-          boost::split(tokens, line, boost::is_any_of(" "));
-
-          // Expected memory.events format:
-          // low 0
-          // high 231226
-          // max 1695
-          // oom 26620
-          // oom_kill 20
-          if (line.find("high") != std::string::npos) {
-            int64_t high_count = std::stoll(tokens[1]);
-            if (high_count > prev_memory_events_high_) {
-              prev_memory_events_high_ = high_count;
-              high_modified = true;
-            }
+        // Expected memory.events format:
+        // low 0
+        // high 231226
+        // max 1695
+        // oom 26620
+        // oom_kill 20
+        std::string event_type;
+        int64_t event_count;
+        while (mem_events_file >> event_type >> event_count) {
+          if (event_type == "high" && event_count > prev_memory_events_high_) {
+            prev_memory_events_high_ = event_count;
+            high_modified = true;
           }
         }
       } else {
@@ -210,13 +205,14 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 }
 
 EventMemoryMonitor::DrainResult EventMemoryMonitor::DrainInotifyBuffer(int inotify_fd) {
-  char inotify_buffer[256];
+  // Minimum buffer size to guarantee at least one event can be read.
+  char inotify_buffer[sizeof(struct inotify_event) + NAME_MAX + 1];
   while (true) {
     int read_bytes = read(inotify_fd, inotify_buffer, sizeof(inotify_buffer));
     if (read_bytes > 0) {
       continue;
     }
-    if (read_bytes == 0 || errno == EAGAIN) {
+    if (errno == EAGAIN) {
       return DrainResult::kDrained;
     }
     if (errno == EINTR) {

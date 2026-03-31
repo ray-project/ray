@@ -40,8 +40,12 @@ class EventMemoryMonitorTest : public ::testing::Test {
   /**
    * @brief Mock the memory events file with the given low and high values.
    * @param path The path to the memory events file.
-   * @param low The low value to write to the memory events file.
-   * @param high The high value to write to the memory events file.
+   * @param low The low event value to write to the memory events file.
+   * This represents the number of times the memory of processes within the
+   * cgroup has been reclaimed.
+   * @param high The high event value to write to the memory events file.
+   * This represents the number of times the high constraint was met or exceeded
+   * for the cgroup.
    */
   void WriteMemoryEventsFile(const std::string &path, int64_t low, int64_t high) {
     std::ofstream events_file(path, std::ios::trunc);
@@ -51,7 +55,6 @@ class EventMemoryMonitorTest : public ::testing::Test {
     events_file << "oom 0\n";
     events_file << "oom_kill 0\n";
     events_file << "oom_group_kill 0\n";
-    events_file.flush();
     events_file.close();
   }
 
@@ -107,6 +110,7 @@ TEST_F(EventMemoryMonitorTest, TestCallbackCalledWhenHighEventChanges) {
       << "Failed to create EventMemoryMonitor with valid ctor parameters: "
       << result.message();
 
+  // Updating the high event should trigger the event monitor
   WriteMemoryEventsFile(events_file_->GetPath(), 0, 1);
   callback_latch->wait();
 }
@@ -174,6 +178,7 @@ TEST_F(EventMemoryMonitorTest, TestMultipleCallbacksOnMultipleChanges) {
       << "Failed to create EventMemoryMonitor: " << result.message();
   std::unique_ptr<EventMemoryMonitor> monitor = std::move(result.value());
 
+  // Updating the high event should trigger the event monitor
   WriteMemoryEventsFile(events_file_->GetPath(), 0, 1);
   latch1->wait();
   monitor->Enable();

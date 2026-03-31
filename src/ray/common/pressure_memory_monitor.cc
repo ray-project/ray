@@ -113,21 +113,23 @@ PressureMemoryMonitor::~PressureMemoryMonitor() {
   if (write(shutdown_event_fd_, &val, sizeof(val)) != sizeof(val)) {
     RAY_LOG(ERROR) << absl::StrFormat(
         "Failed to signal shutdown to pressure monitoring thread, errno: %d", errno);
-  }
+  } else {
+    if (pressure_monitoring_thread_.joinable()) {
+      pressure_monitoring_thread_.join();
+    }
 
-  if (pressure_monitoring_thread_.joinable()) {
-    pressure_monitoring_thread_.join();
+    close(shutdown_event_fd_);
+    close(pressure_fd_);
   }
-
-  close(shutdown_event_fd_);
-  close(pressure_fd_);
 }
 
 void PressureMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }
 
 void PressureMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
-bool PressureMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.load(); }
+bool PressureMemoryMonitor::IsEnabled() const {
+  return !worker_killing_in_progress_.load();
+}
 
 void PressureMemoryMonitor::MonitoringThreadMain() {
   struct pollfd fds[2];
