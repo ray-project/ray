@@ -30,6 +30,17 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: raycpubase
 
+  - name: raytpubaseextra
+    label: "wanda: ray-py{{matrix}}-tpu-base-extra"
+    wanda: docker/base-extra/tpu.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
+    depends_on: raytpubase
+
   - name: raytpubase
     label: "wanda: ray-py{{matrix}}-tpu-base"
     tags:
