@@ -862,10 +862,7 @@ class RequestRouter(ABC):
     def drain_pending_cache_decrements(self):
         """Apply pending cache decrements. Must run on the event loop."""
         while self._pending_cache_decrements:
-            try:
-                replica_id = self._pending_cache_decrements.popleft()
-            except IndexError:
-                break
+            replica_id = self._pending_cache_decrements.popleft()
             current = self._replica_queue_len_cache.get(replica_id)
             if current is not None:
                 new_queue_len = max(0, current - 1)
