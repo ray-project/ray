@@ -305,6 +305,37 @@ class StoreRegistry:
         return self._cache[store_url]
 
 
+def _yield_threaded_download_bytes(
+    block: pa.Table,
+    uri_column_names: List[str],
+    output_bytes_column_names: List[str],
+    data_context: "DataContext",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> Iterator[pa.Table]:
+    """Delegate to ``download_bytes_threaded`` after dropping internal size columns.
+
+    ``AsyncPartitionActor`` may attach ``__ray_file_size__*`` columns that the
+    threaded downloader does not handle.
+    """
+    size_cols = [
+        f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+        for name in uri_column_names
+        if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
+    ]
+    if size_cols:
+        block = block.drop(size_cols)
+
+    from ray.data._internal.planner.plan_download_op import download_bytes_threaded
+
+    yield from download_bytes_threaded(
+        block,
+        uri_column_names,
+        output_bytes_column_names,
+        data_context,
+        filesystem,
+    )
+
+
 # Public entry point
 def download_bytes_async(
     block: pa.Table,
@@ -345,21 +376,7 @@ def download_bytes_async(
             "falling back to PyArrow threaded download.",
             first_uris[0],
         )
-        # Drop any file-size columns AsyncPartitionActor may have attached,
-        # since download_bytes_threaded doesn't know about them.
-        size_cols = [
-            f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
-            for name in uri_column_names
-            if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
-        ]
-        if size_cols:
-            block = block.drop(size_cols)
-
-        from ray.data._internal.planner.plan_download_op import (
-            download_bytes_threaded,
-        )
-
-        yield from download_bytes_threaded(
+        yield from _yield_threaded_download_bytes(
             block,
             uri_column_names,
             output_bytes_column_names,
@@ -373,19 +390,7 @@ def download_bytes_async(
             "PyArrow PyFileSystem with a non-S3 fsspec backend (or unknown handler); "
             "using threaded PyArrow download to preserve user filesystem credentials."
         )
-        size_cols = [
-            f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
-            for name in uri_column_names
-            if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
-        ]
-        if size_cols:
-            block = block.drop(size_cols)
-
-        from ray.data._internal.planner.plan_download_op import (
-            download_bytes_threaded,
-        )
-
-        yield from download_bytes_threaded(
+        yield from _yield_threaded_download_bytes(
             block,
             uri_column_names,
             output_bytes_column_names,
