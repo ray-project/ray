@@ -279,7 +279,7 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
 
