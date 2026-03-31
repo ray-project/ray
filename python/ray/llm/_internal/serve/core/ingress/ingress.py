@@ -352,7 +352,7 @@ async def _openai_json_wrapper(
     done_sent = False
     async for response in generator:
         packet = _apply_openai_json_format(response)
-        if packet.strip() == "data: [DONE]":
+        if any(p.strip() == "data: [DONE]" for p in packet.split("\n\n")):
             done_sent = True
         yield packet
 
