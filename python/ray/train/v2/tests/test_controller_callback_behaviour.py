@@ -111,7 +111,7 @@ async def test_controller_callback_hooks_are_invoked():
         ):
             self.resize_decision_called = True
 
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             self.shutdown_called = True
 
     callback = AssertCallback()
@@ -274,7 +274,7 @@ async def test_callback_error_during_shutdown_hook_on_finished_path():
     transitions to ErroredState with a ControllerError."""
 
     class FailingShutdownHookCallback(ControllerCallback):
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             raise ValueError("Intentional error in shutdown callback")
 
     controller, _, _ = await _create_controller_and_drive_to_running(
@@ -296,7 +296,7 @@ async def test_callback_error_during_shutdown_hook_on_errored_path():
     preserves the original training error."""
 
     class FailingShutdownHookCallback(ControllerCallback):
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             raise ValueError("Intentional error in shutdown callback")
 
     controller, _, failure_policy = await _create_controller_and_drive_to_running(
