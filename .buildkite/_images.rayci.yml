@@ -50,9 +50,6 @@ steps:
     wanda: docker/base-extra/tpu.wanda.yaml
     matrix:
       - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"

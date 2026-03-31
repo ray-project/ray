@@ -19,9 +19,6 @@ steps:
     wanda: docker/base-extra-testdeps/tpu.wanda.yaml
     matrix:
       - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -142,9 +139,6 @@ steps:
     env_file: rayci.env
     matrix:
       - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
