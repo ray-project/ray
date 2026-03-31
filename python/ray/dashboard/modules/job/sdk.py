@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import os
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import packaging.version
@@ -98,7 +99,17 @@ class JobSubmissionClient(SubmissionClient):
         if not (isinstance(verify, str) or isinstance(verify, bool)):
             raise TypeError(f"verify must be a str or bool, got {type(verify)}")
 
-        api_server_url = get_address_for_submission_client(address)
+        try:
+            api_server_url = get_address_for_submission_client(address)
+        except (ConnectionError, ValueError) as e:
+            if create_cluster_if_needed:
+                ray_address = address or os.environ.get("RAY_ADDRESS")
+                raise ConnectionError(
+                    f"No Ray cluster found at {ray_address!r}. "
+                    "Run `ray start --head` or `ray.init()` first."
+                ) from e
+            else:
+                raise
 
         super().__init__(
             address=api_server_url,
