@@ -997,6 +997,13 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
 
     serve.run(ScaleToZeroApp.bind(), name="s2z_app", route_prefix="/s2z")
 
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/routes").status_code == 200,
+    )
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200,
+    )
+
     # Wait for the app to be running and initially serve a request
     wait_for_condition(
         lambda: httpx.get("http://localhost:8000/s2z").status_code == 200,
