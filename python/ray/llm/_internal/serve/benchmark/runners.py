@@ -1,14 +1,10 @@
-"""Multi-turn benchmark engine for LLM inference servers.
+"""Benchmark runner functions for multi-turn LLM inference benchmarks.
 
-Supports two traffic modes:
-  - Concurrency-based (closed-loop): maintains a rolling pool of concurrent sessions
-  - Rate-based (constant QPS): dispatches requests at a fixed rate with token-bucket pacing
-
-Key features:
-  - Rolling session pool with entropy-based warm-up detection
-  - Lazy conversation generation with exact token counts
-  - Per-turn latency breakdown (TTFT, FC, TPOT)
-  - Cross-session prefix sharing control
+Contains:
+  - Concurrency-based (closed-loop) runner
+  - Rate-based (constant QPS) runner
+  - Smoke test runner
+  - Direct entry point (run_direct)
 """
 
 import argparse
@@ -21,17 +17,22 @@ import random
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass, field
-from pathlib import Path
 from statistics import mean
-from typing import TYPE_CHECKING, Optional
-
-if TYPE_CHECKING:
-    from transformers import PreTrainedTokenizerBase
+from typing import Optional
 
 import aiohttp
 import numpy as np
 from tqdm import tqdm
+
+from ray.llm._internal.serve.benchmark.http_client import send_chat_completion
+from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
+from ray.llm._internal.serve.benchmark.reporting import report_results
+from ray.llm._internal.serve.benchmark.text_gen import (
+    Conversation,
+    TextGenerator,
+    conversation_factory,
+)
+from ray.llm._internal.serve.benchmark.turn import execute_single_turn
 
 # ============================================================================
 # LOGGING SETUP
@@ -60,635 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# DATA CLASSES
-# ============================================================================
-
-
-@dataclass
-class TurnResult:
-    """Result of a single turn's HTTP request."""
-
-    ttft_ms: float  # time to first token
-    fc_ms: float  # first-chunk latency (time to N-th content chunk)
-    tpot_ms: float  # average time per output token (decode phase)
-    latency_ms: float  # total request latency
-    input_tokens: int  # reported by server (usage.prompt_tokens)
-    output_tokens: int  # reported by server (usage.completion_tokens)
-    generated_text: str  # generated text
-
-
-@dataclass
-class TurnMetric:
-    """Metrics for a single turn."""
-
-    session_id: str
-    turn: int  # 0-indexed
-    ttft_ms: float
-    fc_ms: float  # first-chunk latency
-    tpot_ms: float
-    latency_ms: float
-    input_tokens: int
-    output_tokens: int
-    start_time_ms: float  # relative to benchmark start
-
-
-@dataclass
-class WorkloadSpec:
-    """Workload specification for multi-turn session benchmarks.
-
-    Supports simple mode: specify isl + hit_rate, derive user_tokens and sys_tokens.
-    All parameters are scalar (fixed) values -- no distributions.
-    """
-
-    # Core parameters
-    num_sessions: Optional[int] = None  # total unique sessions (None = duration-based)
-    num_turns: int = 1  # turns per session
-    osl: int = 1  # output sequence length per turn
-    think_time: float = 0.0  # seconds between turns within a session
-
-    # Traffic (use either concurrency or request_rate, not both)
-    concurrency: Optional[int] = None  # max concurrent in-flight requests
-    request_rate: Optional[float] = None  # requests per second (constant rate mode)
-    ramp_interval: float = -1.0  # seconds between session launches (-1 = auto)
-
-    # Duration-based mode (used with request_rate)
-    duration_s: float = 0.0  # seconds to run benchmark (0 = use num_sessions)
-
-    # Fraction of system prompt shared across all sessions
-    # 1.0 = identical system prompt, 0.0 = all unique
-    shared_system_prompt_ratio: float = 1.0
-
-    # Simple mode inputs (derive user_tokens, sys_tokens)
-    isl: Optional[int] = None
-    hit_rate: Optional[float] = None
-
-    # Resolved values (computed by resolve())
-    _user_tokens: int = field(default=0, init=False, repr=False)
-    _sys_tokens: int = field(default=0, init=False, repr=False)
-
-    def resolve(self) -> "WorkloadSpec":
-        """Resolve the spec: derive user_tokens and sys_tokens from inputs. Call after init."""
-        if self.isl is None or self.hit_rate is None:
-            raise ValueError("Simple mode requires both --isl and --hit-rate.")
-        self._validate()
-        self._derive_from_simple()
-        return self
-
-    def _derive_from_simple(self) -> None:
-        """Derive user_tokens and sys_tokens from (ISL, hit_rate, num_turns, OSL, shared_system_prompt_ratio).
-
-        Two equations, two unknowns (u = user_tokens, s = sys_tokens):
-
-          (1) ISL  = s + (n+1)/2 · u + (n-1)/2 · a          [average input length]
-          (2) (1-h)·ISL = (1-f)·s/n + u                      [average new-token fraction]
-
-        where n = num_turns, a = osl, f = shared_system_prompt_ratio, h = hit_rate.
-
-        Substituting s from (1) into (2) and solving for u:
-
-          u = [ (1-h)·ISL - (1-f)/n · (ISL - (n-1)·a/2) ]
-              / [ 1 - (1-f)·(n+1)/(2n) ]
-
-        Then s = ISL - (n+1)/2 · u - (n-1)/2 · a.
-
-        Special case: when n=1 and f=0, equations (1) and (2) collapse to
-        s + u = ISL with h = s/(s+u), giving s = h·ISL and u = (1-h)·ISL.
-        """
-        isl = self.isl
-        h = self.hit_rate
-        n = self.num_turns
-        a = self.osl
-        f = self.shared_system_prompt_ratio
-
-        denom = 1 - (1 - f) * (n + 1) / (2 * n)
-        if abs(denom) < 1e-9:
-            # n=1, f=0, h=0 (validated earlier): s=0, u=ISL.
-            sys_tokens = 0.0
-            user_tokens = float(isl)
-        else:
-            numer = (1 - h) * isl - (1 - f) / n * (isl - (n - 1) * a / 2)
-            user_tokens = numer / denom
-            sys_tokens = isl - (n + 1) / 2 * user_tokens - (n - 1) / 2 * a
-
-        # Validate before clamping so infeasible combinations are caught.
-        if user_tokens < 0.5:
-            raise ValueError(
-                f"Derived user_tokens = {user_tokens:.1f} < 1. "
-                f"The (ISL={self.isl}, hit_rate={self.hit_rate}, "
-                f"num_turns={self.num_turns}, OSL={self.osl}, "
-                f"shared_system_prompt_ratio={self.shared_system_prompt_ratio}) combination is infeasible. "
-                f"Try increasing ISL, decreasing hit_rate, or increasing shared_system_prompt_ratio."
-            )
-        if sys_tokens < -0.5:
-            raise ValueError(
-                f"Derived sys_tokens = {sys_tokens:.1f} < 0. "
-                f"The (ISL={self.isl}, hit_rate={self.hit_rate}, "
-                f"num_turns={self.num_turns}, OSL={self.osl}, "
-                f"shared_system_prompt_ratio={self.shared_system_prompt_ratio}) combination is infeasible. "
-                f"Try increasing ISL, increasing hit_rate, or decreasing num_turns."
-            )
-
-        self._user_tokens = max(1, int(round(user_tokens)))
-        self._sys_tokens = max(0, int(round(sys_tokens)))
-
-    def _validate(self) -> None:
-        """Validate resolved parameters."""
-        if self.num_turns < 1:
-            raise ValueError("num_turns must be >= 1.")
-        if self.osl < 1:
-            raise ValueError("osl must be >= 1.")
-        if self.num_sessions is not None and self.num_sessions < 1:
-            raise ValueError("num_sessions must be >= 1.")
-        if self.num_sessions is None and self.duration_s <= 0:
-            raise ValueError(
-                "Must specify either --num-sessions or --duration (> 0) for rate-based mode."
-            )
-        if not (0 <= self.shared_system_prompt_ratio <= 1):
-            raise ValueError("shared_system_prompt_ratio must be in [0, 1].")
-        if self.think_time < 0:
-            raise ValueError("think_time must be >= 0.")
-        if (
-            self.num_turns == 1
-            and self.shared_system_prompt_ratio == 0
-            and self.hit_rate is not None
-            and self.hit_rate > 1e-9
-        ):
-            raise ValueError(
-                f"Cannot achieve hit_rate={self.hit_rate} with num_turns=1 and "
-                f"shared_system_prompt_ratio=0. There is no caching source "
-                f"(no multi-turn history, no shared prefix). "
-                f"Set shared_system_prompt_ratio > 0 to enable cross-session "
-                f"prefix caching, or use num_turns > 1 for multi-turn caching."
-            )
-
-        # Validate traffic control: either concurrency or request_rate
-        if self.concurrency is None and self.request_rate is None:
-            raise ValueError("Must specify either --concurrency or --request-rate.")
-        if self.concurrency is not None and self.request_rate is not None:
-            raise ValueError("Cannot specify both --concurrency and --request-rate.")
-        if self.concurrency is not None and self.concurrency < 1:
-            raise ValueError("concurrency must be >= 1.")
-        if self.request_rate is not None and self.request_rate <= 0:
-            raise ValueError("request_rate must be > 0.")
-
-        # Auto-compute ramp_interval for smooth traffic (closed-loop mode only)
-        if self.ramp_interval < 0:
-            if self.concurrency is not None:
-                if self.think_time > 0:
-                    self.ramp_interval = self.think_time / self.concurrency
-                else:
-                    self.ramp_interval = 0.0
-            else:
-                # Rate-based mode doesn't use ramp_interval
-                self.ramp_interval = 0.0
-
-        # Warn if num_sessions may be too low (closed-loop concurrency mode only)
-        if (
-            self.concurrency is not None
-            and self.think_time > 0
-            and self.num_sessions is not None
-            and self.num_sessions < self.concurrency * 2
-        ):
-            logger.warning(
-                "num_sessions=%d may be too low to sustain concurrency=%d "
-                "with think_time=%.1f. Consider increasing num_sessions.",
-                self.num_sessions,
-                self.concurrency,
-                self.think_time,
-            )
-
-    @property
-    def user_tokens(self) -> int:
-        """New user tokens per turn."""
-        return self._user_tokens
-
-    @property
-    def sys_tokens(self) -> int:
-        """Total system prompt tokens."""
-        return self._sys_tokens
-
-    @property
-    def shared_s(self) -> int:
-        """Shared portion of system prompt (same across all sessions)."""
-        return int(round(self._sys_tokens * self.shared_system_prompt_ratio))
-
-    @property
-    def unique_s(self) -> int:
-        """Unique portion of system prompt (different per session)."""
-        return self._sys_tokens - self.shared_s
-
-    def turn_input_tokens(self, k: int) -> int:
-        """Total input tokens at turn k (1-indexed)."""
-        return self._sys_tokens + k * self._user_tokens + (k - 1) * self.osl
-
-    @property
-    def effective_isl(self) -> float:
-        """Average input sequence length across all turns."""
-        n = self.num_turns
-        return (
-            self._sys_tokens + self._user_tokens * (n + 1) / 2 + self.osl * (n - 1) / 2
-        )
-
-    @property
-    def effective_h(self) -> float:
-        """Token-weighted average hit rate."""
-        f = self.shared_system_prompt_ratio
-        n = self.num_turns
-        avg_new = (1 - f) * self._sys_tokens / n + self._user_tokens
-        isl = self.effective_isl
-        return 1.0 - avg_new / isl if isl > 0 else 0.0
-
-    def summary(self) -> dict:
-        """Return a summary dict of all resolved parameters."""
-        per_turn = []
-        for k in range(1, self.num_turns + 1):
-            total = self.turn_input_tokens(k)
-            if k == 1:
-                cached = int(round(self._sys_tokens * self.shared_system_prompt_ratio))
-            else:
-                cached = (
-                    self._sys_tokens + (k - 1) * self._user_tokens + (k - 1) * self.osl
-                )
-            new = total - cached
-            h_k = cached / total if total > 0 else 0.0
-            per_turn.append(
-                {
-                    "turn": k,
-                    "total": total,
-                    "cached": cached,
-                    "new": new,
-                    "hit_rate": round(h_k, 4),
-                }
-            )
-
-        return {
-            "num_sessions": self.num_sessions,
-            "duration_s": self.duration_s,
-            "num_turns": self.num_turns,
-            "osl": self.osl,
-            "think_time": self.think_time,
-            "concurrency": self.concurrency,
-            "request_rate": self.request_rate,
-            "shared_system_prompt_ratio": self.shared_system_prompt_ratio,
-            "user_tokens_per_turn": self._user_tokens,
-            "system_prompt_tokens": self._sys_tokens,
-            "shared_system_prompt": self.shared_s,
-            "unique_system_prompt": self.unique_s,
-            "effective_isl": round(self.effective_isl, 1),
-            "effective_hit_rate": round(self.effective_h, 4),
-            "per_turn": per_turn,
-        }
-
-    def print_summary(self) -> None:
-        """Print a human-readable summary."""
-        s = self.summary()
-        print("=" * 70)
-        print("Workload Spec (resolved)")
-        print("=" * 70)
-        if s["num_sessions"] is not None:
-            print(f"  Sessions (N_s):           {s['num_sessions']}")
-        else:
-            print("  Sessions (N_s):           unlimited (duration-based)")
-        if s["duration_s"] > 0:
-            print(f"  Duration:                 {s['duration_s']}s")
-        print(f"  Turns per session (N_t):  {s['num_turns']}")
-        print(f"  User tokens/turn (u):     {s['user_tokens_per_turn']}")
-        print(
-            f"  System prompt (s):        {s['system_prompt_tokens']}  "
-            f"(shared={s['shared_system_prompt']}, unique={s['unique_system_prompt']})"
-        )
-        print(f"  Output tokens (o):        {s['osl']}")
-        print(f"  Think time:               {s['think_time']}s")
-        if self.concurrency is not None:
-            print(f"  Concurrency (C):          {self.concurrency}")
-            print(f"  Ramp interval:            {self.ramp_interval:.3f}s")
-        if self.request_rate is not None:
-            print(f"  Request rate (QPS):       {self.request_rate}")
-        print(f"  Shared sys prompt ratio:  {s['shared_system_prompt_ratio']}")
-        print(f"  Effective avg ISL:        {s['effective_isl']}")
-        print(f"  Effective avg hit rate:   {s['effective_hit_rate']:.1%}")
-        print("-" * 70)
-        print(f"  {'Turn':<6} {'Total':<8} {'Cached':<8} {'New':<8} {'Hit Rate':<10}")
-        for t in s["per_turn"]:
-            print(
-                f"  {t['turn']:<6} {t['total']:<8} {t['cached']:<8} "
-                f"{t['new']:<8} {t['hit_rate']:.1%}"
-            )
-        print("=" * 70)
-
-
-# ============================================================================
-# HTTP CLIENT
-# ============================================================================
-
-
-async def send_chat_completion(
-    session: aiohttp.ClientSession,
-    base_url: str,
-    model: str,
-    messages: list[dict[str, str]],
-    session_id: str = "",
-    max_tokens: int = 256,
-    first_chunk_threshold: int = 16,
-    timeout_sec: int = 300,
-    api_key: Optional[str] = None,
-) -> TurnResult:
-    """Send a streaming chat completion request and collect metrics."""
-    url = f"{base_url}/v1/chat/completions"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "stream": True,
-        "stream_options": {"include_usage": True},
-        "temperature": 0.0,
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-    }
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    if session_id:
-        headers["X-Session-Id"] = session_id
-
-    timeout = aiohttp.ClientTimeout(total=timeout_sec)
-
-    start_ns = time.perf_counter_ns()
-    ttft_ns: Optional[int] = None
-    fc_ns: Optional[int] = None
-    content_chunk_count = 0
-    chunk_times: list[int] = []
-    generated_text = ""
-    input_tokens = 0
-    output_tokens = 0
-    prev_ts = start_ns
-
-    async with session.post(
-        url, json=payload, headers=headers, timeout=timeout
-    ) as resp:
-        if resp.status != 200:
-            body = await resp.text()
-            raise RuntimeError(f"HTTP {resp.status}: {body[:500]}")
-
-        async for raw_line in resp.content:
-            line = raw_line.strip()
-            if not line:
-                continue
-            text = line.decode("utf-8", errors="replace")
-            if not text.startswith("data: "):
-                continue
-            data_str = text[6:]
-            if data_str == "[DONE]":
-                continue
-
-            try:
-                data = json.loads(data_str)
-            except json.JSONDecodeError:
-                continue
-
-            # Check for usage in the chunk
-            usage = data.get("usage")
-            if usage:
-                input_tokens = usage.get("prompt_tokens", input_tokens)
-                output_tokens = usage.get("completion_tokens", output_tokens)
-
-            choices = data.get("choices", [])
-            if not choices:
-                continue
-
-            delta = choices[0].get("delta", {})
-            content = delta.get("content") or delta.get("reasoning")
-            if content:
-                now_ns = time.perf_counter_ns()
-                content_chunk_count += 1
-                if ttft_ns is None:
-                    ttft_ns = now_ns - start_ns
-                else:
-                    chunk_times.append(now_ns - prev_ts)
-                if fc_ns is None and content_chunk_count >= first_chunk_threshold:
-                    fc_ns = now_ns - start_ns
-                prev_ts = now_ns
-                generated_text += content
-
-    end_ns = time.perf_counter_ns()
-    latency_ns = end_ns - start_ns
-
-    if ttft_ns is None:
-        ttft_ns = latency_ns
-
-    if fc_ns is None:
-        fc_ns = latency_ns
-
-    tpot_ns = mean(chunk_times) if chunk_times else 0.0
-
-    return TurnResult(
-        ttft_ms=ttft_ns / 1e6,
-        fc_ms=fc_ns / 1e6,
-        tpot_ms=tpot_ns / 1e6,
-        latency_ms=latency_ns / 1e6,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        generated_text=generated_text,
-    )
-
-
-# ============================================================================
-# CONVERSATION & TEXT GENERATION
-# ============================================================================
-
-
-class Conversation:
-    """A single multi-turn conversation with a unique session ID."""
-
-    def __init__(
-        self,
-        session_id: str,
-        system_prompt: str,
-        user_messages: list[str],
-        num_turns: int,
-    ):
-        self.session_id = session_id
-        self.system_prompt = system_prompt
-        self.user_messages = user_messages
-        self.num_turns = num_turns
-        self._assistant_responses: list[str] = []
-
-    def get_turn_messages(self, turn_idx: int) -> list[dict[str, str]]:
-        """Build the messages list for turn `turn_idx` (0-indexed).
-
-        Turn 0: [system, user_0]
-        Turn 1: [system, user_0, assistant_0, user_1]
-        Turn k: [system, user_0, asst_0, ..., user_k]
-        """
-        messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-
-        for i in range(turn_idx + 1):
-            messages.append({"role": "user", "content": self.user_messages[i]})
-            if i < turn_idx:
-                if i < len(self._assistant_responses):
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": self._assistant_responses[i],
-                        }
-                    )
-                else:
-                    # Shouldn't happen if turns are sequential
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": "(placeholder)",
-                        }
-                    )
-        return messages
-
-    def inject_assistant_response(self, turn_idx: int, content: str) -> None:
-        """Record the server's response for turn `turn_idx`."""
-        if turn_idx == len(self._assistant_responses):
-            self._assistant_responses.append(content)
-        elif turn_idx < len(self._assistant_responses):
-            self._assistant_responses[turn_idx] = content
-        else:
-            raise ValueError(
-                f"Cannot inject response for turn {turn_idx}: "
-                f"only {len(self._assistant_responses)} responses recorded."
-            )
-
-
-class TextGenerator:
-    """Generates random text with exact token counts using a tokenizer.
-
-    Produces random token IDs from the tokenizer's vocabulary and decodes
-    them to text, then verifies the round-trip token count matches the target.
-    """
-
-    def __init__(self, tokenizer: "PreTrainedTokenizerBase"):
-        self._tokenizer = tokenizer
-        self._vocab_size = tokenizer.vocab_size
-        logger.info(
-            "TextGenerator using tokenizer (vocab_size=%d) for exact token counts.",
-            self._vocab_size,
-        )
-
-    def generate(self, num_tokens: int) -> str:
-        """Generate text that tokenizes to exactly `num_tokens` tokens."""
-        if num_tokens <= 0:
-            return ""
-        return self._generate_exact(num_tokens)
-
-    def generate_token_ids(self, num_tokens: int) -> list[int]:
-        """Generate exactly `num_tokens` random token IDs."""
-        if num_tokens <= 0:
-            return []
-        return np.random.randint(0, self._vocab_size, size=num_tokens).tolist()
-
-    def _generate_exact(self, target_tokens: int) -> str:
-        """Generate text that round-trips to exactly `target_tokens` tokens."""
-        tokenizer = self._tokenizer
-
-        # Generate random token IDs, decode, re-encode, adjust until exact match
-        token_ids = np.random.randint(
-            0, self._vocab_size, size=target_tokens + 20
-        ).tolist()
-
-        text = tokenizer.decode(token_ids, skip_special_tokens=True)
-        actual_ids = tokenizer.encode(text, add_special_tokens=False)
-        actual_len = len(actual_ids)
-
-        if actual_len == target_tokens:
-            return text
-
-        if actual_len > target_tokens:
-            # Trim tokens from the end
-            trimmed_ids = actual_ids[:target_tokens]
-            text = tokenizer.decode(trimmed_ids, skip_special_tokens=True)
-            final_len = len(tokenizer.encode(text, add_special_tokens=False))
-            if final_len != target_tokens:
-                text = self._binary_search_trim(actual_ids, target_tokens)
-            return text
-
-        # actual_len < target_tokens: generate more and append
-        deficit = target_tokens - actual_len
-        extra_ids = np.random.randint(0, self._vocab_size, size=deficit + 20).tolist()
-        extra_text = tokenizer.decode(extra_ids, skip_special_tokens=True)
-        combined = text + " " + extra_text
-        combined_ids = tokenizer.encode(combined, add_special_tokens=False)
-
-        if len(combined_ids) >= target_tokens:
-            trimmed = combined_ids[:target_tokens]
-            text = tokenizer.decode(trimmed, skip_special_tokens=True)
-            final_len = len(tokenizer.encode(text, add_special_tokens=False))
-            if final_len != target_tokens:
-                text = self._binary_search_trim(combined_ids, target_tokens)
-            return text
-
-        # Very unlikely: still not enough. Pad with simple words.
-        while len(tokenizer.encode(combined, add_special_tokens=False)) < target_tokens:
-            combined += " hello"
-        combined_ids = tokenizer.encode(combined, add_special_tokens=False)
-        return self._binary_search_trim(combined_ids, target_tokens)
-
-    def _binary_search_trim(self, token_ids: list[int], target: int) -> str:
-        """Find the right number of token IDs to decode to get exactly `target` tokens."""
-        tokenizer = self._tokenizer
-        lo, hi = target, len(token_ids)
-
-        best_text = tokenizer.decode(token_ids[:target], skip_special_tokens=True)
-
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            text = tokenizer.decode(token_ids[:mid], skip_special_tokens=True)
-            actual = len(tokenizer.encode(text, add_special_tokens=False))
-            if actual == target:
-                return text
-            elif actual < target:
-                lo = mid + 1
-            else:
-                hi = mid - 1
-                best_text = text
-
-        # BPE merges can prevent the binary search from finding an exact match.
-        # Scan prefix lengths from `target` upward (shortest plausible first);
-        # the loop above already explored midpoints, so this covers edge cases.
-        for n in range(target, len(token_ids) + 1):
-            text = tokenizer.decode(token_ids[:n], skip_special_tokens=True)
-            if len(tokenizer.encode(text, add_special_tokens=False)) == target:
-                return text
-        return best_text
-
-
-def conversation_factory(
-    session_idx: int,
-    spec: WorkloadSpec,
-    shared_system_text: str,
-    text_gen: TextGenerator,
-) -> Conversation:
-    """Create a single conversation on-demand (lazy generation)."""
-    session_id = f"session-{session_idx:06d}"
-
-    # Build system prompt: shared prefix + unique suffix
-    if spec.unique_s > 0:
-        unique_text = text_gen.generate(spec.unique_s)
-        system_prompt = shared_system_text + " " + unique_text
-    else:
-        system_prompt = shared_system_text
-
-    # Generate all user messages
-    user_messages = [text_gen.generate(spec.user_tokens) for _ in range(spec.num_turns)]
-
-    return Conversation(
-        session_id=session_id,
-        system_prompt=system_prompt,
-        user_messages=user_messages,
-        num_turns=spec.num_turns,
-    )
-
-
-# ============================================================================
-# BENCHMARK ENGINE
+# BENCHMARK STATE (concurrency mode)
 # ============================================================================
 
 
@@ -881,6 +254,11 @@ class BenchmarkState:
             }
 
 
+# ============================================================================
+# PROGRESS BAR
+# ============================================================================
+
+
 def create_progress_bar(total: int) -> tqdm:
     """Create a sticky progress bar for request tracking."""
     return tqdm(
@@ -895,6 +273,11 @@ def create_progress_bar(total: int) -> tqdm:
         leave=True,
         file=sys.stderr,
     )
+
+
+# ============================================================================
+# CONCURRENCY-BASED BENCHMARK
+# ============================================================================
 
 
 async def run_benchmark(
@@ -952,29 +335,22 @@ async def run_benchmark(
 
         async def execute_turn(session_idx: int, turn_idx: int) -> None:
             """Execute a single turn for a session."""
-            # Get or create conversation
             conv, is_warmup = await state.get_or_create_conversation(
                 session_idx, spec, shared_system_text, text_gen
             )
-
-            # Mark session as active at this turn
             await state.mark_session_active(conv.session_id, turn_idx)
 
-            messages = conv.get_turn_messages(turn_idx)
-
             async with request_sem:
-                # Track concurrency
                 await state.track_inflight_start()
-
-                req_start_ns = time.perf_counter_ns()
                 try:
-                    result = await send_chat_completion(
-                        session=http_session,
+                    outcome = await execute_single_turn(
+                        http_session=http_session,
+                        conv=conv,
+                        turn_idx=turn_idx,
                         base_url=base_url,
                         model=model,
-                        messages=messages,
-                        session_id=conv.session_id,
                         max_tokens=spec.osl,
+                        bench_start_ns=bench_start_ns,
                         first_chunk_threshold=first_chunk_threshold,
                         api_key=api_key,
                     )
@@ -988,40 +364,17 @@ async def run_benchmark(
                     current_inflight = await state.track_inflight_end()
                     pbar.set_postfix_str(str(current_inflight))
                     pbar.update(1)
-                    # Clean up failed session and replace it so the pool
-                    # doesn't permanently shrink.
                     await state.mark_session_complete(session_idx, conv.session_id)
                     await enqueue_new_session()
                     return
-
                 current_inflight = await state.track_inflight_end()
 
-            # Record metric
-            metric = TurnMetric(
-                session_id=conv.session_id,
-                turn=turn_idx,
-                ttft_ms=result.ttft_ms,
-                fc_ms=result.fc_ms,
-                tpot_ms=result.tpot_ms,
-                latency_ms=result.latency_ms,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                start_time_ms=(req_start_ns - bench_start_ns) / 1e6,
-            )
-
-            await state.record_metric(metric)
-
+            await state.record_metric(outcome.metric)
             pbar.set_postfix_str(str(current_inflight))
             pbar.update(1)
 
-            # Inject response for next turn — use generated_text directly
-            conv.inject_assistant_response(turn_idx, result.generated_text)
-
-            # Enqueue next turn or complete session
             if turn_idx < spec.num_turns - 1:
                 next_turn = turn_idx + 1
-                # During warm-up: add random jitter to desynchronize sessions
-                # After warm-up: use configured think_time
                 if is_warmup:
                     jitter = np.random.uniform(0.0, warmup_jitter_max_s)
                     delay_until = time.perf_counter() + jitter
@@ -1029,12 +382,9 @@ async def run_benchmark(
                     delay_until = time.perf_counter() + spec.think_time
                 await turn_queue.put((session_idx, next_turn, delay_until))
             else:
-                # Session complete
                 await state.mark_session_complete(session_idx, conv.session_id)
-                # Enqueue a new session to fill this slot
                 await enqueue_new_session()
 
-            # Check for steady-state after each turn completes
             await state.check_and_complete_warmup()
 
         async def worker() -> None:
@@ -1114,15 +464,8 @@ async def run_benchmark(
 
 
 # ============================================================================
-# METRICS & REPORTING
+# RATE-BASED BENCHMARK
 # ============================================================================
-
-
-def percentile(values: list[float], p: float) -> float:
-    """Compute the p-th percentile (0-100)."""
-    if not values:
-        return 0.0
-    return float(np.percentile(values, p))
 
 
 async def run_rate_based_benchmark(
@@ -1287,17 +630,15 @@ async def run_rate_based_benchmark(
             inflight_samples.append(inflight)
             pbar_done.set_postfix_str(f"inflight={inflight}")
 
-        req_start_ns = time.perf_counter_ns()
-        messages = conv.get_turn_messages(turn_idx)
-
         try:
-            result = await send_chat_completion(
-                session=http_session,
+            outcome = await execute_single_turn(
+                http_session=http_session,
+                conv=conv,
+                turn_idx=turn_idx,
                 base_url=base_url,
                 model=model,
-                messages=messages,
-                session_id=conv.session_id,
                 max_tokens=spec.osl,
+                bench_start_ns=bench_start_ns,
                 first_chunk_threshold=first_chunk_threshold,
                 api_key=api_key,
             )
@@ -1312,7 +653,6 @@ async def run_rate_based_benchmark(
                 inflight -= 1
                 pbar_done.set_postfix_str(f"inflight={inflight}")
             pbar_done.update(1)
-            # On failure: push a fresh session back so the pacer has something ready
             if not stop_dispatching.is_set():
                 await ready_queue.put((_next_conv(), 0))
             async with inflight_lock:
@@ -1324,34 +664,19 @@ async def run_rate_based_benchmark(
             inflight -= 1
             pbar_done.set_postfix_str(f"inflight={inflight}")
 
-        metric = TurnMetric(
-            session_id=conv.session_id,
-            turn=turn_idx,
-            ttft_ms=result.ttft_ms,
-            fc_ms=result.fc_ms,
-            tpot_ms=result.tpot_ms,
-            latency_ms=result.latency_ms,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            start_time_ms=(req_start_ns - bench_start_ns) / 1e6,
-        )
         async with metrics_lock:
+            req_start_ns = bench_start_ns + int(outcome.metric.start_time_ms * 1e6)
             if req_start_ns >= warmup_cutoff_ns:
-                metrics.append(metric)
+                metrics.append(outcome.metric)
             else:
-                warmup_metrics.append(metric)
+                warmup_metrics.append(outcome.metric)
         pbar_done.update(1)
-
-        # Inject response -- use generated_text directly
-        conv.inject_assistant_response(turn_idx, result.generated_text)
 
         if not stop_dispatching.is_set():
             next_turn = turn_idx + 1
             if next_turn < spec.num_turns:
-                # Turn-order guarantee: enqueue turn k+1 only now
                 await ready_queue.put((conv, next_turn))
             else:
-                # Session done all turns -- push a fresh turn-0 session for reuse
                 await ready_queue.put((_next_conv(), 0))
 
         async with inflight_lock:
@@ -1493,174 +818,6 @@ async def run_rate_based_benchmark(
         else "within budget",
     )
     return metrics, len(warmup_metrics)
-
-
-def report_results(
-    metrics: list[TurnMetric],
-    spec: WorkloadSpec,
-    bench_elapsed_s: float,
-    first_chunk_threshold: int = 16,
-    save_path: Optional[str] = None,
-    warmup_s: float = 0.0,
-    discarded_warmup_requests: int = 0,
-) -> None:
-    """Print and optionally save benchmark results."""
-    if not metrics:
-        print("No metrics collected.")
-        return
-
-    # Aggregate stats
-    all_ttft = [m.ttft_ms for m in metrics]
-    all_fc = [m.fc_ms for m in metrics]
-    all_tpot = [m.tpot_ms for m in metrics if m.tpot_ms > 0]
-    all_latency = [m.latency_ms for m in metrics]
-    all_input = [m.input_tokens for m in metrics]
-    all_output = [m.output_tokens for m in metrics]
-
-    total_output_tokens = sum(all_output)
-    throughput = total_output_tokens / bench_elapsed_s if bench_elapsed_s > 0 else 0
-
-    print()
-    print("=" * 70)
-    print("BENCHMARK RESULTS")
-    print("=" * 70)
-    print(f"  Total requests:       {len(metrics)}")
-    print(f"  Unique sessions:      {len({m.session_id for m in metrics})}")
-    print(f"  Duration:             {bench_elapsed_s:.1f}s")
-    if warmup_s > 0:
-        print(f"  Warm-up excluded:     {warmup_s:.1f}s")
-    if discarded_warmup_requests > 0:
-        print(f"  Warm-up requests:     {discarded_warmup_requests} (discarded)")
-    print(f"  Throughput:           {throughput:.1f} output tok/s")
-    print(f"  Request rate:         {len(metrics) / bench_elapsed_s:.1f} req/s")
-    print(
-        f"  Avg input tokens:     {mean(all_input):.0f}  "
-        f"(target ISL: {spec.effective_isl:.0f})"
-    )
-    print(f"  Avg output tokens:    {mean(all_output):.0f}  (target OSL: {spec.osl})")
-    print()
-
-    # Latency stats
-    fc_label = f"FC({first_chunk_threshold})"
-    print("  Latency Statistics:")
-    for name, values in [
-        ("TTFT", all_ttft),
-        (fc_label, all_fc),
-        ("TPOT", all_tpot),
-        ("Latency", all_latency),
-    ]:
-        if not values:
-            continue
-        print(
-            f"    {name:>8}:  avg={mean(values):>8.1f}ms  "
-            f"P50={percentile(values, 50):>8.1f}ms  "
-            f"P90={percentile(values, 90):>8.1f}ms  "
-            f"P99={percentile(values, 99):>8.1f}ms"
-        )
-    print()
-
-    # Per-turn breakdown
-    print("  Per-Turn Breakdown:")
-    print(
-        f"    {'Turn':<6} {'Count':<7} {'Avg ISL':<9} {'Avg TTFT':<10} "
-        f"{'Avg FC':<10} {'Avg TPOT':<10} {'Avg Lat':<10}"
-    )
-
-    for t in range(spec.num_turns):
-        turn_metrics = [m for m in metrics if m.turn == t]
-        if not turn_metrics:
-            continue
-        t_ttft = mean([m.ttft_ms for m in turn_metrics])
-        t_fc = mean([m.fc_ms for m in turn_metrics])
-        t_tpot_vals = [m.tpot_ms for m in turn_metrics if m.tpot_ms > 0]
-        t_tpot = mean(t_tpot_vals) if t_tpot_vals else 0.0
-        t_lat = mean([m.latency_ms for m in turn_metrics])
-        t_isl = mean([m.input_tokens for m in turn_metrics])
-        print(
-            f"    {t + 1:<6} {len(turn_metrics):<7} {t_isl:<9.0f} "
-            f"{t_ttft:<10.1f} {t_fc:<10.1f} {t_tpot:<10.1f} {t_lat:<10.1f}"
-        )
-    print("=" * 70)
-
-    # Save results
-    if save_path:
-        result = {
-            "config": {
-                "concurrency": spec.concurrency,
-                "request_rate": spec.request_rate,
-            },
-            "spec": spec.summary(),
-            "first_chunk_threshold": first_chunk_threshold,
-            "benchmark": {
-                "total_requests": len(metrics),
-                "duration_s": round(bench_elapsed_s, 2),
-                "warmup_s": round(warmup_s, 2),
-                "discarded_warmup_requests": discarded_warmup_requests,
-            },
-            "stats": {
-                "throughput_tok_s": round(throughput, 1),
-                "measured_request_rate": round(len(metrics) / bench_elapsed_s, 2),
-                "avg_input_tokens": round(mean(all_input), 1),
-                "avg_output_tokens": round(mean(all_output), 1),
-                "avg_ttft_ms": round(mean(all_ttft), 2),
-                "p50_ttft_ms": round(percentile(all_ttft, 50), 2),
-                "p90_ttft_ms": round(percentile(all_ttft, 90), 2),
-                "p99_ttft_ms": round(percentile(all_ttft, 99), 2),
-                "avg_fc_ms": round(mean(all_fc), 2),
-                "p50_fc_ms": round(percentile(all_fc, 50), 2),
-                "p90_fc_ms": round(percentile(all_fc, 90), 2),
-                "p99_fc_ms": round(percentile(all_fc, 99), 2),
-                "avg_tpot_ms": round(mean(all_tpot), 2) if all_tpot else 0,
-                "p50_tpot_ms": (round(percentile(all_tpot, 50), 2) if all_tpot else 0),
-                "p90_tpot_ms": (round(percentile(all_tpot, 90), 2) if all_tpot else 0),
-                "p99_tpot_ms": (round(percentile(all_tpot, 99), 2) if all_tpot else 0),
-                "avg_latency_ms": round(mean(all_latency), 2),
-            },
-            "per_turn": [],
-            "raw_metrics": [
-                {
-                    "session_id": m.session_id,
-                    "turn": m.turn,
-                    "ttft_ms": round(m.ttft_ms, 2),
-                    "fc_ms": round(m.fc_ms, 2),
-                    "tpot_ms": round(m.tpot_ms, 2),
-                    "latency_ms": round(m.latency_ms, 2),
-                    "input_tokens": m.input_tokens,
-                    "output_tokens": m.output_tokens,
-                    "start_time_ms": round(m.start_time_ms, 2),
-                }
-                for m in metrics
-            ],
-        }
-
-        # Per-turn summary
-        for t in range(spec.num_turns):
-            turn_metrics = [m for m in metrics if m.turn == t]
-            if not turn_metrics:
-                continue
-            t_ttft = [m.ttft_ms for m in turn_metrics]
-            t_fc = [m.fc_ms for m in turn_metrics]
-            t_tpot = [m.tpot_ms for m in turn_metrics if m.tpot_ms > 0]
-            t_isl = [m.input_tokens for m in turn_metrics]
-            result["per_turn"].append(
-                {
-                    "turn": t + 1,
-                    "count": len(turn_metrics),
-                    "avg_isl": round(mean(t_isl), 1),
-                    "avg_ttft_ms": round(mean(t_ttft), 2),
-                    "avg_fc_ms": round(mean(t_fc), 2),
-                    "avg_tpot_ms": round(mean(t_tpot), 2) if t_tpot else 0,
-                    "p50_fc_ms": round(percentile(t_fc, 50), 2),
-                    "p99_ttft_ms": round(percentile(t_ttft, 99), 2),
-                    "p99_fc_ms": round(percentile(t_fc, 99), 2),
-                    "p99_tpot_ms": (round(percentile(t_tpot, 99), 2) if t_tpot else 0),
-                }
-            )
-
-        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(save_path, "w") as f:
-            json.dump(result, f, indent=2)
-        logger.info("Results saved to %s", save_path)
 
 
 # ============================================================================

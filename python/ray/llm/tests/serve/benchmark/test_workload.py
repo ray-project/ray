@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from ray.llm._internal.serve.benchmark.multiturn_bench import WorkloadSpec
+from ray.llm._internal.serve.benchmark.models import WorkloadSpec
 
 
 class TestWorkloadSpec:

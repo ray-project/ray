@@ -35,7 +35,7 @@ python -m ray.llm._internal.serve.benchmark.cli -s \
 python -m ray.llm._internal.serve.benchmark.cli \
   -u http://localhost:8000 -m meta-llama/Llama-3-8B-Instruct \
   --concurrency 8 --num-sessions 200 \
-  --isl 2000 --osl 200 --hit-rate 0.7 --num-turns 5 \
+  --isl 2000 --osl 200 --hit-rate 0.85 --num-turns 5 \
   --think-time 1.0 --save-result results.json
 ```
 
@@ -45,7 +45,7 @@ python -m ray.llm._internal.serve.benchmark.cli \
 python -m ray.llm._internal.serve.benchmark.cli \
   -u http://localhost:8000 -m meta-llama/Llama-3-8B-Instruct \
   --request-rate 10 --duration 120 \
-  --isl 2000 --osl 200 --hit-rate 0.7 --num-turns 5 \
+  --isl 2000 --osl 200 --hit-rate 0.85 --num-turns 5 \
   --warm-up 10 --save-result results.json
 ```
 
@@ -54,7 +54,7 @@ python -m ray.llm._internal.serve.benchmark.cli \
 ```bash
 python -m ray.llm._internal.serve.benchmark.cli -i \
   -u http://localhost:8000 -m meta-llama/Llama-3-8B-Instruct \
-  --isl 2000 --osl 200 --hit-rate 0.7 --num-turns 5
+  --isl 2000 --osl 200 --hit-rate 0.85 --num-turns 5
 ```
 
 ### Interactive client (REPL)
@@ -81,14 +81,15 @@ system prompt tokens `s`) automatically.
 | ISL | `--isl` | Average input sequence length (tokens) across all turns |
 | OSL | `--osl` | Output tokens per turn |
 | Hit rate | `--hit-rate` | Target prefix cache hit rate [0, 1] |
-| Cross-sharing | `--cross-sharing` | Fraction of system prompt shared across sessions (default: 1.0) |
+| Shared system prompt ratio | `--shared-system-prompt-ratio` | Fraction of system prompt shared across sessions (default: 0.0) |
 | Num turns | `--num-turns` | Number of turns per conversation session |
 | Think time | `--think-time` | Simulated user think-time between turns in seconds (default: 0) |
-| Chunk size | `--chunk-size` | Number of SSE content chunks before recording first-chunk latency (default: 16) |
+| First chunk threshold | `--first-chunk-threshold` | Number of SSE content chunks before recording first-chunk latency (default: 16) |
 
-The solver derives `u` (new user tokens per turn) and `s` (total system prompt
-tokens) from these inputs. The `print_summary()` output shows the resolved
-per-turn token breakdown including cached vs. new tokens at each turn.
+The solver derives `user_tokens` (new user tokens per turn) and `sys_tokens`
+(total system prompt tokens) from these inputs. The `print_summary()` output
+shows the resolved per-turn token breakdown including cached vs. new tokens at
+each turn.
 
 ## Tokenizer
 
@@ -146,7 +147,7 @@ Results saved with `--save-result` (direct mode) contain these top-level keys:
 |-----|-------------|
 | `config` | Run configuration (concurrency/rate, model, etc.) |
 | `spec` | Resolved workload spec with per-turn token breakdown |
-| `chunk_size` | Chunk size used for first-chunk latency |
+| `first_chunk_threshold` | Number of chunks before recording first-chunk latency |
 | `benchmark` | Run metadata: total requests, duration, warm-up info |
 | `stats` | Aggregate latency statistics (avg, P50, P90, P99 for TTFT, FC, TPOT, latency) |
 | `per_turn` | Per-turn breakdown of count, avg ISL, and latency percentiles |
@@ -166,7 +167,7 @@ summary instead of `benchmark`/`stats`/`per_turn`.
    ```bash
    python -m ray.llm._internal.serve.benchmark.cli \
      --concurrency 8 --num-sessions 200 \
-     --isl 2000 --osl 200 --hit-rate 0.7 --num-turns 5 \
+     --isl 2000 --osl 200 --hit-rate 0.85 --num-turns 5 \
      -u http://localhost:8000 -m meta-llama/Llama-3-8B-Instruct \
      --save-result concurrency_8.json
    ```
@@ -175,7 +176,7 @@ summary instead of `benchmark`/`stats`/`per_turn`.
    ```bash
    # Terminal 1: start server
    python -m ray.llm._internal.serve.benchmark.cli -i \
-     --isl 2000 --osl 200 --hit-rate 0.7 --num-turns 5 \
+     --isl 2000 --osl 200 --hit-rate 0.85 --num-turns 5 \
      -u http://localhost:8000 -m meta-llama/Llama-3-8B-Instruct
 
    # Terminal 2: control

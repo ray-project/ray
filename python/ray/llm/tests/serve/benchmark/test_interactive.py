@@ -14,9 +14,9 @@ from ray.llm._internal.serve.benchmark.interactive import (
     RuntimeState,
     _build_spec,
     _save_window_result,
-    _summarize_metrics,
 )
-from ray.llm._internal.serve.benchmark.multiturn_bench import TurnMetric, percentile
+from ray.llm._internal.serve.benchmark.metrics import percentile, summarize_metrics
+from ray.llm._internal.serve.benchmark.models import TurnMetric
 
 # ============================================================================
 # Helpers
@@ -93,7 +93,7 @@ def _make_metric(**overrides) -> TurnMetric:
 
 class TestSummarizeMetrics:
     def test_empty_metrics(self):
-        result = _summarize_metrics([], 10.0)
+        result = summarize_metrics([], 10.0)
         assert result["requests"] == 0
 
     def test_basic_metrics(self):
@@ -110,7 +110,7 @@ class TestSummarizeMetrics:
                 start_time_ms=100.0,
             ),
         ]
-        result = _summarize_metrics(metrics, 2.0)
+        result = summarize_metrics(metrics, 2.0)
         assert result["requests"] == 2
         assert result["avg_ttft_ms"] == pytest.approx(12.5, abs=0.1)
         assert result["throughput_tok_s"] == pytest.approx(22.5, abs=0.1)

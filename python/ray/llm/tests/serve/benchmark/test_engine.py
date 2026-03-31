@@ -7,12 +7,11 @@ import numpy as np
 import pytest
 from transformers import AutoTokenizer
 
-from ray.llm._internal.serve.benchmark.multiturn_bench import (
-    BenchmarkState,
+from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
+from ray.llm._internal.serve.benchmark.runners import BenchmarkState
+from ray.llm._internal.serve.benchmark.text_gen import (
     Conversation,
     TextGenerator,
-    TurnMetric,
-    WorkloadSpec,
     conversation_factory,
 )
 

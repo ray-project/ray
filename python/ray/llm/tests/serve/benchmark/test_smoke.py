@@ -6,11 +6,9 @@ import types
 import aiohttp
 import pytest
 
-from ray.llm._internal.serve.benchmark.multiturn_bench import (
-    TurnResult,
-    run_smoke,
-    send_chat_completion,
-)
+from ray.llm._internal.serve.benchmark.http_client import send_chat_completion
+from ray.llm._internal.serve.benchmark.models import TurnResult
+from ray.llm._internal.serve.benchmark.runners import run_smoke
 
 
 @pytest.mark.asyncio

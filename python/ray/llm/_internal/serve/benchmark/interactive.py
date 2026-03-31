@@ -18,13 +18,19 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from statistics import mean
 from typing import Optional
 
 import aiohttp
 import numpy as np
 
-from ray.llm._internal.serve.benchmark import multiturn_bench as mt
+from ray.llm._internal.serve.benchmark.http_client import send_chat_completion
+from ray.llm._internal.serve.benchmark.metrics import summarize_metrics
+from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
+from ray.llm._internal.serve.benchmark.text_gen import (
+    Conversation,
+    TextGenerator,
+    conversation_factory,
+)
 
 try:
     from prompt_toolkit import PromptSession
@@ -49,7 +55,7 @@ def _control_socket_path() -> str:
 # Process-pool worker helpers (module-level so they are picklable)
 # ---------------------------------------------------------------------------
 _worker_tokenizer = None
-_worker_text_gen: Optional[mt.TextGenerator] = None
+_worker_text_gen: Optional[TextGenerator] = None
 
 
 def _pool_initializer(tokenizer_name: str, base_seed: int) -> None:
@@ -60,7 +66,7 @@ def _pool_initializer(tokenizer_name: str, base_seed: int) -> None:
     _worker_tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name, trust_remote_code=True
     )
-    _worker_text_gen = mt.TextGenerator(_worker_tokenizer)
+    _worker_text_gen = TextGenerator(_worker_tokenizer)
     proc_seed = (base_seed + os.getpid()) % (2**32)
     random.seed(proc_seed)
     np.random.seed(proc_seed)
@@ -68,13 +74,11 @@ def _pool_initializer(tokenizer_name: str, base_seed: int) -> None:
 
 def _create_conv_in_worker(
     session_idx: int,
-    spec: mt.WorkloadSpec,
+    spec: WorkloadSpec,
     shared_system_text: str,
-) -> mt.Conversation:
+) -> Conversation:
     """Create a Conversation inside a worker process."""
-    return mt.conversation_factory(
-        session_idx, spec, shared_system_text, _worker_text_gen
-    )
+    return conversation_factory(session_idx, spec, shared_system_text, _worker_text_gen)
 
 
 # ============================================================================
@@ -90,59 +94,19 @@ class RuntimeState:
     inflight: int = 0
     measurement_active: bool = False
     measurement_start_ns: Optional[int] = None
-    measurement_metrics: list[mt.TurnMetric] = field(default_factory=list)
+    measurement_metrics: list[TurnMetric] = field(default_factory=list)
     measurement_target_requests: Optional[int] = None
-    last_window_metrics: list[mt.TurnMetric] = field(default_factory=list)
+    last_window_metrics: list[TurnMetric] = field(default_factory=list)
     last_window_elapsed_s: float = 0.0
     last_notice: Optional[str] = None
     save_dir: Optional[str] = None
 
 
-def _summarize_metrics(metrics: list[mt.TurnMetric], elapsed_s: float) -> dict:
-    if not metrics:
-        return {"requests": 0, "elapsed_s": round(elapsed_s, 2)}
-
-    ttft = [m.ttft_ms for m in metrics]
-    fc = [m.fc_ms for m in metrics]
-    tpot = [m.tpot_ms for m in metrics if m.tpot_ms > 0]
-    latency = [m.latency_ms for m in metrics]
-    out_tok = [m.output_tokens for m in metrics]
-    in_tok = [m.input_tokens for m in metrics]
-    total_output_tokens = sum(out_tok)
-
-    return {
-        "requests": len(metrics),
-        "elapsed_s": round(elapsed_s, 2),
-        "request_rate": round(len(metrics) / elapsed_s, 2) if elapsed_s > 0 else 0.0,
-        "throughput_tok_s": round(total_output_tokens / elapsed_s, 2)
-        if elapsed_s > 0
-        else 0.0,
-        "avg_input_tokens": round(mean(in_tok), 2),
-        "avg_output_tokens": round(mean(out_tok), 2),
-        "avg_ttft_ms": round(mean(ttft), 2),
-        "p50_ttft_ms": round(mt.percentile(ttft, 50), 2),
-        "p90_ttft_ms": round(mt.percentile(ttft, 90), 2),
-        "p99_ttft_ms": round(mt.percentile(ttft, 99), 2),
-        "avg_fc_ms": round(mean(fc), 2),
-        "p50_fc_ms": round(mt.percentile(fc, 50), 2),
-        "p90_fc_ms": round(mt.percentile(fc, 90), 2),
-        "p99_fc_ms": round(mt.percentile(fc, 99), 2),
-        "avg_tpot_ms": round(mean(tpot), 2) if tpot else 0.0,
-        "p50_tpot_ms": round(mt.percentile(tpot, 50), 2) if tpot else 0.0,
-        "p90_tpot_ms": round(mt.percentile(tpot, 90), 2) if tpot else 0.0,
-        "p99_tpot_ms": round(mt.percentile(tpot, 99), 2) if tpot else 0.0,
-        "avg_latency_ms": round(mean(latency), 2),
-        "p50_latency_ms": round(mt.percentile(latency, 50), 2),
-        "p90_latency_ms": round(mt.percentile(latency, 90), 2),
-        "p99_latency_ms": round(mt.percentile(latency, 99), 2),
-    }
-
-
 def _save_window_result(
     path: str,
     args: argparse.Namespace,
-    spec: mt.WorkloadSpec,
-    metrics: list[mt.TurnMetric],
+    spec: WorkloadSpec,
+    metrics: list[TurnMetric],
     elapsed_s: float,
     runtime_qps: float = 0.0,
 ) -> None:
@@ -162,7 +126,7 @@ def _save_window_result(
             "runtime_qps": runtime_qps,
         },
         "spec": spec.summary(),
-        "window": _summarize_metrics(metrics, elapsed_s),
+        "window": summarize_metrics(metrics, elapsed_s),
         "raw_metrics": [
             {
                 "session_id": m.session_id,
@@ -187,7 +151,7 @@ def _save_window_result(
 
 def _build_spec(
     args: argparse.Namespace, overrides: Optional[dict] = None
-) -> mt.WorkloadSpec:
+) -> WorkloadSpec:
     """Build and resolve a WorkloadSpec from args, optionally merging overrides."""
     kw = dict(
         num_sessions=1,
@@ -204,7 +168,7 @@ def _build_spec(
     )
     if overrides:
         kw.update(overrides)
-    spec = mt.WorkloadSpec(**kw)
+    spec = WorkloadSpec(**kw)
     spec.resolve()
     return spec
 
@@ -227,7 +191,7 @@ class CommandHandler:
         runtime: RuntimeState,
         workload: dict,
         args: argparse.Namespace,
-        text_gen: Optional[mt.TextGenerator] = None,
+        text_gen: Optional[TextGenerator] = None,
         rate_changed: Optional[asyncio.Event] = None,
         workload_changed: Optional[asyncio.Event] = None,
         stop_event: Optional[asyncio.Event] = None,
@@ -319,7 +283,7 @@ class CommandHandler:
             self.runtime.last_window_elapsed_s = (end_ns - start_ns) / 1e9
             self.runtime.last_window_metrics = list(self.runtime.measurement_metrics)
             self.runtime.measurement_target_requests = None
-            summary = _summarize_metrics(
+            summary = summarize_metrics(
                 list(self.runtime.last_window_metrics),
                 self.runtime.last_window_elapsed_s,
             )
@@ -467,7 +431,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
 
     print(f"Loading tokenizer: {tokenizer_name}")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, trust_remote_code=True)
-    text_gen = mt.TextGenerator(tokenizer)
+    text_gen = TextGenerator(tokenizer)
 
     shared_system_text = text_gen.generate(spec.shared_s)
     bench_start_ns = time.perf_counter_ns()
@@ -487,7 +451,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
     )
     stop_event = asyncio.Event()
     rate_changed = asyncio.Event()
-    ready_queue: asyncio.Queue[tuple[mt.Conversation, int]] = asyncio.Queue()
+    ready_queue: asyncio.Queue[tuple[Conversation, int]] = asyncio.Queue()
     next_session_idx = 0
     running_tasks: set[asyncio.Task] = set()
 
@@ -506,7 +470,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
         next_session_idx += 1
         return idx
 
-    async def next_conv_async() -> mt.Conversation:
+    async def next_conv_async() -> Conversation:
         idx = _next_session_idx()
         s = workload["spec"]
         sst = workload["shared_system_text"]
@@ -565,13 +529,13 @@ async def run_interactive(args: argparse.Namespace) -> None:
             await asyncio.sleep(0.02)
 
     async def execute_turn(
-        conv: mt.Conversation, turn_idx: int, http_session: aiohttp.ClientSession
+        conv: Conversation, turn_idx: int, http_session: aiohttp.ClientSession
     ) -> None:
         cur_spec = workload["spec"]
         runtime.inflight += 1
         req_start_ns = time.perf_counter_ns()
         try:
-            result = await mt.send_chat_completion(
+            result = await send_chat_completion(
                 session=http_session,
                 base_url=args.base_url,
                 model=args.model,
@@ -581,7 +545,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 first_chunk_threshold=args.first_chunk_threshold,
                 api_key=getattr(args, "api_key", None),
             )
-            metric = mt.TurnMetric(
+            metric = TurnMetric(
                 session_id=conv.session_id,
                 turn=turn_idx,
                 ttft_ms=result.ttft_ms,
@@ -610,7 +574,7 @@ async def run_interactive(args: argparse.Namespace) -> None:
                         runtime.measurement_metrics[:target]
                     )
                     runtime.measurement_target_requests = None
-                    summary = _summarize_metrics(
+                    summary = summarize_metrics(
                         runtime.last_window_metrics,
                         runtime.last_window_elapsed_s,
                     )
