@@ -807,7 +807,6 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         internal_request_id: str,
         replica_actor_id: Optional[ray.ActorID],
-        decrement_queue_len_cache: bool,
         result: Union[Any, RayError],
     ) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -816,8 +815,6 @@ class AsyncioRouter:
         # Notify request router that request completed (for cleanup, e.g., token release)
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
-            if decrement_queue_len_cache:
-                self.request_router.decrement_queue_len_cache(replica_id)
 
         actor_died_error = self._get_actor_died_error(result)
         if actor_died_error is not None:
@@ -930,31 +927,22 @@ class AsyncioRouter:
                 )
             # Always register callback to notify router when request completes
             # (needed for token release in queue-based routing, metrics tracking, etc.)
-            # A single callback handles both request cleanup and cache
-            # decrement to avoid the overhead of multiple add_done_callback
-            # registrations per request.
-
-            if not with_rejection:
-                callback = partial(
-                    self._process_finished_request,
-                    replica.replica_id,
-                    pr.metadata.internal_request_id,
-                    replica.actor_id,
-                    True,  # decrement_queue_len_cache
-                )
-                result.add_done_callback(callback)
-                callback_registered = True
-                return result
-
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
                 replica.actor_id,
-                False,  # decrement_queue_len_cache — not yet known if accepted
             )
             result.add_done_callback(callback)
             callback_registered = True
+
+            if not with_rejection:
+                result.add_done_callback(
+                    lambda _: self.request_router.decrement_queue_len_cache(
+                        replica.replica_id,
+                    )
+                )
+                return result
 
             queue_info = await result.get_rejection_response()
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
