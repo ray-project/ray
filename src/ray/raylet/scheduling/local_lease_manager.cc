@@ -673,8 +673,10 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to
     // the worker.
-    RAY_LOG(DEBUG) << "Granting lease " << lease_id << " to worker "
-                   << worker->WorkerId();
+    RAY_LOG(INFO) << "(karticam) [LEASE-GRANT] Granting lease " << lease_id
+                  << " to worker " << worker->WorkerId()
+                  << " pid=" << worker->GetProcess().GetId()
+                  << " task=" << lease.GetLeaseSpecification().GetTaskName();
 
     Grant(worker, leased_workers_, work->allocated_instances_, lease, reply_callbacks);
     erase_from_leases_to_grant_queue_fn(work, scheduling_class);

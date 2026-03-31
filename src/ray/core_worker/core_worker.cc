@@ -2765,7 +2765,8 @@ Status CoreWorker::ExecuteTask(
     bool *is_retryable_error,
     std::string *actor_repr_name,
     std::string *application_error) {
-  RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+  RAY_LOG(INFO) << "(karticam) [TASK-EXEC] pid=" << pid_
+                << " Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
   if (IsExiting()) {
@@ -2978,8 +2979,9 @@ Status CoreWorker::ExecuteTask(
   }
 
   task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
-  RAY_LOG(DEBUG).WithField(task_spec.TaskId())
-      << "Finished executing task, status=" << status;
+  RAY_LOG(INFO).WithField(task_spec.TaskId())
+      << "(karticam) [TASK-EXEC] pid=" << pid_
+      << " Finished executing task, status=" << status;
 
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
