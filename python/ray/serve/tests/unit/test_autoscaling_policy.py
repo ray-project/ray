@@ -17,7 +17,6 @@ from ray.serve._private.metrics_utils import (
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
-    _apply_bounds,
     _apply_delay_logic,
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
@@ -516,7 +515,12 @@ class TestReplicaQueueLengthPolicy:
             downscale_to_zero_delay_s=downscale_to_zero_delay_s,
         )
 
-        overload_requests = 100
+        # Use overload_requests that naturally produce the desired upscale_target
+        # without depending on bounds clamping (bounds are applied at a higher
+        # level in get_decision_num_replicas, not in the policy wrapper).
+        # desired = start_replicas * (overload_requests / target_ongoing_requests)
+        #         = 1 * (2 / 1) = 2
+        overload_requests = 2
 
         ctx = AutoscalingContext(
             config=config,
@@ -863,16 +867,6 @@ class TestAutoscalingConfigParameters:
         # Expected: 10 - 0.5 * (10 - 9) = 9.5 = ceil(9.5) = 10. The logic then adjusts it to 9.
         assert result == 9
 
-    def test_apply_bounds(self):
-        num_replicas = 5
-        capacity_adjusted_min_replicas = 1
-        capacity_adjusted_max_replicas = 10
-        result = _apply_bounds(
-            num_replicas, capacity_adjusted_min_replicas, capacity_adjusted_max_replicas
-        )
-        # Expected: max(1, min(10, 5)) = 5
-        assert result == 5
-
     def test_apply_delay_logic_upscale(self):
         """Test upscale delay requires consecutive periods."""
         config = AutoscalingConfig(
@@ -1216,17 +1210,21 @@ class TestGangSchedulingAutoscalingPolicy:
             total_pending_async_requests=0,
         )
 
-    @pytest.mark.parametrize("raw_autoscaling_decision,expected", [(5, 8), (8, 8)])
-    def test_scale_up_rounds_up(self, raw_autoscaling_decision, expected):
-        ctx = self._make_ctx(current_num_replicas=4)
+    @pytest.mark.parametrize(
+        "raw_autoscaling_decision,expected",
+        [
+            (5, 8),  # ceil(5/4)*4 = 8
+            (7, 8),  # ceil(7/4)*4 = 8
+            (8, 8),  # already aligned
+            (9, 12),  # ceil(9/4)*4 = 12
+        ],
+    )
+    def test_rounds_up(self, raw_autoscaling_decision, expected):
+        """Always rounds up, independent of current replica count."""
         policy = self._make_policy(gang_size=4, inner_result=raw_autoscaling_decision)
-        assert policy(ctx)[0] == expected
-
-    @pytest.mark.parametrize("raw_autoscaling_decision,expected", [(10, 8), (8, 8)])
-    def test_scale_down_rounds_down(self, raw_autoscaling_decision, expected):
-        ctx = self._make_ctx(current_num_replicas=12)
-        policy = self._make_policy(gang_size=4, inner_result=raw_autoscaling_decision)
-        assert policy(ctx)[0] == expected
+        for current in [4, 12]:
+            ctx = self._make_ctx(current_num_replicas=current)
+            assert policy(ctx)[0] == expected
 
     def test_zero_replicas_unchanged(self):
         ctx = self._make_ctx(current_num_replicas=4)
@@ -1284,11 +1282,11 @@ class TestGangSchedulingAutoscalingPolicy:
         assert not isinstance(state._policy, GangSchedulingAutoscalingPolicy)
 
     def test_integration_scale_up_respects_max(self):
-        """Gang alignment rounds up, but apply_bounds clips to max_replicas."""
+        """Gang alignment rounds up, but apply_bounds clips to max."""
         state = self._create_state(
             gang_size=4, min_replicas=4, max_replicas=8, running=4
         )
-        # GangSchedulingAutoscalingPolicy rounds up to 12
+        # ceil(9/4)*4 = 12, clipped to max_replicas=8
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (9, {}), gang_size=4
         )
@@ -1296,11 +1294,11 @@ class TestGangSchedulingAutoscalingPolicy:
         assert decision == 8
 
     def test_integration_scale_down_respects_min(self):
-        """Gang alignment rounds down, but apply_bounds clips to min_replicas."""
+        """Gang alignment rounds up, but apply_bounds clips to min."""
         state = self._create_state(
             gang_size=4, min_replicas=4, max_replicas=16, running=8
         )
-        # GangSchedulingAutoscalingPolicy rounds down to 0
+        # ceil(1/4)*4 = 4, clipped to min_replicas=4
         state._policy = GangSchedulingAutoscalingPolicy(
             lambda ctx: (1, {}), gang_size=4
         )

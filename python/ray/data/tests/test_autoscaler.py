@@ -175,10 +175,11 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # Should be no-op since the op has enough free task slots to consume the existing inputs (which is 0).
+            # With no enqueued inputs but inputs not being complete still,
+            # the autoscaler should still scale up based on utilization
             assert_autoscaling_action(
-                delta=0,
-                expected_reason="enough free task slots to consume the existing inputs",
+                delta=5,
+                expected_reason="utilization of 1.5 >= 1.0",
             )
 
     # Should be no-op since the op doesn't have enough resources.
