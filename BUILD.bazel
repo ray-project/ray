@@ -69,7 +69,6 @@ refresh_compile_commands(
     exclude_external_sources = False,
     targets = {
         "//src/ray/...": "",
-        "//:ray_pkg_zip": "",
     },
 )
 
