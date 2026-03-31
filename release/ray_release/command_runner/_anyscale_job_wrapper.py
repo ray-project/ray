@@ -235,20 +235,24 @@ def run_prepare_commands(
 
 def run_oom_check():
     return_code = 0
-    metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
-    if metrics_path and Path(metrics_path).exists():
-        with open(metrics_path, "r") as f:
-            metrics = json.load(f)
-        oom_kills = metrics.get("worker_oom_kills") or []
-        if oom_kills:
+    try:
+        metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+        if metrics_path and Path(metrics_path).exists():
+            with open(metrics_path, "r") as f:
+                metrics = json.load(f)
+            oom_kills = metrics.get("worker_oom_kills") or []
+            if oom_kills:
+                logger.error(
+                    "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
+                )
+                return_code = 1
+        else:
             logger.error(
-                "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
+                "RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
             )
             return_code = 1
-    else:
-        logger.error(
-            "RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
-        )
+    except Exception as e:
+        logger.error(f"Error during OOM check: {e}")
         return_code = 1
     return return_code
 
