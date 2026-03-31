@@ -4,4 +4,4 @@
 
 set -exo pipefail
 pip3 uninstall -y vllm
-pip3 install "sglang[all]==0.5.10rc0"
+pip3 install "sglang[all,ray]==0.5.10rc0"
