@@ -3,7 +3,10 @@ import warnings
 
 import pytest
 
-from ray.llm._internal.serve.core.configs.llm_config import ModelLoadingConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    ModelLoadingConfig,
+)
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
 )
@@ -16,7 +19,6 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
     PDPrefillServer,
 )
-from ray.serve.llm import LLMConfig
 
 
 class TestPDServingArgs:
