@@ -812,26 +812,17 @@ class AsyncioRouter:
     ) -> None:
         """Called from worker threads via add_done_callback.
 
-        The happy path (metrics + on_request_completed + cache decrement) is
-        thread-safe and runs directly. Error handling (actor died/unavailable)
-        mutates shared router state and is deferred to the event loop.
-
-        should_decrement_cache is a mutable single-element list used as a
-        flag. For the with-rejection path, it is set to True after acceptance
-        on the event loop thread before this callback fires.
+        Metrics and request completion run directly (thread-safe).
+        Error handling is deferred to the event loop.
         """
-        # Thread-safe: dec uses self._queries_lock internally.
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
 
-        # Thread-safe: on_request_completed is a no-op in the base class.
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
-            # GIL-atomic deque append, drained on event loop before routing.
             if should_decrement_cache[0]:
                 self.request_router.enqueue_cache_decrement(replica_id)
 
-        # Error handling: mutates shared state, must run on event loop.
         actor_died_error = self._get_actor_died_error(result)
         if actor_died_error is not None:
             self._event_loop.call_soon_threadsafe(

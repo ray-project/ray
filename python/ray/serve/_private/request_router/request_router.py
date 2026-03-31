@@ -502,8 +502,8 @@ class RequestRouter(ABC):
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
-        # Pending cache decrements from worker threads. deque.append is
-        # GIL-atomic; drained on the event loop before routing decisions.
+        # Pending cache decrements, appended from worker threads and
+        # drained on the event loop before routing decisions.
         self._pending_cache_decrements: collections.deque = collections.deque()
 
         # Throttle state for router queue length gauge updates.
@@ -855,16 +855,12 @@ class RequestRouter(ABC):
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
     def enqueue_cache_decrement(self, replica_id: ReplicaID):
-        """Enqueue a cache decrement for a replica.
-
-        Called from worker threads via add_done_callback when a request
-        finishes. deque.append is GIL-atomic, no lock needed. The actual
-        update happens on the event loop via drain_pending_cache_decrements.
-        """
+        """Thread-safe: enqueue a cache decrement to be applied before the
+        next routing decision."""
         self._pending_cache_decrements.append(replica_id)
 
     def drain_pending_cache_decrements(self):
-        """Apply pending cache decrements. Called on the event loop thread."""
+        """Apply pending cache decrements. Must run on the event loop."""
         while self._pending_cache_decrements:
             try:
                 replica_id = self._pending_cache_decrements.popleft()
