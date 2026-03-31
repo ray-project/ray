@@ -197,10 +197,6 @@ class VerificationActor:
         return self.reports
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_tpu_single_host(ray_tpu_single_host, tmp_path):
     """
     Tests single-host scheduling with no topology value. In this case, the
@@ -242,10 +238,6 @@ def test_tpu_single_host(ray_tpu_single_host, tmp_path):
         assert r.get("MEGASCALE_COORDINATOR_ADDRESS") is None
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
     Tests scheduling on a single multi-host slice. The number of workers
@@ -292,10 +284,6 @@ def test_tpu_single_slice_multi_host(ray_tpu_multi_host, tmp_path):
         assert r.get("MEGASCALE_COORDINATOR_ADDRESS") is None
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices. The
@@ -352,10 +340,6 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices when
@@ -413,10 +397,6 @@ def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_tpu_multi_slice_uneven_workers(ray_tpu_multi_host, tmp_path):
     """
     Tests that ScalingConfig raises a ValueError if the requested num_workers
@@ -487,10 +467,6 @@ def train_func_with_data_multi_host():
     )
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_multi_host_data_iterator(ray_tpu_multi_host, tmp_path):
     actor_name = "test_multi_host_data_iterator"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -547,10 +523,6 @@ def test_multi_host_data_iterator(ray_tpu_multi_host, tmp_path):
             assert batch_shape == (16,)
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
     actor_name = "test_single_host_data_iterator_padding"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -606,10 +578,6 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
         assert shape == (16, 8)
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_dtypes(ray_tpu_single_host, tmp_path):
     actor_name = "test_single_host_data_iterator_dtypes"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -705,10 +673,6 @@ def train_func_with_data_single_host(config):
     )
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_2d(ray_tpu_single_host, tmp_path):
     actor_name = "test_single_host_data_iterator_2d"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -760,10 +724,6 @@ def test_single_host_data_iterator_2d(ray_tpu_single_host, tmp_path):
             assert batch_shape == (16, 8)
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_2d_truncation(ray_tpu_single_host, tmp_path):
     actor_name = "test_single_host_data_iterator_2d_truncation"
     verify_actor = VerificationActor.options(name=actor_name).remote()
@@ -816,10 +776,6 @@ def test_single_host_data_iterator_2d_truncation(ray_tpu_single_host, tmp_path):
             assert batch_shape == (16, 8)
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_2d_truncation_failure(ray_tpu_single_host, tmp_path):
     import numpy as np
 
@@ -849,7 +805,7 @@ def test_single_host_data_iterator_2d_truncation_failure(ray_tpu_single_host, tm
         ),
     )
     with pytest.raises(
-        Exception, match="must be evenly divisible by the number of local JAX devices"
+        Exception, match="evenly divisible by the number of local JAX devices"
     ):
         trainer.fit()
 
@@ -897,10 +853,6 @@ def train_func_with_collate_fn(config):
     )
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12),
-    reason="Current jax version (0.4.13) is not supported in python 3.12+",
-)
 def test_single_host_data_iterator_collate_fn(ray_tpu_single_host, tmp_path):
     actor_name = "test_single_host_data_iterator_collate_fn"
     verify_actor = VerificationActor.options(name=actor_name).remote()

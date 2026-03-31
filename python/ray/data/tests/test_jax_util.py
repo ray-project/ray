@@ -17,7 +17,7 @@ def test_jax_sync_generator_empty_batch(ray_start_regular_shared):
         yield {}  # Empty dict batch
         yield {"a": np.array([4, 5, 6])}
 
-    gen = jax_sync_generator(empty_batch_iterable(), drop_last=True)
+    gen = jax_sync_generator(empty_batch_iterable(), drop_last=True, batch_size=3)
     results = list(gen)
 
     assert len(results) == 2
@@ -36,7 +36,7 @@ def test_jax_sync_generator_empty_column(ray_start_regular_shared):
         yield {"a": np.array([])}  # Dict with empty column
         yield {"a": np.array([4, 5, 6])}
 
-    gen = jax_sync_generator(empty_column_iterable(), drop_last=True)
+    gen = jax_sync_generator(empty_column_iterable(), drop_last=True, batch_size=3)
     results = list(gen)
 
     assert len(results) == 2
@@ -55,7 +55,9 @@ def test_jax_sync_generator_no_sync(ray_start_regular_shared):
         yield {"a": np.array([4, 5, 6])}
 
     # Should work fine in single process even with sync=False
-    gen = jax_sync_generator(batches(), drop_last=True, synchronize_batches=False)
+    gen = jax_sync_generator(
+        batches(), drop_last=True, batch_size=3, synchronize_batches=False
+    )
     results = list(gen)
     assert len(results) == 2
 
@@ -125,7 +127,7 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
         )
         with pytest.raises(
             ValueError,
-            match="must be evenly divisible by the number of local JAX devices",
+            match="evenly divisible by the number of local JAX devices",
         ):
             list(gen)
 
@@ -271,6 +273,7 @@ def test_jax_sync_generator_multi_host_uneven_batch_sizes_fail(
             gen = jax_sync_generator(
                 batches(),
                 drop_last=False,
+                batch_size=3,
                 synchronize_batches=True,
             )
             with pytest.raises(
@@ -317,6 +320,7 @@ def test_jax_sync_generator_multi_host_uneven_num_batches_fail(
             gen = jax_sync_generator(
                 batches(),
                 drop_last=False,
+                batch_size=3,
                 synchronize_batches=True,
             )
             with pytest.raises(
@@ -348,6 +352,7 @@ def test_jax_sync_generator_with_dtypes(ray_start_regular_shared):
         gen = jax_sync_generator(
             batches(),
             drop_last=False,
+            batch_size=3,
             dtypes=dtypes,
             synchronize_batches=False,
         )

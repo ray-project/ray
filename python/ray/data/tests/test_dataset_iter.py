@@ -674,7 +674,7 @@ def test_iter_jax_batches_batch_size_divisibility_fail(ray_start_regular_shared)
         # batch_size must be divisible by num_local_devices=2
         with pytest.raises(
             ValueError,
-            match="must be evenly divisible by the number of local JAX devices",
+            match="evenly divisible by the number of local JAX devices",
         ):
             list(ds.iter_jax_batches(batch_size=3))
 

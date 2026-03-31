@@ -622,7 +622,7 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        batch_size: Optional[int] = 256,
+        batch_size: int = 256,
         dtypes: Optional[
             Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
         ] = None,
@@ -697,10 +697,10 @@ class DataIterator(abc.ABC):
 
         num_local_devices = jax.local_device_count()
 
-        if batch_size is not None and batch_size % num_local_devices != 0:
+        if batch_size <= 0 or batch_size % num_local_devices != 0:
             raise ValueError(
-                f"The provided batch_size ({batch_size}) must be evenly "
-                f"divisible by the number of local JAX devices "
+                f"The provided batch_size ({batch_size}) must be a positive integer "
+                f"evenly divisible by the number of local JAX devices "
                 f"({num_local_devices}) on this host."
             )
 

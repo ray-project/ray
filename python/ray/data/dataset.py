@@ -6007,7 +6007,7 @@ class Dataset:
         self,
         *,
         prefetch_batches: int = 1,
-        batch_size: Optional[int] = 256,
+        batch_size: int = 256,
         dtypes: Optional[
             Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
         ] = None,

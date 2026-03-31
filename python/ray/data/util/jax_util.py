@@ -117,8 +117,8 @@ def _convert_batch(
                 )
             except ValueError as e:
                 raise ValueError(
-                    f"JAX Array Conversion Error for column '{col_name}': \n{e}"
-                )
+                    f"JAX Array Conversion Error for column '{col_name}'"
+                ) from e
 
     return jax_batch
 
@@ -192,7 +192,7 @@ def _yield_batches_no_sync(
     iterator: Iterator[Any],
     sharding: "jax.sharding.Sharding",
     num_local_devices: int,
-    batch_size: Optional[int],
+    batch_size: int,
     pad_token_ids: Optional[Any],
     dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
 ) -> Iterator[Any]:
@@ -204,7 +204,6 @@ def _yield_batches_no_sync(
             continue
 
         if pad_token_ids is not None:
-            assert batch_size is not None
             if local_batch_size < batch_size:
                 batch = _pad_batch(batch, batch_size, pad_token_ids)
         elif local_batch_size % num_local_devices != 0:
@@ -252,7 +251,7 @@ def _yield_batches_with_sync(
     sharding: "jax.sharding.Sharding",
     num_local_devices: int,
     drop_last: bool,
-    batch_size: Optional[int],
+    batch_size: int,
     pad_token_ids: Optional[Any],
     synchronize_lookahead: int,
     dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
@@ -305,7 +304,6 @@ def _yield_batches_with_sync(
                     )
 
             if pad_token_ids is not None:
-                assert batch_size is not None
                 batch = local_batches[i]
                 if batch is None:
                     if template_batch is None:
@@ -349,7 +347,7 @@ def _yield_batches_with_sync(
 def jax_sync_generator(
     batch_iterable: Iterable[Any],
     drop_last: bool,
-    batch_size: Optional[int] = None,
+    batch_size: int = 256,
     pad_token_ids: Optional[Any] = None,
     dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
     synchronize_batches: bool = False,
