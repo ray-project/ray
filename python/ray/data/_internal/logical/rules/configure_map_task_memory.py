@@ -9,7 +9,7 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 __all__ = [
     "ConfigureMapTaskMemoryRule",
-    "ConfigureMapTaskMemoryUsingOutputSize",
+    "ConfigureMapTaskMemoryUsingOpMetrics",
 ]
 
 
@@ -50,7 +50,7 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
                 ):
                     memory = self.estimate_per_task_memory_requirement(op)
                     if memory is not None:
-                        dynamic_ray_remote_args["memory"] = memory
+                        dynamic_ray_remote_args["memory"] = _find_memory_bin(memory)
 
                 return dynamic_ray_remote_args
 
@@ -67,20 +67,40 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
         ...
 
 
-class ConfigureMapTaskMemoryUsingOutputSize(ConfigureMapTaskMemoryRule):
+# Group memory requirement into bins to reduce schduling overhead.
+def _find_memory_bin(raw_memory) -> int:
+    MB = 1024**2
+    GB = 1024**3
+    if raw_memory <= 2 * GB:
+        bin_size = 128 * MB
+    else:
+        bin_size = 256 * MB
+    bin_idx = (raw_memory + bin_size - 1) // bin_size
+    return bin_idx * bin_size
+
+
+class ConfigureMapTaskMemoryUsingOpMetrics(ConfigureMapTaskMemoryRule):
     def estimate_per_task_memory_requirement(self, op: MapOperator) -> Optional[int]:
         # Typically, this configuration won't make a difference because
         # `average_bytes_per_output` is usually ~128 MiB and each core usually has
         # 4 GiB of memory. However, if `num_cpus` is small (e.g., 0.01) or
         # `target_max_block_size` is large (e.g., 1GB), then tasks can OOM even
-        # if it just uses enough memory to produce an output block. By setting
-        # `memory` to the average output size, we can mitigate this case.
+        # if their peak USS or a single output block size fits only narrowly.
         #
-        # We set it to 1 target block size out of assumption that *at least* 1 copy
-        # of data (to process heap) will be made during processing.
+        # We set `memory` based on runtime metrics: use the maximum of
+        # `average_max_uss_per_task` and `average_bytes_per_output` when both are
+        # available, or fall back to whichever metric is present.
         #
         # Note that, unless object store memory is manually specified, by default Ray's
         # "memory" resource is exclusive of the Object Store memory allocated on the
         # node (i.e., its total allocatable value is Total memory - Object Store
         # memory).
-        return op.metrics.average_bytes_per_output
+        if op.metrics.average_max_uss_per_task and op.metrics.average_bytes_per_output:
+            return max(
+                op.metrics.average_max_uss_per_task,
+                op.metrics.average_bytes_per_output,
+            )
+        elif op.metrics.average_max_uss_per_task:
+            return op.metrics.average_max_uss_per_task
+        else:
+            return op.metrics.average_bytes_per_output

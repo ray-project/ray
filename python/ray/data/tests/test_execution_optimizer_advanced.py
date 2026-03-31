@@ -30,7 +30,7 @@ from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.rules import (
-    ConfigureMapTaskMemoryUsingOutputSize,
+    ConfigureMapTaskMemoryUsingOpMetrics,
 )
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -455,20 +455,26 @@ def test_schema_partial_execution(
     )
 
 
+GB = 1024**3
+MB = 1024**2
+
+
 @pytest.mark.parametrize(
-    "average_bytes_per_output, ray_remote_args, ray_remote_args_fn, data_context, expected_memory",
+    "average_bytes_per_output, average_max_uss_per_task, ray_remote_args, ray_remote_args_fn, data_context, expected_memory",
     [
         # The user hasn't set memory, so the rule should configure it.
-        (1, None, None, DataContext(), 1),
-        # The user has set memory, so the rule shouldn't change it.
-        (1, {"memory": 2}, None, DataContext(), 2),
-        (1, None, lambda: {"memory": 2}, DataContext(), 2),
+        (511 * MB, None, None, None, DataContext(), 512 * MB),
+        # The user has set memory, so the rule shouldn't change it, also shouldn't put user specified into bin.
+        (100 * MB, None, {"memory": 200 * MB}, None, DataContext(), 200 * MB),
+        (128 * MB, None, None, lambda: {"memory": 200 * MB}, DataContext(), 200 * MB),
         # An estimate isn't available, so the rule shouldn't configure memory.
-        (None, None, None, DataContext(), None),
+        (None, None, None, None, DataContext(), None),
+        (128 * MB, 256 * MB, None, None, DataContext(), 256 * MB,),
     ],
 )
 def test_configure_map_task_memory_rule(
     average_bytes_per_output,
+    average_max_uss_per_task,
     ray_remote_args,
     ray_remote_args_fn,
     data_context,
@@ -483,10 +489,12 @@ def test_configure_map_task_memory_rule(
         ray_remote_args_fn=ray_remote_args_fn,
     )
     map_op._metrics = MagicMock(
-        spec=OpRuntimeMetrics, average_bytes_per_output=average_bytes_per_output
+        spec=OpRuntimeMetrics,
+        average_bytes_per_output=average_bytes_per_output,
+        average_max_uss_per_task=average_max_uss_per_task,
     )
     plan = PhysicalPlan(map_op, op_map=MagicMock(), context=data_context)
-    rule = ConfigureMapTaskMemoryUsingOutputSize()
+    rule = ConfigureMapTaskMemoryUsingOpMetrics()
 
     new_plan = rule.apply(plan)
 

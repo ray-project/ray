@@ -3,7 +3,7 @@
 from .combine_shuffles import CombineShuffles
 from .configure_map_task_memory import (
     ConfigureMapTaskMemoryRule,
-    ConfigureMapTaskMemoryUsingOutputSize,
+    ConfigureMapTaskMemoryUsingOpMetrics,
 )
 from .inherit_batch_format import InheritBatchFormatRule
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
@@ -19,7 +19,7 @@ from .set_read_parallelism import (
 __all__ = [
     "CombineShuffles",
     "ConfigureMapTaskMemoryRule",
-    "ConfigureMapTaskMemoryUsingOutputSize",
+    "ConfigureMapTaskMemoryUsingOpMetrics",
     "FuseOperators",
     "InheritBatchFormatRule",
     "InheritTargetMaxBlockSizeRule",

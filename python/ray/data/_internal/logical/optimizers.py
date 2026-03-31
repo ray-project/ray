@@ -10,7 +10,7 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.rules import (
     CombineShuffles,
-    ConfigureMapTaskMemoryUsingOutputSize,
+    ConfigureMapTaskMemoryUsingOpMetrics,
     FuseOperators,
     InheritBatchFormatRule,
     InheritTargetMaxBlockSizeRule,
@@ -37,7 +37,7 @@ _PHYSICAL_RULESET = Ruleset(
         InheritTargetMaxBlockSizeRule,
         SetReadParallelismRule,
         FuseOperators,
-        ConfigureMapTaskMemoryUsingOutputSize,
+        ConfigureMapTaskMemoryUsingOpMetrics,
     ]
 )
 
