@@ -17,7 +17,7 @@ The integration uses a custom `SGLangServer` class (in `modules/sglang_engine.py
 ## Prerequisites
 
 ```bash
-pip install ray[serve,llm] "sglang[all]"
+pip install ray[serve,llm] "sglang[all,ray]"
 ```
 
 Set the following environment variable before running any example:

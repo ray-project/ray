@@ -6,7 +6,7 @@ See https://github.com/ray-project/ray/issues/61114 for status.
 
 Requirements:
     - 2 nodes with 4 GPUs each (8 GPUs total for tp_size=4, pp_size=2)
-    - pip install ray[serve,llm] "sglang[all]"
+    - pip install ray[serve,llm] "sglang[all,ray]"
     - Set RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0
 
 Usage:
