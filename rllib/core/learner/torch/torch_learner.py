@@ -187,6 +187,10 @@ class TorchLearner(Learner):
             assert total_loss == 0
             return {}
 
+        # If all parameters for this module are currently frozen, we can't optimize it.
+        if total_loss.grad_fn is None:
+            return {}
+
         total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
