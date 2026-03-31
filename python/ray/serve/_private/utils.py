@@ -9,6 +9,7 @@ import random
 import re
 import time
 import uuid
+import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -18,13 +19,15 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.serve._private.common import RequestMetadata, ServeComponentType
+from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -78,6 +81,25 @@ def validate_ssl_config(
             "Both ssl_keyfile and ssl_certfile must be provided together "
             "to enable HTTPS."
         )
+
+
+def get_deployment_actor_name(
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> str:
+    """Return the deterministic Ray actor name for a deployment-scoped actor.
+
+    The name is versioned by code_version to allow old and new replicas to
+    coexist during rollout (each uses its version's actors). Actors serve as
+    central state for replicas, so we version by code_version to ensure fresh
+    actors when a new code version is deployed.
+    """
+    base = (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{deployment_id.app_name}"
+        f"::{deployment_id.name}"
+    )
+    return f"{base}::{code_version}::{actor_name}"
 
 
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
@@ -415,6 +437,19 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)
     return len(finished) == 1
+
+
+def compress_metric_report(report: Any) -> bytes:
+    """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC.
+
+    Uses zlib level 9 (stdlib, no extra deps). ~75KB uncompressed -> ~5KB for 1000 replicas.
+    """
+    return zlib.compress(cloudpickle.dumps(report), level=9)
+
+
+def decompress_metric_report(compressed: bytes) -> Any:
+    """Decompress a metric report from RPC."""
+    return cloudpickle.loads(zlib.decompress(compressed))
 
 
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:

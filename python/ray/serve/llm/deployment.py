@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 #############
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LLMServer(InternalLLMServer):
     """The implementation of the vLLM engine deployment.
 

@@ -262,20 +262,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+          - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -295,20 +288,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+          - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{matrix.python}}"
@@ -368,20 +354,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         platform:
-          - cu12.8.1-cudnn
-          - cu12.9.1-cudnn
+          - cu13.0.0-cudnn
       adjustments:
         - with:
             python: "3.11"
-            platform: "cu12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             platform: "cu12.8.1-cudnn"
-          skip: true
     depends_on:
       - ray-llm-image-cuda-build
     tags:
@@ -403,20 +382,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         platform:
-          - cu12.8.1-cudnn
-          - cu12.9.1-cudnn
+          - cu13.0.0-cudnn
       adjustments:
         - with:
             python: "3.11"
-            platform: "cu12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             platform: "cu12.8.1-cudnn"
-          skip: true
     depends_on:
       - ray-llm-extra-image-cuda-build
     tags:
@@ -427,9 +399,7 @@ steps:
 
   - label: ":tapioca: smoke test build-wheel.sh --help"
     tags:
-      - python_dependencies
-      - docker
-      - oss
+      - tools
     instance_type: small
     commands:
       - ./build-wheel.sh --help
@@ -448,6 +418,15 @@ steps:
       - export CPP_WHEEL_URL="https://files.pythonhosted.org/packages/d3/cf/ef6d5a9a688001f73e4749c48f840455ecec11acde982eb70f387b0dc445/ray_cpp-2.44.1-cp310-cp310-manylinux2014_x86_64.whl"
       - bash build-docker.sh --progress-plain
       - docker run -ti --rm rayproject/ray:dev python -c "import ray; print(ray.__version__)"
+    depends_on:
+      - forge
+
+  - label: ":tapioca: smoke test build-image.sh --help"
+    tags:
+      - tools
+    instance_type: small
+    commands:
+      - ./build-image.sh --help
     depends_on:
       - forge
 
