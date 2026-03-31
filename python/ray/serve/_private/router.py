@@ -807,7 +807,7 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         internal_request_id: str,
         replica_actor_id: Optional[ray.ActorID],
-        should_decrement_cache: list,
+        decrement_cache: list,
         result: Union[Any, RayError],
     ) -> None:
         """Called from worker threads via add_done_callback.
@@ -820,7 +820,7 @@ class AsyncioRouter:
 
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
-            if should_decrement_cache[0]:
+            if decrement_cache[0]:
                 self.request_router.enqueue_cache_decrement(replica_id)
 
         actor_died_error = self._get_actor_died_error(result)
@@ -933,17 +933,15 @@ class AsyncioRouter:
                 self._metrics_manager.inc_num_running_requests_for_replica(
                     replica.replica_id
                 )
-            # Single callback per request. For the with-rejection path, a
-            # mutable list acts as a flag that is set to True after acceptance,
-            # checked by the callback at execution time. This avoids a second
-            # add_done_callback registration.
-            should_decrement = [not with_rejection]
+            # Use a mutable flag so the with-rejection path can enable
+            # cache decrement after acceptance without a second callback.
+            decrement_cache = [not with_rejection]
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
                 replica.actor_id,
-                should_decrement,
+                decrement_cache,
             )
             result.add_done_callback(callback)
             callback_registered = True
@@ -955,7 +953,7 @@ class AsyncioRouter:
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
-                should_decrement[0] = True
+                decrement_cache[0] = True
                 return result
 
             # Request was rejected: cancel so done callbacks fire.
