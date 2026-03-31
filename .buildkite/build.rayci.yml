@@ -22,6 +22,26 @@ steps:
       - oss
       - skip-on-premerge
 
+  - label: ":arrow_up: publish: ray-core image py{{matrix}} (x86_64)"
+    key: ray_core_digest_publish
+    instance_type: small
+    commands:
+      - PYTHON_VERSION="{{matrix}}" ARCH_SUFFIX="" HOSTTYPE="x86_64"
+        bazel run //ci/build:publish_core_image
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+      - "3.14"
+    depends_on:
+      - ray-core-build
+      - forge
+    tags:
+      - release_wheels
+      - oss
+      - skip-on-premerge
+
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
