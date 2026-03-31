@@ -41,8 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     server.add_argument(
         "-m",
         "--model",
-        required=True,
-        help="Model name to send in requests",
+        default=None,
+        help="Model name to send in requests (required except for -i --client)",
     )
     server.add_argument(
         "--tokenizer",
@@ -203,14 +203,19 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.interactive and args.client:
+        from ray.llm._internal.serve.benchmark.interactive import run_interactive_client
+
+        sys.exit(run_interactive_client(args))
+
+    # All other modes require --model
+    if not args.model:
+        parser.error("--model is required (except for -i --client mode)")
+
     if args.smoke:
         from ray.llm._internal.serve.benchmark.multiturn_bench import run_smoke
 
         sys.exit(run_smoke(args))
-    elif args.interactive and args.client:
-        from ray.llm._internal.serve.benchmark.interactive import run_interactive_client
-
-        sys.exit(run_interactive_client(args))
     elif args.interactive:
         from ray.llm._internal.serve.benchmark.interactive import run_interactive_server
 
