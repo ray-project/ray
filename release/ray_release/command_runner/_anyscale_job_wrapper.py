@@ -233,6 +233,21 @@ def run_prepare_commands(
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
+def run_oom_check():
+    return_code = 0
+    metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+    if metrics_path and Path(metrics_path).exists():
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+        oom_kills = metrics.get("worker_oom_kills") or []
+        if oom_kills:
+            logger.error(
+                "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
+            )
+            return_code = 1
+    return return_code
+
+
 def main(
     test_workload: str,
     test_workload_timeout: float,
@@ -281,6 +296,7 @@ def main(
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
+        workload_start_unix_time = time.time()
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
@@ -303,7 +319,7 @@ def main(
         )
 
         # Collect prometheus metrics
-        collected_metrics = collect_metrics(workload_time_taken)
+        collected_metrics = collect_metrics(workload_start_unix_time)
         if collected_metrics:
             # Upload prometheus metrics
             uploaded_metrics = run_storage_cp(
@@ -312,18 +328,7 @@ def main(
 
         # Fail if any OOM kills occurred
         if return_code == 0:
-            metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
-            if metrics_path and Path(metrics_path).exists():
-                with open(metrics_path, "r") as f:
-                    metrics = json.load(f)
-                oom_kills = metrics.get("worker_oom_kills") or []
-                print(oom_kills)
-                if oom_kills:
-                    logger.error(
-                        "Test failed: OOM worker kills detected. "
-                        f"Details: {oom_kills}"
-                    )
-                    return_code = 1
+            return_code = run_oom_check()
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
