@@ -2675,7 +2675,11 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
 
 
 class TestParquetFragmentBatchSizeCoercion:
-    """Regression: PyArrow ``Fragment.to_batches`` uses a C int for ``batch_size``."""
+    """Regression: PyArrow `Fragment.to_batches` uses a C int for `batch_size`.
+
+    Exercises `_coerce_pyarrow_fragment_batch_size`: `int()` coercion and clamping
+    to PyArrow's valid range (mirrors values from kwargs).
+    """
 
     @pytest.mark.parametrize(
         "raw,expected",
@@ -2687,10 +2691,24 @@ class TestParquetFragmentBatchSizeCoercion:
             (-5, 1),
             (10_000, 10_000),
             (np.int64(10_000), 10_000),
+            (True, 1),
+            (False, 1),
+            (3.7, 3),
+            (10.0, 10),
+            ("100", 100),
         ],
     )
     def test_coerce_pyarrow_fragment_batch_size(self, raw, expected):
         assert _coerce_pyarrow_fragment_batch_size(raw) == expected
+
+    @pytest.mark.parametrize("bad", [None, object()])
+    def test_coerce_pyarrow_fragment_batch_size_int_raises_type_error(self, bad):
+        with pytest.raises(TypeError):
+            _coerce_pyarrow_fragment_batch_size(bad)
+
+    def test_coerce_pyarrow_fragment_batch_size_invalid_string(self):
+        with pytest.raises(ValueError):
+            _coerce_pyarrow_fragment_batch_size("not_an_int")
 
     @pytest.mark.parametrize(
         "batch_size,to_batches_kwargs",
@@ -2699,6 +2717,10 @@ class TestParquetFragmentBatchSizeCoercion:
             (None, {"batch_size": 2**31}),
             (10_000, None),
             (None, {"batch_size": np.int64(10_000)}),
+            (0, None),
+            (-3, None),
+            (None, {"batch_size": 0}),
+            (None, {"batch_size": -1}),
         ],
     )
     def test_read_batches_from_clamps_batch_size_kwarg(
@@ -2731,16 +2753,21 @@ class TestParquetFragmentBatchSizeCoercion:
         )
         assert out == []
         if batch_size is not None:
-            if batch_size < _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
-                assert captured["batch_size"] == int(batch_size)
-            else:
+            ib = int(batch_size)
+            if ib < 1:
+                assert captured["batch_size"] == 1
+            elif ib > _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
                 assert captured["batch_size"] == _MAX_PYARROW_TO_BATCHES_BATCH_SIZE
+            else:
+                assert captured["batch_size"] == ib
         else:
-            tb_bs = to_batches_kwargs["batch_size"]
-            if int(tb_bs) < _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
-                assert captured["batch_size"] == int(tb_bs)
-            else:
+            tb_bs = int(to_batches_kwargs["batch_size"])
+            if tb_bs < 1:
+                assert captured["batch_size"] == 1
+            elif tb_bs > _MAX_PYARROW_TO_BATCHES_BATCH_SIZE:
                 assert captured["batch_size"] == _MAX_PYARROW_TO_BATCHES_BATCH_SIZE
+            else:
+                assert captured["batch_size"] == tb_bs
 
 
 if __name__ == "__main__":

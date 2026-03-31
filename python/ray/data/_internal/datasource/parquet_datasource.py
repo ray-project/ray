@@ -879,8 +879,15 @@ def read_fragments(
                     yield table
 
 
-def _coerce_pyarrow_fragment_batch_size(batch_size: Any) -> int:
-    """Coerce and clamp batch size for `ParquetFileFragment.to_batches` (C int range)."""
+def _coerce_pyarrow_fragment_batch_size(batch_size: object) -> int:
+    """Coerce and clamp batch size for `ParquetFileFragment.to_batches` (C int range).
+
+    The parameter is typed as :class:`object` because values often come from untyped
+    containers (e.g. `to_batches_kwargs`).
+
+    Values are converted with :func:`int` (Python's usual rules: `bool` becomes 0/1,
+    `float` truncates toward zero) then clamped to `[1, MAX]`.
+    """
     bs = int(batch_size)
     coerced = min(max(bs, 1), _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
     if coerced != bs:
