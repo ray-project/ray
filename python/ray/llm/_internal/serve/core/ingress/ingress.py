@@ -92,27 +92,6 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _FallThrough(Exception):
-    """Signals that ASGI sidecar middleware should fall through to FastAPI."""
-
-    def __init__(self, body_bytes: bytes = b""):
-        self.body_bytes = body_bytes
-
-
-def _make_receive(body_bytes: bytes):
-    """Create an ASGI receive callable that replays already-read body bytes."""
-    sent = False
-
-    async def receive():
-        nonlocal sent
-        if not sent:
-            sent = True
-            return {"type": "http.request", "body": body_bytes, "more_body": False}
-        return {"type": "http.disconnect"}
-
-    return receive
-
-
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     "autoscaling_config": {
@@ -417,19 +396,23 @@ class OpenAiIngress(DeploymentProtocol):
             self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
         )
 
-        # When enabled, an ASGI middleware intercepts streaming completions
-        # requests before FastAPI routing and proxies them directly to replica
-        # HTTP sidecars via aiohttp, bypassing pydantic and StreamingResponse.
+        # When enabled, install ASGI middleware that serves the /internal/route
+        # endpoint for HAProxy Lua routing decisions. Streaming requests are
+        # handled directly by the sidecar HTTP servers on the LLM replicas;
+        # the ingress is only in the routing decision path, not the data path.
         self._sidecar_enabled = os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1"
-        self._sidecar_session = None
         self._sidecar_rr_counter = 0
         if self._sidecar_enabled:
             get_or_create_event_loop().create_task(self._install_sidecar_middleware())
 
     async def _install_sidecar_middleware(self):
-        """Install raw ASGI middleware that proxies streaming requests to sidecars."""
-        import aiohttp
+        """Install ASGI middleware that serves the /internal/route endpoint.
 
+        HAProxy Lua calls this endpoint to get the sidecar address for a
+        request. The ingress is only in the routing path, not the streaming
+        path — tokens flow directly from the sidecar through HAProxy to the
+        client.
+        """
         # _asgi_app is set by ASGIAppReplicaWrapper.__init__, which runs
         # after OpenAiIngress.__init__ in the MRO. This task is created from
         # __init__ and must wait for the MRO chain to complete. A callback
@@ -439,22 +422,10 @@ class OpenAiIngress(DeploymentProtocol):
         while not hasattr(self, "_asgi_app"):
             await asyncio.sleep(0.01)
 
-        self._sidecar_session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(
-                limit=0,
-                enable_cleanup_closed=True,
-                force_close=False,
-                keepalive_timeout=90,
-            )
-        )
-
         original_app = self._asgi_app
         ingress = self
-        route_only = os.environ.get("RAYLLM_SIDECAR_ROUTE_ONLY", "0") == "1"
-        _SIDECAR_PATHS = {"/v1/chat/completions", "/v1/completions"}
 
         async def sidecar_asgi_wrapper(scope, receive, send):
-            # Routing endpoint for HAProxy Lua — always available
             if (
                 scope["type"] == "http"
                 and scope["method"] == "POST"
@@ -462,28 +433,10 @@ class OpenAiIngress(DeploymentProtocol):
             ):
                 await ingress._handle_route_endpoint(scope, receive, send)
                 return
-
-            if (
-                scope["type"] == "http"
-                and scope["method"] == "POST"
-                and scope["path"] in _SIDECAR_PATHS
-            ):
-                if route_only:
-                    # In route-only mode, streaming requests should not
-                    # reach the ingress — HAProxy sends them directly to
-                    # sidecars. If one arrives here, fall through to FastAPI.
-                    pass
-                else:
-                    try:
-                        await ingress._handle_sidecar_asgi(scope, receive, send)
-                        return
-                    except _FallThrough as ft:
-                        receive = _make_receive(ft.body_bytes)
             await original_app(scope, receive, send)
 
         self._asgi_app = sidecar_asgi_wrapper
-        mode = "route-only (HAProxy Lua)" if route_only else "proxy"
-        logger.info(f"Sidecar ASGI middleware installed (mode={mode}).")
+        logger.info("Sidecar routing middleware installed.")
 
     async def _handle_route_endpoint(self, scope, receive, send):
         """Return sidecar endpoint for a request (called by HAProxy Lua).
@@ -568,101 +521,6 @@ class OpenAiIngress(DeploymentProtocol):
             }
         )
         await send({"type": "http.response.body", "body": resp})
-
-    async def _handle_sidecar_asgi(self, scope, receive, send):
-        """Proxy a streaming request to a sidecar at the raw ASGI level.
-
-        Raises _FallThrough for non-streaming requests or on error so the
-        caller can reconstruct receive() and fall through to FastAPI.
-        """
-        import orjson
-
-        message = await receive()
-        body_bytes = message.get("body", b"")
-        if message.get("more_body", False):
-            parts = [body_bytes]
-            while True:
-                message = await receive()
-                parts.append(message.get("body", b""))
-                if not message.get("more_body", False):
-                    break
-            body_bytes = b"".join(parts)
-
-        try:
-            parsed = orjson.loads(body_bytes)
-        except (orjson.JSONDecodeError, ValueError):
-            raise _FallThrough(body_bytes)
-
-        if not parsed.get("stream", False):
-            raise _FallThrough(body_bytes)
-
-        default_model_id = (
-            next(iter(self._llm_configs.keys())) if self._llm_configs else None
-        )
-        model = parsed.get("model", default_model_id)
-        if model and model not in self._llm_configs:
-            base = get_base_model_id(model)
-            if base not in self._llm_configs:
-                raise _FallThrough(body_bytes)
-
-        model_id = model or default_model_id
-        if model_id is None:
-            raise _FallThrough(body_bytes)
-
-        try:
-            host, port = await self._pick_routed_sidecar_endpoint(model_id)
-        except Exception as e:
-            logger.warning(f"Sidecar routing failed, falling through to FastAPI: {e}")
-            raise _FallThrough(body_bytes)
-
-        url = f"http://{host}:{port}{scope['path']}"
-
-        started = False
-        try:
-            async with self._sidecar_session.post(
-                url,
-                data=body_bytes,
-                headers={"Content-Type": "application/json"},
-            ) as resp:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": resp.status,
-                        "headers": [
-                            [b"content-type", b"text/event-stream"],
-                            [b"cache-control", b"no-cache"],
-                        ],
-                    }
-                )
-                started = True
-                async for chunk in resp.content.iter_any():
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": chunk,
-                            "more_body": True,
-                        }
-                    )
-                await send(
-                    {"type": "http.response.body", "body": b"", "more_body": False}
-                )
-        except Exception as e:
-            logger.error(f"Sidecar proxy error: {e}")
-            error_body = (
-                'data: {"error": {"message": "An internal error occurred."}}\n\n'
-                "data: [DONE]\n\n"
-            ).encode()
-            if not started:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [[b"content-type", b"text/event-stream"]],
-                    }
-                )
-            await send(
-                {"type": "http.response.body", "body": error_body, "more_body": False}
-            )
 
     async def _default_get_lora_model_metadata_func(
         self, model_id: str, llm_config: LLMConfig
