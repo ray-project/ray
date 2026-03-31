@@ -39,6 +39,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
 
     @ray.remote(num_cpus=0)
     def pg_launcher(num_pgs_to_create):
+        print("Creating pgs")
         pgs = []
         for _ in range(num_pgs_to_create):
             pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
@@ -53,6 +54,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
                 pgs_removed.append(pg)
             else:
                 pgs_unremoved.append(pg)
+        print(len(pgs_unremoved))
 
         tasks = []
         # Randomly schedule tasks or actors on placement groups that
