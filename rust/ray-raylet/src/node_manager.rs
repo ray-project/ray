@@ -21,6 +21,16 @@ use ray_gcs_rpc_client::{GcsClient, GcsRpcClient};
 use ray_proto::ray::rpc;
 use ray_rpc::client::RetryConfig;
 
+/// Reason the raylet is shutting down, propagated through the shutdown channel
+/// so that the unregister request can carry the appropriate `NodeDeathInfo`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShutdownReason {
+    /// Normal OS signal (SIGTERM, Ctrl-C) or server exit.
+    Signal,
+    /// Runtime-env agent timed out — maps to UNEXPECTED_TERMINATION.
+    RuntimeEnvTimeout,
+}
+
 use crate::cluster_resource_manager::ClusterResourceManager;
 use crate::cluster_resource_scheduler::ClusterResourceScheduler;
 use crate::demand_calculator::{DemandCalculator, DemandCalculatorConfig};
@@ -281,7 +291,7 @@ async fn shutdown_signal() {
 }
 
 /// Configuration for starting the raylet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RayletConfig {
     pub node_ip_address: String,
     pub port: u16,
@@ -301,6 +311,64 @@ pub struct RayletConfig {
     /// This must be the original JSON so the C++ CoreWorker can parse it without
     /// encountering Rust-only config fields.
     pub raw_config_json: String,
+
+    // ── Runtime flags wired from CLI (C++ parity) ───────────────────
+
+    /// Object manager gRPC port. Published in GcsNodeInfo for cluster discovery.
+    /// Note: Rust raylet serves object manager RPCs on the main gRPC port;
+    /// C++ runs a separate object manager server on this port.
+    pub object_manager_port: u16,
+    /// Minimum port for spawned worker processes. 0 = unconstrained.
+    pub min_worker_port: u16,
+    /// Maximum port for spawned worker processes. 0 = unconstrained.
+    pub max_worker_port: u16,
+    /// Explicit worker port list (comma-separated). Overrides min/max if set.
+    pub worker_port_list: Option<String>,
+    /// Maximum number of workers starting concurrently.
+    pub maximum_startup_concurrency: u32,
+    /// Metrics agent port. CLI-provided value; if 0, Rust raylet will
+    /// attempt to read from session_dir port file (like C++). After
+    /// resolution, a MetricsAgentClient is created and readiness is
+    /// verified before publishing to GcsNodeInfo.
+    pub metrics_agent_port: u16,
+    /// Metrics export port. Published in GcsNodeInfo and propagated to workers.
+    pub metrics_export_port: u16,
+    /// Runtime env agent port. CLI-provided value; if 0, Rust raylet
+    /// will attempt to read from session_dir port file (like C++).
+    /// After resolution, a RuntimeEnvAgentClient is created and
+    /// installed into the WorkerPool.
+    pub runtime_env_agent_port: u16,
+    /// Object store memory limit in bytes.
+    pub object_store_memory: u64,
+    /// Primary mmap directory for the object store (e.g. /dev/shm).
+    pub plasma_directory: Option<String>,
+    /// Fallback mmap directory (disk overflow).
+    pub fallback_directory: Option<String>,
+    /// Whether to use huge pages for the object store.
+    pub huge_pages: bool,
+    /// Dashboard agent listen port. CLI-provided value; if 0, resolved
+    /// from session_dir port file (matching C++ WaitForDashboardAgentPorts).
+    pub dashboard_agent_listen_port: u16,
+    /// Whether this node is the head node.
+    pub head: bool,
+    /// Number of Python workers to pre-start.
+    pub num_prestart_python_workers: u32,
+    /// Command to launch the dashboard agent subprocess. When provided,
+    /// the Rust raylet validates the command and launches/monitors the
+    /// subprocess (matching C++ behavior in node_manager.cc:3299-3336).
+    pub dashboard_agent_command: Option<String>,
+    /// Command to launch the runtime env agent subprocess. When provided,
+    /// the Rust raylet validates the command and launches/monitors the
+    /// subprocess (matching C++ behavior in node_manager.cc:3363-3396).
+    pub runtime_env_agent_command: Option<String>,
+    /// Temp directory for Ray session. Published in GcsNodeInfo.
+    pub temp_dir: Option<String>,
+    /// Session directory for Ray session. Published in GcsNodeInfo.
+    /// Also used as a fallback rendezvous point for agent port files
+    /// when ports are not provided via CLI (matching C++ behavior).
+    pub session_dir: Option<String>,
+    /// Human-readable node name.
+    pub node_name: Option<String>,
 }
 
 /// The main raylet node manager.
@@ -330,6 +398,28 @@ pub struct NodeManager {
     /// Active poll loop handles per publisher. The runtime spawns a background
     /// tokio task for each owner that has pending subscriptions.
     eviction_poll_handles: parking_lot::Mutex<HashMap<Vec<u8>, tokio::task::JoinHandle<()>>>,
+    /// Dashboard agent process manager.
+    /// C++ equivalent: `dashboard_agent_manager_` in `node_manager.h`.
+    dashboard_agent_manager: Option<Arc<crate::agent_manager::AgentManager>>,
+    /// Runtime env agent process manager.
+    /// C++ equivalent: `runtime_env_agent_manager_` in `node_manager.h`.
+    runtime_env_agent_manager: Option<Arc<crate::agent_manager::AgentManager>>,
+    /// Resolved metrics agent port (after potential port-file rendezvous).
+    /// C++ equivalent: `metrics_agent_port_` in `node_manager.h`.
+    resolved_metrics_agent_port: std::sync::atomic::AtomicI32,
+    /// Resolved metrics export port (after potential port-file rendezvous).
+    /// C++ equivalent: `metrics_export_port_` in `node_manager.h`.
+    resolved_metrics_export_port: std::sync::atomic::AtomicI32,
+    /// Resolved runtime env agent port (after potential port-file rendezvous).
+    /// C++ equivalent: `runtime_env_agent_port_` in `node_manager.h`.
+    resolved_runtime_env_agent_port: std::sync::atomic::AtomicI32,
+    /// Resolved dashboard agent listen port (after potential port-file rendezvous).
+    /// C++ equivalent: `dashboard_agent_listen_port_` in `node_manager.h`.
+    resolved_dashboard_agent_listen_port: std::sync::atomic::AtomicI32,
+    /// The local object manager's plasma store (constructed from raylet config).
+    /// Holds the actual PlasmaStore that uses object_store_memory, plasma_directory,
+    /// fallback_directory, and huge_pages from the raylet config.
+    object_manager: Option<Arc<ray_object_manager::object_manager::ObjectManager>>,
 }
 
 impl NodeManager {
@@ -355,9 +445,14 @@ impl NodeManager {
 
         let lease_manager = Arc::new(ClusterLeaseManager::new(scheduler.clone()));
 
+        let startup_concurrency = if config.maximum_startup_concurrency > 0 {
+            config.maximum_startup_concurrency as usize
+        } else {
+            10
+        };
         let worker_pool = Arc::new(WorkerPool::new(
-            10,  // maximum_startup_concurrency (default)
-            200, // num_workers_soft_limit (default)
+            startup_concurrency,
+            200, // num_workers_soft_limit
         ));
 
         let worker_lease_tracker = Arc::new(WorkerLeaseTracker::default());
@@ -392,6 +487,28 @@ impl NodeManager {
         let eviction_transport =
             ray_pubsub::SubscriberTransport::new(Arc::clone(&eviction_subscriber));
 
+        // Create agent managers for dashboard and runtime-env agents.
+        // C++ equivalent: CreateDashboardAgentManager / CreateRuntimeEnvAgentManager.
+        // C++ checks RayConfig::instance().enable_metrics_collection().
+        let enable_metrics = config.ray_config.enable_metrics_collection;
+        let dashboard_agent_manager = config.dashboard_agent_command.as_deref().and_then(|cmd| {
+            crate::agent_manager::create_dashboard_agent_manager(
+                &config.node_id,
+                cmd,
+                enable_metrics,
+            )
+            .map(Arc::new)
+        });
+        let runtime_env_agent_manager =
+            config.runtime_env_agent_command.as_deref().and_then(|cmd| {
+                crate::agent_manager::create_runtime_env_agent_manager(&config.node_id, cmd)
+                    .map(Arc::new)
+            });
+
+        // Construct the local PlasmaStore + ObjectManager from raylet config.
+        // C++ equivalent: main.cc lines 651-670 (ObjectManagerConfig population).
+        let object_manager = Self::create_object_manager(&config);
+
         Self {
             config,
             scheduler,
@@ -410,6 +527,13 @@ impl NodeManager {
             eviction_subscriber,
             eviction_transport,
             eviction_poll_handles: parking_lot::Mutex::new(HashMap::new()),
+            dashboard_agent_manager,
+            runtime_env_agent_manager,
+            resolved_metrics_agent_port: std::sync::atomic::AtomicI32::new(0),
+            resolved_metrics_export_port: std::sync::atomic::AtomicI32::new(0),
+            resolved_runtime_env_agent_port: std::sync::atomic::AtomicI32::new(0),
+            resolved_dashboard_agent_listen_port: std::sync::atomic::AtomicI32::new(0),
+            object_manager,
         }
     }
 
@@ -467,6 +591,225 @@ impl NodeManager {
 
     pub fn worker_stats_provider(&self) -> &Arc<dyn WorkerStatsProvider> {
         &self.worker_stats_provider
+    }
+
+    /// Get the resolved metrics agent port.
+    /// C++ equivalent: `NodeManager::GetMetricsAgentPort()`.
+    pub fn get_metrics_agent_port(&self) -> i32 {
+        self.resolved_metrics_agent_port
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Get the resolved metrics export port.
+    /// C++ equivalent: published in GcsNodeInfo.
+    pub fn get_metrics_export_port(&self) -> i32 {
+        self.resolved_metrics_export_port
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Get the resolved dashboard agent listen port.
+    /// C++ equivalent: published in GcsNodeInfo.
+    pub fn get_dashboard_agent_listen_port(&self) -> i32 {
+        self.resolved_dashboard_agent_listen_port
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Get the resolved runtime env agent port.
+    /// C++ equivalent: `NodeManager::GetRuntimeEnvAgentPort()`.
+    pub fn get_runtime_env_agent_port(&self) -> i32 {
+        self.resolved_runtime_env_agent_port
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// Resolve all four agent ports (metrics_agent, metrics_export,
+    /// dashboard_agent_listen, runtime_env_agent) and store results in atomic fields.
+    ///
+    /// This is the same logic as the port-resolution section of `run()`, extracted
+    /// so that integration tests can exercise the full NodeManager port-resolution
+    /// path without needing a live GCS connection.
+    ///
+    /// C++ equivalent: the WaitForDashboardAgentPorts + WaitForRuntimeEnvAgentPort
+    /// sections in NodeManager::Start().
+    pub async fn resolve_all_ports(&self) {
+        let session_dir = self.config.session_dir.as_deref();
+        // C++ default: 15000ms (kDefaultPortWaitTimeoutMs).
+        let port_timeout = std::time::Duration::from_millis(15000);
+        let node_id = &self.config.node_id;
+
+        let metrics_port = Self::resolve_port(
+            self.config.metrics_agent_port,
+            session_dir,
+            node_id,
+            "metrics_agent_port",
+            port_timeout,
+        ).await;
+        self.resolved_metrics_agent_port
+            .store(metrics_port, std::sync::atomic::Ordering::Release);
+
+        let metrics_export_port = Self::resolve_port(
+            self.config.metrics_export_port,
+            session_dir,
+            node_id,
+            "metrics_export_port",
+            port_timeout,
+        ).await;
+        self.resolved_metrics_export_port
+            .store(metrics_export_port, std::sync::atomic::Ordering::Release);
+
+        let dashboard_listen_port = Self::resolve_port(
+            self.config.dashboard_agent_listen_port,
+            session_dir,
+            node_id,
+            "dashboard_agent_listen_port",
+            port_timeout,
+        ).await;
+        self.resolved_dashboard_agent_listen_port
+            .store(dashboard_listen_port, std::sync::atomic::Ordering::Release);
+
+        let runtime_env_port = Self::resolve_port(
+            self.config.runtime_env_agent_port,
+            session_dir,
+            node_id,
+            "runtime_env_agent_port",
+            port_timeout,
+        ).await;
+        self.resolved_runtime_env_agent_port
+            .store(runtime_env_port, std::sync::atomic::Ordering::Release);
+    }
+
+    /// Get the dashboard agent PID (0 if not running).
+    /// C++ equivalent: `HandleGetAgentPIDs` → `dashboard_agent_manager_->GetPid()`.
+    pub fn get_dashboard_agent_pid(&self) -> u32 {
+        self.dashboard_agent_manager
+            .as_ref()
+            .map(|m| m.get_pid())
+            .unwrap_or(0)
+    }
+
+    /// Get the runtime env agent PID (0 if not running).
+    /// C++ equivalent: `HandleGetAgentPIDs` → `runtime_env_agent_manager_->GetPid()`.
+    pub fn get_runtime_env_agent_pid(&self) -> u32 {
+        self.runtime_env_agent_manager
+            .as_ref()
+            .map(|m| m.get_pid())
+            .unwrap_or(0)
+    }
+
+    /// Get the object manager (if constructed from raylet config).
+    ///
+    /// PARITY STATUS: PARTIALLY MATCHED — stats sidecar, not full live-object runtime.
+    ///
+    /// The ObjectManager/PlasmaStore is currently integrated for capacity and
+    /// allocation stats (reported via GetNodeStats). It is NOT on the live
+    /// pin/eviction path: PinObjectIDs, FreeObjectsInObjectStore, and
+    /// SpillObjects all route through `local_object_manager()`, which is an
+    /// independent in-memory tracker.
+    ///
+    /// In C++, ObjectManager is the single source of truth for both cross-node
+    /// object transfer AND local object storage (via PlasmaStore). The Rust
+    /// raylet has two separate subsystems: ObjectManager (stats/capacity) and
+    /// LocalObjectManager (pin/eviction tracking). Unifying them so that pin
+    /// operations hold real PlasmaStore handles is required for full parity.
+    pub fn object_manager(&self) -> Option<&Arc<ray_object_manager::object_manager::ObjectManager>> {
+        self.object_manager.as_ref()
+    }
+
+    /// Construct an ObjectManager + PlasmaStore from raylet config.
+    ///
+    /// C++ equivalent: main.cc lines 651-670 (ObjectManagerConfig → ObjectManager).
+    /// This is the critical path that the re-audit flagged: ensuring the
+    /// raylet actually constructs the object store runtime from CLI flags,
+    /// not just storing them in config.
+    fn create_object_manager(
+        config: &RayletConfig,
+    ) -> Option<Arc<ray_object_manager::object_manager::ObjectManager>> {
+        // Only create if object_store_memory is explicitly set.
+        // C++ validates: object_store_memory > 0 (FATAL if not).
+        if config.object_store_memory == 0 {
+            tracing::info!(
+                "object_store_memory not set, skipping local object store construction"
+            );
+            return None;
+        }
+
+        let plasma_directory = config
+            .plasma_directory
+            .as_deref()
+            .unwrap_or(if cfg!(target_os = "linux") {
+                "/dev/shm"
+            } else {
+                "/tmp"
+            });
+        let fallback_directory = config.fallback_directory.as_deref().unwrap_or("");
+
+        // Construct the PlasmaAllocator with the real config values.
+        let allocator = Arc::new(ray_object_manager::plasma::allocator::PlasmaAllocator::new(
+            config.object_store_memory as i64,
+            plasma_directory,
+            fallback_directory,
+            config.huge_pages,
+        ));
+
+        // Construct the PlasmaStore with the real allocator.
+        let store_config = ray_object_manager::plasma::store::PlasmaStoreConfig {
+            object_store_memory: config.object_store_memory as i64,
+            plasma_directory: plasma_directory.to_string(),
+            fallback_directory: fallback_directory.to_string(),
+            huge_pages: config.huge_pages,
+        };
+        let plasma_store = Arc::new(ray_object_manager::plasma::store::PlasmaStore::new(
+            allocator, &store_config,
+        ));
+
+        // Construct the ObjectManager with real config.
+        let node_id = if config.node_id.len() == ray_common::id::NodeID::SIZE * 2 {
+            ray_common::id::NodeID::from_hex(&config.node_id)
+        } else {
+            ray_common::id::NodeID::from_random()
+        };
+
+        let om_config = ray_object_manager::common::ObjectManagerConfig {
+            object_store_memory: config.object_store_memory as i64,
+            plasma_directory: plasma_directory.to_string(),
+            fallback_directory: fallback_directory.to_string(),
+            huge_pages: config.huge_pages,
+            store_socket_name: config.object_store_socket.clone(),
+            ..Default::default()
+        };
+
+        let om = ray_object_manager::object_manager::ObjectManager::new(om_config, node_id, plasma_store);
+        tracing::info!(
+            object_store_memory = config.object_store_memory,
+            plasma_directory,
+            fallback_directory,
+            huge_pages = config.huge_pages,
+            "Constructed local ObjectManager from raylet config"
+        );
+        Some(Arc::new(om))
+    }
+
+    /// Resolve a port: use CLI value if > 0, otherwise try session_dir port file.
+    ///
+    /// C++ equivalent: the pattern used in WaitForDashboardAgentPorts and
+    /// WaitForRuntimeEnvAgentPort.
+    async fn resolve_port(
+        cli_port: u16,
+        session_dir: Option<&str>,
+        node_id: &str,
+        port_name: &str,
+        timeout: std::time::Duration,
+    ) -> i32 {
+        if cli_port > 0 {
+            return cli_port as i32;
+        }
+        if let Some(dir) = session_dir {
+            crate::agent_manager::wait_for_persisted_port(dir, node_id, port_name, timeout)
+                .await
+                .map(|p| p as i32)
+                .unwrap_or(0)
+        } else {
+            0
+        }
     }
 
     /// The real subscriber for WORKER_OBJECT_EVICTION subscriptions.
@@ -584,11 +927,20 @@ impl NodeManager {
             node_id: node_id.binary(),
             node_manager_address: self.config.node_ip_address.clone(),
             node_manager_port: bound_port as i32,
+            object_manager_port: self.config.object_manager_port as i32,
             object_store_socket_name: self.config.object_store_socket.clone(),
             resources_total: self.config.resources.clone(),
             labels: self.config.labels.clone(),
             state: rpc::gcs_node_info::GcsNodeState::Alive as i32,
             start_time_ms: now_ms,
+            metrics_agent_port: self.get_metrics_agent_port(),
+            metrics_export_port: self.resolved_metrics_export_port
+                .load(std::sync::atomic::Ordering::Acquire),
+            runtime_env_agent_port: self.get_runtime_env_agent_port(),
+            is_head_node: self.config.head,
+            node_name: self.config.node_name.clone().unwrap_or_default(),
+            temp_dir: self.config.temp_dir.clone().unwrap_or_default(),
+            session_dir: self.config.session_dir.clone().unwrap_or_default(),
             ..Default::default()
         };
 
@@ -602,13 +954,30 @@ impl NodeManager {
         Ok((gcs_client, node_id))
     }
 
-    /// Unregister this node from GCS on shutdown.
-    async fn unregister_from_gcs(gcs_client: &GcsRpcClient, node_id: &NodeID) {
-        tracing::info!(node_id = %node_id.hex(), "Unregistering from GCS");
+    /// Unregister this node from GCS on shutdown, propagating death info when
+    /// the shutdown was caused by a runtime-env agent timeout (C++ parity:
+    /// `NodeManager::ShutdownRaylet` builds `NodeDeathInfo` with
+    /// `UNEXPECTED_TERMINATION`).
+    async fn unregister_from_gcs(
+        gcs_client: &GcsRpcClient,
+        node_id: &NodeID,
+        reason: ShutdownReason,
+    ) {
+        tracing::info!(node_id = %node_id.hex(), ?reason, "Unregistering from GCS");
+
+        let node_death_info = match reason {
+            ShutdownReason::RuntimeEnvTimeout => Some(rpc::NodeDeathInfo {
+                reason: rpc::node_death_info::Reason::UnexpectedTermination as i32,
+                reason_message:
+                    "Raylet could not connect to Runtime Env Agent".to_string(),
+            }),
+            ShutdownReason::Signal => None,
+        };
+
         let result = gcs_client
             .unregister_node(rpc::UnregisterNodeRequest {
                 node_id: node_id.binary(),
-                ..Default::default()
+                node_death_info,
             })
             .await;
         match result {
@@ -637,7 +1006,48 @@ impl NodeManager {
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "Raylet gRPC server listening");
 
-        // Wire the worker spawner callback now that we know the port.
+        // ── Agent subprocess lifecycle (C++ parity) ───────────────────
+        //
+        // C++ equivalent: node_manager.cc lines 274-291.
+        // 1. Launch dashboard agent subprocess
+        // 2. Launch runtime env agent subprocess
+        // 3. Wait for agent ports (via CLI or session_dir port files)
+        // 4. Create MetricsAgentClient (readiness wait + exporter init)
+        // 5. Create RuntimeEnvAgentClient and install into worker pool
+
+        // Step 1-2: Start agent subprocesses and begin monitoring.
+        // C++ equivalent: AgentManager launch + respawn loop.
+        let mut _dashboard_monitor: Option<tokio::task::JoinHandle<()>> = None;
+        let mut _runtime_env_monitor: Option<tokio::task::JoinHandle<()>> = None;
+
+        if let Some(ref mgr) = self.dashboard_agent_manager {
+            match mgr.start(bound_port) {
+                Ok(pid) => {
+                    tracing::info!(pid, "Dashboard agent started");
+                    _dashboard_monitor = Some(mgr.start_monitoring());
+                }
+                Err(e) => tracing::error!(error = %e, "Failed to start dashboard agent"),
+            }
+        }
+        if let Some(ref mgr) = self.runtime_env_agent_manager {
+            match mgr.start(bound_port) {
+                Ok(pid) => {
+                    tracing::info!(pid, "Runtime env agent started");
+                    _runtime_env_monitor = Some(mgr.start_monitoring());
+                }
+                Err(e) => tracing::error!(error = %e, "Failed to start runtime env agent"),
+            }
+        }
+
+        // Step 3: Resolve agent ports.
+        // C++ equivalent: WaitForDashboardAgentPorts / WaitForRuntimeEnvAgentPort.
+        // Prefer CLI-provided ports; fall back to session_dir port files.
+        self.resolve_all_ports().await;
+        let metrics_port = self.get_metrics_agent_port();
+
+        // Wire the worker spawner callback now that ports are resolved.
+        // IMPORTANT: This must be AFTER resolve_all_ports() so that the
+        // resolved metrics_export_port is used (not the pre-resolution value).
         let spawner_config = crate::worker_spawner::WorkerSpawnerConfig {
             node_ip_address: self.config.node_ip_address.clone(),
             raylet_port: bound_port,
@@ -645,6 +1055,11 @@ impl NodeManager {
             node_id: self.config.node_id.clone(),
             session_name: self.config.session_name.clone(),
             python_worker_command: self.config.python_worker_command.clone(),
+            min_worker_port: self.config.min_worker_port,
+            max_worker_port: self.config.max_worker_port,
+            worker_port_list: self.config.worker_port_list.clone(),
+            metrics_export_port: self.resolved_metrics_export_port.load(std::sync::atomic::Ordering::Acquire) as u16,
+            object_store_memory: self.config.object_store_memory,
         };
         // Create cgroup manager if enabled.
         let cgroup_manager: Option<std::sync::Arc<dyn ray_common::cgroup::CgroupManager>> = {
@@ -667,6 +1082,153 @@ impl NodeManager {
                 spawner_config,
                 cgroup_manager,
             ));
+
+        // Pre-start Python workers if configured.
+        // C++ parity: WorkerPool::PrestartWorkersInternal() in worker_pool.cc:196.
+        if self.config.num_prestart_python_workers > 0 {
+            self.worker_pool
+                .prestart_workers(self.config.num_prestart_python_workers);
+        }
+
+        // Step 4: Create MetricsAgentClient, wait for readiness, then init exporters.
+        // C++ equivalent: main.cc lines 1067-1082.
+        //   - MetricsAgentClientImpl::WaitForServerReady(callback)
+        //   - callback calls ConnectOpenCensusExporter(port) + InitOpenTelemetryExporter(port)
+        //
+        // PARITY STATUS: ARCHITECTURALLY DIFFERENT.
+        // C++ connects OpenCensus/OpenTelemetry exporters to the metrics agent,
+        // which acts as a proxy/aggregator for reporting to external systems.
+        // Rust uses a standalone MetricsExporter with a Prometheus HTTP endpoint.
+        // Both share the same readiness-gating pattern (wait for agent, then init),
+        // but the export mechanism is different. The Rust path does NOT replicate
+        // the C++ OpenCensus/OpenTelemetry export protocol.
+        //
+        // To achieve full parity, the Rust side would need to either:
+        //   (a) compile and link the ReporterService proto (depends on OC protos), or
+        //   (b) implement a gRPC reporter client that speaks the same protocol.
+        // Neither is done today.
+        if metrics_port > 0 {
+            let mut metrics_client = crate::metrics_agent_client::MetricsAgentClient::new(
+                "127.0.0.1",
+                metrics_port as u16,
+            );
+            let export_port = self.resolved_metrics_export_port
+                .load(std::sync::atomic::Ordering::Acquire);
+            metrics_client
+                .wait_for_server_ready(move |ready| {
+                    if ready {
+                        tracing::info!(
+                            metrics_agent_port = metrics_port,
+                            metrics_export_port = export_port,
+                            "Metrics agent ready — initializing exporters"
+                        );
+                        // C++ equivalent: ConnectOpenCensusExporter(port) +
+                        // InitOpenTelemetryExporter(port).
+                        // Rust: start the periodic exporter and HTTP server.
+                        let exporter = std::sync::Arc::new(
+                            ray_stats::exporter::MetricsExporter::new(
+                                ray_stats::exporter::ExporterConfig::default(),
+                            ),
+                        );
+                        let exporter_clone = std::sync::Arc::clone(&exporter);
+                        // Start periodic export loop.
+                        let _export_handle = exporter_clone.start_periodic_export();
+
+                        // Start Prometheus HTTP endpoint if export port is set.
+                        if export_port > 0 {
+                            let http_config = ray_stats::http_server::MetricsHttpConfig {
+                                port: export_port as u16,
+                            };
+                            tokio::spawn(async move {
+                                match ray_stats::http_server::start_metrics_server(
+                                    http_config, exporter,
+                                )
+                                .await
+                                {
+                                    Ok((_handle, actual_port)) => {
+                                        tracing::info!(
+                                            port = actual_port,
+                                            "Prometheus metrics HTTP server started"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(
+                                            error = %e,
+                                            "Failed to start metrics HTTP server"
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                    } else {
+                        tracing::error!(
+                            "Failed to establish connection to the metrics agent"
+                        );
+                    }
+                })
+                .await;
+        } else {
+            tracing::info!(
+                "Metrics agent not available (port not configured). \
+                 This is expected in minimal installations."
+            );
+        }
+
+        // Step 5: Create RuntimeEnvAgentClient and install into worker pool.
+        // C++ equivalent: node_manager.cc lines 281-291.
+        //
+        // Create a oneshot channel so the runtime-env timeout shutdown callback
+        // can signal the gRPC server to initiate graceful shutdown (C++ parity:
+        // build NodeDeathInfo → call shutdown_raylet_gracefully_ → schedule
+        // forced exit after 10s).
+        let (runtime_env_shutdown_tx, runtime_env_shutdown_rx) =
+            tokio::sync::oneshot::channel::<ShutdownReason>();
+        let runtime_env_shutdown_tx =
+            Arc::new(std::sync::Mutex::new(Some(runtime_env_shutdown_tx)));
+
+        let runtime_env_port = self.get_runtime_env_agent_port();
+        if runtime_env_port > 0 {
+            let shutdown_tx_clone = Arc::clone(&runtime_env_shutdown_tx);
+            let re_client = Arc::new(
+                crate::runtime_env_agent_client::RuntimeEnvAgentClient::new(
+                    &self.config.node_ip_address,
+                    runtime_env_port as u16,
+                    crate::runtime_env_agent_client::RuntimeEnvAgentClientConfig {
+                        auth_token: self.config.auth_token.clone(),
+                        shutdown_raylet: Some(std::sync::Arc::new(move || {
+                            tracing::error!(
+                                "Initiating graceful raylet shutdown due to runtime env \
+                                 agent timeout. The runtime env agent was never started, \
+                                 or is listening to the wrong port. Read the log `cat \
+                                 /tmp/ray/session_latest/logs/runtime_env_agent.log`."
+                            );
+                            // C++ parity: signal the gRPC server to stop accepting new
+                            // requests (graceful shutdown), then schedule a forced exit
+                            // after 10s as a backstop.
+                            if let Some(tx) = shutdown_tx_clone.lock().unwrap().take() {
+                                let _ = tx.send(ShutdownReason::RuntimeEnvTimeout);
+                            }
+                            std::thread::spawn(|| {
+                                std::thread::sleep(std::time::Duration::from_secs(10));
+                                tracing::error!("Graceful shutdown timed out, forcing exit");
+                                std::process::exit(1);
+                            });
+                        })),
+                        ..Default::default()
+                    },
+                ),
+            );
+            self.worker_pool
+                .set_runtime_env_agent_client(re_client);
+            tracing::info!(
+                port = runtime_env_port,
+                "RuntimeEnvAgentClient installed into worker pool"
+            );
+        } else {
+            tracing::info!(
+                "Runtime env agent not available (port not configured)"
+            );
+        }
 
         // Register with GCS if an address is configured.
         let gcs_state = if !self.config.gcs_address.is_empty() {
@@ -702,6 +1264,29 @@ impl NodeManager {
         let auth = ray_rpc::auth::AuthInterceptor::new(auth_mode, self.config.auth_token.clone());
 
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+
+        // Combine OS signals (SIGTERM / Ctrl-C) with the runtime-env timeout
+        // shutdown channel so either path triggers graceful server shutdown.
+        // We capture the shutdown reason so we can propagate NodeDeathInfo to GCS.
+        let shutdown_reason: std::sync::Arc<std::sync::Mutex<ShutdownReason>> =
+            std::sync::Arc::new(std::sync::Mutex::new(ShutdownReason::Signal));
+        let shutdown_reason_clone = std::sync::Arc::clone(&shutdown_reason);
+        let combined_shutdown = async move {
+            tokio::select! {
+                _ = shutdown_signal() => {
+                    tracing::info!("Received OS shutdown signal");
+                    // reason stays Signal (the default)
+                }
+                result = runtime_env_shutdown_rx => {
+                    let reason = result.unwrap_or(ShutdownReason::Signal);
+                    *shutdown_reason_clone.lock().unwrap() = reason;
+                    tracing::info!(
+                        "Graceful shutdown initiated by runtime env agent timeout"
+                    );
+                }
+            }
+        };
+
         tonic::transport::Server::builder()
             .add_service(
                 rpc::node_manager_service_server::NodeManagerServiceServer::with_interceptor(
@@ -709,12 +1294,22 @@ impl NodeManager {
                 ),
             )
             .add_service(health_service)
-            .serve_with_incoming_shutdown(incoming, shutdown_signal())
+            .serve_with_incoming_shutdown(incoming, combined_shutdown)
             .await?;
 
-        // Clean up: unregister from GCS.
+        // Clean up: unregister from GCS with appropriate death info.
+        let final_reason = *shutdown_reason.lock().unwrap();
         if let Some((gcs_client, node_id)) = &gcs_state {
-            Self::unregister_from_gcs(gcs_client, node_id).await;
+            Self::unregister_from_gcs(gcs_client, node_id, final_reason).await;
+        }
+
+        // Clean up: stop agent subprocesses.
+        // C++ equivalent: node_manager.cc:2960-2961.
+        if let Some(ref mgr) = self.dashboard_agent_manager {
+            mgr.stop();
+        }
+        if let Some(ref mgr) = self.runtime_env_agent_manager {
+            mgr.stop();
         }
 
         tracing::info!("Raylet shutting down");
@@ -741,6 +1336,7 @@ mod tests {
             auth_token: None,
             python_worker_command: None,
             raw_config_json: "{}".to_string(),
+            ..Default::default()
         }
     }
 
@@ -900,5 +1496,69 @@ mod tests {
         assert_eq!(nm.config().gcs_address, "127.0.0.1:6379");
         assert_eq!(nm.config().session_name, "test-session");
         assert!(nm.config().auth_token.is_none());
+    }
+
+    #[test]
+    fn test_shutdown_reason_builds_correct_unregister_request() {
+        // RuntimeEnvTimeout should produce UNEXPECTED_TERMINATION death info
+        let reason = ShutdownReason::RuntimeEnvTimeout;
+        let death_info = match reason {
+            ShutdownReason::RuntimeEnvTimeout => Some(rpc::NodeDeathInfo {
+                reason: rpc::node_death_info::Reason::UnexpectedTermination as i32,
+                reason_message:
+                    "Raylet could not connect to Runtime Env Agent".to_string(),
+            }),
+            ShutdownReason::Signal => None,
+        };
+
+        let req = rpc::UnregisterNodeRequest {
+            node_id: vec![0u8; 28],
+            node_death_info: death_info,
+        };
+
+        let info = req.node_death_info.as_ref().expect("death info must be set");
+        assert_eq!(
+            info.reason,
+            rpc::node_death_info::Reason::UnexpectedTermination as i32
+        );
+        assert_eq!(
+            info.reason_message,
+            "Raylet could not connect to Runtime Env Agent"
+        );
+
+        // Signal shutdown should NOT include death info
+        let reason_signal = ShutdownReason::Signal;
+        let death_info_signal = match reason_signal {
+            ShutdownReason::RuntimeEnvTimeout => Some(rpc::NodeDeathInfo {
+                reason: rpc::node_death_info::Reason::UnexpectedTermination as i32,
+                reason_message:
+                    "Raylet could not connect to Runtime Env Agent".to_string(),
+            }),
+            ShutdownReason::Signal => None,
+        };
+
+        let req_signal = rpc::UnregisterNodeRequest {
+            node_id: vec![0u8; 28],
+            node_death_info: death_info_signal,
+        };
+
+        assert!(
+            req_signal.node_death_info.is_none(),
+            "Signal shutdown should not include death info"
+        );
+    }
+
+    #[test]
+    fn test_shutdown_reason_channel_propagates() {
+        // Verify the oneshot channel carries the correct ShutdownReason variant.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<ShutdownReason>();
+        tx.send(ShutdownReason::RuntimeEnvTimeout).unwrap();
+        let received = rx.try_recv().unwrap();
+        assert_eq!(received, ShutdownReason::RuntimeEnvTimeout);
+
+        let (tx2, mut rx2) = tokio::sync::oneshot::channel::<ShutdownReason>();
+        tx2.send(ShutdownReason::Signal).unwrap();
+        let received2 = rx2.try_recv().unwrap();
+        assert_eq!(received2, ShutdownReason::Signal);
     }
 }

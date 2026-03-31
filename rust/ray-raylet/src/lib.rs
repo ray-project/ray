@@ -13,6 +13,7 @@
 
 #![allow(clippy::result_large_err)]
 
+pub mod agent_manager;
 pub mod cluster_resource_manager;
 pub mod cluster_resource_scheduler;
 pub mod demand_calculator;
@@ -21,8 +22,10 @@ pub mod grpc_service;
 pub mod lease_manager;
 pub mod local_object_manager;
 pub mod local_resource_manager;
+pub mod metrics_agent_client;
 pub mod node_manager;
 pub mod placement_group_resource_manager;
+pub mod runtime_env_agent_client;
 pub mod scheduling_policy;
 pub mod scheduling_resources;
 pub mod wait_manager;

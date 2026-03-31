@@ -25,7 +25,7 @@ use crate::lease_manager::{LeaseReply, SchedulingClass};
 use crate::node_manager::NodeManager;
 use crate::placement_group_resource_manager::BundleID;
 use crate::scheduling_resources::SchedulingOptions;
-use crate::worker_pool::Language;
+use crate::worker_pool::{Language, WorkerPool};
 
 /// The gRPC service implementation wrapping the NodeManager.
 /// Factory for creating subscriber transport clients per owner.
@@ -323,17 +323,61 @@ impl NodeManagerServiceImpl {
             .map(|b| JobID::from_binary(b))
             .unwrap_or_else(|| JobID::from_int(0));
 
-        tracing::debug!(?language, job_id = %job_id.hex(), "PrestartWorkers");
+        // Extract runtime env from the request (C++ parity: worker_pool.cc:1377).
+        let serialized_runtime_env = request
+            .runtime_env_info
+            .as_ref()
+            .map(|info| info.serialized_runtime_env.as_str())
+            .unwrap_or("");
+
+        // Extract runtime env config from the proto and serialize to JSON.
+        // C++ parity: the config is extracted from RuntimeEnvInfo and passed
+        // through to the agent client (worker_pool.cc).
+        let serialized_runtime_env_config = request
+            .runtime_env_info
+            .as_ref()
+            .and_then(|info| info.runtime_env_config.as_ref())
+            .map(|config| serde_json::to_string(config).unwrap_or_default())
+            .unwrap_or_else(|| "{}".to_string());
+
+        tracing::debug!(
+            ?language,
+            job_id = %job_id.hex(),
+            has_runtime_env = !serialized_runtime_env.is_empty()
+                && serialized_runtime_env != "{}",
+            "PrestartWorkers"
+        );
 
         // Ensure the job is active so pop_worker can succeed later.
-        self.node_manager.worker_pool().handle_job_started(job_id);
+        if serialized_runtime_env.is_empty() || serialized_runtime_env == "{}" {
+            self.node_manager.worker_pool().handle_job_started(job_id);
+        } else {
+            self.node_manager.worker_pool().handle_job_started_with_runtime_env(
+                job_id,
+                serialized_runtime_env.to_string(),
+                serialized_runtime_env_config.clone(),
+            );
+        }
 
-        // Start one worker process for the requested language.
-        let worker_id = self
-            .node_manager
-            .worker_pool()
-            .start_worker_process(language, &job_id);
-        if let Some(wid) = worker_id {
+        // C++ parity: use the runtime-env-gated worker start path.
+        // When runtime_env is non-trivial, the worker process is only started
+        // after successful runtime-env creation (matching worker_pool.cc:1377).
+        let pool = self.node_manager.worker_pool();
+        let result = WorkerPool::pop_or_start_worker_with_runtime_env(
+            pool,
+            language,
+            &job_id,
+            serialized_runtime_env,
+            &serialized_runtime_env_config,
+            Some(Box::new(move |status| {
+                tracing::error!(
+                    job_id = %job_id.hex(),
+                    ?status,
+                    "PrestartWorkers: runtime env creation failed"
+                );
+            })),
+        );
+        if let Some(wid) = result.worker_id {
             tracing::info!(worker_id = %wid.hex(), "Prestarted worker");
         }
         Ok(rpc::PrestartWorkersReply::default())
@@ -401,6 +445,30 @@ impl NodeManagerServiceImpl {
     }
 
     // ─── Object Management RPCs ───────────────────────────────────────
+    //
+    // PARITY STATUS: PARTIALLY MATCHED
+    //
+    // Pin/eviction operations (PinObjectIDs, FreeObjectsInObjectStore, etc.)
+    // route through local_object_manager, which is an in-memory tracker that
+    // maintains pin counts and pending-deletion state independently of the
+    // ObjectManager/PlasmaStore.
+    //
+    // The ObjectManager/PlasmaStore path is wired for stats and capacity
+    // reporting (GetNodeStats), but it is NOT used as the backing store for
+    // the live pin/eviction path. In C++, the ObjectManager is both the
+    // cross-node transfer engine AND the local object store (via Plasma).
+    // Pin operations go through PlasmaStore::Get to acquire object buffers,
+    // keeping them alive until the owner signals free.
+    //
+    // To achieve full parity, pin operations here would need to:
+    //   1. Retrieve objects from PlasmaStore (not just check in-memory state)
+    //   2. Hold PlasmaStore object handles to prevent eviction
+    //   3. Release handles on owner-death or explicit FreeObjects
+    //
+    // Current coverage: stats-path integration (ObjectManager -> GetNodeStats)
+    // is live and tested. The pin/eviction path is logically correct but
+    // operates on a separate in-memory model, not backed by the real
+    // PlasmaStore allocator.
 
     pub async fn handle_pin_object_ids(
         &self,
@@ -741,11 +809,26 @@ impl NodeManagerServiceImpl {
     ) -> Result<rpc::GetNodeStatsReply, Status> {
         let include_memory_info = request.include_memory_info;
 
-        // Object store stats from the local object manager.
+        // Object store stats from the local object manager + live ObjectManager.
         let obj_stats = {
             let obj_mgr = self.node_manager.local_object_manager();
             let locked = obj_mgr.lock();
             let stats = locked.stats();
+
+            // Get real capacity/usage from the live ObjectManager if available.
+            let (capacity, used, fallback_used) =
+                if let Some(om) = self.node_manager.object_manager() {
+                    let store = om.plasma_store();
+                    let alloc = store.allocator();
+                    (
+                        alloc.footprint_limit(),
+                        alloc.allocated(),
+                        alloc.fallback_allocated(),
+                    )
+                } else {
+                    (0, 0, 0)
+                };
+
             rpc::ObjectStoreStats {
                 spill_time_total_s: stats.spill_time_total_s,
                 spilled_bytes_total: stats.total_bytes_spilled as i64,
@@ -755,13 +838,21 @@ impl NodeManagerServiceImpl {
                 restored_objects_total: stats.total_objects_restored as i64,
                 object_store_bytes_primary_copy: stats.pinned_bytes,
                 num_object_store_primary_copies: stats.num_pinned as i64,
-                object_store_bytes_used: stats.pinned_bytes,
+                object_store_bytes_used: if used > 0 { used } else { stats.pinned_bytes },
                 num_local_objects: stats.num_pinned as i64,
-                object_store_bytes_avail: 0,
-                object_store_bytes_fallback: 0,
+                object_store_bytes_avail: if capacity > 0 {
+                    (capacity - used).max(0)
+                } else {
+                    0
+                },
+                object_store_bytes_fallback: fallback_used,
                 cumulative_created_objects: 0,
                 cumulative_created_bytes: 0,
-                object_pulls_queued: false,
+                object_pulls_queued: if let Some(om) = self.node_manager.object_manager() {
+                    om.num_active_pulls() > 0
+                } else {
+                    false
+                },
             }
         };
 
@@ -1031,7 +1122,10 @@ impl NodeManagerServiceImpl {
         &self,
         _request: rpc::GetAgentPiDsRequest,
     ) -> Result<rpc::GetAgentPiDsReply, Status> {
-        Ok(rpc::GetAgentPiDsReply::default())
+        let mut reply = rpc::GetAgentPiDsReply::default();
+        reply.dashboard_agent_pid = Some(self.node_manager.get_dashboard_agent_pid() as i32);
+        reply.runtime_env_agent_pid = Some(self.node_manager.get_runtime_env_agent_pid() as i32);
+        Ok(reply)
     }
 
     // ─── Actor/Task Management RPCs ───────────────────────────────────
@@ -1417,6 +1511,7 @@ mod tests {
             auth_token: None,
             python_worker_command: None,
             raw_config_json: "{}".to_string(),
+            ..Default::default()
         }
     }
 
@@ -1449,6 +1544,7 @@ mod tests {
             port,
             ip_address: "127.0.0.1".to_string(),
             is_alive: true,
+            ..Default::default()
         };
         svc.node_manager.worker_pool().register_worker(worker).unwrap();
     }
@@ -1875,6 +1971,7 @@ mod tests {
             port: 5555,
             ip_address: "127.0.0.1".to_string(),
             is_alive: true,
+            ..Default::default()
         };
         svc.node_manager
             .worker_pool()
@@ -1921,6 +2018,7 @@ mod tests {
             port: 6666,
             ip_address: "127.0.0.1".to_string(),
             is_alive: true,
+            ..Default::default()
         };
         svc.node_manager
             .worker_pool()
@@ -2039,6 +2137,7 @@ mod tests {
             port: 7777,
             ip_address: "127.0.0.1".to_string(),
             is_alive: true,
+            ..Default::default()
         };
         svc.node_manager
             .worker_pool()
@@ -2152,6 +2251,7 @@ mod tests {
                 port: 8000 + i as u16,
                 ip_address: "127.0.0.1".to_string(),
                 is_alive: true,
+                ..Default::default()
             };
             svc.node_manager
                 .worker_pool()
@@ -2402,6 +2502,7 @@ mod tests {
             port: 19999,
             ip_address: "127.0.0.1".to_string(),
             is_alive: true,
+            ..Default::default()
         };
         svc.node_manager.worker_pool().register_worker(driver).unwrap();
 
@@ -3796,11 +3897,11 @@ mod tests {
         let job = ray_common::id::JobID::from_binary(&[0u8; 4]);
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid1, language: Language::Python, worker_type: WorkerType::Worker,
-            job_id: job, pid: 2000, port: 0, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 2000, port: 0, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid2, language: Language::Python, worker_type: WorkerType::Driver,
-            job_id: job, pid: 2001, port: 0, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 2001, port: 0, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
 
         // Report stats only for the worker (not the driver)
@@ -3895,7 +3996,7 @@ mod tests {
         // Register worker with a real-looking port (but no server running)
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid, language: Language::Python, worker_type: WorkerType::Worker,
-            job_id: job, pid: 4000, port: 49999, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 4000, port: 49999, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
 
         // Report non-zero stats in tracker — these must NOT appear on RPC failure
@@ -3930,7 +4031,7 @@ mod tests {
         let job = ray_common::id::JobID::from_binary(&[0u8; 4]);
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid, language: Language::Python, worker_type: WorkerType::Driver,
-            job_id: job, pid: 4001, port: 49998, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 4001, port: 49998, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
 
         svc.node_manager.worker_stats_tracker().report_stats(wid, WorkerStatsSnapshot {
@@ -3965,7 +4066,7 @@ mod tests {
         // port=0 → uses tracker (simulates successful collection)
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid, language: Language::Python, worker_type: WorkerType::Worker,
-            job_id: job, pid: 4002, port: 0, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 4002, port: 0, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
 
         svc.node_manager.worker_stats_tracker().report_stats(wid, WorkerStatsSnapshot {
@@ -3998,7 +4099,7 @@ mod tests {
         let job = ray_common::id::JobID::from_binary(&[0u8; 4]);
         svc.node_manager.worker_pool().register_worker(WorkerInfo {
             worker_id: wid, language: Language::Python, worker_type: WorkerType::Driver,
-            job_id: job, pid: 4003, port: 0, ip_address: "127.0.0.1".into(), is_alive: true,
+            job_id: job, pid: 4003, port: 0, ip_address: "127.0.0.1".into(), is_alive: true, ..Default::default()
         }).unwrap();
 
         svc.node_manager.worker_stats_tracker().report_stats(wid, WorkerStatsSnapshot {

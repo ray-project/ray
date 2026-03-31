@@ -1785,6 +1785,7 @@ dependencies = [
  "hex",
  "nix",
  "parking_lot",
+ "prost",
  "rand 0.8.5",
  "ray-common",
  "ray-gcs-rpc-client",

@@ -90,6 +90,12 @@ pub struct RayConfig {
     // ─── Cgroup ───────────────────────────────────────────────
     pub enable_cgroup: bool,
 
+    // ─── Metrics ──────────────────────────────────────────────
+    /// Enable metrics collection (dashboard agent metrics).
+    /// C++ parity: `enable_metrics_collection` (default true).
+    /// When false, `--disable-metrics-collection` is appended to agent command.
+    pub enable_metrics_collection: bool,
+
     // ─── Export / Event ────────────────────────────────────────
     /// Global enable for export API file output (all types).
     /// C++ parity: `enable_export_api_write` (default false).
@@ -134,6 +140,7 @@ impl Default for RayConfig {
             worker_register_timeout_seconds: 60,
             task_retry_delay_ms: 0,
             enable_cgroup: false,
+            enable_metrics_collection: true,
             enable_export_api_write: false,
             enable_export_api_write_config: String::new(),
             enable_ray_event: false,
@@ -224,6 +231,7 @@ impl RayConfig {
         set_field!(min_memory_free_bytes, "min_memory_free_bytes", i64);
         set_field!(gcs_server_port, "gcs_server_port", i32);
         set_field!(object_store_memory, "object_store_memory", i64);
+        set_field!(enable_metrics_collection, "enable_metrics_collection", bool);
 
         // Apply environment variable overrides (RAY_<NAME>)
         config.apply_env_overrides();
@@ -280,6 +288,7 @@ impl RayConfig {
         env_override!(memory_usage_threshold, f32);
         env_override!(memory_monitor_refresh_ms, u64);
         env_override!(min_memory_free_bytes, i64);
+        env_override!(enable_metrics_collection, bool);
         env_override!(enable_export_api_write, bool);
         env_override!(enable_export_api_write_config, String);
         env_override!(enable_ray_event, bool);

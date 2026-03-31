@@ -72,119 +72,164 @@ struct Args {
     #[arg(long, alias = "static_resource_list")]
     static_resource_list: Option<String>,
 
-    // ── Compatibility args (accepted for C++ parity, not used) ───────
+    // ── Worker spawning args (used at runtime) ────────────────────────
 
-    /// Raylet socket name (compatibility)
-    #[arg(long, alias = "raylet_socket_name")]
-    raylet_socket_name: Option<String>,
-
-    /// Object manager port (compatibility)
-    #[arg(long, alias = "object_manager_port", default_value_t = 0)]
-    object_manager_port: u16,
-
-    /// Min worker port (compatibility)
+    /// Min worker port. 0 = unconstrained.
     #[arg(long, alias = "min_worker_port", default_value_t = 0)]
     min_worker_port: u16,
 
-    /// Max worker port (compatibility)
+    /// Max worker port. 0 = unconstrained.
     #[arg(long, alias = "max_worker_port", default_value_t = 0)]
     max_worker_port: u16,
 
-    /// Worker port list (compatibility)
+    /// Explicit worker port list (comma-separated). Overrides min/max.
     #[arg(long, alias = "worker_port_list")]
     worker_port_list: Option<String>,
 
-    /// Maximum startup concurrency (compatibility)
+    /// Maximum number of workers starting concurrently.
     #[arg(long, alias = "maximum_startup_concurrency", default_value_t = 1)]
     maximum_startup_concurrency: u32,
 
-    /// Java worker command (compatibility)
-    #[arg(long, alias = "java_worker_command")]
-    java_worker_command: Option<String>,
-
-    /// C++ worker command (compatibility)
-    #[arg(long, alias = "cpp_worker_command")]
-    cpp_worker_command: Option<String>,
-
-    /// Native library path (compatibility)
-    #[arg(long, alias = "native_library_path")]
-    native_library_path: Option<String>,
-
-    /// Temp directory (compatibility)
-    #[arg(long, alias = "temp_dir")]
-    temp_dir: Option<String>,
-
-    /// Session directory (compatibility)
-    #[arg(long, alias = "session_dir")]
-    session_dir: Option<String>,
-
-    /// Resource directory (compatibility)
-    #[arg(long, alias = "resource_dir")]
-    resource_dir: Option<String>,
-
-    /// Metrics agent port (compatibility)
-    #[arg(long, alias = "metrics-agent-port", default_value_t = 0)]
-    metrics_agent_port: u16,
-
-    /// Metrics export port (compatibility)
-    #[arg(long, alias = "metrics_export_port", default_value_t = 0)]
-    metrics_export_port: u16,
-
-    /// Runtime env agent port (compatibility)
-    #[arg(long, alias = "runtime_env_agent_port", default_value_t = 0)]
-    runtime_env_agent_port: u16,
-
-    /// Object store memory (compatibility)
-    #[arg(long, alias = "object_store_memory", default_value_t = 0)]
-    object_store_memory: u64,
-
-    /// Plasma directory (compatibility)
-    #[arg(long, alias = "plasma_directory")]
-    plasma_directory: Option<String>,
-
-    /// Fallback directory (compatibility)
-    #[arg(long, alias = "fallback_directory")]
-    fallback_directory: Option<String>,
-
-    /// Ray debugger external (compatibility)
-    #[arg(long, alias = "ray-debugger-external")]
-    ray_debugger_external: Option<String>,
-
-    /// Cluster ID (compatibility)
-    #[arg(long, alias = "cluster-id")]
-    cluster_id: Option<String>,
-
-    /// Head node flag (compatibility)
-    #[arg(long)]
-    head: bool,
-
-    /// Number of prestart Python workers (compatibility)
+    /// Number of Python workers to pre-start at raylet launch.
     #[arg(long, alias = "num_prestart_python_workers", default_value_t = 0)]
     num_prestart_python_workers: u32,
 
-    /// Dashboard agent command (compatibility)
+    // ── Agent subprocess management (used at runtime) ────────────────
+
+    /// Command to launch the dashboard agent subprocess. Validated and
+    /// launched by AgentManager with monitoring/respawn.
     #[arg(long, alias = "dashboard_agent_command")]
     dashboard_agent_command: Option<String>,
 
-    /// Runtime env agent command (compatibility)
+    /// Command to launch the runtime env agent subprocess. Validated and
+    /// launched by AgentManager with monitoring/respawn.
     #[arg(long, alias = "runtime_env_agent_command")]
     runtime_env_agent_command: Option<String>,
 
-    /// Huge pages (compatibility)
+    // ── Agent port resolution (used at runtime) ──────────────────────
+    // CLI value > 0 is used directly; if 0, resolved from session_dir
+    // port files (matching C++ WaitForDashboardAgentPorts pattern).
+
+    /// Metrics agent port. Used to create MetricsAgentClient with
+    /// readiness-gating before exporter initialization.
+    /// PARITY STATUS: INTENTIONALLY DIFFERENT — sentinel value.
+    /// C++ uses -1 (int32 gflags); Rust uses 0 (u16 clap).
+    /// Both represent "not configured". `ray start` always provides
+    /// explicit values, making this a binary-test-only divergence.
+    /// This divergence is accepted and excluded from parity claims.
+    #[arg(long, alias = "metrics-agent-port", default_value_t = 0)]
+    metrics_agent_port: u16,
+
+    /// Metrics export port. Published in GcsNodeInfo and used to start
+    /// the Prometheus HTTP metrics endpoint.
+    /// C++ default is 1 (meaning "will be resolved later"); 0 means "disabled".
+    #[arg(long, alias = "metrics_export_port", default_value_t = 1)]
+    metrics_export_port: u16,
+
+    /// Runtime env agent port. Used to create RuntimeEnvAgentClient
+    /// which is installed into the WorkerPool for env lifecycle ops.
+    #[arg(long, alias = "runtime_env_agent_port", default_value_t = 0)]
+    runtime_env_agent_port: u16,
+
+    /// Dashboard agent listen port.
+    #[arg(long, alias = "dashboard_agent_listen_port", default_value_t = 0)]
+    dashboard_agent_listen_port: u16,
+
+    // ── Object store configuration (used at runtime) ─────────────────
+    // These values are passed to PlasmaAllocator -> PlasmaStore ->
+    // ObjectManager during NodeManager construction.
+
+    /// Object store memory limit in bytes. When > 0, constructs the
+    /// local PlasmaAllocator/PlasmaStore/ObjectManager.
+    /// PARITY STATUS: INTENTIONALLY DIFFERENT — sentinel value.
+    /// C++ uses -1 (int64 gflags); Rust uses 0 (u64 clap).
+    /// Both represent "not configured". `ray start` always provides
+    /// explicit values, making this a binary-test-only divergence.
+    /// This divergence is accepted and excluded from parity claims.
+    #[arg(long, alias = "object_store_memory", default_value_t = 0)]
+    object_store_memory: u64,
+
+    /// Primary mmap directory for the object store (e.g. /dev/shm).
+    #[arg(long, alias = "plasma_directory")]
+    plasma_directory: Option<String>,
+
+    /// Fallback mmap directory (disk overflow).
+    #[arg(long, alias = "fallback_directory")]
+    fallback_directory: Option<String>,
+
+    /// Whether to use huge pages for the object store.
     #[arg(long, alias = "huge_pages")]
     huge_pages: bool,
 
-    /// Stdout filepath (compatibility)
+    // ── Session and node metadata (used at runtime) ──────────────────
+
+    /// Session directory. Used for port-file rendezvous when agent
+    /// ports are not provided via CLI (reads <session_dir>/ports/<name>).
+    #[arg(long, alias = "session_dir")]
+    session_dir: Option<String>,
+
+    /// Temp directory for Ray session. Published in GcsNodeInfo.
+    #[arg(long, alias = "temp_dir")]
+    temp_dir: Option<String>,
+
+    /// Whether this node is the head node.
+    #[arg(long)]
+    head: bool,
+
+    /// Human-readable node name. Published in GcsNodeInfo.
+    #[arg(long, alias = "node-name")]
+    node_name: Option<String>,
+
+    /// Object manager port. Published in GcsNodeInfo for cluster
+    /// discovery. Note: Rust raylet serves object manager RPCs on the
+    /// main gRPC port; C++ uses a separate server on this port.
+    /// PARITY STATUS: INTENTIONALLY DIFFERENT — sentinel value.
+    /// C++ uses -1 (int32 gflags); Rust uses 0 (u16 clap).
+    /// Both represent "not configured". `ray start` always provides
+    /// explicit values, making this a binary-test-only divergence.
+    /// This divergence is accepted and excluded from parity claims.
+    #[arg(long, alias = "object_manager_port", default_value_t = 0)]
+    object_manager_port: u16,
+
+    /// Raylet socket name. Published in GcsNodeInfo.
+    #[arg(long, alias = "raylet_socket_name")]
+    raylet_socket_name: Option<String>,
+
+    // ── Accepted but not used (C++ CLI compatibility only) ───────────
+    // These are accepted so `ray start` can pass them without error,
+    // but the Rust raylet does not act on them.
+
+    /// Java worker command (not used — Rust raylet only spawns Python workers)
+    #[arg(long, alias = "java_worker_command")]
+    java_worker_command: Option<String>,
+
+    /// C++ worker command (not used — Rust raylet only spawns Python workers)
+    #[arg(long, alias = "cpp_worker_command")]
+    cpp_worker_command: Option<String>,
+
+    /// Native library path (not used)
+    #[arg(long, alias = "native_library_path")]
+    native_library_path: Option<String>,
+
+    /// Resource directory (not used)
+    #[arg(long, alias = "resource_dir")]
+    resource_dir: Option<String>,
+
+    /// Ray debugger external (not used)
+    #[arg(long, alias = "ray-debugger-external")]
+    ray_debugger_external: Option<String>,
+
+    /// Cluster ID (not used)
+    #[arg(long, alias = "cluster-id")]
+    cluster_id: Option<String>,
+
+    /// Stdout filepath (not used — logging configured separately)
     #[arg(long, alias = "stdout_filepath")]
     stdout_filepath: Option<String>,
 
-    /// Stderr filepath (compatibility)
+    /// Stderr filepath (not used — logging configured separately)
     #[arg(long, alias = "stderr_filepath")]
     stderr_filepath: Option<String>,
-
-    /// Node name (compatibility)
-    #[arg(long, alias = "node-name")]
-    node_name: Option<String>,
 }
 
 /// Parse "CPU:4,GPU:2" format (colon-separated key:value pairs).
@@ -245,36 +290,18 @@ fn parse_labels(s: &str) -> HashMap<String, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
-    // Suppress unused variable warnings for compatibility flags.
+    // Accept but do not use: language-specific worker commands and debugger
+    // (Rust raylet spawns Python workers via python_worker_command).
     let _ = (
-        args.object_manager_port,
-        args.min_worker_port,
-        args.max_worker_port,
-        &args.worker_port_list,
-        args.maximum_startup_concurrency,
         &args.java_worker_command,
         &args.cpp_worker_command,
         &args.native_library_path,
-        &args.temp_dir,
-        &args.session_dir,
         &args.resource_dir,
-        args.metrics_agent_port,
-        args.metrics_export_port,
-        args.runtime_env_agent_port,
-        args.object_store_memory,
-        &args.plasma_directory,
-        &args.fallback_directory,
         &args.ray_debugger_external,
         &args.cluster_id,
-        args.head,
-        args.num_prestart_python_workers,
-        &args.dashboard_agent_command,
-        &args.runtime_env_agent_command,
-        args.huge_pages,
         &args.stdout_filepath,
         &args.stderr_filepath,
         &args.raylet_socket_name,
-        &args.node_name,
     );
 
     ray_util::logging::init_ray_logging(
@@ -315,6 +342,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         format!("http://{}", args.gcs_address)
     };
 
+    // Load auth token following C++ AuthenticationTokenLoader precedence:
+    // 1. RAY_AUTH_TOKEN env var
+    // 2. RAY_AUTH_TOKEN_PATH env var -> read file
+    // 3. Default path: ~/.ray/auth_token
+    let auth_token = std::env::var("RAY_AUTH_TOKEN")
+        .ok()
+        .or_else(|| {
+            std::env::var("RAY_AUTH_TOKEN_PATH")
+                .ok()
+                .and_then(|path| std::fs::read_to_string(&path).ok())
+                .map(|s| s.trim().to_string())
+        })
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| std::path::PathBuf::from(h).join(".ray").join("auth_token"))
+                .and_then(|p| std::fs::read_to_string(&p).ok())
+                .map(|s| s.trim().to_string())
+        })
+        .filter(|t| !t.is_empty());
+
     let config = RayletConfig {
         node_ip_address: args.node_ip_address,
         port: args.port,
@@ -326,9 +374,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         resources,
         labels,
         session_name: args.session_name,
-        auth_token: None,
+        auth_token,
         python_worker_command: args.python_worker_command,
         raw_config_json,
+        object_manager_port: args.object_manager_port,
+        min_worker_port: args.min_worker_port,
+        max_worker_port: args.max_worker_port,
+        worker_port_list: args.worker_port_list,
+        maximum_startup_concurrency: args.maximum_startup_concurrency,
+        metrics_agent_port: args.metrics_agent_port,
+        metrics_export_port: args.metrics_export_port,
+        runtime_env_agent_port: args.runtime_env_agent_port,
+        object_store_memory: args.object_store_memory,
+        plasma_directory: args.plasma_directory,
+        fallback_directory: args.fallback_directory,
+        huge_pages: args.huge_pages,
+        dashboard_agent_listen_port: args.dashboard_agent_listen_port,
+        head: args.head,
+        num_prestart_python_workers: args.num_prestart_python_workers,
+        dashboard_agent_command: args.dashboard_agent_command,
+        runtime_env_agent_command: args.runtime_env_agent_command,
+        temp_dir: args.temp_dir,
+        session_dir: args.session_dir,
+        node_name: args.node_name,
     };
 
     let node_manager = Arc::new(NodeManager::new(config));
