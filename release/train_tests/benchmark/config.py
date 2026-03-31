@@ -50,6 +50,7 @@ class RayDataConfig(DataLoaderConfig):
     enable_shard_locality: bool = True
     preserve_order: bool = False
     ray_data_pin_memory: bool = False
+    track_shuffle_quality: bool = False
 
 
 class TorchConfig(DataLoaderConfig):

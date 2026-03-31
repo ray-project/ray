@@ -102,11 +102,67 @@ def get_or_create_spill_metrics_monitor(
     ).remote(poll_interval_s=poll_interval_s)
 
 
+class ShuffleQualityTracker:
+    """Tracks shuffle quality metrics by observing file source diversity in batches."""
+
+    def __init__(self):
+        self._unique_files_per_batch: list = []
+        self._all_file_ids: list = []
+        self._file_id_map: Dict[str, int] = {}
+
+    def _path_to_id(self, path: str) -> int:
+        if path not in self._file_id_map:
+            self._file_id_map[path] = len(self._file_id_map)
+        return self._file_id_map[path]
+
+    def observe(self, batch) -> None:
+        """Record shuffle quality stats from a batch containing a 'path' column."""
+        if "path" not in batch.column_names:
+            return
+        paths = batch.column("path").to_pylist()
+        self._unique_files_per_batch.append(len(set(paths)))
+        self._all_file_ids.extend(self._path_to_id(p) for p in paths)
+
+    def get_metrics(self) -> Dict[str, float]:
+        """Return shuffle quality metrics accumulated across batches."""
+        if not self._unique_files_per_batch:
+            return {}
+        total = sum(self._unique_files_per_batch)
+        count = len(self._unique_files_per_batch)
+        metrics = {
+            "shuffle_quality/mean_unique_files_per_batch": total / count,
+            "shuffle_quality/min_unique_files_per_batch": min(
+                self._unique_files_per_batch
+            ),
+            "shuffle_quality/max_unique_files_per_batch": max(
+                self._unique_files_per_batch
+            ),
+            "shuffle_quality/num_batches_measured": count,
+        }
+
+        # Compute unique files in sliding windows of ~2000 rows
+        window_size = 2000
+        ids = self._all_file_ids
+        if len(ids) >= window_size:
+            window_counts = []
+            for start in range(0, len(ids) - window_size + 1, window_size):
+                window = ids[start : start + window_size]
+                window_counts.append(len(set(window)))
+            metrics["shuffle_quality/mean_unique_files_per_2k_rows"] = sum(
+                window_counts
+            ) / len(window_counts)
+            metrics["shuffle_quality/min_unique_files_per_2k_rows"] = min(window_counts)
+            metrics["shuffle_quality/max_unique_files_per_2k_rows"] = max(window_counts)
+
+        return metrics
+
+
 class RayDataLoaderFactory(BaseDataLoaderFactory):
     def __init__(self, benchmark_config: BenchmarkConfig) -> None:
         super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
         self._spill_monitor: Optional[ray.actor.ActorHandle] = None
+        self._shuffle_tracker: Optional[ShuffleQualityTracker] = None
 
         dataloader_config = self.get_dataloader_config()
         assert isinstance(dataloader_config, RayDataConfig), type(dataloader_config)
@@ -156,6 +212,10 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
 
         dataloader_config = self.get_dataloader_config()
+
+        if dataloader_config.track_shuffle_quality:
+            return self._train_dataloader_with_tracking()
+
         return iter(
             ds_iterator.iter_torch_batches(
                 batch_size=dataloader_config.train_batch_size,
@@ -170,6 +230,43 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 pin_memory=dataloader_config.ray_data_pin_memory,
             )
         )
+
+    def _train_dataloader_with_tracking(self):
+        """Get training dataloader with shuffle quality tracking.
+
+        Iterates raw Arrow batches to observe the 'path' column for
+        shuffle quality metrics before passing batches through the
+        collate function. Subclasses can call this from
+        get_train_dataloader() to opt in.
+        """
+        if self._spill_monitor is None:
+            self._spill_monitor = get_or_create_spill_metrics_monitor()
+
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
+        self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
+
+        dataloader_config = self.get_dataloader_config()
+        collate_fn = self._get_collate_fn()
+        self._shuffle_tracker = ShuffleQualityTracker()
+
+        arrow_batches = ds_iterator.iter_batches(
+            batch_size=dataloader_config.train_batch_size,
+            batch_format="pyarrow",
+            local_shuffle_buffer_size=(
+                dataloader_config.local_buffer_shuffle_size
+                if dataloader_config.local_buffer_shuffle_size > 0
+                else None
+            ),
+            prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+            drop_last=True,
+        )
+
+        def _tracking_iter():
+            for batch in arrow_batches:
+                self._shuffle_tracker.observe(batch)
+                yield collate_fn(batch)
+
+        return _tracking_iter()
 
     def get_val_dataloader(self):
         """Get the validation dataloader.
@@ -276,5 +373,8 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 metrics.update(spill_metrics)
             except Exception as e:
                 logger.warning(f"Failed to collect spill rate metrics: {e}")
+
+        if self._shuffle_tracker is not None:
+            metrics.update(self._shuffle_tracker.get_metrics())
 
         return metrics
