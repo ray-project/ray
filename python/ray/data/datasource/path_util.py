@@ -321,8 +321,10 @@ def _resolve_paths_and_filesystem(
             logger.warning(f"Failed to resolve path '{path}': {e}, skipping")
             continue
 
-        if filesystem is None:
-            filesystem = resolved_filesystem
+        # Always use the filesystem returned for this path. When the caller's FS is
+        # incompatible with the URI (e.g. fsspec gcs + file://), fallback resolution
+        # infers a different FS; we must open with that one, not the stale input.
+        filesystem = resolved_filesystem
 
         # If the PyArrow filesystem is handled by a fsspec HTTPFileSystem, the protocol/
         # scheme of paths should not be unwrapped/removed, because HTTPFileSystem
@@ -343,8 +345,9 @@ def _split_uri(uri: str):
     e.g. "s3://my-bucket/a/b/c.jpg"               -> ("s3://my-bucket", "a/b/c.jpg")
          "https://host.com/a/b?X-Amz-Signature=x" -> ("https://host.com", "a/b?X-Amz-Signature=x")
 
-    The query string is preserved so that signed URLs (e.g. pre-signed S3 HTTPS
-    URLs) continue to work correctly when passed to obstore's get_async.
+    The query string is preserved so signed URLs (e.g. pre-signed S3 HTTPS)
+    reach obstore intact. Semicolons in object keys normally appear in
+    ``parsed.path`` (not ``parsed.params``) for typical ``urlparse`` output.
     """
     parsed = urlparse(uri, allow_fragments=False)
     store_url = f"{parsed.scheme}://{parsed.netloc}"

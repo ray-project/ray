@@ -460,11 +460,11 @@ class TestObstoreRangeSplitDownload:
             )
         assert results == [content]
 
-    def test_range_split_small_file_uses_simple_get(self, tmp_path):
+    def test_range_split_disabled_uses_whole_file_get(self, tmp_path):
+        """No ranged download when file is below threshold or chunk size is invalid."""
         # Files below threshold should still use get_async, not range requests.
         content = b"small file"
         (tmp_path / "small.bin").write_bytes(content)
-
         uri = f"file://{tmp_path}/small.bin"
         with patch(
             "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
@@ -474,6 +474,29 @@ class TestObstoreRangeSplitDownload:
                 _download_uris_with_obstore([uri], "uri", file_sizes=[len(content)])
             )
         assert results == [content]
+
+        # Non-positive chunk size disables range split.
+        content2 = os.urandom(3000)
+        (tmp_path / "w.bin").write_bytes(content2)
+        uri2 = f"file://{tmp_path}/w.bin"
+
+        def _fail_ranged(*_args, **_kwargs):
+            raise AssertionError("_fetch_ranged must not be called")
+
+        with patch(
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+            100,
+        ), patch(
+            "ray.data._internal.planner._obstore_download.RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE",
+            -512,
+        ), patch(
+            "ray.data._internal.planner._obstore_download._fetch_ranged",
+            side_effect=_fail_ranged,
+        ):
+            results2 = asyncio.run(
+                _download_uris_with_obstore([uri2], "uri", file_sizes=[len(content2)])
+            )
+        assert results2 == [content2]
 
     def test_range_split_mixed_sizes(self, tmp_path):
         # Mix of large and small files in a single batch.

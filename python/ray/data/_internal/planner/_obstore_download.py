@@ -21,25 +21,48 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_obstore_int_env(var_name: str, default: int) -> int:
+    """Parse a non-negative Ray Data obstore env var without breaking import.
+
+    Malformed values log a warning and fall back to default so bad config in
+    the environment cannot prevent ``_obstore_download`` from loading.
+    """
+    raw = os.environ.get(var_name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(str(raw).strip(), 10)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid integer for %s=%r — using default %s",
+            var_name,
+            raw,
+            default,
+        )
+        return default
+
+
 # Constants & configuration
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE and obstore_parse_scheme is not None
 
-_DEFAULT_RANGE_THRESHOLD = str(4 * 1024 * 1024)  # 4 MB
-_DEFAULT_RANGE_CHUNK_SIZE = str(8 * 1024 * 1024)  # 8 MB
+_DEFAULT_RANGE_THRESHOLD_INT = 4 * 1024 * 1024  # 4 MB
+_DEFAULT_RANGE_CHUNK_SIZE_INT = 8 * 1024 * 1024  # 8 MB
+_DEFAULT_MAX_CONCURRENCY_INT = 128
 
 # Range-split downloads: files above this threshold (bytes) are downloaded as
 # parallel get_range requests instead of a single get.  Default 4 MB — below
 # the crossover where ranged overhead exceeds the single-GET time, but above
 # it large/skewed workloads see 10-25x speedup.  Set to 0 to disable.
-RAY_DATA_OBSTORE_RANGE_THRESHOLD = int(
-    os.environ.get("RAY_DATA_OBSTORE_RANGE_THRESHOLD", _DEFAULT_RANGE_THRESHOLD)
+RAY_DATA_OBSTORE_RANGE_THRESHOLD = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_RANGE_THRESHOLD", _DEFAULT_RANGE_THRESHOLD_INT
 )
-RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = int(
-    os.environ.get("RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", _DEFAULT_RANGE_CHUNK_SIZE)
+RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE", _DEFAULT_RANGE_CHUNK_SIZE_INT
 )
-RAY_DATA_OBSTORE_MAX_CONCURRENCY = int(
-    os.environ.get("RAY_DATA_OBSTORE_MAX_CONCURRENCY", "128")
+RAY_DATA_OBSTORE_MAX_CONCURRENCY = _parse_obstore_int_env(
+    "RAY_DATA_OBSTORE_MAX_CONCURRENCY", _DEFAULT_MAX_CONCURRENCY_INT
 )
 
 _FILE_SIZE_COLUMN_PREFIX = "__ray_file_size__"
@@ -452,15 +475,24 @@ async def _download_uris_with_obstore(
     range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
     range_chunk_size = RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE
     max_conc = RAY_DATA_OBSTORE_MAX_CONCURRENCY
-    if range_threshold > 0 and max_conc <= 0:
-        logger.warning(
-            "RAY_DATA_OBSTORE_RANGE_THRESHOLD is set but "
-            "RAY_DATA_OBSTORE_MAX_CONCURRENCY=%d is invalid. "
-            "Range downloads require a positive concurrency limit to avoid "
-            "socket exhaustion. Disabling range splitting.",
-            max_conc,
-        )
-        range_threshold = 0
+    if range_threshold > 0:
+        if max_conc <= 0:
+            logger.warning(
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD is set but "
+                "RAY_DATA_OBSTORE_MAX_CONCURRENCY=%d is invalid. "
+                "Range downloads require a positive concurrency limit to avoid "
+                "socket exhaustion. Disabling range splitting.",
+                max_conc,
+            )
+            range_threshold = 0
+        if range_chunk_size <= 0:
+            logger.warning(
+                "RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE=%d is invalid (must be > 0). "
+                "Disabling range splitting to avoid empty range tasks and "
+                "zero-filled bogus downloads.",
+                range_chunk_size,
+            )
+            range_threshold = 0
     sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
 
     # obstore's reqwest client rejects http:// by default. Auto-enable it
