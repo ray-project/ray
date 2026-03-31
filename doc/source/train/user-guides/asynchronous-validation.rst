@@ -144,6 +144,54 @@ calculate average accuracy on a validation set. To learn more about how to use
     :start-after: __validation_fn_map_batches_start__
     :end-before: __validation_fn_map_batches_end__
 
+Tuning asynchronous validation
+------------------------------
+
+Overlapping validation and training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Asynchronous validation is most beneficial when training and validation fully overlap. If one
+finishes before the other, some workers sit idle. :ref:`Autoscaling <vms-autoscaling>` lets you
+spin up workers only for the duration of validation, which mitigates this but doesn't fully
+eliminate the gap.
+
+You can tune the following knobs to overlap validation and training as closely as possible:
+
+* **Number of workers**: Tune the number of validation workers relative to training workers so that
+  the two phases overlap as closely as possible.
+* **Batch size**: A higher batch size generally increases throughput, but may affect convergence. Adjust
+  batch size to balance speed and model quality.
+* **Validation frequency**: Tune validation frequency to maximize overlap.
+
+Ray Data production vs consumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ideally, data production (dataset processing) and data consumption (training ingestion) happen at
+the same rate. When production outpaces consumption, excess data is written to the
+:ref:`object store <object-spilling-internals>`, which can spill to disk. Ray Data's
+backpressure system automatically balances production and consumption, but if you are still running
+into issues, you have the following knobs:
+
+* **Use fewer data CPU workers**: Reduce the ``num_cpus`` argument in
+  :func:`~ray.data.Dataset.map_batches` to slow down data production.
+* **Limit object store usage per dataset**: Set a per-dataset object store memory limit using
+  each dataset's execution options. Ray Data's backpressure system will slow down production
+  once the object store memory limit is reached.
+
+  .. code-block:: python
+
+      train_ds = ray.data.read_parquet("s3://bucket/train")
+      val_ds = ray.data.read_parquet("s3://bucket/val")
+
+      train_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+      val_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
+          object_store_memory=50 * 1024**3,
+      )
+
+See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+
 Checkpoint metrics lifecycle
 -----------------------------
 
