@@ -42,6 +42,7 @@ DEFAULT_PD_PROXY_SERVER_OPTIONS = {
 _PREWARM_PROMPT = " x"
 _PREWARM_MAX_TOKENS = 1
 _PREWARM_RETRY_INTERVAL_S = 5.0
+_PREWARM_MAX_RETRIES = 60
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +165,7 @@ class PDOrchestratorMixin:
         # Broadcast to every live P replica; retry until they are up.
         kv_params_list: List[Any] = []
         attempt = 0
-        while True:
+        while attempt < _PREWARM_MAX_RETRIES:
             attempt += 1
             try:
                 kv_params_list = await asyncio.get_event_loop().run_in_executor(
@@ -178,22 +179,30 @@ class PDOrchestratorMixin:
                 break
             except DeploymentUnavailableError:
                 logger.info(
-                    "[PDDecodeServer] PrefillServer not available yet (attempt %d); "
-                    "retrying in %.0fs...",
+                    "[PDDecodeServer] PrefillServer not available yet "
+                    "(attempt %d/%d); retrying in %.0fs...",
                     attempt,
+                    _PREWARM_MAX_RETRIES,
                     _PREWARM_RETRY_INTERVAL_S,
                 )
                 await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
             except Exception as exc:
                 logger.warning(
-                    "[PDDecodeServer] broadcast() attempt %d failed with %s: %s; "
-                    "retrying in %.0fs...",
+                    "[PDDecodeServer] broadcast() attempt %d/%d failed "
+                    "with %s: %s; retrying in %.0fs...",
                     attempt,
+                    _PREWARM_MAX_RETRIES,
                     type(exc).__name__,
                     exc,
                     _PREWARM_RETRY_INTERVAL_S,
                 )
                 await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
+        else:
+            raise RuntimeError(
+                f"[PDDecodeServer] Pre-warm failed after {_PREWARM_MAX_RETRIES} "
+                f"attempts ({_PREWARM_MAX_RETRIES * _PREWARM_RETRY_INTERVAL_S:.0f}s). "
+                f"PrefillServer may be permanently unavailable."
+            )
 
         logger.info(
             "[PDDecodeServer] broadcast() reached %d P replica(s); "
