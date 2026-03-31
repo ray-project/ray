@@ -51,7 +51,9 @@ class PrometheusClient:
 
 
 # Metrics here mirror what we have in Grafana.
-async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+async def _get_prometheus_metrics(
+    start_time: float, end_time: float, session_name: Optional[str] = None
+) -> dict:
     client = PrometheusClient()
     kwargs = {
         "query_type": "query_range",
@@ -99,7 +101,12 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
             query="ray_cluster_pending_nodes", **kwargs
         ),
         "worker_oom_kills": client.query_prometheus(
-            query="sum(ray_memory_manager_worker_eviction_total) by (Type, Name)",
+            query=(
+                "sum(ray_memory_manager_worker_eviction_total"
+                f'{{SessionName="{session_name}"}}) by (Type, Name)'
+                if session_name
+                else "sum(ray_memory_manager_worker_eviction_total) by (Type, Name)"
+            ),
             **kwargs,
         ),
     }
@@ -109,8 +116,20 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
 
 
 def get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+    session_name = None
     try:
-        return asyncio.run(_get_prometheus_metrics(start_time, end_time))
+        import ray
+
+        if not ray.is_initialized():
+            ray.init("auto")
+        session_name = ray.get_runtime_context().get_session_name()
+    except Exception:
+        logger.warning(
+            "Couldn't obtain Ray session name for Prometheus query filtering. "
+            f"Exception below:\n{traceback.format_exc()}"
+        )
+    try:
+        return asyncio.run(_get_prometheus_metrics(start_time, end_time, session_name))
     except Exception:
         logger.error(
             "Couldn't obtain Prometheus metrics. "

@@ -247,6 +247,7 @@ def run_oom_check():
             return_code = 1
     return return_code
 
+
 def run_dead_node_check():
     # Connect to the cluster and check for dead nodes
     import ray
