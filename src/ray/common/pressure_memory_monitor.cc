@@ -110,17 +110,18 @@ PressureMemoryMonitor::PressureMemoryMonitor(std::string cgroup_path,
 
 PressureMemoryMonitor::~PressureMemoryMonitor() {
   uint64_t val = 1;
-  if (write(shutdown_event_fd_, &val, sizeof(val)) != sizeof(val)) {
-    RAY_LOG(ERROR) << absl::StrFormat(
-        "Failed to signal shutdown to pressure monitoring thread, errno: %d", errno);
-  } else {
-    if (pressure_monitoring_thread_.joinable()) {
-      pressure_monitoring_thread_.join();
-    }
+  RAY_CHECK(write(shutdown_event_fd_, &val, sizeof(val)) == sizeof(val))
+      << absl::StrFormat(
+             "Failed to signal shutdown to pressure monitoring thread when shutting down "
+             "raylet, errno: %d",
+             errno);
 
-    close(shutdown_event_fd_);
-    close(pressure_fd_);
+  if (pressure_monitoring_thread_.joinable()) {
+    pressure_monitoring_thread_.join();
   }
+
+  close(shutdown_event_fd_);
+  close(pressure_fd_);
 }
 
 void PressureMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }

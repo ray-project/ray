@@ -98,18 +98,19 @@ EventMemoryMonitor::EventMemoryMonitor(std::string cgroup_path,
 
 EventMemoryMonitor::~EventMemoryMonitor() {
   uint64_t val = 1;
-  if (write(shutdown_eventfd_, &val, sizeof(val)) != sizeof(val)) {
-    RAY_LOG(ERROR) << absl::StrFormat(
-        "Failed to signal shutdown to event monitoring thread, errno: %d", errno);
-  } else {
-    if (event_monitoring_thread_.joinable()) {
-      event_monitoring_thread_.join();
-    }
+  RAY_CHECK(write(shutdown_eventfd_, &val, sizeof(val)) == sizeof(val))
+      << absl::StrFormat(
+             "Failed to signal shutdown to event monitoring thread when shutting down "
+             "raylet, errno: %d",
+             errno);
 
-    close(shutdown_eventfd_);
-    inotify_rm_watch(inotify_fd_, inotify_wd_);
-    close(inotify_fd_);
+  if (event_monitoring_thread_.joinable()) {
+    event_monitoring_thread_.join();
   }
+
+  close(shutdown_eventfd_);
+  inotify_rm_watch(inotify_fd_, inotify_wd_);
+  close(inotify_fd_);
 }
 
 void EventMemoryMonitor::Enable() { worker_killing_in_progress_.store(false); }
