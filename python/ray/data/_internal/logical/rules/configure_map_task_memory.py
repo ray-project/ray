@@ -67,15 +67,16 @@ class ConfigureMapTaskMemoryRule(Rule, abc.ABC):
         ...
 
 
-# Group memory requirement into bins to reduce schduling overhead.
-def _find_memory_bin(raw_memory) -> int:
+# Group memory requirement into bins to reduce scheduling overhead.
+def _find_memory_bin(raw_memory: float) -> int:
     MB = 1024**2
     GB = 1024**3
     if raw_memory <= 2 * GB:
         bin_size = 128 * MB
     else:
         bin_size = 256 * MB
-    bin_idx = (raw_memory + bin_size - 1) // bin_size
+    # Use ceiling division to ensure we always round up to the nearest bin.
+    bin_idx = int(-(-raw_memory // bin_size))
     return bin_idx * bin_size
 
 
