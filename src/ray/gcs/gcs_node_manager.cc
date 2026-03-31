@@ -168,10 +168,12 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
 
 void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::UnregisterNodeReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+                                          rpc::SendReplyCallback send_reply_callback,
+                                          const std::string &grpc_peer) {
   absl::MutexLock lock(&mutex_);
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id) << "HandleUnregisterNode() for node";
+  RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
+      << "HandleUnregisterNode() for node";
   auto node = RemoveNodeFromCache(
       node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
   if (!node) {

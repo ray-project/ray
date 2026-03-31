@@ -52,7 +52,8 @@ void NodeInfoGrpcService::InitServerCallFactories(
                                   max_active_rpcs_per_handler_,
                                   ClusterIdAuthType::EMPTY_AUTH);
   RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
+      NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
