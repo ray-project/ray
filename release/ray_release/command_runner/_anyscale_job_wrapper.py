@@ -111,20 +111,20 @@ def run_storage_cp(source: str, target: str):
         return False
 
 
-def collect_metrics(time_taken: float) -> bool:
+def collect_metrics(start_time: float, time_taken: float) -> bool:
     if "METRICS_OUTPUT_JSON" not in os.environ:
         return False
 
     # Timeout is the time the test took divided by 200
     # (~7 minutes for a 24h test) but no less than 90s
     # and no more than 900s
-    metrics_timeout = max(90, min((time.time() - time_taken) / 200, 900))
+    metrics_timeout = max(90, min(time_taken / 200, 900))
     try:
         subprocess.run(
             [
                 "python",
                 "prometheus_metrics.py",
-                str(time_taken),
+                str(start_time),
                 "--path",
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
@@ -352,7 +352,9 @@ def main(
         )
 
         # Collect prometheus metrics
-        collected_metrics = collect_metrics(workload_start_unix_time)
+        collected_metrics = collect_metrics(
+            workload_start_unix_time, workload_time_taken
+        )
         if collected_metrics:
             # Upload prometheus metrics
             uploaded_metrics = run_storage_cp(
