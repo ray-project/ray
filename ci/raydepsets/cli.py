@@ -618,7 +618,7 @@ def _uv_binary(uv_path: Optional[str] = None):
                 loc = None
             if loc and os.path.isfile(loc):
                 return loc
-    except (ImportError, Exception):
+    except ImportError:
         pass
 
     # Fall back to $PATH.

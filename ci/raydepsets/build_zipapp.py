@@ -99,12 +99,7 @@ def main():
 
         # 3. Create top-level __main__.py entry point
         main_py = staging / "__main__.py"
-        main_py.write_text(
-            "import sys, os\n"
-            "sys.path.insert(0, os.path.dirname(__file__))\n"
-            "from raydepsets.cli import cli\n"
-            "cli()\n"
-        )
+        main_py.write_text("from raydepsets.cli import cli\n" "cli()\n")
 
         # 4. Build zipapp
         output_path.parent.mkdir(parents=True, exist_ok=True)
