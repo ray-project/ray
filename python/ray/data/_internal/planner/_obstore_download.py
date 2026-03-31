@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import math
 import os
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
@@ -10,7 +9,10 @@ if TYPE_CHECKING:
 import pyarrow as pa
 import pyarrow.fs
 
-from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _iter_arrow_table_for_target_max_block_size,
+)
 from ray.data.block import BlockAccessor
 from ray.data.datasource.path_util import _split_uri
 
@@ -427,14 +429,9 @@ def download_bytes_async(
     if size_cols:
         output_block = output_block.drop(size_cols)
 
-    output_block_size = output_block.nbytes
-    max_bytes = data_context.target_max_block_size
-    if max_bytes is not None and output_block_size > max_bytes:
-        num_blocks = math.ceil(output_block_size / max_bytes)
-        num_rows = output_block.num_rows
-        yield from _arrow_batcher(output_block, int(math.ceil(num_rows / num_blocks)))
-    else:
-        yield output_block
+    yield from _iter_arrow_table_for_target_max_block_size(
+        output_block, data_context.target_max_block_size
+    )
 
 
 # Core async download logic

@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Iterator, List, Optional
 
 import pyarrow as pa
@@ -26,7 +25,11 @@ from ray.data._internal.planner.download_partition_actor import (
     AsyncPartitionActor,
     PartitionActor,
 )
-from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher, make_async_gen
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _iter_arrow_table_for_target_max_block_size,
+    make_async_gen,
+)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -257,11 +260,6 @@ def download_bytes_threaded(
             pa.array(uri_bytes),
         )
 
-    output_block_size = output_block.nbytes
-    max_bytes = data_context.target_max_block_size
-    if max_bytes is not None and output_block_size > max_bytes:
-        num_blocks = math.ceil(output_block_size / max_bytes)
-        num_rows = output_block.num_rows
-        yield from _arrow_batcher(output_block, int(math.ceil(num_rows / num_blocks)))
-    else:
-        yield output_block
+    yield from _iter_arrow_table_for_target_max_block_size(
+        output_block, data_context.target_max_block_size
+    )
