@@ -506,9 +506,9 @@ class NodeManagerTest : public ::testing::Test {
     node_manager_->HandleRequestWorkerLease(
         request,
         &reply,
-        [&](Status status,
-            std::function<void()> success,
-            std::function<void()> failure) { promise.set_value(status); });
+        [&](Status status, std::function<void()> success, std::function<void()> failure) {
+          promise.set_value(status);
+        });
 
     const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10);
     worker->SetConnection(ClientConnection::Create(

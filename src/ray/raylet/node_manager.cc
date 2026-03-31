@@ -942,12 +942,16 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
 
   // Clean up workers that were owned by processes that were on the failed
   // node.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_owned_by_failed_node;
   for (const auto &[_, worker] : leased_workers_) {
     const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().node_id());
     RAY_CHECK(!owner_node_id.IsNil());
-    if (worker->IsDetachedActor() || owner_node_id != node_id) {
-      continue;
+    if (!worker->IsDetachedActor() && owner_node_id == node_id) {
+      workers_owned_by_failed_node.emplace_back(worker);
     }
+  }
+  for (const auto &worker : workers_owned_by_failed_node) {
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().node_id());
     // If the leased worker's owner was on the failed node, then kill the leased
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
@@ -986,13 +990,18 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(worker_id);
 
+  std::vector<std::shared_ptr<WorkerInterface>> workers_owned_by_failed_worker;
   for (const auto &[_, worker] : leased_workers_) {
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     RAY_CHECK(!owner_worker_id.IsNil());
-    if (worker->IsDetachedActor() || owner_worker_id != worker_id) {
-      continue;
+    if (!worker->IsDetachedActor() && owner_worker_id == worker_id) {
+      workers_owned_by_failed_worker.emplace_back(worker);
     }
+  }
+  for (const auto &worker : workers_owned_by_failed_worker) {
+    const auto owner_worker_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     // If the failed worker was a leased worker's owner, then kill the leased worker.
     RAY_LOG(INFO)
             .WithField(worker->WorkerId())
