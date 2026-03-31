@@ -13,12 +13,17 @@ from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
+)
+from ray.llm._internal.serve.core.server.builder import build_llm_deployment
+from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
+    build_dp_deployment,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     DPPDDecodeServer,
@@ -28,11 +33,6 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDProxyServer,  # TODO(Kourosh): Remove in Ray 2.56.
 )
 from ray.serve.deployment import Application
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.server.builder import build_llm_deployment
-from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
-    build_dp_deployment,
-)
 
 # ---------------------------------------------------------------------------
 # Deprecated: ProxyClsConfig
