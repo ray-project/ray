@@ -5,7 +5,7 @@ Prefill-decode (PD) disaggregation is a serving pattern that separates the prefi
 
 ## Architecture overview
 
-```{figure} ../../images/pd_arch.png
+```{figure} ../../images/pd_arch.svg
 ---
 width: 700px
 name: pd-architecture
@@ -125,7 +125,7 @@ decode_config = LLMConfig(
 
 ### Request flow
 
-```{figure} ../../images/pd.png
+```{figure} ../../images/pd.svg
 ---
 width: 700px
 name: pd-flow
