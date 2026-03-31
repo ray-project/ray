@@ -31,6 +31,9 @@ namespace core {
 
 /// Represents a work item in the actor pool queue.
 struct PoolWorkItem {
+  /// The actor pool that owns this work item.
+  ActorPoolID pool_id;
+
   /// Unique ID for this work item.
   TaskID work_item_id;
 
@@ -56,7 +59,8 @@ struct PoolWorkItem {
 
   /// Move constructor.
   PoolWorkItem(PoolWorkItem &&other) noexcept
-      : work_item_id(std::move(other.work_item_id)),
+      : pool_id(std::move(other.pool_id)),
+        work_item_id(std::move(other.work_item_id)),
         function(std::move(other.function)),
         args(std::move(other.args)),
         arg_ids(std::move(other.arg_ids)),
@@ -67,6 +71,7 @@ struct PoolWorkItem {
   /// Move assignment.
   PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
     if (this != &other) {
+      pool_id = std::move(other.pool_id);
       work_item_id = std::move(other.work_item_id);
       function = std::move(other.function);
       args = std::move(other.args);

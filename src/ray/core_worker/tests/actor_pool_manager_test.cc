@@ -181,6 +181,60 @@ TEST_F(ActorPoolManagerTest, UnregisterPoolRemovesPool) {
   EXPECT_FALSE(pool_manager_->HasPool(pool_id));
 }
 
+TEST_F(ActorPoolManagerTest, UnregisterPoolCleansTrackedWorkItems) {
+  auto pool_id = CreateTestPool();
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    PoolWorkItem work_item;
+    work_item.pool_id = pool_id;
+    work_item.work_item_id = TaskID::FromRandom(JobID());
+    pool_manager_->TrackWorkItem(std::move(work_item));
+  }
+
+  pool_manager_->UnregisterPool(pool_id);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_TRUE(pool_manager_->work_items_.empty());
+    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id),
+              pool_manager_->pool_to_work_items_.end());
+  }
+}
+
+TEST_F(ActorPoolManagerTest, UnregisterPoolOnlyCleansItsOwnTrackedWorkItems) {
+  auto pool_id1 = CreateTestPool();
+  auto pool_id2 = CreateTestPool();
+  TaskID pool2_work_item_id = TaskID::FromRandom(JobID());
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+
+    PoolWorkItem pool1_work_item;
+    pool1_work_item.pool_id = pool_id1;
+    pool1_work_item.work_item_id = TaskID::FromRandom(JobID());
+    pool_manager_->TrackWorkItem(std::move(pool1_work_item));
+
+    PoolWorkItem pool2_work_item;
+    pool2_work_item.pool_id = pool_id2;
+    pool2_work_item.work_item_id = pool2_work_item_id;
+    pool_manager_->TrackWorkItem(std::move(pool2_work_item));
+  }
+
+  pool_manager_->UnregisterPool(pool_id1);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_EQ(pool_manager_->work_items_.size(), 1);
+    EXPECT_TRUE(pool_manager_->work_items_.contains(pool2_work_item_id));
+    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id1),
+              pool_manager_->pool_to_work_items_.end());
+    auto pool2_it = pool_manager_->pool_to_work_items_.find(pool_id2);
+    ASSERT_NE(pool2_it, pool_manager_->pool_to_work_items_.end());
+    EXPECT_TRUE(pool2_it->second.contains(pool2_work_item_id));
+  }
+}
+
 // Test: Unregistering non-existent pool doesn't crash
 TEST_F(ActorPoolManagerTest, UnregisterNonExistentPoolIsSafe) {
   auto fake_pool_id = ActorPoolID::FromRandom();
@@ -881,9 +935,10 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
   {
     absl::MutexLock lock(&pool_manager_->mu_);
     PoolWorkItem work_item;
+    work_item.pool_id = pool_id;
     work_item.work_item_id = work_item_id;
     work_item.attempt_number = 0;
-    pool_manager_->work_items_[work_item_id] = std::move(work_item);
+    pool_manager_->TrackWorkItem(std::move(work_item));
   }
 
   // Simulate task failure with ACTOR_DIED error
@@ -909,6 +964,37 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
   // SelectActorForTask should only return actor2
   auto selected = pool_manager_->SelectActorForTask(pool_id);
   EXPECT_EQ(selected, actor2);
+}
+
+TEST_F(ActorPoolManagerTest, LateTaskCompletionAfterUnregisterIsIgnoredWithoutLeak) {
+  auto pool_id = CreateTestPool();
+  auto actor_id = CreateActorID();
+  TaskID work_item_id = TaskID::FromRandom(JobID());
+
+  pool_manager_->AddActorToPool(pool_id, actor_id, NodeID::FromRandom());
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    PoolWorkItem work_item;
+    work_item.pool_id = pool_id;
+    work_item.work_item_id = work_item_id;
+    pool_manager_->TrackWorkItem(std::move(work_item));
+  }
+
+  pool_manager_->UnregisterPool(pool_id);
+  pool_manager_->OnPoolTaskComplete(pool_id,
+                                    work_item_id,
+                                    TaskID::FromRandom(JobID()),
+                                    actor_id,
+                                    Status::OK(),
+                                    nullptr);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_TRUE(pool_manager_->work_items_.empty());
+    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id),
+              pool_manager_->pool_to_work_items_.end());
+  }
 }
 
 // Test: OnActorAlive marks actor alive and drains work queue

@@ -331,6 +331,10 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad);
   FRIEND_TEST(ActorPoolManagerTest, GetOccupiedTaskSlots);
   FRIEND_TEST(ActorPoolManagerTest, GetNumActiveActors);
+  FRIEND_TEST(ActorPoolManagerTest, UnregisterPoolCleansTrackedWorkItems);
+  FRIEND_TEST(ActorPoolManagerTest, UnregisterPoolOnlyCleansItsOwnTrackedWorkItems);
+  FRIEND_TEST(ActorPoolManagerTest,
+              LateTaskCompletionAfterUnregisterIsIgnoredWithoutLeak);
   FRIEND_TEST(ActorPoolManagerTest, OnTaskFailedMarksActorDead);
   FRIEND_TEST(ActorPoolManagerTest, OnActorAliveDrainsQueue);
   FRIEND_TEST(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive);
@@ -440,6 +444,21 @@ class ActorPoolManager {
   void FailWorkItem(const TaskID &work_item_id, const rpc::RayErrorInfo &error_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Track a submitted work item by ID and owning pool.
+  void TrackWorkItem(PoolWorkItem work_item) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Erase a tracked work item and remove it from the reverse index.
+  void EraseTrackedWorkItem(const TaskID &work_item_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Take ownership of a tracked work item and remove it from the reverse index.
+  std::optional<PoolWorkItem> TakeTrackedWorkItem(const TaskID &work_item_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Cleanup all tracked work items owned by a pool.
+  void CleanupTrackedWorkItemsForPool(const ActorPoolID &pool_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Drain the work queue for a pool, submitting queued items to available actors.
   /// Called when new capacity becomes available (task succeeded, actor added).
   ///
@@ -486,6 +505,10 @@ class ActorPoolManager {
 
   /// Map from work item ID to work item (for retry tracking).
   absl::flat_hash_map<TaskID, PoolWorkItem> work_items_ ABSL_GUARDED_BY(mu_);
+
+  /// Reverse index from pool ID to tracked work item IDs for teardown cleanup.
+  absl::flat_hash_map<ActorPoolID, absl::flat_hash_set<TaskID>> pool_to_work_items_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace core

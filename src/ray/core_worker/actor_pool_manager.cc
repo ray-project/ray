@@ -94,11 +94,8 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
     actor_to_pool_.erase(actor_id);
   }
 
-  // TODO(C2): Clean up work_items_ belonging to this pool. Currently work items
-  // for unregistered pools leak (TaskArg objects held). Need to add pool_id field
-  // to PoolWorkItem or maintain a reverse index for efficient cleanup.
-
   work_queues_.erase(pool_id);
+  CleanupTrackedWorkItemsForPool(pool_id);
   pools_.erase(it);
 
   RAY_LOG(INFO) << "Unregistered actor pool " << pool_id;
@@ -175,6 +172,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   // The nil JobID is fine because this ID never enters the task lineage.
   TaskID work_item_id = TaskID::FromRandom(JobID());
   PoolWorkItem work_item;
+  work_item.pool_id = pool_id;
   work_item.work_item_id = work_item_id;
   work_item.function = function;
   work_item.args = std::move(args);
@@ -334,7 +332,7 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
 
   if (status.ok()) {
     OnTaskSucceeded(pool_id, actor_id);
-    work_items_.erase(work_item_id);
+    EraseTrackedWorkItem(work_item_id);
   } else {
     if (error_info != nullptr) {
       OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
@@ -555,7 +553,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
     pool_info.actor_states[actor_id].num_tasks_in_flight++;
-    work_items_[work_item_id] = std::move(work_item);
+    TrackWorkItem(std::move(work_item));
     return {};
   }
 
@@ -564,7 +562,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   RayFunction function = work_item.function;
   TaskOptions options = work_item.options;
 
-  work_items_[work_item_id] = std::move(work_item);
+  TrackWorkItem(std::move(work_item));
 
   // Completion is NOT handled via this callback — it flows through
   // ActorTaskSubmitter::HandlePushTaskReply() → SetPoolTaskCompletionCallback()
@@ -623,19 +621,16 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
     return;
   }
 
-  auto work_item_it = work_items_.find(work_item_id);
-  if (work_item_it == work_items_.end()) {
+  auto work_item = TakeTrackedWorkItem(work_item_id);
+  if (!work_item.has_value()) {
     RAY_LOG(WARNING) << "Work item " << work_item_id << " not found for retry";
     return;
   }
 
-  auto work_item = std::move(work_item_it->second);
-  work_items_.erase(work_item_it);
-
-  work_item.attempt_number++;
+  work_item->attempt_number++;
 
   if (pool_info.config.max_retry_attempts >= 0 &&
-      work_item.attempt_number > pool_info.config.max_retry_attempts) {
+      work_item->attempt_number > pool_info.config.max_retry_attempts) {
     RAY_LOG(INFO) << "Work item " << work_item_id << " exceeded max retry attempts ("
                   << pool_info.config.max_retry_attempts << "), failing permanently";
     FailWorkItem(work_item_id, error_info);
@@ -644,16 +639,16 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
 
   pool_info.total_tasks_retried++;
 
-  int64_t backoff_ms = CalculateBackoff(work_item.attempt_number,
+  int64_t backoff_ms = CalculateBackoff(work_item->attempt_number,
                                         pool_info.config.retry_backoff_ms,
                                         pool_info.config.retry_backoff_multiplier,
                                         pool_info.config.max_retry_backoff_ms);
 
   RAY_LOG(INFO) << "Work item " << work_item_id << " failed on actor " << failed_actor_id
-                << ", retrying (attempt " << work_item.attempt_number << ") after "
+                << ", retrying (attempt " << work_item->attempt_number << ") after "
                 << backoff_ms << "ms on different actor in pool " << pool_id;
 
-  ScheduleRetry(pool_id, std::move(work_item), backoff_ms);
+  ScheduleRetry(pool_id, std::move(*work_item), backoff_ms);
 }
 
 void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
@@ -787,7 +782,7 @@ int64_t ActorPoolManager::CalculateBackoff(int32_t attempt_number,
 
 void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
                                     const rpc::RayErrorInfo &error_info) {
-  work_items_.erase(work_item_id);
+  EraseTrackedWorkItem(work_item_id);
 
   RAY_LOG(INFO) << "Work item " << work_item_id
                 << " failed permanently. Error: " << error_info.error_message();
@@ -840,6 +835,69 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
   }
 
   return cloned_args;
+}
+
+void ActorPoolManager::TrackWorkItem(PoolWorkItem work_item) {
+  RAY_CHECK(!work_item.pool_id.IsNil()) << "Tracked work item must belong to a pool";
+
+  const auto pool_id = work_item.pool_id;
+  const auto work_item_id = work_item.work_item_id;
+  pool_to_work_items_[pool_id].insert(work_item_id);
+  work_items_[work_item_id] = std::move(work_item);
+}
+
+void ActorPoolManager::EraseTrackedWorkItem(const TaskID &work_item_id) {
+  auto work_item_it = work_items_.find(work_item_id);
+  if (work_item_it == work_items_.end()) {
+    return;
+  }
+
+  const auto pool_id = work_item_it->second.pool_id;
+  work_items_.erase(work_item_it);
+
+  auto pool_it = pool_to_work_items_.find(pool_id);
+  if (pool_it == pool_to_work_items_.end()) {
+    return;
+  }
+
+  pool_it->second.erase(work_item_id);
+  if (pool_it->second.empty()) {
+    pool_to_work_items_.erase(pool_it);
+  }
+}
+
+std::optional<PoolWorkItem> ActorPoolManager::TakeTrackedWorkItem(
+    const TaskID &work_item_id) {
+  auto work_item_it = work_items_.find(work_item_id);
+  if (work_item_it == work_items_.end()) {
+    return std::nullopt;
+  }
+
+  const auto pool_id = work_item_it->second.pool_id;
+  PoolWorkItem work_item = std::move(work_item_it->second);
+  work_items_.erase(work_item_it);
+
+  auto pool_it = pool_to_work_items_.find(pool_id);
+  if (pool_it != pool_to_work_items_.end()) {
+    pool_it->second.erase(work_item_id);
+    if (pool_it->second.empty()) {
+      pool_to_work_items_.erase(pool_it);
+    }
+  }
+
+  return work_item;
+}
+
+void ActorPoolManager::CleanupTrackedWorkItemsForPool(const ActorPoolID &pool_id) {
+  auto pool_it = pool_to_work_items_.find(pool_id);
+  if (pool_it == pool_to_work_items_.end()) {
+    return;
+  }
+
+  for (const auto &work_item_id : pool_it->second) {
+    work_items_.erase(work_item_id);
+  }
+  pool_to_work_items_.erase(pool_it);
 }
 
 void ActorPoolManager::DrainWorkQueue(const ActorPoolID &pool_id) {
