@@ -66,10 +66,11 @@ dest_resp_mapping = {
     "jars": "presigned_resp_prod_wheels",
     "branch_jars": "presigned_resp_prod_wheels",
     "logs": "presigned_logs",
+    "ray-core": "presigned_resp_ray_builds",
 }
 
 
-def upload_paths(paths, resp, destination):
+def upload_paths(paths, resp, destination, key=None):
     dest_key = dest_resp_mapping[destination]
     c = resp.json()[dest_key]
     of = OrderedDict(c["fields"])
@@ -82,13 +83,21 @@ def upload_paths(paths, resp, destination):
 
     for path in paths:
         fn = os.path.split(path)[-1]
-        of["key"] = {
-            "wheels": f"latest/{fn}",
-            "branch_wheels": f"{branch}/{sha}/{fn}",
-            "jars": f"jars/latest/{current_os}/{fn}",
-            "branch_jars": f"jars/{branch}/{sha}/{current_os}/{fn}",
-            "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}",
-        }[destination]
+        if key is not None:
+            of["key"] = key
+        else:
+            key_map = {
+                "wheels": f"latest/{fn}",
+                "branch_wheels": f"{branch}/{sha}/{fn}",
+                "jars": f"jars/latest/{current_os}/{fn}",
+                "branch_jars": f"jars/{branch}/{sha}/{current_os}/{fn}",
+                "logs": f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}",
+            }
+            if destination not in key_map:
+                raise ValueError(
+                    f"Destination {destination!r} requires --key to be specified"
+                )
+            of["key"] = key_map[destination]
         of["file"] = open(path, "rb")
         r = requests.post(c["url"], files=of)
         print(f"Uploaded {path} to {of['key']}", r.status_code)
@@ -100,6 +109,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--path", type=str, required=False)
     parser.add_argument("--destination", type=str)
+    parser.add_argument(
+        "--key",
+        type=str,
+        required=False,
+        help="Exact S3 key to upload to (overrides default key logic)",
+    )
     args = parser.parse_args()
 
     if os.environ.get("RAYCI_SKIP_UPLOAD", "false") == "true":
@@ -111,6 +126,7 @@ if __name__ == "__main__":
         "branch_wheels",
         "jars",
         "logs",
+        "ray-core",
         "wheels",
         "docker_login",
     }
@@ -124,4 +140,4 @@ if __name__ == "__main__":
     else:
         paths = gather_paths(args.path)
         print("Planning to upload", paths)
-        upload_paths(paths, resp, args.destination)
+        upload_paths(paths, resp, args.destination, key=args.key)

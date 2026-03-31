@@ -89,6 +89,31 @@ py_test(
 )
 
 py_library(
+    name = "publish_core_image_lib",
+    srcs = ["publish_core_image.py"],
+    visibility = ["//visibility:public"],
+    deps = [":build_common"],
+)
+
+py_binary(
+    name = "publish_core_image",
+    srcs = ["publish_core_image.py"],
+    visibility = ["//visibility:public"],
+    deps = [":build_common"],
+)
+
+py_test(
+    name = "publish_core_image_test",
+    size = "small",
+    srcs = ["publish_core_image_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [":publish_core_image_lib"],
+)
+
+py_library(
     name = "build_image",
     srcs = ["build_image.py"],
     data = ["//:ray-images.json"],
