@@ -32,9 +32,7 @@ def summarize_metrics(metrics: list[TurnMetric], elapsed_s: float) -> dict:
     return {
         "requests": len(metrics),
         "elapsed_s": round(elapsed_s, 2),
-        "request_rate": round(len(metrics) / elapsed_s, 2)
-        if elapsed_s > 0
-        else 0.0,
+        "request_rate": round(len(metrics) / elapsed_s, 2) if elapsed_s > 0 else 0.0,
         "throughput_tok_s": round(total_output_tokens / elapsed_s, 1)
         if elapsed_s > 0
         else 0.0,
