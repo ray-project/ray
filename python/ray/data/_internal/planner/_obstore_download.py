@@ -96,11 +96,22 @@ def _extract_credentials_from_filesystem(
     Maps PyArrow filesystem configuration to obstore keyword arguments.
     See obstore docs for available options per store type.
 
-    Only native PyArrow filesystems (S3FileSystem, GcsFileSystem,
-    AzureFileSystem) are recognized. fsspec-backed filesystems arrive here as
-    a PyArrow ``PyFileSystem`` wrapper and are **not** handled — their
-    credentials are silently ignored and obstore will use its own credential
-    chain (environment variables, instance metadata, etc.) instead.
+    **Native S3 (``S3FileSystem``):** PyArrow's implementation is backed by the
+    AWS C++ SDK; Python only exposes a subset of options. ``region`` is typically
+    readable, while ``access_key``, ``secret_key``, ``session_token``, and
+    ``anonymous`` may not appear as Python attributes even when configured at
+    construction. Unavailable attributes are skipped silently, so forwarding to
+    obstore can degrade to the default AWS credential chain (env, IMDS, etc.)
+    without raising.
+
+    **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
+    (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
+    ``storage_options`` / common instance attributes so obstore can use the
+    same keys the user passed to fsspec. ``anon`` maps to ``skip_signature``;
+    ``region_name`` may appear in ``storage_options`` or ``client_kwargs``.
+
+    Other ``PyFileSystem`` handlers (non-fsspec or non-S3 fsspec protocols) are
+    not converted here; see :func:`_obstore_filesystem_requires_threaded_download`.
 
     Args:
         filesystem: A PyArrow filesystem instance.
@@ -120,8 +131,12 @@ def _extract_credentials_from_filesystem(
     S3FileSystem = getattr(pyarrow.fs, "S3FileSystem", None)
     GcsFileSystem = getattr(pyarrow.fs, "GcsFileSystem", None)
     AzureFileSystem = getattr(pyarrow.fs, "AzureFileSystem", None)
+    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
+    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
 
     if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
+        # NOTE: See docstring — many credential fields are not exposed on the
+        # Python S3FileSystem object; hasattr/getattr only forwards what exists.
         for pa_attr, ob_key in [
             ("region", "region"),
             ("access_key", "access_key_id"),
@@ -150,7 +165,90 @@ def _extract_credentials_from_filesystem(
             if val:
                 kwargs[attr] = val
 
+    elif (
+        PyFileSystem is not None
+        and FSSpecHandler is not None
+        and isinstance(filesystem, PyFileSystem)
+        and isinstance(filesystem.handler, FSSpecHandler)
+    ):
+        # fsspec-backed FS (e.g. s3fs with Okta/STS) wrapped for PyArrow.
+        fsspec_fs = getattr(filesystem.handler, "fs", None)
+        if fsspec_fs is None:
+            return {}
+        protocol = getattr(fsspec_fs, "protocol", None)
+        if isinstance(protocol, tuple):
+            protocol = protocol[0] if protocol else None
+        if protocol in ("s3", "s3a"):
+            opts = getattr(fsspec_fs, "storage_options", None) or {}
+            if not isinstance(opts, dict):
+                opts = {}
+            key = opts.get("key") or getattr(fsspec_fs, "key", None)
+            secret = opts.get("secret") or getattr(fsspec_fs, "secret", None)
+            token = opts.get("token") or getattr(fsspec_fs, "token", None)
+            endpoint = opts.get("endpoint_url") or getattr(
+                fsspec_fs, "endpoint_url", None
+            )
+            client_kwargs = opts.get("client_kwargs") or getattr(
+                fsspec_fs, "client_kwargs", None
+            )
+            if isinstance(client_kwargs, dict):
+                endpoint = endpoint or client_kwargs.get("endpoint_url")
+                region_name = client_kwargs.get("region_name")
+                if region_name:
+                    kwargs["region"] = region_name
+            region_opt = opts.get("region_name")
+            if region_opt:
+                kwargs["region"] = region_opt
+            if key:
+                kwargs["access_key_id"] = key
+            if secret:
+                kwargs["secret_access_key"] = secret
+            if token:
+                kwargs["session_token"] = token
+            if endpoint:
+                kwargs["endpoint"] = endpoint
+            if opts.get("anon") or getattr(fsspec_fs, "anon", False):
+                kwargs["skip_signature"] = True
     return kwargs
+
+
+def _obstore_filesystem_requires_threaded_download(
+    filesystem: Optional["pyarrow.fs.FileSystem"],
+) -> bool:
+    """Return True if obstore must not be used so the user's FS stays authoritative.
+
+    ``PyFileSystem`` instances that are not ``FSSpecHandler`` wrapping ``s3`` /
+    ``s3a`` cannot have credentials merged into obstore's ``from_url`` in a
+    reliable way. Using obstore with empty kwargs would ignore the user's
+    filesystem (Okta, STS, custom protocols) and tends to produce confusing
+    403s. The threaded download path passes the filesystem through to PyArrow
+    ``open_input_stream``, matching pre-obstore behavior.
+
+    ``None`` means no explicit filesystem (URI-driven resolution) — obstore is OK.
+    """
+    if filesystem is None:
+        return False
+
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+
+    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
+    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
+    if PyFileSystem is None or not isinstance(filesystem, PyFileSystem):
+        return False
+    if FSSpecHandler is None or not isinstance(filesystem.handler, FSSpecHandler):
+        return True
+
+    fsspec_fs = getattr(filesystem.handler, "fs", None)
+    if fsspec_fs is None:
+        return True
+
+    protocol = getattr(fsspec_fs, "protocol", None)
+    if isinstance(protocol, tuple):
+        protocol = protocol[0] if protocol else None
+    if protocol in ("s3", "s3a"):
+        return False
+    return True
 
 
 class StoreRegistry:
@@ -224,6 +322,32 @@ def download_bytes_async(
         )
         # Drop any file-size columns AsyncPartitionActor may have attached,
         # since download_bytes_threaded doesn't know about them.
+        size_cols = [
+            f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
+            for name in uri_column_names
+            if f"{_FILE_SIZE_COLUMN_PREFIX}{name}" in block.column_names
+        ]
+        if size_cols:
+            block = block.drop(size_cols)
+
+        from ray.data._internal.planner.plan_download_op import (
+            download_bytes_threaded,
+        )
+
+        yield from download_bytes_threaded(
+            block,
+            uri_column_names,
+            output_bytes_column_names,
+            data_context,
+            filesystem,
+        )
+        return
+
+    if _obstore_filesystem_requires_threaded_download(filesystem):
+        logger.debug(
+            "PyArrow PyFileSystem with a non-S3 fsspec backend (or unknown handler); "
+            "using threaded PyArrow download to preserve user filesystem credentials."
+        )
         size_cols = [
             f"{_FILE_SIZE_COLUMN_PREFIX}{name}"
             for name in uri_column_names

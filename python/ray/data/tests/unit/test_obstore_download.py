@@ -12,6 +12,7 @@ from ray.data._internal.planner._obstore_download import (
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _obstore_filesystem_requires_threaded_download,
     download_bytes_async,
 )
 from ray.data._internal.planner.plan_download_op import (
@@ -175,6 +176,47 @@ class TestDownloadHelpers:
             result = _extract_credentials_from_filesystem(mock_fs)
         assert result == expected
 
+    def test_fsspec_s3_credentials_for_obstore_and_retrying_wrap(self):
+        """PyFileSystem(FSSpecHandler(s3fs)): forward keys to obstore; RetryingPyFileSystem unwraps."""
+        s3fs = pytest.importorskip("s3fs", reason="s3fs not installed")
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+        inner = s3fs.S3FileSystem(
+            key="AKIATEST",
+            secret="secretval",
+            token="ststoken",
+            client_kwargs={"endpoint_url": "https://minio.local:9000"},
+        )
+        wrapped = PyFileSystem(FSSpecHandler(inner))
+        expected = {
+            "access_key_id": "AKIATEST",
+            "secret_access_key": "secretval",
+            "session_token": "ststoken",
+            "endpoint": "https://minio.local:9000",
+        }
+        assert _extract_credentials_from_filesystem(wrapped) == expected
+        assert _obstore_filesystem_requires_threaded_download(wrapped) is False
+
+        retrying = RetryingPyFileSystem.wrap(wrapped, retryable_errors=[])
+        assert _extract_credentials_from_filesystem(retrying) == expected
+        assert _obstore_filesystem_requires_threaded_download(retrying) is False
+
+        empty = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem()))
+        assert _obstore_filesystem_requires_threaded_download(empty) is False
+
+    @pytest.mark.parametrize("protocol", ["ftp", "gcs"])
+    def test_obstore_threaded_download_non_s3_fsspec_protocols(self, protocol):
+        import fsspec
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+        proto = protocol
+
+        class _Stub(fsspec.AbstractFileSystem):
+            protocol = proto
+
+        wrapped = PyFileSystem(FSSpecHandler(_Stub()))
+        assert _obstore_filesystem_requires_threaded_download(wrapped) is True
+
     # _is_obstore_supported_url
     @pytest.mark.parametrize(
         "uri, raises, expected",
@@ -312,6 +354,41 @@ class TestObstoreDownloadPath:
 
         assert threaded_spy.called
         assert results[0].column("bytes")[0].as_py() == content
+
+    def test_download_bytes_async_non_s3_fsspec_pyfilesystem_threaded_fallback(
+        self, tmp_path
+    ):
+        # Non-s3 fsspec + obstore-eligible URI
+        # and internal size columns are stripped like other threaded fallbacks.
+        import fsspec
+        from pyarrow.fs import FSSpecHandler, PyFileSystem
+
+        class _GcsStub(fsspec.AbstractFileSystem):
+            protocol = "gcs"
+
+        content = b"gcs-fs stub fallback"
+        (tmp_path / "obj.bin").write_bytes(content)
+        uri = f"file://{tmp_path}/obj.bin"
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        table = pa.Table.from_arrays(
+            [pa.array([uri]), pa.array([len(content)], type=pa.int64())],
+            names=["uri", size_col],
+        )
+        ctx = DataContext.get_current()
+        wrapped = PyFileSystem(FSSpecHandler(_GcsStub()))
+
+        with patch(
+            "ray.data._internal.planner.plan_download_op.download_bytes_threaded",
+            wraps=download_bytes_threaded,
+        ) as threaded_spy:
+            results = list(
+                download_bytes_async(table, ["uri"], ["bytes"], ctx, filesystem=wrapped)
+            )
+
+        assert threaded_spy.called
+        out = results[0]
+        assert out.column("bytes")[0].as_py() == content
+        assert size_col not in out.column_names
 
     def test_download_bytes_async_fallback_drops_size_columns(self, tmp_path):
         # Verify that file-size columns attached by AsyncPartitionActor are dropped
