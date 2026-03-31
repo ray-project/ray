@@ -527,14 +527,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         Args:
             current_report_index: The current report index.
             consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
-            timeout_s: Timeout in seconds. Defaults to -1 to run forever.
+            timeout_s: Timeout in seconds. Defaults to None to run forever.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
             corresponding metrics reported by the workers.
         """
-        assert timeout_s is not None
-
         start_time = asyncio.get_event_loop().time()
         if consistency_mode == CheckpointConsistencyMode.COMMITTED:
 
