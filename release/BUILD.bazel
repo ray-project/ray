@@ -13,6 +13,7 @@ _requirements_py310_args = [
     "$(rootpath :requirements_py310.in)",
     "$(rootpath :requirements_py310.txt)",
     "//release:requirements_py310.update",
+    "--no-upgrade",
 ]
 
 _requirements_py310_data = [
@@ -423,7 +424,9 @@ py_library(
     imports = ["."],
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
+        ":anyscale_util",
         ":aws",
+        ":github_client",
         ":global_config",
         ":logger",
         ":result",
@@ -431,7 +434,6 @@ py_library(
         bk_require("aioboto3"),
         bk_require("boto3"),
         bk_require("botocore"),
-        bk_require("pygithub"),
     ],
 )
 
@@ -445,8 +447,8 @@ py_library(
     imports = ["."],
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
+        ":github_client",
         ":test",
-        bk_require("pygithub"),
         bk_require("pybuildkite"),
     ],
 )
@@ -513,7 +515,6 @@ py_library(
         bk_require("jinja2"),
         bk_require("msal"),
         bk_require("pybuildkite"),
-        bk_require("pygithub"),
         bk_require("requests"),
     ],
 )
@@ -910,6 +911,7 @@ py_test(
         ":bazel",
         ":test",
         bk_require("pytest"),
+        bk_require("responses"),
     ],
 )
 

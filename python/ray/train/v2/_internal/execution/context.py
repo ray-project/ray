@@ -9,8 +9,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._common.retry import retry
+from ray._common.utils import env_float
 from ray.actor import ActorHandle
-from ray.train.v2._internal.constants import AWS_RETRYABLE_TOKENS
+from ray.train.v2._internal.constants import (
+    AWS_RETRYABLE_TOKENS,
+    CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+    DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+)
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
@@ -18,6 +23,7 @@ from ray.train.v2._internal.execution.training_report import (
 )
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
+    context_watchdog,
     invoke_context_managers,
 )
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -28,7 +34,7 @@ from ray.train.v2.api.report_config import (
 from ray.train.v2.api.validation_config import ValidationTaskConfig
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator, Dataset
+    from ray.data import DataIterator
     from ray.train import BackendConfig, Checkpoint, DataConfig
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
@@ -45,6 +51,9 @@ logger = logging.getLogger(__file__)
 # TODO: make this value manually or automatically configurable.
 MAX_CHECKPOINT_UPLOAD_THREADS = 1
 
+DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate a network issue or slow storage backend. Consider specifying a different filesystem via RunConfig(storage_filesystem=...)."
+CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE = "Custom checkpoint upload for {checkpoint_dir_name} has been running for {elapsed}s (warning interval: {interval}s). This may indicate an issue in your custom upload function passed to `ray.train.report(custom_upload_fn)`."
+
 
 @dataclass(frozen=True)
 class TrainRunContext:
@@ -57,16 +66,13 @@ class TrainRunContext:
     run_config: RunConfig
 
     # The configuration passed to the training function.
-    train_loop_config: Optional[Dict[str, Any]]
+    train_loop_config: Optional[Dict]
 
     # The scaling configuration for the current training run.
     scaling_config: ScalingConfig
 
     # The configuration for the training backend (e.g., PyTorch, XGBoost).
     backend_config: "BackendConfig"
-
-    # The datasets used in the current training run.
-    datasets: Dict[str, "Dataset"]
 
     # The configuration for dataset ingestion and sharding.
     dataset_config: "DataConfig"
@@ -256,12 +262,36 @@ class TrainContext:
         if not checkpoint:
             return _TrainingReport(checkpoint=None, metrics=metrics, validation=False)
 
-        # Persist the checkpoint to the remote storage path.
-        try:
-            if checkpoint_upload_fn:
-                persisted_checkpoint = checkpoint_upload_fn(
-                    checkpoint, checkpoint_dir_name
+        def slow_upload_warning(stop_event: threading.Event, message: str):
+            # Log a warning for the checkpoint upload every `CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR`
+            #   seconds until `stop_event` is set.
+            elapsed = 0.0
+            interval = env_float(
+                CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
+                DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+            )
+            while not stop_event.wait(interval):
+                elapsed += interval
+                logger.warning(
+                    message.format(
+                        checkpoint_dir_name=checkpoint_dir_name,
+                        elapsed=elapsed,
+                        interval=interval,
+                    )
                 )
+
+        try:
+            # Persist the checkpoint to the remote storage path.
+            if checkpoint_upload_fn:
+                # Wraps the checkpoint_upload_fn with warning if slow
+                with context_watchdog(
+                    slow_upload_warning, CUSTOM_CHECKPOINT_UPLOAD_WARN_MESSAGE
+                ):
+                    persisted_checkpoint = checkpoint_upload_fn(
+                        checkpoint, checkpoint_dir_name
+                    )
+
+                # Check that the checkpoint generated is a `ray.train.Checkpoint` instance
                 if persisted_checkpoint is None or not isinstance(
                     persisted_checkpoint, ray.train.Checkpoint
                 ):
@@ -269,9 +299,16 @@ class TrainContext:
                         "checkpoint_upload_fn must return a `ray.train.Checkpoint`."
                     )
             else:
-                persisted_checkpoint = self.storage_context.persist_current_checkpoint(
-                    checkpoint, checkpoint_dir_name
-                )
+                # Wraps the `storage_context.persist_current_checkpoint` with warning if slow
+                with context_watchdog(
+                    slow_upload_warning, DEFAULT_CHECKPOINT_UPLOAD_WARN_MESSAGE
+                ):
+                    persisted_checkpoint = (
+                        self.storage_context.persist_current_checkpoint(
+                            checkpoint, checkpoint_dir_name
+                        )
+                    )
+
         except FileNotFoundError:
             logger.exception(
                 f"Failed to find local checkpoint {checkpoint} when attempting to upload it. "

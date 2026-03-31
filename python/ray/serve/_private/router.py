@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import (
@@ -74,7 +75,11 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.types import ObjectRef
 from ray.util import metrics
 
@@ -589,6 +594,10 @@ class AsyncioRouter:
         # replica set at least once.
         self._running_replicas_populated: bool = False
 
+        self._initial_backoff_s: Optional[float] = None
+        self._backoff_multiplier: Optional[float] = None
+        self._max_backoff_s: Optional[float] = None
+
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
         # might be called before `self._metrics_manager` instance is created.
@@ -661,6 +670,14 @@ class AsyncioRouter:
         router is initialized.
         """
         if not self._request_router and self._request_router_class:
+            backoff_kwargs = {}
+            if self._initial_backoff_s is not None:
+                backoff_kwargs["initial_backoff_s"] = self._initial_backoff_s
+            if self._backoff_multiplier is not None:
+                backoff_kwargs["backoff_multiplier"] = self._backoff_multiplier
+            if self._max_backoff_s is not None:
+                backoff_kwargs["max_backoff_s"] = self._max_backoff_s
+
             request_router = self._request_router_class(
                 deployment_id=self.deployment_id,
                 handle_source=self._handle_source,
@@ -675,6 +692,7 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
+                **backoff_kwargs,
             )
             request_router.initialize_state(**(self._request_router_kwargs))
 
@@ -720,6 +738,27 @@ class AsyncioRouter:
         self._request_router_kwargs = (
             deployment_config.request_router_config.request_router_kwargs
         )
+
+        # Warn if deprecated env vars are set
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S")
+
+        self._initial_backoff_s = (
+            deployment_config.request_router_config.initial_backoff_s
+        )
+        self._backoff_multiplier = (
+            deployment_config.request_router_config.backoff_multiplier
+        )
+        self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+
+        if self._request_router:
+            self._request_router.update_backoff_params(
+                initial_backoff_s=self._initial_backoff_s,
+                backoff_multiplier=self._backoff_multiplier,
+                max_backoff_s=self._max_backoff_s,
+            )
+
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
@@ -818,7 +857,14 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         replica_actor_id: Optional[ray.ActorID],
         actor_died_error: ActorDiedError,
-    ) -> None:
+    ) -> bool:
+        """Handle an ActorDiedError from a replica request.
+
+        Returns True if the error is from this replica (i.e., this replica
+        died and should be retried on another replica). Returns False if the
+        error is from an upstream dependency (i.e., this replica is healthy
+        but the request failed due to a bad input).
+        """
         # Only mark the replica as dead if the ActorDiedError refers to this
         # replica. With chained DeploymentResponses, the error may come from
         # an upstream deployment that was passed as an object ref to this
@@ -842,6 +888,7 @@ class AsyncioRouter:
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
             )
+            return True
         else:
             # Error from upstream dependency, not from this replica.
             logger.debug(
@@ -849,6 +896,18 @@ class AsyncioRouter:
                 f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
                 "Replica remains in rotation."
             )
+            return False
+
+    def _make_upstream_crash_error(self, e: ActorDiedError) -> RayServeException:
+        """Surface a clear Serve error while preserving Ray's actor death details."""
+        msg = (
+            f"Request to deployment '{self.deployment_id.name}' failed because "
+            f"an upstream actor died before finishing a dependent task. "
+            f"Ray reported:\n{e}"
+        )
+        wrapped = RayServeException(msg)
+        wrapped.__cause__ = e
+        return wrapped
 
     async def _route_and_send_request_once(
         self,
@@ -929,6 +988,14 @@ class AsyncioRouter:
                 )
                 return result
 
+            # Request was rejected: cancel so done callbacks fire.
+            # Without this, same-loop (means the router is running on the main event loop,
+            # where the DeploymentHandle lives) gRPC streaming results are
+            # never consumed (no background drain task exists in that mode).
+            # The call stays open, the running request counter is never decremented,
+            # and the autoscaler sees load that blocks downscaling.
+            result.cancel()
+
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
             # currently no `await` statements between getting the ref and returning,
@@ -939,7 +1006,22 @@ class AsyncioRouter:
             raise
         except ActorDiedError as e:
             if replica is not None:
-                self._handle_actor_died_error(replica.replica_id, replica.actor_id, e)
+                is_from_this_replica = self._handle_actor_died_error(
+                    replica.replica_id, replica.actor_id, e
+                )
+                if not is_from_this_replica and callback_registered:
+                    # Error from an upstream dependency during request
+                    # execution (e.g., a chained DeploymentResponse whose
+                    # source actor died). The request was already accepted
+                    # by this (healthy) replica, but the input is
+                    # permanently failed — retrying with another replica
+                    # won't help. Propagate immediately so the caller gets
+                    # a fast error.
+                    raise self._make_upstream_crash_error(e)
+            elif not pr.resolved:
+                # ActorDiedError during argument resolution — same upstream
+                # cause as above, caught before a replica was even chosen.
+                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
