@@ -29,3 +29,10 @@ class TestOpenAIJsonWrapper:
         """An empty upstream stream should still produce a [DONE] sentinel."""
         chunks = [c async for c in _openai_json_wrapper(_async_gen_from_list([]))]
         assert chunks == ["data: [DONE]\n\n"]
+
+    async def test_no_duplicate_done_when_upstream_sends_done_batched(self):
+        """When the upstream generator yields a batch containing 'data: [DONE]',
+        the wrapper must not append a second one."""
+        upstream = [["data: {\"id\": 1}\n\n", "data: [DONE]\n\n"]]
+        chunks = [c async for c in _openai_json_wrapper(_async_gen_from_list(upstream))]
+        assert chunks == ["data: {\"id\": 1}\n\ndata: [DONE]\n\n"]
