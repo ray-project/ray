@@ -3030,11 +3030,15 @@ class DeploymentState:
         if target_version is None:
             return False
         code_ver = target_version.code_version
-        running = self._deployment_actors.count(
-            code_ver,
-            states=[DeploymentActorState.RUNNING],
-        )
-        return running == len(configs)
+        expected_names = {cfg.name for cfg in configs}
+        running_names = {
+            w.actor_logical_name
+            for w in self._deployment_actors.get(
+                code_ver,
+                states=[DeploymentActorState.RUNNING],
+            )
+        }
+        return expected_names == running_names
 
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of

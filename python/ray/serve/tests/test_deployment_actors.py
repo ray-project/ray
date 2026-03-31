@@ -53,6 +53,45 @@ class SharedCounter:
     def get(self):
         return self.count
 
+    def ray_actor_id(self) -> str:
+        """Stable Ray actor id for tests that must detect recreation vs same process."""
+        return ray.get_runtime_context().get_actor_id()
+
+
+@ray.remote
+class ConstructorGate:
+    """Coordination actor: deployment-scoped tests can block ``__init__`` until opened."""
+
+    def __init__(self):
+        self._open = True
+
+    def close(self):
+        self._open = False
+
+    def open(self):
+        self._open = True
+
+    def wait_until_open(self):
+        import time
+
+        while not self._open:
+            time.sleep(0.01)
+
+
+@ray.remote
+class GatedSharedCounter:
+    """Like ``SharedCounter`` but blocks in ``__init__`` until ``ConstructorGate`` opens."""
+
+    def __init__(self, gate, start: int = 0):
+        ray.get(gate.wait_until_open.remote())
+        self.count = start
+
+    def get(self):
+        return self.count
+
+    def ray_actor_id(self) -> str:
+        return ray.get_runtime_context().get_actor_id()
+
 
 @ray.remote
 class SharedCache:
@@ -765,7 +804,8 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
 
     After controller recovers from checkpoint, it discovers existing
     deployment actors (ActorAlreadyExistsError) and marks them ready.
-    App continues to work with the same deployment actors.
+    App continues to work with the same Ray actor process (matching ``ray_actor_id``),
+    not a recreation.
     """
 
     @serve.deployment(
@@ -780,16 +820,29 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
     class MyDeployment:
         def __call__(self):
             counter = serve.get_deployment_actor("counter")
-            return str(ray.get(counter.get.remote()))
+            val = ray.get(counter.get.remote())
+            aid = ray.get(counter.ray_actor_id.remote())
+            return f"{val},{aid}"
 
     serve.run(
         MyDeployment.bind(),
         name="app",
         route_prefix="/survives_controller_restart_da",
     )
+
+    def _parse_val_actor_id(text: str) -> tuple[str, str]:
+        val, aid = text.split(",", 1)
+        return val, aid
+
+    actor_id_before = None
     for _ in range(5):
         resp = request_with_retries(timeout=30, app_name="app")
-        assert resp.text == "42"
+        val, aid = _parse_val_actor_id(resp.text)
+        assert val == "42"
+        if actor_id_before is None:
+            actor_id_before = aid
+        else:
+            assert aid == actor_id_before
 
     actor_names_before = _get_deployment_actor_names_for_app("app", "MyDeployment")
     assert len(actor_names_before) == 1
@@ -801,7 +854,9 @@ def test_deployment_actor_survives_controller_restart(serve_instance):
     )
     for _ in range(10):
         resp = request_with_retries(timeout=30, app_name="app")
-        assert resp.text == "42"
+        val, aid = _parse_val_actor_id(resp.text)
+        assert val == "42"
+        assert aid == actor_id_before
 
     actor_names_after = _get_deployment_actor_names_for_app("app", "MyDeployment")
     assert actor_names_after == actor_names_before
@@ -811,7 +866,8 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
     """When a deployment actor dies, the Serve controller recreates it (no Ray auto-restart).
 
     Replicas call ``serve.get_deployment_actor()`` per request here, so they resolve a
-    current handle after recreation.
+    current handle after recreation. HTTP bodies include ``ray_actor_id`` so we assert a
+    new id after Serve recreates the deployment actor.
     """
 
     @serve.deployment(
@@ -827,11 +883,21 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
     class CrashTestDeployment:
         def __call__(self):
             counter = serve.get_deployment_actor("counter")
-            return str(ray.get(counter.get.remote()))
+            val = ray.get(counter.get.remote())
+            aid = ray.get(counter.ray_actor_id.remote())
+            return f"{val},{aid}"
 
     serve.run(CrashTestDeployment.bind())
     url = f"{get_application_url()}/"
-    wait_for_condition(lambda: httpx.get(url).text == "100")
+
+    def _parse_val_actor_id_crash(text: str) -> tuple[str, str]:
+        val, aid = text.split(",", 1)
+        return val, aid
+
+    wait_for_condition(
+        lambda: _parse_val_actor_id_crash(httpx.get(url).text)[0] == "100"
+    )
+    _, old_actor_id = _parse_val_actor_id_crash(httpx.get(url).text)
 
     actor_names = [
         n
@@ -843,7 +909,121 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
 
     ray.kill(handle, no_restart=True)
 
-    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=120)
+    def recovered_new_deployment_actor():
+        text = httpx.get(url, timeout=5).text
+        val, aid = _parse_val_actor_id_crash(text)
+        return val == "100" and aid != old_actor_id
+
+    wait_for_condition(recovered_new_deployment_actor, timeout=120)
+
+
+def test_deployment_actor_health_check_failure_then_recovery_to_healthy(serve_instance):
+    """E2E: deployment actor fails controller health poll → UNHEALTHY → recreate → HEALTHY.
+
+    The controller health-checks deployment-scoped actors with ``__ray_ready__``. If the
+    worker is gone, ``ray.get`` raises ``RayActorError`` and the deployment is marked
+    UNHEALTHY immediately; the controller then creates a new actor (same as the
+    repeated-timeout/APP_FAILURE path, but without waiting for the unhealthy threshold).
+
+    After killing the deployment actor, we ``close()`` a :class:`ConstructorGate` so the
+    replacement actor blocks in ``__init__``. While it is stuck starting, Serve cannot
+    return to HEALTHY (``_deployment_actors_satisfied_for_target`` requires RUNNING), so
+    ``DeploymentStatus.UNHEALTHY`` is stable and easy to assert without racing the status
+    API. Opening the gate lets construction finish and the deployment recover.
+    """
+
+    dep_name = "DAHealthRecoveryDeployment"
+    logical_actor = "counter"
+    gate = ConstructorGate.remote()
+
+    @serve.deployment(
+        name=dep_name,
+        deployment_actors=[
+            DeploymentActorConfig(
+                name=logical_actor,
+                actor_class=GatedSharedCounter,
+                init_kwargs={"gate": gate, "start": 42},
+            ),
+        ],
+    )
+    class DAHealthRecoveryDeployment:
+        def __call__(self):
+            counter = serve.get_deployment_actor(logical_actor)
+            val = ray.get(counter.get.remote())
+            aid = ray.get(counter.ray_actor_id.remote())
+            return f"{val},{aid}"
+
+    serve.run(DAHealthRecoveryDeployment.bind(), name=SERVE_DEFAULT_APP_NAME)
+    url = f"{get_application_url()}/"
+
+    def _parse_val_actor_id_health(text: str) -> tuple[str, str]:
+        val, aid = text.split(",", 1)
+        return val, aid
+
+    def deployment_status():
+        return (
+            serve.status()
+            .applications[SERVE_DEFAULT_APP_NAME]
+            .deployments[dep_name]
+            .status
+        )
+
+    def counter_actor_name() -> str:
+        names = [
+            n
+            for n in _get_deployment_actor_names()
+            if dep_name in n and logical_actor in n
+        ]
+        assert len(names) == 1
+        return names[0]
+
+    def counter_actor_id_for_name(name: str) -> str:
+        for a in list_actors(filters=[("state", "=", "ALIVE")]):
+            if a.get("name") == name:
+                return a.actor_id
+        raise AssertionError(f"No ALIVE actor record for name={name!r}")
+
+    wait_for_condition(
+        lambda: _parse_val_actor_id_health(httpx.get(url).text)[0] == "42"
+    )
+    assert deployment_status() == DeploymentStatus.HEALTHY
+
+    da_name = counter_actor_name()
+    old_actor_id = counter_actor_id_for_name(da_name)
+    _, http_actor_id_before = _parse_val_actor_id_health(httpx.get(url).text)
+    assert http_actor_id_before == old_actor_id
+
+    ray.get(gate.close.remote())
+    ray.kill(
+        ray.get_actor(da_name, namespace=SERVE_NAMESPACE),
+        no_restart=True,
+    )
+
+    wait_for_condition(
+        lambda: deployment_status() == DeploymentStatus.UNHEALTHY,
+        timeout=120,
+    )
+    assert deployment_status() == DeploymentStatus.UNHEALTHY
+
+    ray.get(gate.open.remote())
+
+    wait_for_condition(
+        lambda: deployment_status() == DeploymentStatus.HEALTHY,
+        timeout=120,
+    )
+
+    def http_shows_new_deployment_actor():
+        val, aid = _parse_val_actor_id_health(httpx.get(url, timeout=5).text)
+        return val == "42" and aid != old_actor_id
+
+    wait_for_condition(http_shows_new_deployment_actor, timeout=120)
+
+    new_name = counter_actor_name()
+    assert new_name == da_name
+    new_actor_id = counter_actor_id_for_name(new_name)
+    assert new_actor_id != old_actor_id
+    _, http_actor_id_after = _parse_val_actor_id_health(httpx.get(url).text)
+    assert http_actor_id_after == new_actor_id
 
 
 def test_cached_get_deployment_actor_handle_stale_after_recreation(serve_instance):
