@@ -18,7 +18,11 @@ from benchmark_factory import BenchmarkFactory
 from config import BenchmarkConfig, DataloaderType, ImageClassificationConfig
 from dataloader_factory import BaseDataLoaderFactory
 from torch_dataloader_factory import TorchDataLoaderFactory
-from ray_dataloader_factory import RayDataLoaderFactory
+from ray_dataloader_factory import (
+    RayDataLoaderFactory,
+    get_or_create_spill_metrics_monitor,
+)
+from constants import DatasetKey
 from logger_utils import ContextLoggerAdapter
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
@@ -311,18 +315,6 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         return tensors["image"], tensors["label"]
 
 
-class TrackingCollateFn(CollateFn):
-    """Wraps a collate function with shuffle quality tracking."""
-
-    def __init__(self, inner: CollateFn, tracker: ShuffleQualityTracker):
-        self._inner = inner
-        self._tracker = tracker
-
-    def __call__(self, batch: "pyarrow.Table") -> Tuple[torch.Tensor, torch.Tensor]:
-        self._tracker.observe(batch)
-        return self._inner(batch)
-
-
 class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
     """Factory for creating Ray DataLoader for image classification tasks."""
 
@@ -331,12 +323,46 @@ class ImageClassificationRayDataLoaderFactory(RayDataLoaderFactory):
         self._shuffle_tracker: Optional[ShuffleQualityTracker] = None
 
     def _get_collate_fn(self) -> Optional[CollateFn]:
-        collate_fn = CustomArrowCollateFn(
+        return CustomArrowCollateFn(
             device=ray.train.torch.get_device(),
             pin_memory=self.get_dataloader_config().ray_data_pin_memory,
         )
+
+    def get_train_dataloader(self):
+        """Get training dataloader with shuffle quality tracking.
+
+        Overrides the base class to iterate raw Arrow batches so we can
+        observe the 'path' column for shuffle quality metrics before
+        passing batches through the collate function.
+        """
+        if self._spill_monitor is None:
+            self._spill_monitor = get_or_create_spill_metrics_monitor()
+
+        ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
+        self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
+
+        dataloader_config = self.get_dataloader_config()
+        collate_fn = self._get_collate_fn()
         self._shuffle_tracker = ShuffleQualityTracker()
-        return TrackingCollateFn(collate_fn, self._shuffle_tracker)
+
+        arrow_batches = ds_iterator.iter_batches(
+            batch_size=dataloader_config.train_batch_size,
+            batch_format="pyarrow",
+            local_shuffle_buffer_size=(
+                dataloader_config.local_buffer_shuffle_size
+                if dataloader_config.local_buffer_shuffle_size > 0
+                else None
+            ),
+            prefetch_batches=dataloader_config.ray_data_prefetch_batches,
+            drop_last=True,
+        )
+
+        def _tracking_iter():
+            for batch in arrow_batches:
+                self._shuffle_tracker.observe(batch)
+                yield collate_fn(batch)
+
+        return _tracking_iter()
 
     def get_metrics(self) -> Dict:
         metrics = super().get_metrics()
