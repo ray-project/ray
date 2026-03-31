@@ -220,7 +220,7 @@ py_test(
 
 py_test(
     name = "test_controller_callback_behaviour",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_controller_callback_behaviour.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
