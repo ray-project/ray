@@ -109,7 +109,11 @@ ALL_DEPLOYMENT_ACTOR_STATES = list(DeploymentActorState)
 
 
 class DeploymentActorWrapper:
-    """Lifecycle wrapper for a single deployment-scoped actor."""
+    """Lifecycle wrapper for a single deployment-scoped actor.
+
+    TODO(abrar): Gap: deployment actor killed with no_restart=True — controller does not detect
+    or recreate; replicas would get RayActorError. Consider adding health checks.
+    """
 
     def __init__(
         self,
@@ -621,12 +625,11 @@ class ActorReplicaWrapper:
                 "from replica to controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self._routing_stats_delay_histogram.set_default_tags(
             {
                 "deployment": self._deployment_id.name,
-                "replica": self._replica_id.unique_id,
                 "application": self._deployment_id.app_name,
             }
         )
@@ -2617,7 +2620,7 @@ class DeploymentState:
             "serve_replica_startup_latency_ms",
             description=("Time from replica creation to ready state in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.replica_startup_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2628,7 +2631,7 @@ class DeploymentState:
             "serve_replica_initialization_latency_ms",
             description=("Time for replica to initialize in milliseconds."),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.replica_initialization_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2640,7 +2643,7 @@ class DeploymentState:
             "serve_replica_reconfigure_latency_ms",
             description=("Time for replica to complete reconfigure in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.replica_reconfigure_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2651,7 +2654,7 @@ class DeploymentState:
             "serve_health_check_latency_ms",
             description=("Duration of health check calls in milliseconds."),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.health_check_latency_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -2674,7 +2677,7 @@ class DeploymentState:
                 "Time from shutdown signal to replica fully stopped in milliseconds."
             ),
             boundaries=REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.replica_shutdown_duration_histogram.set_default_tags(
             {"deployment": self._id.name, "application": self._id.app_name}
@@ -3801,6 +3804,11 @@ class DeploymentState:
                     == running_at_target_version_replica_cnt
                     and running_at_target_version_replica_cnt == all_running_replica_cnt
                 )
+                # Stay in transition until deployment actors for obsolete code versions
+                # are dropped (see stop_deployment_actors_if_needed); otherwise
+                # scale_deployment_replicas would never run cleanup after _in_transition
+                # is cleared.
+                and not self._orphaned_deployment_actor_code_versions()
             ):
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
@@ -3884,16 +3892,13 @@ class DeploymentState:
                 logger.info(replica_startup_message, extra={"log_to_stderr": False})
 
                 # Record startup or reconfigure latency metrics.
-                metric_tags = {
-                    "replica": replica.replica_id.unique_id,
-                }
                 if original_state == ReplicaState.STARTING:
                     # Record replica startup latency (end-to-end from creation to ready).
                     # This includes the time taken from starting a node, scheduling the replica,
                     # and the replica constructor.
                     e2e_replica_start_latency_ms = e2e_replica_start_latency * 1000
                     self.replica_startup_latency_histogram.observe(
-                        e2e_replica_start_latency_ms, tags=metric_tags
+                        e2e_replica_start_latency_ms
                     )
                     # Record replica initialization latency.
                     if replica.initialization_latency_s is not None:
@@ -3901,7 +3906,7 @@ class DeploymentState:
                             replica.initialization_latency_s * 1000
                         )
                         self.replica_initialization_latency_histogram.observe(
-                            initialization_latency_ms, tags=metric_tags
+                            initialization_latency_ms
                         )
                 elif original_state == ReplicaState.UPDATING:
                     # Record replica reconfigure latency.
@@ -3910,7 +3915,7 @@ class DeploymentState:
                             time.time() - replica.reconfigure_start_time
                         ) * 1000
                         self.replica_reconfigure_latency_histogram.observe(
-                            reconfigure_latency_ms, tags=metric_tags
+                            reconfigure_latency_ms
                         )
 
             elif start_status == ReplicaStartupStatus.FAILED:
@@ -4173,15 +4178,14 @@ class DeploymentState:
             is_healthy = replica.check_health()
 
             # Record health check latency and failure metrics.
-            metric_tags = {
-                "replica": replica.replica_id.unique_id,
-            }
             if replica.last_health_check_latency_ms is not None:
                 self.health_check_latency_histogram.observe(
-                    replica.last_health_check_latency_ms, tags=metric_tags
+                    replica.last_health_check_latency_ms
                 )
             if replica.last_health_check_failed:
-                self.health_check_failures_counter.inc(tags=metric_tags)
+                self.health_check_failures_counter.inc(
+                    tags={"replica": replica.replica_id.unique_id}
+                )
 
             if is_healthy:
                 healthy_replicas.append(replica)
@@ -4335,10 +4339,7 @@ class DeploymentState:
                         time.time() - replica.shutdown_start_time
                     ) * 1000
                     self.replica_shutdown_duration_histogram.observe(
-                        shutdown_duration_ms,
-                        tags={
-                            "replica": replica.replica_id.unique_id,
-                        },
+                        shutdown_duration_ms
                     )
 
                 # Release rank only after replica is successfully stopped
@@ -4672,6 +4673,8 @@ class DeploymentState:
 
     def deployment_actor_terminally_failed(self) -> bool:
         """True when deployment actors have failed too many times to keep retrying."""
+        if self._target_state.deleting:
+            return False
         deployment_actors_configs = self._get_deployment_actors_configs()
         if not deployment_actors_configs:
             return False
@@ -4829,6 +4832,23 @@ class DeploymentState:
             return True
         return False
 
+    def _orphaned_deployment_actor_code_versions(self) -> Set[str]:
+        """Code versions still tracked for deployment actors that no replica needs.
+
+        Matches the retention rule in ``stop_deployment_actors_if_needed``:
+        keep actors for every replica's ``code_version``, and (when not deleting)
+        for the target deployment version.
+        """
+        target_version = self._target_state.version
+        if target_version is None:
+            return set()
+
+        versions_to_keep = {r.version.code_version for r in self._replicas.get()}
+        if not self._target_state.deleting:
+            versions_to_keep.add(target_version.code_version)
+
+        return self._deployment_actors.get_code_versions() - versions_to_keep
+
     def stop_deployment_actors_if_needed(self) -> None:
         """Stop deployment-scoped actors when no longer needed.
 
@@ -4837,20 +4857,11 @@ class DeploymentState:
         PENDING_MIGRATION), since all of these may need deployment actors.
         During deletion, actors are kept only while replicas still exist.
         """
-        target_version = self._target_state.version
-        if target_version is None:
+        if self._target_state.version is None:
             return
 
-        replicas = self._replicas.get()
-        versions_to_keep = {r.version.code_version for r in replicas}
-        if not self._target_state.deleting:
-            versions_to_keep.add(target_version.code_version)
-
-        versions_to_remove = (
-            self._deployment_actors.get_code_versions() - versions_to_keep
-        )
         wrappers_to_stop: List[DeploymentActorWrapper] = []
-        for code_version in versions_to_remove:
+        for code_version in self._orphaned_deployment_actor_code_versions():
             entries = self._deployment_actors.pop(
                 code_version=code_version,
                 states=[
