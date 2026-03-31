@@ -2516,10 +2516,20 @@ class ActorHandle(Generic[T]):
         )
 
     def __hash__(self):
-        return hash(self._actor_id)
+        # Look up directly in __dict__ to avoid __getattr__, which for
+        # cross-language actors returns an ActorMethod instead of raising
+        # AttributeError.
+        try:
+            return self.__dict__["_ray_cached_hash"]
+        except KeyError:
+            h = hash(self._ray_actor_id)
+            self._ray_cached_hash = h
+            return h
 
-    def __eq__(self, __value):
-        return hash(self) == hash(__value)
+    def __eq__(self, other):
+        if not isinstance(other, ActorHandle):
+            return NotImplemented
+        return self._ray_actor_id == other._ray_actor_id
 
     @property
     def _actor_id(self):
