@@ -525,7 +525,6 @@ py_test_module_list(
         "test_core_worker_io_thread_stack_size.py",
         "test_cpu_tensor_zero_copy_serialization.py",
         "test_cross_language.py",
-        "test_debug_tools.py",
         "test_distributed_sort.py",
         "test_environ.py",
         "test_error_ray_not_initialized.py",
@@ -575,6 +574,22 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_debug_tools.py",
+    ],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_a_to_j",
         "team:core",
     ],
     deps = [
