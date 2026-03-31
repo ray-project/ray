@@ -55,7 +55,7 @@ cp /tmp/vllm-overlay/vllm/v1/executor/ray_executor_v2.py "${VLLM_SITE}/v1/execut
 cp /tmp/vllm-overlay/vllm/v1/executor/ray_utils.py "${VLLM_SITE}/v1/executor/ray_utils.py"
 cp /tmp/vllm-overlay/vllm/v1/worker/gpu_worker.py "${VLLM_SITE}/v1/worker/gpu_worker.py"
 cp /tmp/vllm-overlay/vllm/v1/worker/worker_base.py "${VLLM_SITE}/v1/worker/worker_base.py"
-cp /tmp/vllm-overlay/vllm/v1/executor/ray_env_utils.py "${VLLM_SITE}/vllm/v1/executor/ray_env_utils.py"
+cp /tmp/vllm-overlay/vllm/v1/executor/ray_env_utils.py "${VLLM_SITE}/v1/executor/ray_env_utils.py"
 rm -rf /tmp/vllm-overlay
 
 # Export installed packages
