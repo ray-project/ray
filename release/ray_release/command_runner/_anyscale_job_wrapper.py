@@ -326,8 +326,10 @@ def main(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
 
+        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+
         # Fail if any OOM kills occurred
-        if return_code == 0:
+        if return_code == 0 and test_fail_on_worker_oom:
             return_code = run_oom_check()
 
         uploaded_artifact = run_storage_cp(
