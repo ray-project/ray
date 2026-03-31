@@ -807,31 +807,48 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         internal_request_id: str,
         replica_actor_id: Optional[ray.ActorID],
+        should_decrement_cache: list,
         result: Union[Any, RayError],
     ) -> None:
+        """Called from worker threads via add_done_callback.
+
+        The happy path (metrics + on_request_completed + cache decrement) is
+        thread-safe and runs directly. Error handling (actor died/unavailable)
+        mutates shared router state and is deferred to the event loop.
+
+        should_decrement_cache is a mutable single-element list used as a
+        flag. For the with-rejection path, it is set to True after acceptance
+        on the event loop thread before this callback fires.
+        """
+        # Thread-safe: dec uses self._queries_lock internally.
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
 
-        # Notify request router that request completed (for cleanup, e.g., token release)
+        # Thread-safe: on_request_completed is a no-op in the base class.
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
+            # GIL-atomic deque append, drained on event loop before routing.
+            if should_decrement_cache[0]:
+                self.request_router.enqueue_cache_decrement(replica_id)
 
+        # Error handling: mutates shared state, must run on event loop.
         actor_died_error = self._get_actor_died_error(result)
         if actor_died_error is not None:
-            self._handle_actor_died_error(
-                replica_id, replica_actor_id, actor_died_error
+            self._event_loop.call_soon_threadsafe(
+                self._handle_actor_died_error,
+                replica_id,
+                replica_actor_id,
+                actor_died_error,
             )
         elif isinstance(result, ActorUnavailableError):
-            # There are network issues, or replica has died but GCS is down so
-            # ActorUnavailableError will be raised until GCS recovers. For the
-            # time being, invalidate the cache entry so that we don't try to
-            # send requests to this replica without actively probing, and retry
-            # routing request.
-            if self.request_router:
-                self.request_router.on_replica_actor_unavailable(replica_id)
-            logger.warning(
-                f"Request failed because {replica_id} is temporarily unavailable."
-            )
+            def _handle_unavailable():
+                if self.request_router:
+                    self.request_router.on_replica_actor_unavailable(replica_id)
+                logger.warning(
+                    f"Request failed because {replica_id} is temporarily unavailable."
+                )
+
+            self._event_loop.call_soon_threadsafe(_handle_unavailable)
 
     def _get_actor_died_error(
         self, result: Union[Any, RayError]
@@ -925,34 +942,29 @@ class AsyncioRouter:
                 self._metrics_manager.inc_num_running_requests_for_replica(
                     replica.replica_id
                 )
-            # Always register callback to notify router when request completes
-            # (needed for token release in queue-based routing, metrics tracking, etc.)
+            # Single callback per request. For the with-rejection path, a
+            # mutable list acts as a flag that is set to True after acceptance,
+            # checked by the callback at execution time. This avoids a second
+            # add_done_callback registration.
+            should_decrement = [not with_rejection]
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
                 replica.actor_id,
+                should_decrement,
             )
             result.add_done_callback(callback)
             callback_registered = True
 
             if not with_rejection:
-                result.add_done_callback(
-                    lambda _: self.request_router.decrement_queue_len_cache(
-                        replica.replica_id,
-                    )
-                )
                 return result
 
             queue_info = await result.get_rejection_response()
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
-                result.add_done_callback(
-                    lambda _: self.request_router.decrement_queue_len_cache(
-                        replica.replica_id,
-                    )
-                )
+                should_decrement[0] = True
                 return result
 
             # Request was rejected: cancel so done callbacks fire.

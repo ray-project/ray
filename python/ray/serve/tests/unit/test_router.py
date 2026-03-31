@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import concurrent.futures
 import random
 import sys
@@ -159,6 +160,7 @@ class FakeRequestRouter(RequestRouter):
         self._replica_to_return: Optional[FakeReplica] = None
         self._replica_to_return_on_retry: Optional[FakeReplica] = None
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
+        self._pending_cache_decrements = collections.deque()
         self._dropped_replicas: Set[ReplicaID] = set()
         self._use_queue_len_cache = use_queue_len_cache
         self._use_replica_queue_len_cache = use_queue_len_cache
