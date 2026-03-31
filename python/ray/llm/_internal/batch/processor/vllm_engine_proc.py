@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import transformers
-from pydantic import Field, root_validator
+from pydantic import Field, model_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -96,7 +96,8 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}.",
     )
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_task_type(cls, values):
         task_type = values.get("task_type", vLLMTaskType.GENERATE)
         if task_type not in vLLMTaskType.values():
@@ -117,7 +118,8 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         values["engine_kwargs"] = engine_kwargs
         return values
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def validate_placement_group_config(cls, values):
         placement_group_config = values.get("placement_group_config")
         if placement_group_config is not None:

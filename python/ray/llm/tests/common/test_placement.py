@@ -1,5 +1,7 @@
 """Unit tests for ray.llm._internal.common.placement."""
 
+import sys
+
 import pytest
 from pydantic import ValidationError
 
@@ -77,3 +79,7 @@ def test_placement_group_config_invalid_strategy_rejected():
                 "strategy": "INVALID",
             }
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
