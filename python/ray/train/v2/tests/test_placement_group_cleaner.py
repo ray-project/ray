@@ -67,6 +67,10 @@ class MockController:
 def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
     """Test that the PlacementGroupCleaner can be launched and stopped."""
 
+    # Create a mock controller
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
     # Launch cleaner as detached
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -76,19 +80,15 @@ def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
     )
-
-    # Create a mock controller
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     # Create a placement group
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # Register controller and placement group atomically
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    # Register placement group for cleanup
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     # Start monitoring asynchronously (same behavior as production code)
     cleaner.start_monitoring.remote()
@@ -121,6 +121,10 @@ def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
 def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
     """Test that the PG cleaner removes PG when controller dies."""
 
+    # Create a mock controller
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
     # Launch cleaner as detached
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -130,19 +134,15 @@ def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
     )
-
-    # Create a mock controller
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     # Create a placement group
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
 
-    # Register controller and placement group atomically
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    # Register placement group for cleanup
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     cleaner.start_monitoring.remote()
 
@@ -169,8 +169,45 @@ def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
         ray.get(cleaner.start_monitoring.remote(), timeout=2.0)
 
 
+def test_pg_cleaner_exits_on_controller_death_without_pg_registration(
+    monitoring_started_signal,
+):
+    """Cleaner should exit cleanly if controller dies before any PG is registered."""
+
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
+
+    cleaner = (
+        ray.remote(num_cpus=0)(PlacementGroupCleaner)
+        .options(
+            name="test_pg_cleaner_no_pg",
+            namespace="test",
+            lifetime="detached",
+            get_if_exists=False,
+        )
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+        )
+    )
+
+    cleaner.start_monitoring.remote()
+    ray.get(monitoring_started_signal.wait.remote())
+
+    ray.kill(controller)
+
+    # Give the cleaner a moment to observe controller death and self-exit.
+    time.sleep(1.0)
+
+    with pytest.raises(RayActorError):
+        ray.get(cleaner.start_monitoring.remote(), timeout=2.0)
+
+
 def test_pg_cleaner_handles_duplicate_start():
     """Test that cleaner handles duplicate start_monitoring calls."""
+
+    controller = MockController.remote()
+    controller_id = ray.get(controller.get_actor_id.remote())
 
     cleaner = (
         ray.remote(num_cpus=0)(PlacementGroupCleaner)
@@ -180,15 +217,12 @@ def test_pg_cleaner_handles_duplicate_start():
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(check_interval_s=0.1)
+        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
     )
-
-    controller = MockController.remote()
-    controller_id = ray.get(controller.get_actor_id.remote())
 
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")
     ray.get(pg.ready())
-    ray.get(cleaner.register_controller_and_placement_group.remote(controller_id, pg))
+    ray.get(cleaner.register_placement_group.remote(pg))
 
     # Start monitoring asynchronously
     cleaner.start_monitoring.remote()
