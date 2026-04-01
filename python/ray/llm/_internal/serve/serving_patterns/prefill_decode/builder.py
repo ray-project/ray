@@ -30,13 +30,13 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     DPPDPrefillServer,
     PDDecodeServer,
     PDPrefillServer,
-    PDProxyServer,  # TODO(Kourosh): Remove in Ray 2.56.
+    PDProxyServer,  # TODO(Kourosh): Deprecate, remove in Ray 2.58.
 )
 from ray.serve.deployment import Application
 
 # ---------------------------------------------------------------------------
 # Deprecated: ProxyClsConfig
-# TODO(Kourosh): Remove in Ray 2.56.
+# TODO(Kourosh): Deprecate, remove in Ray 2.58.
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +77,7 @@ class PDServingArgs(BaseModelExtended):
     prefill_config: Union[str, dict, LLMConfig]
     decode_config: Union[str, dict, LLMConfig]
 
-    # TODO(Kourosh): Remove in Ray 2.56.
+    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
     # Deprecated proxy fields — accepted for backwards compat, ignored at build time.
     proxy_cls_config: Optional[Union[dict, ProxyClsConfig]] = Field(
         default=None,
@@ -116,7 +116,10 @@ class PDServingArgs(BaseModelExtended):
     ) -> Optional[ProxyClsConfig]:
         if value is not None:
             warnings.warn(
-                "proxy_cls_config is deprecated and ignored.",
+                "proxy_cls_config is deprecated and ignored. "
+                "The proxy has been replaced by PDDecodeServer which "
+                "orchestrates prefill and decode directly. "
+                "See PDDecodeServer and PDPrefillServer.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -129,7 +132,10 @@ class PDServingArgs(BaseModelExtended):
     def _validate_proxy_deployment_config(cls, value: Optional[dict]) -> Optional[dict]:
         if value is not None:
             warnings.warn(
-                "proxy_deployment_config is deprecated and ignored.",
+                "proxy_deployment_config is deprecated and ignored. "
+                "The proxy has been replaced by PDDecodeServer which "
+                "orchestrates prefill and decode directly. "
+                "See PDDecodeServer and PDPrefillServer.",
                 DeprecationWarning,
                 stacklevel=2,
             )

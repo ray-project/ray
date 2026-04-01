@@ -34,7 +34,7 @@ from ray.serve.llm import LLMConfig
 logger = logging.getLogger(__name__)
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
-# TODO(Kourosh): Remove in Ray 2.56.
+# TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
 DEFAULT_PD_PROXY_SERVER_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
 }
@@ -125,17 +125,19 @@ class PDOrchestratorMixin:
         # 2. Local decode via own engine
         decode_request = self._prepare_decode_request(request, prefill_chunk)
 
-        # Add request id before running local decode
-        request_id = get_serve_request_id()
-        if request_id:
-            decode_request.request_id = request_id
-
         # Use parent LLMServer's chat/completions which goes through the local engine
         local_gen = await getattr(super(), method)(decode_request, raw_request_info)
         async for chunk in local_gen:
             yield chunk
 
     # ---- Pre-warm ----
+    #
+    # KV transfer connectors (e.g. NIXL) require a handshake between each
+    # prefill and decode replica before real traffic can flow.  Pre-warming
+    # sends a tiny dummy request through the full prefill->decode path for
+    # every prefill replica so that the connector establishes its connections
+    # eagerly at startup rather than on the first user request.
+    # Enable via: experimental_configs={"_prewarm_prefill_decode": True}
 
     def _make_dummy_request(self, model_id: str) -> CompletionRequest:
         """Build the smallest valid completion request for pre-warm."""
@@ -188,13 +190,12 @@ class PDOrchestratorMixin:
                 await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
             except Exception as exc:
                 logger.warning(
-                    "[PDDecodeServer] broadcast() attempt %d/%d failed "
-                    "with %s: %s; retrying in %.0fs...",
+                    "[PDDecodeServer] broadcast() attempt %d/%d failed; "
+                    "retrying in %.0fs...",
                     attempt,
                     _PREWARM_MAX_RETRIES,
-                    type(exc).__name__,
-                    exc,
                     _PREWARM_RETRY_INTERVAL_S,
+                    exc_info=exc,
                 )
                 await asyncio.sleep(_PREWARM_RETRY_INTERVAL_S)
         else:
@@ -283,10 +284,15 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
         llm_config: LLMConfig,
         *,
         prefill_server: DeploymentHandle,
-        **kwargs,
+        engine_cls=None,
+        model_downloader=None,
     ):
         self._prefill_handle = prefill_server.options(stream=True)
-        await super().__init__(llm_config, **kwargs)
+        await super().__init__(
+            llm_config,
+            engine_cls=engine_cls,
+            model_downloader=model_downloader,
+        )
         await self._maybe_prewarm()
 
     async def chat(
@@ -336,7 +342,7 @@ class DPPDDecodeServer(PDDecodeServer, DPServer):
 
 # ---------------------------------------------------------------------------
 # Deprecated: PDProxyServer
-# TODO(Kourosh): Remove in Ray 2.56.
+# TODO(Kourosh): Deprecate, remove in Ray 2.58.
 # ---------------------------------------------------------------------------
 
 
@@ -348,22 +354,14 @@ class PDProxyServer(LLMServerProtocol):
         This class will be removed in a future release.
     """
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        warnings.warn(
-            "PDProxyServer is deprecated. Use PDDecodeServer instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
     async def __init__(
         self,
         prefill_server: DeploymentHandle,
         decode_server: DeploymentHandle,
     ):
         warnings.warn(
-            "PDProxyServer is deprecated. Use PDDecodeServer instead. "
-            "PDProxyServer will be removed in a future release.",
+            "PDProxyServer is deprecated and will be removed in Ray 2.58. "
+            "Use PDDecodeServer (decode orchestrator) and PDPrefillServer instead.",
             DeprecationWarning,
             stacklevel=2,
         )

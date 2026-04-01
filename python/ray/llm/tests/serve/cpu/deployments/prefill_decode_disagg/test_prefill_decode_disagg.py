@@ -52,7 +52,7 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
-        # TODO(Kourosh): Remove in Ray 2.56.
+        # TODO(Kourosh): Deprecated, remove in Ray 2.58.
         assert args.proxy_cls_config is None
         assert args.proxy_deployment_config is None
         assert isinstance(args.ingress_cls_config, IngressClsConfig)
@@ -77,7 +77,7 @@ class TestPDServingArgs:
         assert isinstance(args.prefill_config, LLMConfig)
         assert isinstance(args.decode_config, LLMConfig)
 
-    # TODO(Kourosh): Remove in Ray 2.56.
+    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
     def test_proxy_config_deprecated(self, pd_configs):
         """Test proxy_cls_config and proxy_deployment_config emit deprecation warnings."""
         prefill, decode = pd_configs
@@ -305,7 +305,7 @@ class TestBuildPDOpenaiApp:
         assert ingress_deployment.ray_actor_options["memory"] == 4096
         assert ingress_deployment._deployment_config.max_ongoing_requests == 300
 
-    # TODO(Kourosh): Remove in Ray 2.56.
+    # TODO(Kourosh): Deprecated, remove in Ray 2.58.
     def test_deprecated_proxy_config_ignored(self, pd_configs):
         """Test that deprecated proxy configs are accepted but ignored."""
         prefill, decode = pd_configs

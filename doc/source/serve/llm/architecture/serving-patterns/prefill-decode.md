@@ -16,7 +16,7 @@ Prefill-decode disaggregation architecture with PDDecodeServer orchestrating rem
 In prefill-decode disaggregation:
 
 - **Prefill deployment** (`PDPrefillServer`): Processes input prompts and generates initial KV cache.
-- **Decode deployment** (`PDDecodeServer`): Orchestrates the flow — calls prefill remotely, then runs decode locally on its own engine using the transferred KV cache.
+- **Decode deployment** (`PDDecodeServer`): Orchestrates the flow. Initiates prefill remotely, then runs decode locally on its own engine using the transferred KV cache.
 - **Independent scaling**: Each phase scales based on its own load.
 - **Resource optimization**: Different engine configurations for different phases.
 
@@ -86,7 +86,11 @@ Key responsibilities:
 
 ### PDPrefillServer
 
-`PDPrefillServer` extends `LLMServer` for the prefill side. It is a standard LLM server with an additional `prewarm_prefill` method for optional connector warm-up:
+`PDPrefillServer` extends `LLMServer` for the prefill side. It is a standard LLM server with an additional `prewarm_prefill` method for optional connector warm-up.
+
+#### Pre-warming the connector
+
+KV transfer connectors (such as NIXL) require a handshake between each prefill and decode replica that happens eagerly upon the first request. This can cause queing when traffic is high. Pre-warming allows to mitigate this cold-start problem by sending a tiny dummy request through the full prefill-to-decode path for every prefill replica so that the connector establishes its connections eagerly at startup before marking the replica as healthy. Enable it by setting `experimental_configs={"_prewarm_prefill_decode": True}` in the **decode** `LLMConfig`.
 
 ```python
 prefill_config = LLMConfig(
