@@ -32,6 +32,15 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     files = [
+        "test_actor_resources.py",
+        "test_autoscaler_drain_node_api.py",
+        "test_dataclient_disconnect.py",
+        "test_iter.py",
+        "test_placement_group.py",
+        "test_ray_get.py",
+        "test_state_api_2.py",
+        "test_task_events_3.py",
+        "test_unavailable_actors.py",
         "test_actor_cancel.py",
         "test_actor_group.py",
         "test_actor_lifetime.py",
@@ -73,7 +82,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests",
         "team:core",
     ],
     deps = [
@@ -92,7 +101,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests",
         "no_windows",
         "team:core",
     ],
@@ -109,7 +118,7 @@ py_test(
     data = ["mnist_784_100_samples.pkl"],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests",
         "team:core",
     ],
     deps = [
@@ -867,30 +876,6 @@ py_test(
 )
 
 py_test_module_list(
-    size = "medium",
-    files = [
-        "test_actor_resources.py",
-        "test_autoscaler_drain_node_api.py",
-        "test_dataclient_disconnect.py",
-        "test_iter.py",
-        "test_placement_group.py",
-        "test_ray_get.py",
-        "test_state_api_2.py",
-        "test_task_events_3.py",
-        "test_unavailable_actors.py",
-    ],
-    tags = [
-        "exclusive",
-        "medium_size_python_tests_a_to_j",
-        "team:core",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
     size = "large",
     files = [
         "test_actor.py",
@@ -1029,7 +1014,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests",
         "team:core",
     ],
     deps = [
@@ -1048,7 +1033,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests",
         "team:core",
     ],
     deps = [
