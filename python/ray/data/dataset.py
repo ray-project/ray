@@ -29,7 +29,11 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
+from ray.data._internal.dataset_repr import (
+    _build_dataset_ascii_repr,
+    explain_plan,
+    get_plan_as_string,
+)
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -6793,7 +6797,7 @@ class Dataset:
             +- InputDataBuffer[Input]
             <BLANKLINE>
         """
-        print(self._plan.explain())
+        print(explain_plan(self._logical_plan))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
@@ -7148,8 +7152,8 @@ class Dataset:
 
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
-        if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self)
+        if schema is None or not isinstance(schema, Schema) or not schema.names:
+            return get_plan_as_string(self)
 
         is_materialized = isinstance(self, MaterializedDataset)
         return _build_dataset_ascii_repr(self, schema, is_materialized)

@@ -555,7 +555,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     # Test projection pushed down into read op
     ds = ray.data.read_parquet(path).select_columns("variety")
 
-    assert ds._plan.explain().strip() == (
+    from ray.data._internal.dataset_repr import explain_plan
+
+    assert explain_plan(ds._logical_plan).strip() == (
         "-------- Logical Plan --------\n"
         "Project[Project]\n"
         "+- Read[ReadParquet]\n"

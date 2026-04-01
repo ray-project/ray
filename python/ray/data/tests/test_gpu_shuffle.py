@@ -944,7 +944,9 @@ class TestGPUHashShuffle:
 
         ds = ray.data.range(num_rows, parallelism=parallelism).materialize()
         ds = ds.repartition(keys=["id"], num_blocks=num_blocks)
-        assert "GPUShuffle" in ds._plan.explain()
+        from ray.data._internal.dataset_repr import explain_plan
+
+        assert "GPUShuffle" in explain_plan(ds._logical_plan)
         ds = ds.materialize()
         assert ds.num_blocks() == max(num_blocks, num_gpus)
         assert ds.count() == num_rows
