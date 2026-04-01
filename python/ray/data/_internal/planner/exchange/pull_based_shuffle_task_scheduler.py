@@ -76,10 +76,10 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(self._exchange_spec.map)
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
-        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
+        sub_progress_updaters = task_ctx.sub_progress_updaters
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        map_bar = sub_progress_bar_dict[bar_name]
+        assert bar_name in sub_progress_updaters, sub_progress_updaters
+        map_bar = sub_progress_updaters[bar_name]
 
         if _debug_limit_execution_to_num_blocks is not None:
             input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
@@ -111,8 +111,8 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self.warn_on_high_local_memory_store_usage()
 
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        reduce_bar = sub_progress_bar_dict[bar_name]
+        assert bar_name in sub_progress_updaters, sub_progress_updaters
+        reduce_bar = sub_progress_updaters[bar_name]
 
         if _debug_limit_execution_to_num_blocks is not None:
             output_num_blocks = _debug_limit_execution_to_num_blocks

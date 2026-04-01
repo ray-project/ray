@@ -534,10 +534,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
 
-        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
+        sub_progress_updaters = task_ctx.sub_progress_updaters
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        map_bar = sub_progress_bar_dict[bar_name]
+        assert bar_name in sub_progress_updaters, sub_progress_updaters
+        map_bar = sub_progress_updaters[bar_name]
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -586,8 +586,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
         # Execute and wait for the reduce stage.
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        reduce_bar = sub_progress_bar_dict[bar_name]
+        assert bar_name in sub_progress_updaters, sub_progress_updaters
+        reduce_bar = sub_progress_updaters[bar_name]
 
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
         reduce_stage_iter = _ReduceStageIterator(

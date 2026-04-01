@@ -1,5 +1,4 @@
 import abc
-import typing
 from typing import List, Optional
 
 from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
@@ -9,13 +8,14 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.progress.base_progress import (
+    ProgressMetrics,
+    SubProgressUpdater,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
-
-if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 
 class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
@@ -95,9 +95,7 @@ class OneToOneOperator(PhysicalOperator):
         return self.input_dependencies[0]
 
 
-class AllToAllOperator(
-    InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
-):
+class AllToAllOperator(InternalQueueOperatorMixin, SubProgressMixin, PhysicalOperator):
     """A blocking operator that executes once its inputs are complete.
 
     This operator implements distributed sort / shuffle operations, etc.
@@ -130,8 +128,27 @@ class AllToAllOperator(
         self._next_task_index = 0
         self._num_outputs = num_outputs
         self._output_rows = 0
-        self._sub_progress_bar_names = sub_progress_bar_names
-        self._sub_progress_bar_dict = None
+        self._sub_progress_names = sub_progress_bar_names
+        self._sub_progress_metrics = (
+            {
+                name: ProgressMetrics(name=name, total=None, completed=0)
+                for name in sub_progress_bar_names
+            }
+            if sub_progress_bar_names is not None
+            else None
+        )
+        self._sub_progress_updaters = (
+            {
+                name: SubProgressUpdater(
+                    self._sub_progress_metrics,
+                    name=name,
+                    max_name_length=100,
+                )
+                for name in sub_progress_bar_names
+            }
+            if sub_progress_bar_names is not None
+            else None
+        )
         self._input_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._stats: StatsDict = {}
@@ -185,7 +202,8 @@ class AllToAllOperator(
         ctx = TaskContext(
             task_idx=self._next_task_index,
             op_name=self.name,
-            sub_progress_bar_dict=self._sub_progress_bar_dict,
+            sub_progress_metrics=self._sub_progress_metrics,
+            sub_progress_updaters=self._sub_progress_updaters,
             target_max_block_size_override=self.target_max_block_size_override,
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
@@ -222,13 +240,11 @@ class AllToAllOperator(
     def progress_str(self) -> str:
         return f"{self.num_output_rows_total() or 0} rows output"
 
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return self._sub_progress_bar_names
+    def get_sub_progress_metrics(self) -> Optional[dict[str, "ProgressMetrics"]]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        if self._sub_progress_bar_dict is None:
-            self._sub_progress_bar_dict = {}
-        self._sub_progress_bar_dict[name] = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters
 
     def supports_fusion(self):
         return True
