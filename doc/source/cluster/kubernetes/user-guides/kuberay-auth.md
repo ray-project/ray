@@ -4,6 +4,10 @@
 
 This guide demonstrates how to enable Ray token authentication with KubeRay.
 
+:::{warning}
+It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
+:::
+
 ## Prerequisites
 
 * A Kubernetes cluster. This guide uses GKE, but the concepts apply to other Kubernetes distributions.
