@@ -81,5 +81,12 @@ def test_placement_group_config_invalid_strategy_rejected():
         )
 
 
+def test_placement_group_config_from_raw_dict():
+    pg = PlacementGroupConfig(
+        **{"bundle_per_worker": {"CPU": 2, "GPU": 1}, "strategy": "SPREAD"}
+    )
+    assert pg.bundle_per_worker.CPU == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

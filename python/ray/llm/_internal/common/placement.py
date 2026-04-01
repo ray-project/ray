@@ -31,7 +31,7 @@ class BundleConfig(BaseModelExtended):
     @model_validator(mode="after")
     def validate_extra_resources(self):
         """Ensure custom resources (TPU, accelerator_type, etc.) are non-negative."""
-        extra_resources = self.__pydantic_extra__
+        extra_resources = self.model_extra
         if not extra_resources:
             return self
         for key, value in extra_resources.items():

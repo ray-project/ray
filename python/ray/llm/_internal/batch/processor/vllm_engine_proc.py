@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import transformers
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -118,15 +118,14 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         values["engine_kwargs"] = engine_kwargs
         return values
 
-    @model_validator(mode="before")
+    @field_validator("placement_group_config")
     @classmethod
-    def validate_placement_group_config(cls, values):
-        placement_group_config = values.get("placement_group_config")
-        if placement_group_config is not None:
-            values["placement_group_config"] = PlacementGroupConfig(
-                **placement_group_config
-            ).model_dump()
-        return values
+    def validate_placement_group_config(cls, value):
+        if value is None:
+            return None
+        # Validate through PlacementGroupConfig, then dump back to dict
+        validated = PlacementGroupConfig(**value)
+        return validated.model_dump()
 
 
 def build_vllm_engine_processor(
