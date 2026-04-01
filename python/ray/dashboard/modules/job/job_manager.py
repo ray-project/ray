@@ -191,10 +191,6 @@ class JobManager:
                             job_id, timeout=None
                         )
                     if job_info is None:
-                        logger.warning(
-                            f"No job metadata for job {job_id}found in storage when "
-                            "monitoring; using monitor elapsed time for pending checks."
-                        )
                         resources_specified = False
                         pending_duration = (
                             self._timeout_check_timer.time() - monitor_start_time
