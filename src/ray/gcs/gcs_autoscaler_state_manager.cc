@@ -457,12 +457,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
 void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &grpc_peer) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
-      << ", deadline: " << request.deadline_timestamp_ms();
+      << ", deadline: " << request.deadline_timestamp_ms()
+      << ", grpc_peer: " << grpc_peer;
 
   int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
   if (draining_deadline_timestamp_ms < 0) {
@@ -552,11 +554,10 @@ void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
   raylet_client->ResizeLocalResourceInstances(
       std::move(*request.mutable_resources()),
       [reply, send_reply_callback](
-          const Status &status,
-          const rpc::ResizeLocalResourceInstancesReply &raylet_reply) {
+          const Status &status, rpc::ResizeLocalResourceInstancesReply &&raylet_reply) {
         if (status.ok()) {
-          reply->mutable_total_resources()->insert(raylet_reply.total_resources().begin(),
-                                                   raylet_reply.total_resources().end());
+          *reply->mutable_total_resources() =
+              std::move(*raylet_reply.mutable_total_resources());
         }
         send_reply_callback(status, nullptr, nullptr);
       });

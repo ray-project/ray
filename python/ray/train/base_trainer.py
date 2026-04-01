@@ -937,7 +937,7 @@ def format_datasets_for_repr(datasets: Optional[Dict[str, GenDataset]]) -> str:
     formatted = {}
     for key, dataset in datasets.items():
         if isinstance(dataset, Dataset):
-            formatted[key] = dataset._plan.get_plan_as_string(type(dataset))
+            formatted[key] = dataset._plan.get_plan_as_string(dataset)
         else:
             formatted[key] = dataset
 

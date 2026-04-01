@@ -56,6 +56,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
+            num_output_splits=n,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
