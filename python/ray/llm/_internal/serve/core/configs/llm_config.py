@@ -468,6 +468,64 @@ class LLMConfig(BaseModelExtended):
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_gpu_config(self):
+        """Validate that accelerator_type is not set when use_gpu would be False.
+        
+        When accelerator_type is specified but use_gpu would resolve to False
+        (e.g., use_cpu=True or CPU-only placement_group_config), this is a
+        contradictory configuration that should raise an error rather than
+        silently ignoring the accelerator_type.
+        """
+        if self.accelerator_type is None:
+            return self
+        
+        # Compute use_gpu similar to VLLMEngineConfig.use_gpu
+        use_gpu = self._compute_use_gpu()
+        
+        if not use_gpu:
+            # Determine the reason for use_gpu being False
+            reason = []
+            if self.use_cpu is True:
+                reason.append("use_cpu=True")
+            if self.placement_group_config:
+                bundles = self.placement_group_config.get("bundles", [])
+                bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+                if bundle_per_worker and bundle_per_worker.get("GPU", 0) == 0:
+                    reason.append("bundle_per_worker has no GPU resources")
+                elif bundles and not any(b.get("GPU", 0) > 0 for b in bundles):
+                    reason.append("bundles have no GPU resources")
+            
+            reason_str = f" ({', '.join(reason)})" if reason else ""
+            raise ValueError(
+                f"accelerator_type '{self.accelerator_type}' is set but GPU is not being used{reason_str}. "
+                "accelerator_type specifies GPU hardware requirements and cannot be used with CPU-only "
+                "configurations. Either remove accelerator_type or use a GPU-enabled configuration."
+            )
+        return self
+
+    def _compute_use_gpu(self) -> bool:
+        """Compute whether GPU would be used, similar to VLLMEngineConfig.use_gpu."""
+        # Explicit use_cpu setting takes precedence over all other configurations
+        if isinstance(self.use_cpu, bool):
+            return not self.use_cpu
+
+        # Check placement_group_config for explicit GPU specification
+        if self.placement_group_config:
+            # Check bundle_per_worker inside placement_group_config
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                return bundle_per_worker.get("GPU", 0) > 0
+
+            # Check bundles list
+            bundles = self.placement_group_config.get("bundles", [])
+            if bundles:
+                # If any bundle has GPU > 0, we use GPU
+                return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+
+        # Default to GPU when no accelerator_type is specified or when accelerator_type is a known GPU
+        return True
+
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
         if self.lora_config:

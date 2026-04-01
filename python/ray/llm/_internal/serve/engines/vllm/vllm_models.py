@@ -301,6 +301,36 @@ class VLLMEngineConfig(BaseModelExtended):
 
         return bundles
 
+    @model_validator(mode="after")
+    def validate_accelerator_type_with_gpu_config(self):
+        """Validate that accelerator_type is not set when use_gpu is False.
+        
+        When accelerator_type is specified but use_gpu resolves to False
+        (e.g., use_cpu=True or CPU-only placement_group_config), this is a
+        contradictory configuration that should raise an error rather than
+        silently ignoring the accelerator_type.
+        """
+        if self.accelerator_type and not self.use_gpu:
+            # Determine the reason for use_gpu being False
+            reason = []
+            if self.use_cpu is True:
+                reason.append("use_cpu=True")
+            if self.placement_group_config:
+                bundles = self.placement_group_config.get("bundles", [])
+                bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+                if bundle_per_worker and bundle_per_worker.get("GPU", 0) == 0:
+                    reason.append("bundle_per_worker has no GPU resources")
+                elif bundles and not any(b.get("GPU", 0) > 0 for b in bundles):
+                    reason.append("bundles have no GPU resources")
+            
+            reason_str = f" ({', '.join(reason)})" if reason else ""
+            raise ValueError(
+                f"accelerator_type '{self.accelerator_type}' is set but GPU is not being used{reason_str}. "
+                "accelerator_type specifies GPU hardware requirements and cannot be used with CPU-only "
+                "configurations. Either remove accelerator_type or use a GPU-enabled configuration."
+            )
+        return self
+
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""

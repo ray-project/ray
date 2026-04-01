@@ -316,16 +316,74 @@ class TestUseCpuLogic:
         engine_config_gpu = llm_config_gpu.get_engine_config()
         assert engine_config_gpu.use_gpu is True
 
-    def test_use_cpu_precedence_over_accelerator_type(self):
-        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
-        # use_cpu=True should override GPU accelerator_type
-        llm_config_cpu_override = LLMConfig(
+    def test_accelerator_type_with_use_cpu_raises_error(self):
+        """Test that accelerator_type with use_cpu=True raises a validation error."""
+        # use_cpu=True with accelerator_type should raise an error
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type.*is set but GPU is not being used",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                use_cpu=True,
+                accelerator_type="L4",
+            )
+
+    def test_accelerator_type_with_cpu_only_placement_group_raises_error(self):
+        """Test that accelerator_type with CPU-only placement_group_config raises an error."""
+        # accelerator_type with CPU-only bundles should raise an error
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type.*is set but GPU is not being used",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={
+                    "bundles": [{"CPU": 4}],
+                    "strategy": "PACK",
+                },
+            )
+
+        # accelerator_type with CPU-only bundle_per_worker should raise an error
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type.*is set but GPU is not being used",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={
+                    "bundle_per_worker": {"CPU": 4},
+                    "strategy": "PACK",
+                },
+            )
+
+    def test_accelerator_type_with_gpu_placement_group_works(self):
+        """Test that accelerator_type with GPU placement_group_config is valid."""
+        # accelerator_type with GPU bundles should work
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            placement_group_config={
+                "bundles": [{"CPU": 4, "GPU": 1}],
+                "strategy": "PACK",
+            },
+        )
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.use_gpu is True
+        assert engine_config.accelerator_type == "L4"
+
+    def test_use_cpu_without_accelerator_type_works(self):
+        """Test that use_cpu=True without accelerator_type is valid."""
+        llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             use_cpu=True,
-            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
         )
-        engine_config = llm_config_cpu_override.get_engine_config()
-        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
+        assert llm_config.use_cpu is True
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.use_gpu is False
+        assert engine_config.accelerator_type is None
 
 
 if __name__ == "__main__":
