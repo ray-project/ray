@@ -92,8 +92,10 @@ class TestScaleDownReplicaSelection:
             "fallback_strategy": [{"label_selector": fallback_label}],
         }
 
-        num_fallback_replicas = 4
-        num_match_replicas = 2
+        # Both nodes get equal capacity (1 CPU each = 4 replicas at 0.25 CPU)
+        # so that priority #4 (fewer replicas per node) doesn't confound
+        # the test for priority #3 (fallback nodes removed first).
+        num_replicas_per_node = 4
 
         cluster.add_node(num_cpus=0)
         cluster.wait_for_nodes()
@@ -115,7 +117,7 @@ class TestScaleDownReplicaSelection:
                 ray_actor_options=ray_actor_options,
                 autoscaling_config={
                     "min_replicas": 1,
-                    "max_replicas": num_fallback_replicas + num_match_replicas,
+                    "max_replicas": num_replicas_per_node * 2,
                     **self._quick_upscale_config(),
                 },
             )
@@ -132,10 +134,10 @@ class TestScaleDownReplicaSelection:
             assert handle.get_info.remote().result()["node_id"] == fallback_node_id
 
             # After calling the deployment will scale up
-            # resulting in some replicas on the fallback node and some replicas on the primary node.
+            # resulting in equal replicas on the fallback and primary nodes.
             # After some time, the deployment will scale down to min replica.
             self._wait_for_upscale(
-                expected_num_replicas=num_fallback_replicas + num_match_replicas,
+                expected_num_replicas=num_replicas_per_node * 2,
                 handle=handle,
                 timeout=30,
             )
@@ -145,7 +147,7 @@ class TestScaleDownReplicaSelection:
                 min_replicas=1,
                 timeout=30,
             )
-            # Replica on the fallback node should be removed first
+            # Replicas on the fallback node should be removed first (priority #3),
             # so the remaining replica should be on the primary node.
             assert handle.get_info.remote().result()["node_id"] == primary_node_id
         finally:
@@ -211,14 +213,20 @@ class TestScaleDownReplicaSelection:
                 min_replicas=1,
                 timeout=30,
             )
-            # Replica on the first node should be removed first.
-            # Because the first node has only 1 replica.
-            # So the remaining replica(s) should be on the 2nd node.
+            # First node has fewer total replicas, so it is removed first
+            # (priority #4). Remaining replica should be on the 2nd node.
             assert handle.get_info.remote().result()["node_id"] == second_node_id
         finally:
             serve.shutdown()
 
     def test_downscale_prefers_not_head_node(self, ray_cluster):
+        """Head node is never relinquished, even when it would otherwise be removed first.
+
+        The head node has only 1 replica, matches only the fallback label,
+        and is older — so priorities #3, #4, and #5 all favor removing it.
+        This test verifies that priority #2 (keep head node) overrides all
+        of them.
+        """
         cluster = ray_cluster
         fallback_label = {"type": "fallback"}
         primary_label = {"type": "primary"}
@@ -252,12 +260,11 @@ class TestScaleDownReplicaSelection:
             cluster.add_node(num_cpus=2, labels=primary_label)
             cluster.wait_for_nodes()
 
-            # The first replica is always the head node
+            # The first replica lands on the head node (the only node with
+            # the fallback label, and no primary node exists yet).
             assert handle.get_info.remote().result()["node_id"] == head_node_id
 
-            # After calling the deployment will scale up
-            # resulting in some replicas on the head node and some replicas on the new node.
-            # After some time, the deployment will scale down to min replica.
+            # Scale up to 3 replicas (1 head + 2 worker), then back down to 1.
             self._wait_for_upscale(
                 expected_num_replicas=3,
                 handle=handle,
@@ -269,8 +276,9 @@ class TestScaleDownReplicaSelection:
                 min_replicas=1,
                 timeout=30,
             )
-            # Even though the head node had 1 replica and just match fallback label,
-            # the remaining replica should still be on the head node.
+            # The head node's replica survives despite being on a fallback
+            # node (#3), having fewer replicas (#4), and being the oldest
+            # (#5) — priority #2 (never relinquish head node) wins.
             assert handle.get_info.remote().result()["node_id"] == head_node_id
         finally:
             serve.shutdown()
