@@ -134,7 +134,7 @@ steps:
         --upload
     depends_on:
       - ray-anyscale-cpu-build($)
-      - ray-anyscale-cuda-build($)
+      - ray-anyscale-cuda-build(*)
     array:
       platform:
         - cu12.3.2-cudnn9
