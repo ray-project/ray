@@ -206,6 +206,7 @@ py_test_module_list(
         "test_scheduling.py",
         "test_scheduling_2.py",
         "test_token_auth_integration.py",
+        "test_token_auth_integration_2.py",
         "test_wait.py",
     ],
     name_suffix = "_client_mode",
