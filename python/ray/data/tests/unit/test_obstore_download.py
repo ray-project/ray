@@ -44,6 +44,8 @@ from ray.data.datasource.path_util import _split_uri
         ),
         # '#' in path must not be parsed as a fragment delimiter.
         ("s3://bucket/my#file.jpg", "s3://bucket", "my#file.jpg"),
+        # Double slash after bucket: key legitimately starts with '/'.
+        ("s3://bucket//path/file.txt", "s3://bucket", "/path/file.txt"),
     ],
 )
 def test_split_uri(uri, expected_store_url, expected_path):

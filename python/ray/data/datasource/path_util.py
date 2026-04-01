@@ -364,10 +364,16 @@ def _split_uri(uri: str):
     The query string is preserved so signed URLs (e.g. pre-signed S3 HTTPS)
     reach obstore intact. Semicolons in object keys normally appear in
     ``parsed.path`` (not ``parsed.params``) for typical ``urlparse`` output.
+
+    Only the first leading ``/`` after the authority (as reported in
+    ``parsed.path``) is removed. Extra leading slashes belong to the object
+    key (e.g. ``s3://bucket//abs/key`` -> key ``/abs/key``), so
+    ``str.lstrip("/")`` is not used.
     """
     parsed = urlparse(uri, allow_fragments=False)
     store_url = f"{parsed.scheme}://{parsed.netloc}"
-    path = parsed.path.lstrip("/")
+    raw_path = parsed.path
+    path = raw_path[1:] if raw_path.startswith("/") else raw_path
     if parsed.query:
         path = f"{path}?{parsed.query}"
     return store_url, path
