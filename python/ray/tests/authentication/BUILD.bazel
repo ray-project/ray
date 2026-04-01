@@ -13,7 +13,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = [
         "exclusive",
-        "medium_size_python_tests_a_to_j",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
