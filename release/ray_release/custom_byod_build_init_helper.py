@@ -1,11 +1,11 @@
 import hashlib
-import json
 import os
-from functools import lru_cache
-from pathlib import Path
+import re
 from typing import Dict, List, Optional, Tuple
 
 import yaml
+
+from ci.ray_ci.supported_images import build_platform_reverse_map
 
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -129,54 +129,66 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
-@lru_cache(maxsize=1)
-def _platform_reverse_map() -> Dict[str, str]:
-    """Map short platform tags (e.g. 'cu123') to full strings (e.g. 'cu12.3.2-cudnn9')."""
-    path = Path(__file__).resolve().parents[2] / "ray-images.json"
-    if not path.exists():
-        # Bazel runfiles layout
-        for parent in Path(__file__).resolve().parents:
-            candidate = parent / "ray-images.json"
-            if candidate.exists():
-                path = candidate
-                break
-    images = json.loads(path.read_text())
-    reverse: Dict[str, str] = {}
-    for cfg in images.values():
-        for platform in cfg.get("platforms", []):
-            if platform in ("cpu", "tpu"):
-                short = platform
-            else:
-                base = platform.split("-", 1)[0]
-                parts = base.split(".")
-                short = f"{parts[0]}{parts[1]}" if len(parts) >= 2 else platform
-            if short in reverse and reverse[short] != platform:
-                raise ValueError(
-                    f"Ambiguous short platform tag '{short}': "
-                    f"could be '{platform}' or '{reverse[short]}'"
-                )
-            reverse[short] = platform
-    return reverse
-
-
 def _sanitize_array_value(value: str) -> str:
     """Strip dots and dashes from a value for rayci array key construction."""
     return value.replace(".", "").replace("-", "")
 
 
 def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
-    """Get the base image build step for a job that depends on it."""
+    """Get the base image build step for a job that depends on it.
+
+    Returns the array-suffixed Buildkite step key for the publish step that
+    produces the base image.  For example, for a ray image with python 3.10 and
+    platform cpu the returned key is ``anyscalecpubuild--python310``.
+    """
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return "forge"
+
+    # Parse base_image tag: {build_id}-py{ver}-{suffix}
+    _, tag = base_image.rsplit(":", 1)
+    tag_parts = tag.split("-")
+    py_index = None
+    for i, part in enumerate(tag_parts):
+        if re.match(r"^py\d+$", part):
+            py_index = i
+            break
+
     if image_name == "ray-ml":
-        return config["release_image_step_ray_ml"]
-    elif image_name == "ray-llm":
-        return config["release_image_step_ray_llm"]
+        bare_key = config["release_image_step_ray_ml"]
+        if py_index is None:
+            return bare_key
+        python_raw = tag_parts[py_index][2:]
+        return f"{bare_key}--python{python_raw}"
+
+    if image_name == "ray-llm":
+        bare_key = config["release_image_step_ray_llm"]
     else:
-        return config["release_image_step_ray"]
+        # ray image: pick cpu or cuda key based on tag suffix
+        tag_suffix = "-".join(tag_parts[py_index + 1 :]) if py_index is not None else ""
+        if tag_suffix == "cpu":
+            bare_key = config["release_image_step_ray_cpu"]
+        else:
+            bare_key = config["release_image_step_ray_cuda"]
+
+    if py_index is None:
+        return bare_key
+
+    python_raw = tag_parts[py_index][2:]  # e.g., "310"
+    tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
+
+    if tag_suffix == "cpu":
+        # anyscalecpubuild has only a python dimension
+        return f"{bare_key}--python{python_raw}"
+
+    # cuda steps have two dimensions (platform, python) in alphabetical order
+    reverse_map = build_platform_reverse_map()
+    full_platform = reverse_map.get(tag_suffix, tag_suffix)
+    sanitized_platform = _sanitize_array_value(full_platform)
+
+    return f"{bare_key}--platform{sanitized_platform}-python{python_raw}"
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
