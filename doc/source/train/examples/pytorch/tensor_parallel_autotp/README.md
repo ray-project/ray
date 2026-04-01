@@ -734,7 +734,7 @@ run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
     worker_runtime_env={
-        "pip": ["torch==2.9.1", "torchvision==0.24.1", "transformers==4.48.0", "datasets==2.21.0", "deepspeed==0.18.9"],
+        "pip": ["transformers==4.48.0", "datasets==2.21.0", "deepspeed==0.18.9"],
         "env_vars": {"PIP_NO_BUILD_ISOLATION": "1"},
     },
 )
