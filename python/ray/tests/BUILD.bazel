@@ -979,7 +979,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "large_size_python_tests_shard_0",
+        "large_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -996,7 +996,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "large_size_python_tests_shard_0",
+        "large_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -1052,7 +1052,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "large_size_python_tests_shard_1",
+        "large_size_python_tests_shard_2",
         "team:core",
     ],
     deps = [
