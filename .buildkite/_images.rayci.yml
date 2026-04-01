@@ -21,9 +21,6 @@ steps:
     wanda: docker/base-extra/cpu.wanda.yaml
     matrix:
       - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
@@ -38,9 +35,6 @@ steps:
     wanda: docker/base-deps/tpu.wanda.yaml
     matrix:
       - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -101,6 +95,16 @@ steps:
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
     depends_on: raycudabase
+
+  - name: raytpubaseextra
+    label: "wanda: ray-py{{matrix}}-tpu-base-extra"
+    wanda: docker/base-extra/tpu.wanda.yaml
+    matrix:
+      - "3.10"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+    depends_on: raytpubase
 
   - name: ray-llmbase
     label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base"

@@ -14,17 +14,6 @@ steps:
     depends_on:
       - raycpubaseextra
 
-  - name: raytpubaseextra-testdeps
-    label: "wanda: ray.py{{matrix}}.tpu.base-extra-testdeps"
-    wanda: docker/base-extra-testdeps/tpu.wanda.yaml
-    matrix:
-      - "3.10"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-      IMAGE_TYPE: "ray"
-    depends_on:
-      - raytpubaseextra
-
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
     wanda: docker/base-extra-testdeps/cuda.wanda.yaml
