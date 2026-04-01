@@ -3267,6 +3267,209 @@ class TestDeploymentActors:
             assert ds._deployment_actor_retry_counter == i + 1
         assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
 
+    def test_deployment_actor_check_health_healthy_stays_running(
+        self, mock_deployment_state_manager
+    ):
+        """``check_and_update_deployment_actors`` re-adds healthy RUNNING actors."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert not w.killed
+        dsm.update()
+        assert not w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w
+
+    def test_deployment_actor_check_health_unhealthy_kills_and_recreates(
+        self, mock_deployment_state_manager
+    ):
+        """Failed ``check_health`` kills the actor without startup retry counter; recovers."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w.set_health_ok(False)
+        # Isolate health reconciliation; a full ``dsm.update()`` would also scale
+        # and start a replacement actor in the same tick.
+        ds.check_and_update_deployment_actors()
+        assert w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is None
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._in_transition is True
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+        dsm.update()
+        w2 = _get_deployment_actor_wrapper(ds, "1")
+        assert w2 is not w
+        assert not w2.killed
+        w2.set_ready()
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_reset_health_state_after_running_on_ready(
+        self, mock_deployment_state_manager
+    ):
+        """``check_deployment_actors_ready`` resets health bookkeeping when RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        assert w.reset_health_state_after_running_count == 0
+        w.set_ready()
+        dsm.update()
+        assert w.reset_health_state_after_running_count == 1
+
+    def test_deployment_actor_check_health_mixed_two_actors(
+        self, mock_deployment_state_manager
+    ):
+        """Only unhealthy deployment actors are killed; others stay RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert w_cache.killed
+        assert not w_counter.killed
+        assert ds._deployment_actors.get_wrapper("1", "cache") is None
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w_counter
+
+    def test_deployment_actors_satisfied_for_target_requires_all_slots_filled(
+        self, mock_deployment_state_manager
+    ):
+        """Missing deployment actor slots are unsatisfied until all are tracked again."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actors_satisfied_for_target()
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert not ds._deployment_actors_satisfied_for_target()
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 1
+
+    def test_deployment_actor_health_check_non_target_kills_without_startup_counter(
+        self, mock_deployment_state_manager
+    ):
+        """Like old replicas: non-target unhealthy actors are stopped, no startup counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        w_v2 = _get_deployment_actor_wrapper(ds, "2")
+        w_v2.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actor_retry_counter == 0
+
+        w_orphan = _mock_deployment_actor_wrapper(
+            TEST_DEPLOYMENT_ID, "1", "orphan_leftover"
+        )
+        w_orphan.set_health_ok(False)
+        ds._deployment_actors.add(DeploymentActorState.RUNNING, w_orphan)
+
+        ds.check_and_update_deployment_actors()
+
+        assert w_orphan.killed
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._deployment_actors.get_wrapper("1", "orphan_leftover") is None
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
     """
@@ -8338,6 +8541,335 @@ class TestGangRollingUpdate:
             ds,
             total=num_replicas,
             by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+class TestGangDraining:
+    """Test gang-aware migration when nodes are draining."""
+
+    def _deploy_gang(
+        self, mock_deployment_state_manager, gang_size, num_replicas, nodes
+    ):
+        """Deploy a gang deployment and assign replicas to nodes round-robin."""
+        create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+        for node in nodes:
+            cluster_node_info_cache.add_node(node)
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        timer.reset(0)
+        info, v = deployment_info(
+            num_replicas=num_replicas,
+            version="v1",
+            graceful_shutdown_timeout_s=20,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        num_gangs = num_replicas // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(num_gangs)],
+                    gang_ids=[f"gang_{i}" for i in range(num_gangs)],
+                    gang_pg_names=[f"SERVE_GANG::pg-{i}" for i in range(num_gangs)],
+                )
+            }
+        )
+        dsm.update()
+        # Assign nodes round-robin and mark ready
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        for i, replica in enumerate(replicas):
+            replica._actor.set_node_id(nodes[i % len(nodes)])
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        return dsm, ds, timer, cluster_node_info_cache, v
+
+    def _mock_gang_pgs(self, dsm, gang_size, num_new):
+        """Mock gang PG reservation for new replicas."""
+        n = num_new // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(n)],
+                    gang_ids=[f"new_gang_{i}" for i in range(n)],
+                    gang_pg_names=[f"SERVE_GANG::pg-new-{i}" for i in range(n)],
+                )
+            }
+        )
+
+    def test_entire_gang_migration(self, mock_deployment_state_manager):
+        """When gang members' nodes drain, ALL members move to PENDING_MIGRATION.
+        When the deadline is up, the entire gang is stopped."""
+        gang_size, num_replicas = 2, 4
+        node_1 = "node-1"
+        node_2 = "node-2"
+        node_3 = "node-3"  # non-draining target
+        # graceful_shutdown_timeout_s=20
+        dsm, ds, timer, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+        cache.add_node(node_3)
+
+        # Drain both nodes with a 40s deadline, graceful_shutdown_timeout=20s.
+        # Gangs are stopped when: curr_time >= deadline - graceful_shutdown_timeout.
+        deadline_ms = 40 * 1000
+        cache.draining_nodes = {node_1: deadline_ms, node_2: deadline_ms}
+        # Block replacements so we can test the deadline path in isolation.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+        dsm.update()
+
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Advance 15s — still before deadline - timeout (40 - 20 = 20s).
+        # Gangs should remain PENDING_MIGRATION (no deadline-triggered stops).
+        timer.advance(15)
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Advance past deadline - graceful_shutdown_timeout (total 25s > 20s).
+        # All old gangs should now be stopped due to deadline expiry.
+        timer.advance(10)
+        dsm.update()
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == num_replicas
+
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+        # Schedule replacements and complete
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_3)
+            r._actor.set_ready()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_partial_node_drain_migrates_entire_gang(
+        self, mock_deployment_state_manager
+    ):
+        """When only one node in a gang is draining, ALL gang members migrate."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        node_3 = "node-3"
+        dsm, ds, timer, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+        cache.add_node(node_3)
+
+        # Drain only node_2. The gang has members on both nodes,
+        # so ALL members (including the one on healthy node_1) must migrate.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+
+        # Both replicas should be PENDING_MIGRATION, not just the one on node_2
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 0
+
+        # Schedule replacements on non-draining node_3
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_3)
+            r._actor.set_ready()
+
+        # Advance past deadline so old replicas are stopped
+        timer.advance(50)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_recovery_when_node_stops_draining(
+        self, mock_deployment_state_manager
+    ):
+        """Gang stays PENDING_MIGRATION while ANY member's node is draining,
+        and returns to RUNNING when all members' nodes stop draining."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        dsm, ds, _, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+
+        # Prevent the scheduler from creating replacements during draining.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+
+        # Drain both nodes — all members go to PENDING_MIGRATION.
+        cache.draining_nodes = {node_1: 60 * 1000, node_2: 60 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Stop draining node_1 but keep node_2 draining.
+        # The gang still has a member on node_2, so it stays PENDING_MIGRATION.
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Stop draining completely — gang should recover to RUNNING.
+        cache.draining_nodes = {}
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_starting_replicas_stopped(self, mock_deployment_state_manager):
+        """STARTING gang members on draining nodes are stopped immediately."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        create_dsm, timer, cache, _ = mock_deployment_state_manager
+        cache.add_node(node_1)
+        cache.add_node(node_2)
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        timer.reset(0)
+        info, v1 = deployment_info(
+            num_replicas=num_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock()],
+                    gang_ids=["gang_0"],
+                    gang_pg_names=["SERVE_GANG::pg-0"],
+                )
+            }
+        )
+        dsm.update()
+
+        # Assign nodes but DON'T mark ready — replicas stay STARTING
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        replicas[0]._actor.set_node_id(node_1)
+        replicas[1]._actor.set_node_id(node_2)
+
+        # Drain node_2 while replicas are STARTING
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+
+        # Both STARTING replicas in the gang should be stopped
+        stopping = ds._replicas.count(states=[ReplicaState.STOPPING])
+        assert stopping == gang_size
+
+        # Complete stopping and start new replicas
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_1)
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_excess_migration_stops_complete_gangs(
+        self, mock_deployment_state_manager
+    ):
+        """When replacement replicas are ready, excess gangs are stopped atomically."""
+        gang_size, num_replicas = 2, 4
+        node_1 = "node-1"
+        node_2 = "node-2"
+        dsm, ds, _, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1]
+        )
+        cache.add_node(node_2)
+
+        # Prevent replacements during initial draining
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+
+        # Drain node_1 with far deadline so no deadline-triggered stops
+        cache.draining_nodes = {node_1: 600 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Start one gang worth of replacements and make them RUNNING
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_2)
+            r._actor.set_ready()
+        dsm.update()
+
+        # One complete gang of old replicas should be stopping (excess)
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        # Verify they're all from the same gang
+        gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert len(gang_ids) == 1
+
+        # Complete first gang: stop old, start+ready replacement, stop second old gang
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_2)
+            r._actor.set_ready()
+        dsm.update()
+
+        # Clean up the second gang's STOPPING replicas
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
