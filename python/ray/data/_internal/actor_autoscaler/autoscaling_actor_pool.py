@@ -4,7 +4,6 @@ from typing import List, Optional
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.util.annotations import DeveloperAPI
@@ -189,7 +188,7 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def get_actor_location(self, actor: ActorHandle) -> NodeIdStr:
+    def get_actor_location(self, actor: ActorHandle) -> str:
         """Get the node_id of the actor"""
         ...
 
