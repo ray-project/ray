@@ -66,6 +66,9 @@ def main(args: argparse.Namespace):
         for bundle in ds.iter_internal_ref_bundles():
             total_rows += bundle.num_rows()
         metrics = OperatorStatsTracker.collect()
+        assert total_rows == NUM_ROWS
+        metrics["num_blocks"] = override_num_blocks
+        metrics["num_rows"] = NUM_ROWS
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)

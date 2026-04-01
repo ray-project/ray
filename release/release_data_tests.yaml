@@ -483,6 +483,7 @@
 
 - name: worker_scaling_{{num_workers}}_{{worker_type}}
   python: "3.10"
+  frequency: weekly
   cluster:
     cluster_compute: fixed_size_1000_cpu_compute.yaml
 
