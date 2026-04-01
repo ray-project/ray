@@ -699,7 +699,7 @@ def check_oversized_function(
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    return threading.current_thread().name == "MainThread"
 
 
 def detect_fate_sharing_support_win32():
