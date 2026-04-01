@@ -5,12 +5,9 @@ import cython
 
 DEF MEMCOPY_THREADS = 6
 
-# This is the default alignment value for len(buffer) < 2048.
-DEF kMinorBufferAlign = 8
-# This is the default alignment value for len(buffer) >= 2048.
+# This is the default alignment value for any buffer.
 # Some projects like Arrow use it for possible SIMD acceleration.
 DEF kMajorBufferAlign = 64
-DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 DEF kLanguageSpecificTypeExtensionId = 101
@@ -311,12 +308,8 @@ cdef class Pickle5Writer:
                 buffer.add_strides(view.strides[i])
 
         # Increase buffer address.
-        if view.len < kMajorBufferSize:
-            self._curr_buffer_addr = padded_length(
-                self._curr_buffer_addr, kMinorBufferAlign)
-        else:
-            self._curr_buffer_addr = padded_length(
-                self._curr_buffer_addr, kMajorBufferAlign)
+        self._curr_buffer_addr = padded_length(
+            self._curr_buffer_addr, kMajorBufferAlign)
         buffer.set_address(self._curr_buffer_addr)
         self._curr_buffer_addr += view.len
         self.buffers.push_back(view)
