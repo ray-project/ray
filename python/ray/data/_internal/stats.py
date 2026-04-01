@@ -1103,7 +1103,7 @@ class DatasetStats:
 
     def set_uuid_recursive(self, dataset_uuid: str) -> None:
         """Recursively set the dataset uuid (if not None) throughout all stats parents."""
-        if self.dataset_uuid == UNKNOWN_UUID:
+        if self.dataset_uuid is None or self.dataset_uuid == UNKNOWN_UUID:
             self.dataset_uuid = dataset_uuid
         for parent in self.parents or []:
             parent.set_uuid_recursive(dataset_uuid)
