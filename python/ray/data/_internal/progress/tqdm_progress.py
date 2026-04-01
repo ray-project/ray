@@ -105,7 +105,7 @@ class TqdmExecutionProgressManager(BaseExecutionProgressManager):
             sub_progress_updaters = op.get_sub_progress_updaters()
             if sub_progress_metrics is None or sub_progress_updaters is None:
                 continue
-            for name, metrics in sub_progress_metrics.items():
+            for name in sub_progress_metrics:
                 if sub_progress_bar_enabled:
                     display_pg = TqdmSubProgressBar(
                         name=f"  *- {name}",
