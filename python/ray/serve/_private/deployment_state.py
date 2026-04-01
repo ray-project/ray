@@ -690,6 +690,7 @@ class ActorReplicaWrapper:
         self._initialization_latency_s: Optional[float] = None
         self._reconfigure_start_time: Optional[float] = None
         self._internal_grpc_port: Optional[int] = None
+        self._sidecar_port: Optional[int] = None
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
         # Rank assigned to the replica.
@@ -1305,6 +1306,7 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
+                    metadata = ray.get(self._ready_obj_ref)
                     (
                         _,
                         self._version,
@@ -1318,7 +1320,8 @@ class ActorReplicaWrapper:
                         self._outbound_deployments,
                         self._has_user_routing_stats_method,
                         self._gang_context,
-                    ) = ray.get(self._ready_obj_ref)
+                    ) = metadata[:12]
+                    self._sidecar_port = metadata[12] if len(metadata) > 12 else None
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
@@ -1659,6 +1662,7 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
+            sidecar_port=self._actor._sidecar_port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):

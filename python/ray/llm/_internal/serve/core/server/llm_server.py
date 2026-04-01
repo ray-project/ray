@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import os
+import types
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -61,6 +62,18 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
+
+
+@ray.remote(num_cpus=0)
+class _SidecarRegistry:
+    def __init__(self):
+        self._endpoints = {}
+
+    def register(self, replica_tag: str, host: str, port: int):
+        self._endpoints[replica_tag] = (host, port)
+
+    def get_all(self):
+        return list(self._endpoints.values())
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -194,6 +207,135 @@ class LLMServer(LLMServerProtocol):
         if self._engine_cls is not None:
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
+
+        if os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
+            await self._start_http_sidecar()
+
+    async def _start_http_sidecar(self):
+        """Start the legacy aiohttp sidecar used by route-once experiments."""
+        import orjson as _orjson
+        from aiohttp import web
+
+        engine = self.engine
+
+        async def _handle_openai(request, request_cls, create_fn):
+            body = _orjson.loads(await request.read())
+            parsed = request_cls(**body)
+            try:
+                result = await create_fn(parsed, raw_request=None)
+            except ValueError as e:
+                return web.json_response(
+                    {"error": {"message": str(e), "type": "invalid_request_error"}},
+                    status=400,
+                )
+
+            if isinstance(result, types.AsyncGeneratorType):
+                response = web.StreamResponse()
+                response.content_type = "text/event-stream"
+                response.headers["Cache-Control"] = "no-cache"
+                response.headers["X-Accel-Buffering"] = "no"
+                await response.prepare(request)
+                async for chunk in result:
+                    data = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
+                    await response.write(data)
+                await response.write_eof()
+                return response
+
+            if hasattr(result, "model_dump"):
+                return web.json_response(result.model_dump())
+
+            return web.json_response(
+                {"error": {"message": str(result), "type": "server_error"}},
+                status=500,
+            )
+
+        async def handle_chat(request):
+            from vllm.entrypoints.openai.chat_completion.protocol import (
+                ChatCompletionRequest as VLLMChatRequest,
+            )
+
+            return await _handle_openai(
+                request,
+                VLLMChatRequest,
+                engine._oai_serving_chat.create_chat_completion,
+            )
+
+        async def handle_completions(request):
+            from vllm.entrypoints.openai.completion.protocol import (
+                CompletionRequest as VLLMCompletionRequest,
+            )
+
+            return await _handle_openai(
+                request,
+                VLLMCompletionRequest,
+                engine._oai_serving_completion.create_completion,
+            )
+
+        async def handle_models(request):
+            model_id = self._llm_config.model_loading_config.model_id
+            return web.json_response(
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": model_id,
+                            "object": "model",
+                            "owned_by": "organization",
+                        }
+                    ],
+                }
+            )
+
+        app = web.Application()
+        app.router.add_get("/v1/models", handle_models)
+        app.router.add_post("/v1/chat/completions", handle_chat)
+        app.router.add_post("/v1/completions", handle_completions)
+
+        runner = web.AppRunner(app, tcp_nodelay=True, access_log=None)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", 0)
+        await site.start()
+
+        self._http_sidecar_runner = runner
+        self._http_sidecar_site = site
+        self._http_sidecar_port = site._server.sockets[0].getsockname()[1]
+        self._http_sidecar_host = ray.util.get_node_ip_address()
+        logger.info(
+            "HTTP sidecar started on %s:%s",
+            self._http_sidecar_host,
+            self._http_sidecar_port,
+        )
+
+        self._register_sidecar_endpoint()
+
+    def _register_sidecar_endpoint(self):
+        """Register the sidecar endpoint so benchmarks can discover replicas."""
+        try:
+            registry = _SidecarRegistry.options(
+                name="_llm_sidecar_registry",
+                namespace="serve",
+                lifetime="detached",
+                get_if_exists=True,
+            ).remote()
+
+            replica_ctx = serve.context._get_internal_replica_context()
+            replica_tag = (
+                replica_ctx.replica_tag
+                if replica_ctx is not None
+                else f"pid-{os.getpid()}"
+            )
+            ray.get(
+                registry.register.remote(
+                    replica_tag,
+                    self._http_sidecar_host,
+                    self._http_sidecar_port,
+                )
+            )
+        except Exception:
+            logger.exception("Failed to register HTTP sidecar endpoint")
+
+    def get_sidecar_port(self) -> Optional[int]:
+        return getattr(self, "_http_sidecar_port", None)
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
