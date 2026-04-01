@@ -161,3 +161,72 @@ During the training loop the following happens to your checkpoints and metrics :
 .. figure:: ../images/checkpoint_metrics_lifecycle.png
 
     How Ray Train populates checkpoint metrics during training and how you access them after training.
+
+Experiment tracking
+-------------------
+
+In normal :ref:`experiment tracking with Ray Train <train-experiment-tracking-native>`,
+you handle creating, logging to, and finishing the experiment tracking run from
+the rank 0 training worker. However, asynchronous validation complicates this because
+validation metrics are computed outside of the training worker, in a separate
+Ray task.
+
+Most modern experiment tracking configurations (for example,
+`W&B distributed training <https://docs.wandb.ai/models/track/log/distributed-training#track-all-processes-to-a-single-run>`_)
+support writing to the same run from different threads or processes. Other configurations,
+such as the `MLflow fluent API <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html>`_, may not.
+
+Writing to the same run
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If your experiment tracking library supports writing to the same run from different
+processes, the rank 0 training worker can start the run and the validation task can
+join it and log validation metrics directly.
+
+.. tab-set::
+
+    .. tab-item:: W&B
+
+        .. literalinclude:: ../doc_code/asynchronous_validation.py
+            :language: python
+            :start-after: __exp_tracking_same_run_wandb_start__
+            :end-before: __exp_tracking_same_run_wandb_end__
+
+    .. tab-item:: MLflow (non-fluent)
+
+        .. literalinclude:: ../doc_code/asynchronous_validation.py
+            :language: python
+            :start-after: __exp_tracking_same_run_mlflow_start__
+            :end-before: __exp_tracking_same_run_mlflow_end__
+
+Reliability
+~~~~~~~~~~~
+
+If experiment tracking logging fails (for example, due to a transient network error),
+you have two options for retrying:
+
+1. **Wrap your logging calls in a try/except block** within the ``validation_fn`` and
+   retry the logging manually with your experiment tracker's API.
+2. **Use** :func:`ray.train.get_all_reported_checkpoints` **periodically during training** to
+   retrieve all reported checkpoints and their associated metrics, then re-log any missing
+   entries to your experiment tracker.
+
+Writing to different runs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your experiment tracking library does not support writing to the same run from different
+processes, the validation task must start a new run each time it logs validation metrics.
+Many tracking libraries provide ways to group related runs together so that training and
+validation runs are still associated.
+
+.. tab-set::
+
+    .. tab-item:: W&B
+
+        Use `W&B run grouping <https://docs.wandb.ai/models/runs/grouping>`_ to group
+        the training run and validation runs together.
+
+    .. tab-item:: MLflow
+
+        Use `MLflow parent and child runs <https://mlflow.org/docs/latest/ml/traditional-ml/tutorials/hyperparameter-tuning/part1-child-runs/#adapting-for-parent-and-child-runs>`_
+        to group the training run and validation runs together.
