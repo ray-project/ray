@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=0,
+        required=True,
         help="Number of actors/tasks to use for map_batches.",
     )
     parser.add_argument(
