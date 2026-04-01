@@ -206,7 +206,8 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 }
 
 EventMemoryMonitor::DrainResult EventMemoryMonitor::DrainInotifyBuffer(int inotify_fd) {
-  // Minimum buffer size to guarantee at least one event can be read.
+  // Minimum buffer size to guarantee at least one event can be read,
+  // defined in https://man7.org/linux/man-pages/man7/inotify.7.html.
   char inotify_buffer[sizeof(struct inotify_event) + NAME_MAX + 1];
   while (true) {
     int read_bytes = read(inotify_fd, inotify_buffer, sizeof(inotify_buffer));

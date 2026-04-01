@@ -42,7 +42,8 @@ class EventMemoryMonitorTest : public ::testing::Test {
    * @param path The path to the memory events file.
    * @param low The low event value to write to the memory events file.
    * This represents the number of times the memory of processes within the
-   * cgroup has been reclaimed.
+   * cgroup has been reclaimed even though the memory utilization of the processes
+   * within the cgroup is below the low constraint.
    * @param high The high event value to write to the memory events file.
    * This represents the number of times the high constraint was met or exceeded
    * for the cgroup.
