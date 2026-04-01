@@ -115,12 +115,6 @@ class OpBufferQueue:
         except IndexError:
             return None
 
-    def memory_usage_for_producer(self, producer_op_id: str) -> int:
-        """Return the memory usage of bundles from a specific producer operator."""
-        return sum(
-            q.estimate_size_bytes(producer_op_id=producer_op_id) for q in self._queues
-        )
-
     def clear(self):
         for q in self._queues:
             q.clear()
@@ -343,18 +337,8 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def output_queue_bytes(self, producer_op_id: Optional[str] = None) -> int:
-        """Return the object store memory of this operator's outqueue.
-
-        Args:
-            producer_op_id: If specified, only return bytes attributable to
-                the given producer operator UUID.
-
-        Returns:
-            The object store memory in bytes.
-        """
-        if producer_op_id is not None:
-            return self.output_queue.memory_usage_for_producer(producer_op_id)
+    def output_queue_bytes(self) -> int:
+        """Return the object store memory of this operator's outqueue."""
         return self.output_queue.memory_usage
 
     def mark_finished(self, exception: Optional[Exception] = None):

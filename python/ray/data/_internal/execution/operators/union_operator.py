@@ -129,9 +129,6 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._metrics.on_output_dequeued(refs)
         return refs
 
-    def throttling_disabled(self) -> bool:
-        return True
-
     def get_stats(self) -> StatsDict:
         return self._stats
 

@@ -93,6 +93,7 @@ class StreamSplitDataIterator(DataIterator):
                         blocks=block_ref_and_md.blocks,
                         owns_blocks=False,
                         schema=block_ref_and_md.schema,
+                        producer_op_ids=block_ref_and_md.producer_op_ids,
                     )
 
         # Return None for executor since StreamSplitDataIterator has its own
@@ -288,11 +289,13 @@ class SplitCoordinator:
 
             schema = next_bundle.schema
             block = next_bundle.blocks[-1]
+            block_producer_op_id = next_bundle.producer_op_ids[-1:]
             next_bundle = RefBundle(
                 blocks=next_bundle.blocks[:-1],
                 schema=next_bundle.schema,
                 owns_blocks=next_bundle.owns_blocks,
                 output_split_idx=next_bundle.output_split_idx,
+                producer_op_ids=next_bundle.producer_op_ids[:-1],
             )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
@@ -308,7 +311,10 @@ class SplitCoordinator:
 
             returned_normally = True
             return RefBundle(
-                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+                [block],
+                schema=schema,
+                owns_blocks=next_bundle.owns_blocks,
+                producer_op_ids=block_producer_op_id,
             )
         except StopIteration:
             return None

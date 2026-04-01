@@ -709,10 +709,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         """Return the inqueue bytes attributable to a specific input dependency."""
         return self._internal_inqueues[input_index].estimate_size_bytes()
 
-    # TODO: Replace input_index-based inqueue tracking with producer_op_id-based
-    # tracking. This would allow collapsing _internal_inqueues to a single queue
-    # and querying by producer_op_id instead of positional input_index.
-
     @metric_property(
         description=(
             "Byte size of output blocks in the operator's internal output queue."

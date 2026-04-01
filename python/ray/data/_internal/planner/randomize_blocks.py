@@ -34,7 +34,10 @@ def generate_randomize_blocks_fn(
         for i, ref_bundle in enumerate(refs):
             index_to_schema[i] = ref_bundle.schema
             blocks_with_metadata.extend(
-                (block, meta, i) for block, meta in ref_bundle.blocks
+                (block, meta, i, producer_id)
+                for (block, meta), producer_id in zip(
+                    ref_bundle.blocks, ref_bundle.producer_op_ids
+                )
             )
 
         if len(blocks_with_metadata) == 0:
@@ -45,7 +48,7 @@ def generate_randomize_blocks_fn(
             rng.shuffle(blocks_with_metadata)
             output = []
             stats_list = []
-            for block, meta, i in blocks_with_metadata:
+            for block, meta, i, producer_id in blocks_with_metadata:
                 stats_list.append(meta.to_stats())
                 output.append(
                     RefBundle(
@@ -57,6 +60,7 @@ def generate_randomize_blocks_fn(
                         ],
                         owns_blocks=input_owned,
                         schema=index_to_schema[i],
+                        producer_op_ids=(producer_id,),
                     )
                 )
             return output, {op.name: stats_list}
