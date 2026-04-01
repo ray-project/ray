@@ -460,8 +460,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Create scheduling options.
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
-                                            rpc::PlacementStrategy strategy,
-                                            std::optional<std::string> label_domain);
+                                            rpc::PlacementStrategy strategy);
 
   /// Try to release bundle resource to cluster resource manager.
   ///

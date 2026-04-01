@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/constants.h"
 #include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
@@ -155,11 +156,6 @@ std::optional<std::string> GcsPlacementGroup::GetLabelDomainKey() const {
 }
 
 void GcsPlacementGroup::ComputeLabelDomainKey() {
-  static const std::string kAcceleratorTypeLabelKey = "ray.io/accelerator-type";
-  static const std::string kGpuDomainLabelKey = "ray.io/gpu-domain";
-  static const std::string kGB200 = "GB200";
-  static const std::string kGB300 = "GB300";
-
   const auto &proto_bundles = placement_group_table_data_.bundles();
   if (proto_bundles.empty()) {
     return;
@@ -168,7 +164,7 @@ void GcsPlacementGroup::ComputeLabelDomainKey() {
   const LabelSelector &label_selector =
       first_bundle.GetRequiredResources().GetLabelSelector();
   for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kAcceleratorTypeLabelKey &&
+    if (constraint.GetLabelKey() == kLabelKeyNodeAcceleratorType &&
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
         (constraint.GetLabelValues().contains(kGB300) ||
          constraint.GetLabelValues().contains(kGB200))) {

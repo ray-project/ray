@@ -57,12 +57,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
-  std::optional<std::string> label_domain = placement_group->GetLabelDomainKey();
 
   // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
   // domain assignment so a new domain can be selected. If only some bundles are
   // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
-  if (label_domain.has_value()) {
+  if (placement_group->GetLabelDomainKey().has_value()) {
     const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
         placement_group->GetBundles();
     bool is_total_failure = (bundles.size() == all_bundles.size());
@@ -83,8 +82,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     resource_request_list.emplace_back(&bundle->GetRequiredResources());
   }
 
-  auto scheduling_options =
-      CreateSchedulingOptions(*placement_group, strategy, label_domain);
+  auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -493,10 +491,9 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
-    const GcsPlacementGroup &placement_group,
-    rpc::PlacementStrategy strategy,
-    std::optional<std::string> label_domain) {
+    const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
   std::optional<std::pair<std::string, std::string>> target_label_domain;
+  std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
   if (label_domain.has_value()) {
     const std::string &label_domain_key = label_domain.value();
     std::optional<std::string> label_value =
