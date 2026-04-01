@@ -769,7 +769,8 @@ def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkey
     # It should pass.
     ray.get(test.remote())
 
-@pytest.mark.parametrize("row_nums", [3,  100, 1000, 3000])
+
+@pytest.mark.parametrize("row_nums", [3, 100, 1000, 3000])
 def test_serialization_arrow_table(ray_start_regular, row_nums):
     pytest.importorskip("pyarrow")
     import decimal
