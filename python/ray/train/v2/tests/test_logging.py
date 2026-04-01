@@ -8,7 +8,7 @@ import ray
 from ray.runtime_context import get_runtime_context
 from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.logging.patch_print import patch_print_function
-from ray.train.v2.api.config import RunConfig
+from ray.train.v2.api.config import LoggingConfig, RunConfig
 from ray.train.v2.tests.util import (
     DummyTrainContext,
     create_dummy_run_context,
@@ -155,7 +155,9 @@ def test_worker_app_print_redirect(worker_logging):
 def _create_run_context_with_log_level(log_level):
     """Helper to create a TrainRunContext with a specific log level."""
     return create_dummy_run_context(
-        run_config=RunConfig(name="test", log_level=log_level)
+        run_config=RunConfig(
+            name="test", logging_config=LoggingConfig(log_level=log_level)
+        )
     )
 
 
@@ -170,33 +172,54 @@ def test_default_log_level_is_info(controller_logging):
     """Test that the default log level is INFO when nothing is configured."""
     context = create_dummy_run_context()
     config = LoggingManager._get_controller_logger_config_dict(context)
-    assert config["loggers"]["ray.train"]["level"] == "INFO"
+    assert config["loggers"]["ray.train"]["level"] == "DEBUG"
+    assert config["handlers"]["console"]["level"] == "INFO"
+    assert config["handlers"]["file_train_app_controller"]["level"] == "INFO"
+    assert "level" not in config["handlers"]["file_train_sys_controller"]
 
 
 def test_log_level_from_run_config_controller(controller_logging):
-    """Test that log level from RunConfig applies to the controller logger."""
+    """Test that log level from RunConfig applies to the controller's
+    console and app handlers."""
     context = _create_run_context_with_log_level("DEBUG")
     config = LoggingManager._get_controller_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
+    assert config["handlers"]["console"]["level"] == "DEBUG"
+    assert config["handlers"]["file_train_app_controller"]["level"] == "DEBUG"
+    assert "level" not in config["handlers"]["file_train_sys_controller"]
 
 
 def test_log_level_from_run_config_worker(worker_logging):
-    """Test that log level from RunConfig applies to the worker loggers."""
+    """Test that log level from RunConfig applies to the worker's
+    console and app handlers."""
     context = _create_train_context_with_log_level("DEBUG")
     config = LoggingManager._get_worker_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
+    assert config["handlers"]["console"]["level"] == "DEBUG"
+    assert config["handlers"]["file_train_app_worker"]["level"] == "DEBUG"
+    assert "level" not in config["handlers"]["file_train_sys_worker"]
+
+
+def test_sys_handlers_always_capture_all_levels(controller_logging):
+    """Test that sys handlers have no explicit level (capture all levels)
+    regardless of the configured log level."""
+    context = _create_run_context_with_log_level("WARNING")
+    config = LoggingManager._get_controller_logger_config_dict(context)
+    assert "level" not in config["handlers"]["file_train_sys_controller"]
+    assert config["handlers"]["console"]["level"] == "WARNING"
+    assert config["handlers"]["file_train_app_controller"]["level"] == "WARNING"
 
 
 def test_invalid_log_level_string_raises():
     """Test that an invalid log level string raises ValueError."""
     with pytest.raises(ValueError, match="Invalid log_level"):
-        RunConfig(name="test", log_level="INVALID_LEVEL")
+        LoggingConfig(log_level="INVALID_LEVEL")
 
 
 def test_invalid_log_level_type_raises():
     """Test that a non-string log level raises ValueError."""
     with pytest.raises(ValueError, match="Invalid log_level"):
-        RunConfig(name="test", log_level=10)
+        LoggingConfig(log_level=10)
 
 
 if __name__ == "__main__":

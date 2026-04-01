@@ -343,6 +343,38 @@ class FailureConfig(FailureConfigV1):
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
 
+@PublicAPI(stability="stable")
+@dataclass
+class LoggingConfig:
+    """Configuration for Ray Train's logging behavior.
+
+    Args:
+        log_level: The log level for Ray Train's internal ``ray.train`` logs
+            on console output and application-level log files. System-level
+            log files always capture all log levels (DEBUG and above).
+            This setting is independent of the logging configuration set by
+            ``ray.init()`` for the ``ray`` logger and the root logger.
+            Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
+            Defaults to ``"INFO"``.
+    """
+
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        if not isinstance(self.log_level, str) or self.log_level.upper() not in {
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+        }:
+            raise ValueError(
+                f"Invalid log_level: {self.log_level!r}. "
+                "Must be a valid logging level string "
+                "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
+            )
+
+
 @dataclass
 @PublicAPI(stability="stable")
 class RunConfig:
@@ -365,11 +397,8 @@ class RunConfig:
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
             for all Ray Train worker actors.
-        log_level: The log level for Ray Train's internal ``ray.train`` logger
-            on both controller and worker processes. This does not affect the
-            log level of user code in the training function.
-            Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
-            If not set, defaults to ``"INFO"``.
+        logging_config: Configuration for Ray Train's logging behavior.
+            See :class:`LoggingConfig` for details.
     """
 
     name: Optional[str] = None
@@ -379,7 +408,7 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
-    log_level: Optional[str] = None
+    logging_config: Optional[LoggingConfig] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
@@ -398,6 +427,9 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        if not self.logging_config:
+            self.logging_config = LoggingConfig()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()
@@ -425,20 +457,6 @@ class RunConfig:
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
-
-        if self.log_level is not None:
-            if not isinstance(self.log_level, str) or self.log_level.upper() not in {
-                "DEBUG",
-                "INFO",
-                "WARNING",
-                "ERROR",
-                "CRITICAL",
-            }:
-                raise ValueError(
-                    f"Invalid log_level: {self.log_level!r}. "
-                    "Must be a valid logging level string "
-                    "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
-                )
 
         self.callbacks = self.callbacks or []
         self.worker_runtime_env = self.worker_runtime_env or {}
