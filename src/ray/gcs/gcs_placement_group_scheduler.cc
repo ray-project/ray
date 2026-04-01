@@ -83,8 +83,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
-  auto scheduling_result =
-      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+  auto scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
+      resource_request_list, scheduling_options);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;

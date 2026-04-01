@@ -392,7 +392,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   return highest_priority_unavailable_node;
 }
 
-SchedulingResult ClusterResourceScheduler::Schedule(
+SchedulingResult ClusterResourceScheduler::SchedulePlacementGroup(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options) {
   absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;

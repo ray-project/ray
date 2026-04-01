@@ -424,6 +424,7 @@ py_library(
     imports = ["."],
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
+        ":anyscale_util",
         ":aws",
         ":github_client",
         ":global_config",
