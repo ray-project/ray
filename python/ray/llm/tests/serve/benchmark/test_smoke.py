@@ -1,5 +1,6 @@
 """Tests for benchmark smoke mode."""
 
+import sys
 import types
 
 import aiohttp
@@ -55,3 +56,7 @@ def test_run_smoke_connection_error(free_port: int) -> None:
     )
     exit_code = run_smoke(args)
     assert exit_code == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
