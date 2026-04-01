@@ -82,7 +82,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -101,7 +101,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests",
+        "medium_size_python_tests_shard_1",
         "no_windows",
         "team:core",
     ],
@@ -118,7 +118,7 @@ py_test(
     data = ["mnist_784_100_samples.pkl"],
     tags = [
         "exclusive",
-        "medium_size_python_tests",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -299,7 +299,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "no_main",
         "team:core",
     ],
@@ -364,7 +364,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "team:core",
     ],
     deps = [
@@ -381,7 +381,7 @@ py_test_module_list(
     tags = [
         "custom_setup",
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "needs_java",
         "team:core",
     ],
@@ -402,7 +402,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "no_windows",
         "team:core",
     ],
@@ -745,7 +745,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "team:core",
     ],
     deps = [
@@ -1014,7 +1014,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -1033,7 +1033,7 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
-        "medium_size_python_tests",
+        "medium_size_python_tests_shard_1",
         "team:core",
     ],
     deps = [
@@ -1229,7 +1229,7 @@ py_test(
     srcs = ["test_tracing.py"],
     tags = [
         "exclusive",
-        "medium_size_python_tests_k_to_z",
+        "medium_size_python_tests_shard_2",
         "no_windows",
         "serve_tracing",
         "team:serve",
