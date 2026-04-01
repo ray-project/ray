@@ -167,30 +167,9 @@ class JobManager:
             )
         )
 
+        monitor_start_time = self._timeout_check_timer.time()
         job_status = None
-        job_info = await self._job_info_client.get_info(job_id, timeout=None)
-        has_py_executable = (
-            job_info.runtime_env is not None
-            and job_info.runtime_env.get("py_executable")
-        )
-        resources_specified = (
-            (
-                job_info.entrypoint_num_cpus is not None
-                and job_info.entrypoint_num_cpus > 0
-            )
-            or (
-                job_info.entrypoint_num_gpus is not None
-                and job_info.entrypoint_num_gpus > 0
-            )
-            or (
-                job_info.entrypoint_memory is not None
-                and job_info.entrypoint_memory > 0
-            )
-            or (
-                job_info.entrypoint_resources is not None
-                and len(job_info.entrypoint_resources) > 0
-            )
-        )
+        job_info = None
         ping_obj_ref = None
         logged_pending_warning = False
         driver_logger = self._get_job_driver_logger(job_id)
@@ -207,12 +186,39 @@ class JobManager:
                     job_id, timeout=None
                 )
                 if job_status == JobStatus.PENDING:
-                    # Compare the current time with the job start time.
-                    # If the job is still pending, we will set the status
-                    # to FAILED.
-                    pending_duration = (
-                        self._timeout_check_timer.time() - job_info.start_time / 1000
-                    )
+                    if job_info is None:
+                        job_info = await self._job_info_client.get_info(
+                            job_id, timeout=None
+                        )
+                    if job_info is None:
+                        logger.warning(
+                            f"No job metadata for job {job_id}found in storage when "
+                            "monitoring; using monitor elapsed time for pending checks."
+                        )
+                        resources_specified = False
+                        pending_duration = (
+                            self._timeout_check_timer.time() - monitor_start_time
+                        )
+                    else:
+                        resources_specified = any(
+                            [
+                                job_info.entrypoint_num_cpus is not None
+                                and job_info.entrypoint_num_cpus > 0,
+                                job_info.entrypoint_num_gpus is not None
+                                and job_info.entrypoint_num_gpus > 0,
+                                job_info.entrypoint_memory is not None
+                                and job_info.entrypoint_memory > 0,
+                                job_info.entrypoint_resources is not None
+                                and len(job_info.entrypoint_resources) > 0,
+                            ]
+                        )
+                        # Compare the current time with the job start time.
+                        # If the job is still pending, we will set the status
+                        # to FAILED.
+                        pending_duration = (
+                            self._timeout_check_timer.time()
+                            - job_info.start_time / 1000
+                        )
 
                     if pending_duration > timeout:
                         err_msg = (
@@ -231,12 +237,6 @@ class JobManager:
                                 "`ray status` and specifying fewer resources for the "
                                 "job entrypoint."
                             )
-                        if has_py_executable:
-                            err_msg += (
-                                " This may be because the runtime_env's py_executable "
-                                "is not valid. "
-                                "Try checking raylet.err for details."
-                            )
                         await self._job_info_client.put_status(
                             job_id,
                             JobStatus.FAILED,
@@ -250,22 +250,13 @@ class JobManager:
                     if (
                         not logged_pending_warning
                         and pending_duration >= self.PENDING_WARNING_THRESHOLD_S
-                        and (has_py_executable or resources_specified)
+                        and resources_specified
                     ):
-                        hints = []
-                        if resources_specified:
-                            hints.append(
-                                "Hint: The cluster may not have sufficient resources"
-                                " for the job entrypoint - try checking `ray status`."
-                            )
-                        if has_py_executable:
-                            hints.append(
-                                "Hint: The runtime_env's py_executable may not be"
-                                " valid - try checking raylet.err."
-                            )
                         driver_logger.warning(
                             f"Job {job_id} has been pending for"
-                            f" {int(pending_duration)}s.\n" + "\n".join(hints)
+                            f" {int(pending_duration)}s.\n"
+                            "Hint: The cluster may not have sufficient resources"
+                            " for the job entrypoint - try checking `ray status`."
                         )
                         logged_pending_warning = True
 
