@@ -3,7 +3,7 @@ import ray
 
 @ray.remote
 def hello_world():
-    raise RuntimeError("Hello, world!")
+    return "Hello, world!"
 
 
 def main():
