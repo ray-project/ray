@@ -314,7 +314,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         while self._block_ref_bundler.has_bundle():
             (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
             for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle)
+                self._metrics.on_input_dequeued(input_bundle, input_index=0)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -489,7 +489,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
         if self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more `RefBundle`s into a new
@@ -497,7 +497,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -649,7 +649,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
             # NOTE: When `all_inputs_done` is invoked we can't guarantee that the
             #       task will be launched since all actors might be busy.
@@ -914,7 +914,10 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     owns_blocks = all(bundle.owns_blocks for bundle in bundles)
     schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
     return RefBundle(
-        blocks, owns_blocks=owns_blocks, schema=schema, producer_op_ids=producer_op_ids
+        blocks,
+        owns_blocks=owns_blocks,
+        schema=schema,
+        producer_op_ids=producer_op_ids,
     )
 
 

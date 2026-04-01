@@ -17,8 +17,16 @@ if TYPE_CHECKING:
 
 class BundleQueue(abc.ABC):
     @abc.abstractmethod
-    def estimate_size_bytes(self) -> int:
-        """Returns the estimated size in bytes of all bundles."""
+    def estimate_size_bytes(self, *, producer_op_id: Optional[str] = None) -> int:
+        """Returns the estimated size in bytes of bundles.
+
+        Args:
+            producer_op_id: If specified, only return bytes from this producer.
+                If None, return total bytes across all producers.
+
+        Returns:
+            The estimated size in bytes.
+        """
         ...
 
     @abc.abstractmethod
@@ -34,11 +42,6 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def num_rows(self) -> int:
         """Return the total # of rows across all bundles."""
-        ...
-
-    @abc.abstractmethod
-    def estimate_size_bytes_for_producer(self, producer_op_id: str) -> int:
-        """Return the estimated size in bytes of bundles from a specific producer."""
         ...
 
     @abc.abstractmethod
@@ -165,13 +168,10 @@ class BaseBundleQueue(BundleQueue):
         for producer_id, nbytes in bundle.size_bytes_per_producer().items():
             self._nbytes_per_producer[producer_id] -= nbytes
 
-    def estimate_size_bytes(self) -> int:
-        """Return the estimated size in bytes of all bundles."""
+    def estimate_size_bytes(self, *, producer_op_id: Optional[str] = None) -> int:
+        if producer_op_id is not None:
+            return self._nbytes_per_producer.get(producer_op_id, 0)
         return self._nbytes
-
-    def estimate_size_bytes_for_producer(self, producer_op_id: str) -> int:
-        """Return the estimated size in bytes of bundles from a specific producer."""
-        return self._nbytes_per_producer.get(producer_op_id, 0)
 
     def num_blocks(self) -> int:
         """Return the total # of blocks across all bundles."""

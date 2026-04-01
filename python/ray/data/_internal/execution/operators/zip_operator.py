@@ -98,7 +98,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         for idx, input_buffer in enumerate(self._input_buffers):
             while input_buffer.has_next():
                 bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=idx)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -110,7 +110,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
         self._input_buffers[input_index].add(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=input_index)
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
@@ -119,7 +119,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         while self._input_buffers[0].has_next():
             refs = self._input_buffers[0].get_next()
             self._output_buffer.add(refs)
-            self._metrics.on_input_dequeued(refs)
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         # Process each additional input buffer
         for idx, input_buffer in enumerate(self._input_buffers[1:], start=1):
@@ -129,7 +129,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             # Clear the input buffer AFTER using it in _zip
             while input_buffer.has_next():
                 refs = input_buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
+                self._metrics.on_input_dequeued(refs, input_index=idx)
 
         # Mark outputs as ready
         for ref in self._output_buffer:

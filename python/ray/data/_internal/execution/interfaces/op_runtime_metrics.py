@@ -524,7 +524,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Start time of current pause due to task output backpressure
         self._task_output_backpressure_start_time = -1
 
-        self._internal_inqueue = create_bundle_queue()
+        num_inputs = max(len(op.input_dependencies), 1)
+        self._internal_inqueues = [create_bundle_queue() for _ in range(num_inputs)]
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
@@ -701,12 +702,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
     def obj_store_mem_internal_inqueue(self) -> int:
-        """Return the total inqueue bytes."""
-        return self._internal_inqueue.estimate_size_bytes()
+        """Return the total inqueue bytes of all input dependencies."""
+        return sum(q.estimate_size_bytes() for q in self._internal_inqueues)
 
-    def obj_store_mem_internal_inqueue_for_producer(self, producer_op_id: str) -> int:
-        """Return the inqueue bytes attributable to a specific producer operator."""
-        return self._internal_inqueue.estimate_size_bytes_for_producer(producer_op_id)
+    def obj_store_mem_internal_inqueue_for_input(self, input_index: int) -> int:
+        """Return the inqueue bytes attributable to a specific input dependency."""
+        return self._internal_inqueues[input_index].estimate_size_bytes()
+
+    # TODO: Replace input_index-based inqueue tracking with producer_op_id-based
+    # tracking. This would allow collapsing _internal_inqueues to a single queue
+    # and querying by producer_op_id instead of positional input_index.
 
     @metric_property(
         description=(
@@ -859,16 +864,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
-    def on_input_queued(self, input: RefBundle):
+    def on_input_queued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator queues an input."""
         self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
-        self._internal_inqueue.add(input)
+        self._internal_inqueues[input_index].add(input)
 
-    def on_input_dequeued(self, input: RefBundle):
+    def on_input_dequeued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
-        self._internal_inqueue.remove(input)
+        self._internal_inqueues[input_index].remove(input)
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,

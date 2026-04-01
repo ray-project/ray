@@ -175,13 +175,15 @@ class ResourceManager:
             state.output_queue_bytes()
         )
 
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
+        # TODO: Replace input_index-based inqueue lookup with producer_op_id-based
+        # lookup to unify with the per-producer tracking used for ineligible ops.
         #
         # Outputs of this operator used downstream
         used_op_outputs_bytes = sum(
             (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_producer(op.id)
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(op)
+                )
                 + downstream_op.metrics.obj_store_mem_pending_task_inputs
             )
             for downstream_op in op.output_dependencies

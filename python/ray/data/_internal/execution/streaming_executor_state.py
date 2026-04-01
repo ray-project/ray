@@ -118,7 +118,7 @@ class OpBufferQueue:
     def memory_usage_for_producer(self, producer_op_id: str) -> int:
         """Return the memory usage of bundles from a specific producer operator."""
         return sum(
-            q.estimate_size_bytes_for_producer(producer_op_id) for q in self._queues
+            q.estimate_size_bytes(producer_op_id=producer_op_id) for q in self._queues
         )
 
     def clear(self):

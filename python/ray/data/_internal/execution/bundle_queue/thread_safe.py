@@ -21,13 +21,9 @@ class ThreadSafeBundleQueue(BundleQueue):
         self._inner = inner
         self._lock = threading.Lock()
 
-    def estimate_size_bytes(self) -> int:
+    def estimate_size_bytes(self, *, producer_op_id: Optional[str] = None) -> int:
         with self._lock:
-            return self._inner.estimate_size_bytes()
-
-    def estimate_size_bytes_for_producer(self, producer_op_id: str) -> int:
-        with self._lock:
-            return self._inner.estimate_size_bytes_for_producer(producer_op_id)
+            return self._inner.estimate_size_bytes(producer_op_id=producer_op_id)
 
     def num_blocks(self) -> int:
         with self._lock:

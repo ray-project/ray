@@ -141,7 +141,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.add(bundle)
-        self._metrics.on_input_queued(bundle)
+        self._metrics.on_input_queued(bundle, input_index=0)
         # Try dispatch buffered bundles
         self._try_dispatch_bundles()
 
@@ -202,7 +202,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         """Clear internal input queue."""
         while self._buffer:
             bundle = self._buffer.get_next()
-            self._metrics.on_input_dequeued(bundle)
+            self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -258,7 +258,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
             # Pop preferred bundle from the buffer
             self._buffer.remove(target_bundle)
-            self._metrics.on_input_dequeued(target_bundle)
+            self._metrics.on_input_dequeued(target_bundle, input_index=0)
 
             target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
@@ -315,7 +315,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         acc = 0
         while acc < nrow:
             b = self._buffer.get_next()
-            self._metrics.on_input_dequeued(b)
+            self._metrics.on_input_dequeued(b, input_index=0)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
@@ -324,7 +324,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
-                self._metrics.on_input_queued(right)
+                self._metrics.on_input_queued(right, input_index=0)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
