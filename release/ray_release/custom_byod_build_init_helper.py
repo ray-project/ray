@@ -177,11 +177,7 @@ def get_prerequisite_step(
     base_image: str,
     gpu_map: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
-    """Get the base image build step for a job that depends on it.
-
-    Returns the array-suffixed Buildkite step key for the publish step
-    that produces the base image.
-    """
+    """Return the Buildkite step key for the base image build step."""
     if gpu_map is None:
         gpu_map = {}
     config = get_global_config()
@@ -240,3 +236,180 @@ def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
     for test_name in test_names[:2]:
         step_name += f" {test_name}"
     return step_name
+
+
+def collect_needed_variants(
+    tests: List[Test],
+    gpu_map: Dict[str, str],
+) -> Tuple[Set[str], Set[str], Dict[str, Optional[Set[str]]]]:
+    """Collect needed python versions, image types, and CUDA gpus from tests.
+
+    Returns (needed_python, needed_image_types, cuda_needs) where cuda_needs
+    maps image type to a set of full gpu strings, or ``None`` to keep all.
+    """
+    needed_python: Set[str] = set()
+    needed_image_types: Set[str] = set()
+    cuda_needs: Dict[str, Optional[Set[str]]] = {}
+
+    for test in tests:
+        needed_python.add(test.get_python_version())
+        tag_suffix = test.get_tag_suffix()
+
+        if test.use_byod_ml_image():
+            img_type = "ray-ml"
+        elif test.use_byod_llm_image():
+            img_type = "ray-llm"
+        elif tag_suffix == "cpu":
+            needed_image_types.add("ray-cpu")
+            continue
+        else:
+            img_type = "ray-cuda"
+
+        needed_image_types.add(img_type)
+        gpu = gpu_map.get(tag_suffix)
+
+        if gpu:
+            if img_type not in cuda_needs or cuda_needs[img_type] is not None:
+                cuda_needs.setdefault(img_type, set()).add(gpu)
+        else:
+            # Can't determine specific CUDA gpu; keep all variants.
+            cuda_needs[img_type] = None
+
+    return needed_python, needed_image_types, cuda_needs
+
+
+def _get_step_image_type(step: dict) -> Optional[str]:
+    """Return "ray-cpu", "ray-cuda", "ray-ml", "ray-llm", or None."""
+    name = step.get("name", "")
+    key = step.get("key", "")
+    image_type = step.get("env", {}).get("IMAGE_TYPE", "")
+
+    if image_type == "ray-llm" or "llm" in name or "llm" in key:
+        return "ray-llm"
+    if image_type == "ray-ml" or "ray-ml" in name or "ml" in key:
+        return "ray-ml"
+    if "cpu" in name or "cpu" in key:
+        return "ray-cpu"
+    if "cuda" in name or "cuda" in key:
+        return "ray-cuda"
+    return None
+
+
+def _filter_array_dimension(
+    values: List[str],
+    allowed: Set[str],
+    prefix: str = "",
+) -> List[str]:
+    """Keep only values present in *allowed* (prepending *prefix* first)."""
+    return [v for v in values if f"{prefix}{v}" in allowed]
+
+
+def _global_cuda_filter(
+    cuda_needs: Dict[str, Optional[Set[str]]],
+) -> Optional[Set[str]]:
+    """Union all per-image-type CUDA needs; ``None`` means keep all."""
+    result: Set[str] = set()
+    for gpus in cuda_needs.values():
+        if gpus is None:
+            return None
+        result.update(gpus)
+    return result
+
+
+def filter_release_build_yaml(
+    path: str,
+    needed_python: Set[str],
+    needed_image_types: Set[str],
+    cuda_needs: Dict[str, Optional[Set[str]]],
+    *,
+    filter_by_image_type: bool = True,
+) -> None:
+    """Filter a rayci YAML file in-place to only needed variants.
+
+    Trims array dimensions and adjustments; removes steps with no viable
+    combinations.  When *filter_by_image_type* is True, also removes steps
+    whose image type is not in *needed_image_types*.
+    """
+    with open(path) as f:
+        data = yaml.safe_load(f)
+
+    global_cuda = _global_cuda_filter(cuda_needs) if not filter_by_image_type else None
+
+    filtered_steps = []
+    for step in data.get("steps", []):
+        img_type = _get_step_image_type(step)
+
+        if filter_by_image_type:
+            if img_type is not None and img_type not in needed_image_types:
+                continue
+
+        array = step.get("array")
+        if not array:
+            filtered_steps.append(step)
+            continue
+
+        # Filter python dimension.
+        if "python" in array:
+            array["python"] = _filter_array_dimension(array["python"], needed_python)
+
+        # Determine which CUDA gpus to keep.
+        if filter_by_image_type:
+            cuda_filter = cuda_needs.get(img_type) if img_type else None
+            should_filter_cuda = img_type in cuda_needs and cuda_filter is not None
+        else:
+            cuda_filter = global_cuda
+            should_filter_cuda = global_cuda is not None
+
+        if should_filter_cuda:
+            if "gpu" in array:
+                array["gpu"] = _filter_array_dimension(array["gpu"], cuda_filter)
+            if "cuda" in array:
+                array["cuda"] = _filter_array_dimension(
+                    array["cuda"], cuda_filter, prefix="cu"
+                )
+
+        # Filter adjustments.
+        if "adjustments" in array:
+            filtered_adj = []
+            for adj in array["adjustments"]:
+                w = adj.get("with", {})
+                keep = True
+                if "python" in w and w["python"] not in needed_python:
+                    keep = False
+                if should_filter_cuda:
+                    if "gpu" in w and w["gpu"] not in cuda_filter:
+                        keep = False
+                    if "cuda" in w and f"cu{w['cuda']}" not in cuda_filter:
+                        keep = False
+                if keep:
+                    filtered_adj.append(adj)
+            if filtered_adj:
+                array["adjustments"] = filtered_adj
+            else:
+                del array["adjustments"]
+
+        # If base arrays were emptied but adjustments remain, reconstruct
+        # minimal base arrays from adjustment values so rayci can expand them.
+        remaining_adj = array.get("adjustments", [])
+        for dim in list(array.keys()):
+            if dim == "adjustments" or not isinstance(array[dim], list):
+                continue
+            if len(array[dim]) == 0 and remaining_adj:
+                values = sorted(
+                    {a["with"][dim] for a in remaining_adj if dim in a.get("with", {})}
+                )
+                array[dim] = values
+
+        # Check if any combinations remain.
+        base_dims = [
+            v for k, v in array.items() if k != "adjustments" and isinstance(v, list)
+        ]
+        has_base_combos = all(len(d) > 0 for d in base_dims) if base_dims else False
+        has_adjustments = bool(array.get("adjustments"))
+
+        if has_base_combos or has_adjustments:
+            filtered_steps.append(step)
+
+    data["steps"] = filtered_steps
+    with open(path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)

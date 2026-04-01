@@ -10,10 +10,13 @@ import yaml
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import get_global_config, init_global_config
 from ray_release.custom_byod_build_init_helper import (
+    _get_step_image_type,
     _get_step_name,
     _short_tag,
     build_short_gpu_map,
+    collect_needed_variants,
     create_custom_build_yaml,
+    filter_release_build_yaml,
     generate_custom_build_step_key,
     get_prerequisite_step,
 )
@@ -224,7 +227,7 @@ _ECR = get_global_config()["byod_ecr"]
             "ray-project/ray:a-py313-cpu",
             "anyscalecpubuild--python313",
         ),
-        # ray cuda → anyscalecudabuild (platform + python)
+        # ray cuda → anyscalecudabuild (gpu + python)
         (
             "ray-project/ray:a-c",
             "ray-project/ray:a-py311-cu123",
@@ -258,7 +261,7 @@ _ECR = get_global_config()["byod_ecr"]
             "ray-project/ray:a-b-c-py312-cpu",
             "anyscalecpubuild--python312",
         ),
-        # Unknown platform falls back to raw value
+        # Unknown gpu falls back to the raw value
         (
             "ray-project/ray:a-c",
             "ray-project/ray:a-py310-cu999",
@@ -281,7 +284,7 @@ _ECR = get_global_config()["byod_ecr"]
         "ray-llm-cu130",
         "ecr-prefix",
         "dashed-build-id",
-        "unknown-platform",
+        "unknown-gpu",
         "no-python-ray",
         "no-python-ray-ml",
     ],
@@ -333,6 +336,470 @@ def test_get_step_name():
         )
         == ":tapioca: build custom: ray-ml:py39-cpu (abc123) test_1 test_2"
     )
+
+
+def _make_test(name="t", python="3.10", byod_type="cpu"):
+    """Helper to create a minimal Test with byod config."""
+    t = Test(
+        name=name,
+        frequency="manual",
+        group="g",
+        team="team",
+        working_dir=".",
+    )
+    if python != "3.10":
+        t["python"] = python
+    if byod_type != "cpu":
+        t["cluster"] = {"byod": {"type": byod_type}}
+    return t
+
+
+class TestCollectNeededVariants:
+    def test_single_cpu_test(self):
+        tests = [_make_test(python="3.10", byod_type="cpu")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.10"}
+        assert types == {"ray-cpu"}
+        assert cuda == {}
+
+    def test_single_cuda_test(self):
+        tests = [_make_test(python="3.11", byod_type="cu123")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.11"}
+        assert types == {"ray-cuda"}
+        assert cuda == {"ray-cuda": {"cu12.3.2-cudnn9"}}
+
+    def test_cuda_cu128(self):
+        tests = [_make_test(python="3.10", byod_type="cu128")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.10"}
+        assert types == {"ray-cuda"}
+        assert cuda == {"ray-cuda": {"cu12.8.1-cudnn"}}
+
+    def test_llm_test(self):
+        tests = [_make_test(python="3.12", byod_type="llm-cu130")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.12"}
+        assert types == {"ray-llm"}
+        assert cuda == {"ray-llm": {"cu13.0.0-cudnn"}}
+
+    def test_llm_cu128(self):
+        tests = [_make_test(python="3.11", byod_type="llm-cu128")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.11"}
+        assert types == {"ray-llm"}
+        assert cuda == {"ray-llm": {"cu12.8.1-cudnn"}}
+
+    def test_ml_gpu_test_keeps_all_cuda(self):
+        tests = [_make_test(python="3.10", byod_type="gpu")]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.10"}
+        assert types == {"ray-ml"}
+        assert cuda == {"ray-ml": None}
+
+    def test_mixed_tests(self):
+        tests = [
+            _make_test(name="a", python="3.10", byod_type="cpu"),
+            _make_test(name="b", python="3.12", byod_type="llm-cu130"),
+        ]
+        py, types, cuda = collect_needed_variants(tests, _GPU_MAP)
+        assert py == {"3.10", "3.12"}
+        assert types == {"ray-cpu", "ray-llm"}
+        assert cuda == {"ray-llm": {"cu13.0.0-cudnn"}}
+
+
+class TestGetStepImageType:
+    def test_cpu_by_name(self):
+        assert _get_step_image_type({"name": "raycpubaseextra-testdeps"}) == "ray-cpu"
+
+    def test_cuda_by_name(self):
+        assert _get_step_image_type({"name": "raycudabaseextra-testdeps"}) == "ray-cuda"
+
+    def test_llm_by_name(self):
+        assert _get_step_image_type({"name": "ray-llmbaseextra-testdeps"}) == "ray-llm"
+
+    def test_ml_by_name(self):
+        assert (
+            _get_step_image_type({"name": "ray-mlcudabaseextra-testdeps"}) == "ray-ml"
+        )
+
+    def test_cpu_by_key(self):
+        assert _get_step_image_type({"key": "anyscalecpubuild"}) == "ray-cpu"
+
+    def test_cuda_by_key(self):
+        assert _get_step_image_type({"key": "anyscalecudabuild"}) == "ray-cuda"
+
+    def test_llm_by_key(self):
+        assert _get_step_image_type({"key": "anyscalellmbuild"}) == "ray-llm"
+
+    def test_ml_by_key(self):
+        assert _get_step_image_type({"key": "anyscalemlbuild"}) == "ray-ml"
+
+    def test_image_type_env(self):
+        assert _get_step_image_type({"env": {"IMAGE_TYPE": "ray-llm"}}) == "ray-llm"
+        assert _get_step_image_type({"env": {"IMAGE_TYPE": "ray-ml"}}) == "ray-ml"
+
+    def test_unknown(self):
+        assert _get_step_image_type({"name": "forge"}) is None
+
+
+# A minimal build.rayci.yml for testing filter_release_build_yaml.
+_SAMPLE_BUILD_YAML = {
+    "group": "release build",
+    "steps": [
+        {
+            "name": "raycpubaseextra-testdeps",
+            "env": {"IMAGE_TYPE": "ray"},
+            "array": {
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+            },
+        },
+        {
+            "name": "raycudabaseextra-testdeps",
+            "env": {"IMAGE_TYPE": "ray"},
+            "array": {
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+                "cuda": ["12.3.2-cudnn9"],
+                "adjustments": [
+                    {"with": {"python": "3.12", "cuda": "13.0.0-cudnn"}},
+                ],
+            },
+        },
+        {
+            "name": "ray-llmbaseextra-testdeps",
+            "env": {"IMAGE_TYPE": "ray-llm"},
+            "array": {
+                "python": ["3.12"],
+                "cuda": ["13.0.0-cudnn"],
+                "adjustments": [
+                    {"with": {"python": "3.11", "cuda": "12.8.1-cudnn"}},
+                ],
+            },
+        },
+        {
+            "name": "ray-mlcudabaseextra-testdeps",
+            "env": {"IMAGE_TYPE": "ray-ml"},
+            "array": {
+                "python": ["3.10"],
+                "cuda": ["12.1.1-cudnn8"],
+            },
+        },
+        {
+            "key": "anyscalecpubuild",
+            "array": {
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+            },
+        },
+        {
+            "key": "anyscalecudabuild",
+            "array": {
+                "gpu": ["cu12.3.2-cudnn9"],
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+                "adjustments": [
+                    {"with": {"python": "3.12", "gpu": "cu13.0.0-cudnn"}},
+                ],
+            },
+        },
+        {
+            "key": "anyscalellmbuild",
+            "array": {
+                "gpu": ["cu13.0.0-cudnn"],
+                "python": ["3.12"],
+                "adjustments": [
+                    {"with": {"python": "3.11", "gpu": "cu12.8.1-cudnn"}},
+                ],
+            },
+        },
+        {
+            "key": "anyscalemlbuild",
+            "array": {
+                "python": ["3.10"],
+            },
+        },
+    ],
+}
+
+
+class TestFilterReleaseBuildYaml:
+    def _write_and_filter(self, tmpdir, needed_python, needed_image_types, cuda_needs):
+        path = os.path.join(tmpdir, "build.rayci.yml")
+        with open(path, "w") as f:
+            yaml.dump(_SAMPLE_BUILD_YAML, f, default_flow_style=False, sort_keys=False)
+        filter_release_build_yaml(path, needed_python, needed_image_types, cuda_needs)
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def test_cpu_py310_only(self):
+        """Simulates name:many_nodes.aws — only py310 cpu needed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python={"3.10"},
+                needed_image_types={"ray-cpu"},
+                cuda_needs={},
+            )
+        step_ids = [s.get("name") or s.get("key") for s in result["steps"]]
+        assert "raycpubaseextra-testdeps" in step_ids
+        assert "anyscalecpubuild" in step_ids
+        # CUDA, LLM, ML steps should be removed.
+        assert "raycudabaseextra-testdeps" not in step_ids
+        assert "ray-llmbaseextra-testdeps" not in step_ids
+        assert "ray-mlcudabaseextra-testdeps" not in step_ids
+        assert "anyscalecudabuild" not in step_ids
+        assert "anyscalellmbuild" not in step_ids
+        assert "anyscalemlbuild" not in step_ids
+        # Python should be trimmed to only 3.10.
+        cpu_step = next(
+            s for s in result["steps"] if s.get("name") == "raycpubaseextra-testdeps"
+        )
+        assert cpu_step["array"]["python"] == ["3.10"]
+
+    def test_llm_cu130_py312(self):
+        """Only ray-llm with cu130 and py312."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python={"3.12"},
+                needed_image_types={"ray-llm"},
+                cuda_needs={"ray-llm": {"cu13.0.0-cudnn"}},
+            )
+        step_ids = [s.get("name") or s.get("key") for s in result["steps"]]
+        assert "ray-llmbaseextra-testdeps" in step_ids
+        assert "anyscalellmbuild" in step_ids
+        # Non-LLM steps removed.
+        assert "raycpubaseextra-testdeps" not in step_ids
+        assert "raycudabaseextra-testdeps" not in step_ids
+        # The LLM step should have only cu13 base, no cu128 adjustment.
+        llm_step = next(
+            s for s in result["steps"] if s.get("name") == "ray-llmbaseextra-testdeps"
+        )
+        assert llm_step["array"]["cuda"] == ["13.0.0-cudnn"]
+        assert "adjustments" not in llm_step["array"]
+
+    def test_llm_adjustment_only(self):
+        """ray-llm with cu128/py311 — only the adjustment matches."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python={"3.11"},
+                needed_image_types={"ray-llm"},
+                cuda_needs={"ray-llm": {"cu12.8.1-cudnn"}},
+            )
+        step_ids = [s.get("name") or s.get("key") for s in result["steps"]]
+        assert "ray-llmbaseextra-testdeps" in step_ids
+        assert "anyscalellmbuild" in step_ids
+        # The base arrays should be reconstructed from adjustment values.
+        llm_step = next(
+            s for s in result["steps"] if s.get("name") == "ray-llmbaseextra-testdeps"
+        )
+        assert "3.11" in llm_step["array"]["python"]
+        assert "12.8.1-cudnn" in llm_step["array"]["cuda"]
+
+    def test_ml_gpu_keeps_all_cuda(self):
+        """ray-ml with byod_type 'gpu' (no specific CUDA) keeps all variants."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python={"3.10"},
+                needed_image_types={"ray-ml"},
+                cuda_needs={"ray-ml": None},
+            )
+        step_ids = [s.get("name") or s.get("key") for s in result["steps"]]
+        assert "ray-mlcudabaseextra-testdeps" in step_ids
+        assert "anyscalemlbuild" in step_ids
+        ml_step = next(
+            s
+            for s in result["steps"]
+            if s.get("name") == "ray-mlcudabaseextra-testdeps"
+        )
+        assert ml_step["array"]["cuda"] == ["12.1.1-cudnn8"]
+
+    def test_full_build_keeps_everything(self):
+        """When all image types and python versions are needed."""
+        all_python = {"3.10", "3.11", "3.12", "3.13"}
+        all_types = {"ray-cpu", "ray-cuda", "ray-ml", "ray-llm"}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python=all_python,
+                needed_image_types=all_types,
+                cuda_needs={
+                    "ray-cuda": None,
+                    "ray-llm": None,
+                    "ray-ml": None,
+                },
+            )
+        assert len(result["steps"]) == len(_SAMPLE_BUILD_YAML["steps"])
+
+    def test_empty_array_removes_step(self):
+        """If no python versions match, step is removed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                needed_python={"3.14"},
+                needed_image_types={"ray-cpu"},
+                cuda_needs={},
+            )
+        step_ids = [s.get("name") or s.get("key") for s in result["steps"]]
+        assert "raycpubaseextra-testdeps" not in step_ids
+        assert "anyscalecpubuild" not in step_ids
+
+
+# A minimal _images.rayci.yml for testing filter_by_image_type=False.
+_SAMPLE_IMAGES_YAML = {
+    "group": "images",
+    "steps": [
+        {
+            "name": "raycpubase",
+            "array": {"python": ["3.10", "3.11", "3.12", "3.13"]},
+        },
+        {
+            "name": "raycpubaseextra",
+            "env": {"IMAGE_TYPE": "ray"},
+            "array": {"python": ["3.10", "3.11", "3.12", "3.13"]},
+        },
+        {
+            "name": "raycudabase",
+            "array": {
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+                "cuda": [
+                    "12.3.2-cudnn9",
+                    "12.8.1-cudnn",
+                    "13.0.0-cudnn",
+                ],
+            },
+        },
+        {
+            "name": "raycudabaseextra",
+            "env": {"IMAGE_TYPE": "ray"},
+            "array": {
+                "python": ["3.10", "3.11", "3.12", "3.13"],
+                "cuda": [
+                    "12.3.2-cudnn9",
+                    "12.8.1-cudnn",
+                    "13.0.0-cudnn",
+                ],
+            },
+        },
+        {
+            "name": "ray-llmbase",
+            "array": {
+                "python": ["3.12"],
+                "cuda": ["13.0.0-cudnn"],
+                "adjustments": [
+                    {"with": {"python": "3.11", "cuda": "12.8.1-cudnn"}},
+                ],
+            },
+        },
+        {
+            "name": "ray-mlcudabase",
+            "array": {"python": ["3.10"], "cuda": ["12.1.1-cudnn8"]},
+        },
+    ],
+}
+
+# A minimal _wheel-build.rayci.yml.
+_SAMPLE_WHEEL_YAML = {
+    "group": "wheel build",
+    "steps": [
+        {
+            "name": "ray-core-build",
+            "array": {"python": ["3.10", "3.11", "3.12", "3.13", "3.14"]},
+        },
+        {"name": "ray-dashboard-build"},
+        {
+            "name": "ray-wheel-build",
+            "array": {"python": ["3.10", "3.11", "3.12", "3.13", "3.14"]},
+        },
+    ],
+}
+
+
+class TestFilterSharedYaml:
+    """Tests for filter_by_image_type=False (shared _images / _wheel-build)."""
+
+    def _write_and_filter(self, tmpdir, sample, needed_python, cuda_needs):
+        path = os.path.join(tmpdir, "test.rayci.yml")
+        with open(path, "w") as f:
+            yaml.dump(sample, f, default_flow_style=False, sort_keys=False)
+        filter_release_build_yaml(
+            path,
+            needed_python,
+            needed_image_types=set(),
+            cuda_needs=cuda_needs,
+            filter_by_image_type=False,
+        )
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def test_images_cpu_py310_only(self):
+        """CPU-only test: all CUDA steps removed, python trimmed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir, _SAMPLE_IMAGES_YAML, {"3.10"}, cuda_needs={}
+            )
+        step_names = [s["name"] for s in result["steps"]]
+        # CPU base images kept with python 3.10.
+        assert "raycpubase" in step_names
+        assert "raycpubaseextra" in step_names
+        cpu = next(s for s in result["steps"] if s["name"] == "raycpubase")
+        assert cpu["array"]["python"] == ["3.10"]
+        # All CUDA steps removed (cuda filtered to empty).
+        assert "raycudabase" not in step_names
+        assert "raycudabaseextra" not in step_names
+        assert "ray-llmbase" not in step_names
+        assert "ray-mlcudabase" not in step_names
+
+    def test_images_llm_cu130_py312(self):
+        """LLM test: CUDA filtered to cu130 only."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                _SAMPLE_IMAGES_YAML,
+                {"3.12"},
+                cuda_needs={"ray-llm": {"cu13.0.0-cudnn"}},
+            )
+        step_names = [s["name"] for s in result["steps"]]
+        assert "raycudabase" in step_names
+        cuda_base = next(s for s in result["steps"] if s["name"] == "raycudabase")
+        assert cuda_base["array"]["python"] == ["3.12"]
+        assert cuda_base["array"]["cuda"] == ["13.0.0-cudnn"]
+        # LLM base kept, adjustment (cu128/py311) removed.
+        assert "ray-llmbase" in step_names
+        llm = next(s for s in result["steps"] if s["name"] == "ray-llmbase")
+        assert llm["array"]["cuda"] == ["13.0.0-cudnn"]
+        assert "adjustments" not in llm["array"]
+
+    def test_images_ml_gpu_keeps_all_cuda(self):
+        """ray-ml 'gpu' → cuda_needs has None → all CUDA kept."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir,
+                _SAMPLE_IMAGES_YAML,
+                {"3.10"},
+                cuda_needs={"ray-ml": None},
+            )
+        step_names = [s["name"] for s in result["steps"]]
+        assert "raycudabase" in step_names
+        cuda_base = next(s for s in result["steps"] if s["name"] == "raycudabase")
+        assert cuda_base["array"]["python"] == ["3.10"]
+        # All 3 CUDA variants kept.
+        assert len(cuda_base["array"]["cuda"]) == 3
+
+    def test_wheel_build_py310_only(self):
+        """Wheel builds trimmed to needed python; non-array steps kept."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = self._write_and_filter(
+                tmpdir, _SAMPLE_WHEEL_YAML, {"3.10"}, cuda_needs={}
+            )
+        step_names = [s["name"] for s in result["steps"]]
+        assert "ray-core-build" in step_names
+        assert "ray-dashboard-build" in step_names
+        assert "ray-wheel-build" in step_names
+        core = next(s for s in result["steps"] if s["name"] == "ray-core-build")
+        assert core["array"]["python"] == ["3.10"]
+        wheel = next(s for s in result["steps"] if s["name"] == "ray-wheel-build")
+        assert wheel["array"]["python"] == ["3.10"]
 
 
 if __name__ == "__main__":
