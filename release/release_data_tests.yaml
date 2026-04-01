@@ -481,14 +481,19 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
-- name: actor_scaling
+- name: worker_scaling_{{num_workers}}_{{worker_type}}
   python: "3.10"
   cluster:
     cluster_compute: fixed_size_1000_cpu_compute.yaml
 
+  matrix:
+    setup:
+      num_workers: [1000]
+      worker_type: [actors, tasks]
+
   run:
-    timeout: 1800
-    script: python actor_scaling_benchmark.py --num-actors 1000 --num-rows 1000000
+    timeout: 1200
+    script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
 
 
 ########################
