@@ -264,6 +264,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         def _tracking_iter():
             for batch in arrow_batches:
                 self._shuffle_tracker.observe(batch)
+                # Combine chunked arrays so the collate function receives
+                # single-chunk columns (matching iter_torch_batches behavior).
+                batch = batch.combine_chunks()
                 yield collate_fn(batch)
 
         return _tracking_iter()
