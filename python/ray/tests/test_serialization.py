@@ -796,5 +796,6 @@ def test_serialization_arrow_table(ray_start_regular, row_nums):
                         f"Buffer not 64-byte aligned: address=0x{buf.address:x}"
                     )
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
