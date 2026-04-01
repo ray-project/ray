@@ -15,7 +15,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.progress.base_progress import NoopSubProgressBar
+from ray.data._internal.progress.base_progress import ProgressMetrics
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import (
@@ -72,8 +72,8 @@ def test_input_data_buffer(ray_start_regular_shared):
 
 def test_all_to_all_operator():
     def dummy_all_transform(bundles: List[RefBundle], ctx):
-        assert len(ctx.sub_progress_bar_dict) == 2
-        assert list(ctx.sub_progress_bar_dict.keys()) == ["Test1", "Test2"]
+        assert len(ctx.sub_progress_metrics) == 2
+        assert list(ctx.sub_progress_metrics.keys()) == ["Test1", "Test2"]
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
 
     input_op = InputDataBuffer(
@@ -89,13 +89,9 @@ def test_all_to_all_operator():
         name="TestAll",
     )
 
-    # Initialize progress bar.
-    for name in op.get_sub_progress_bar_names():
-        pg = NoopSubProgressBar(
-            name=name,
-            max_name_length=100,
-        )
-        op.set_sub_progress_bar(name, pg)
+    metrics = op.get_sub_progress_metrics()
+    assert list(metrics.keys()) == ["Test1", "Test2"]
+    assert all(isinstance(metric, ProgressMetrics) for metric in metrics.values())
 
     # Feed data.
     op.start(ExecutionOptions())

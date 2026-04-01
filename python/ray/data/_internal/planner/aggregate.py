@@ -67,7 +67,7 @@ def generate_aggregate_fn(
         else:
             # Use same number of output partitions.
             num_outputs = num_mappers
-            sample_bar = ctx.sub_progress_bar_dict[
+            sample_bar = ctx.sub_progress_updaters[
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
             ]
             # Sample boundaries for aggregate key.

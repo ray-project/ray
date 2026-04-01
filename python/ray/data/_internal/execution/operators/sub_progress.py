@@ -1,31 +1,35 @@
 import typing
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseProgressBar
+    from ray.data._internal.progress.base_progress import (
+        ProgressMetrics,
+        SubProgressUpdater,
+    )
 
 
-class SubProgressBarMixin(ABC):
-    """Abstract class for operators that support sub-progress bars"""
+class SubProgressMixin(ABC):
+    """Abstract class for operators that support driver-side sub-progress tracking."""
 
     @abstractmethod
+    def get_sub_progress_metrics(self) -> Optional[Dict[str, "ProgressMetrics"]]:
+        """
+        Returns sub-progress metrics keyed by sub-progress name.
+        """
+        ...
+
+    def get_sub_progress_updaters(self) -> Optional[Dict[str, "SubProgressUpdater"]]:
+        """Returns driver-side helpers for mutating sub-progress metrics."""
+        return None
+
+    # Backward-compatible wrappers during the transition away from "bar" naming.
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        """
-        Returns list of sub-progress bar names
+        metrics = self.get_sub_progress_metrics()
+        return list(metrics.keys()) if metrics is not None else None
 
-        This is used to create the sub-progress bars in the progress manager.
-        Note that sub-progress bars will be created in the order returned by
-        this method.
-        """
-        ...
+    def get_sub_progress_names(self) -> Optional[List[str]]:
+        return self.get_sub_progress_bar_names()
 
-    @abstractmethod
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar"):
-        """
-        Sets sub-progress bars
 
-        name: name of sub-progress bar
-        pg: a progress bar. Can be sub-progress bars for rich, tqdm, etc.
-        """
-        ...
+SubProgressBarMixin = SubProgressMixin

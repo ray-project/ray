@@ -7,14 +7,13 @@ from typing import Callable, Dict, List, Optional
 
 from ray._common.utils import env_integer
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.execution.streaming_executor_state import (
     format_op_state_summary,
 )
 from ray.data._internal.progress.base_progress import (
     BaseExecutionProgressManager,
     BaseProgressBar,
-    NoopSubProgressBar,
 )
 from ray.data._internal.progress.utils import truncate_operator_name
 
@@ -126,7 +125,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
                 continue
             total = op.num_output_rows_total() or 1
 
-            contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
+            contains_sub_progress_bars = isinstance(op, SubProgressMixin)
             sub_progress_bar_enabled = show_op_progress and (
                 contains_sub_progress_bars or verbose_progress
             )
@@ -142,20 +141,20 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             if not contains_sub_progress_bars:
                 continue
 
-            sub_pg_names = op.get_sub_progress_bar_names()
-            if sub_pg_names is None:
+            sub_progress_metrics = op.get_sub_progress_metrics()
+            sub_progress_updaters = op.get_sub_progress_updaters()
+            if sub_progress_metrics is None or sub_progress_updaters is None:
                 continue
-            for name in sub_pg_names:
+            for name, metrics in sub_progress_metrics.items():
                 if sub_progress_bar_enabled:
-                    pg = LoggingSubProgressBar(
+                    display_pg = LoggingSubProgressBar(
                         name=name, total=total, max_name_length=self.MAX_NAME_LENGTH
                     )
-                    self._sub_progress_metrics[state].append(pg)
                 else:
-                    pg = NoopSubProgressBar(
-                        name=name, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                op.set_sub_progress_bar(name, pg)
+                    display_pg = None
+                if display_pg is not None:
+                    self._sub_progress_metrics[state].append(display_pg)
+                sub_progress_updaters[name].set_display_bar(display_pg)
 
     # Management
     def start(self):

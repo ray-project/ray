@@ -2,7 +2,6 @@ import functools
 import logging
 import pickle
 import time
-import typing
 from typing import (
     Dict,
     Iterator,
@@ -31,14 +30,14 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle import (
     _get_total_cluster_resources,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
+from ray.data._internal.progress.base_progress import (
+    ProgressMetrics,
+    SubProgressUpdater,
+)
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
 from ray.data.context import DataContext
-
-if typing.TYPE_CHECKING:
-
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +397,7 @@ def _derive_num_gpu_ranks(data_context: DataContext) -> int:
 # ---------------------------------------------------------------------------
 
 
-class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
+class GPUShuffleOperator(PhysicalOperator, SubProgressMixin):
     """GPU-native shuffle operator using RAPIDS MPF + UCXX.
 
     Unlike the CPU ``HashShuffleOperator``, this operator:
@@ -469,9 +468,22 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._shuffled_blocks_stats: List[BlockStats] = []
         self._output_blocks_stats: List[BlockStats] = []
 
-        # Progress bars (populated by SubProgressBarMixin callbacks)
-        self._shuffle_bar = None
-        self._reduce_bar = None
+        self._sub_progress_metrics = {
+            "GPU Shuffle": ProgressMetrics(name="GPU Shuffle", total=None, completed=0),
+            "GPU Reduce": ProgressMetrics(name="GPU Reduce", total=None, completed=0),
+        }
+        self._sub_progress_updaters = {
+            "GPU Shuffle": SubProgressUpdater(
+                self._sub_progress_metrics,
+                name="GPU Shuffle",
+                max_name_length=100,
+            ),
+            "GPU Reduce": SubProgressUpdater(
+                self._sub_progress_metrics,
+                name="GPU Reduce",
+                max_name_length=100,
+            ),
+        }
 
         # Metrics
         self._shuffle_metrics = OpRuntimeMetrics(self)
@@ -511,8 +523,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 task_id=task.get_task_id(),
             )
 
-            if self._shuffle_bar is not None:
-                self._shuffle_bar.update(total=self._next_block_idx)
+            self._sub_progress_updaters["GPU Shuffle"].update(
+                total=self._next_block_idx
+            )
 
     def _is_inserting_done(self) -> bool:
         return self._inputs_complete and len(self._insert_tasks) == 0
@@ -589,7 +602,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._estimated_output_num_rows = num_rows
 
             # Update Finalize progress bar
-            self._reduce_bar.update(
+            self._sub_progress_updaters["GPU Reduce"].update(
                 increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
@@ -693,17 +706,14 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
     # ------------------------------------------------------------------
-    # SubProgressBarMixin
+    # SubProgressMixin
     # ------------------------------------------------------------------
 
-    def get_sub_progress_bar_names(self) -> List[str]:
-        return ["GPU Shuffle", "GPU Reduce"]
+    def get_sub_progress_metrics(self) -> Dict[str, ProgressMetrics]:
+        return self._sub_progress_metrics
 
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "GPU Shuffle":
-            self._shuffle_bar = pg
-        elif name == "GPU Reduce":
-            self._reduce_bar = pg
+    def get_sub_progress_updaters(self):
+        return self._sub_progress_updaters
 
     # ------------------------------------------------------------------
     # Stats

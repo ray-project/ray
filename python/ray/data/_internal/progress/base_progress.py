@@ -2,10 +2,11 @@ import logging
 import threading
 import typing
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 import ray
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
+from ray.data._internal.execution.operators.sub_progress import SubProgressMixin
 from ray.data._internal.progress.utils import truncate_operator_name
 
 if typing.TYPE_CHECKING:
@@ -127,8 +128,8 @@ class BaseExecutionProgressManager(ABC):
         verbose_progress: bool,
     ):
         """Initialize the progress manager, create all necessary progress bars
-        and sub-progress bars for the given topology. Sub-progress bars are
-        created for operators that implement the SubProgressBarMixin.
+        and sub-progress trackers for the given topology. Concrete progress bars
+        are created only for operators that implement the SubProgressMixin.
 
         Args:
             dataset_id: id of Dataset
@@ -192,27 +193,65 @@ class BaseExecutionProgressManager(ABC):
         ...
 
 
-class NoopSubProgressBar(BaseProgressBar):
-    """Sub-Progress Bar for Noop (Disabled) Progress Manager"""
+@dataclass(frozen=True)
+class ProgressMetrics:
+    name: str
+    total: Optional[int]
+    completed: int
 
-    def __init__(self, name: str, max_name_length: int):
+
+class SubProgressUpdater(BaseProgressBar):
+    """Driver-side helper that updates immutable sub-progress metrics."""
+
+    def __init__(
+        self,
+        metrics_by_name: Dict[str, ProgressMetrics],
+        name: str,
+        max_name_length: int,
+        display_bar: Optional[BaseProgressBar] = None,
+    ):
+        self._metrics_by_name = metrics_by_name
+        self._name = name
         self._max_name_length = max_name_length
+        self._display_bar = display_bar
         self._desc = truncate_operator_name(name, self._max_name_length)
+
+    def set_display_bar(self, display_bar: Optional[BaseProgressBar]) -> None:
+        self._display_bar = display_bar
+        metrics = self._metrics_by_name[self._name]
+        if self._display_bar is not None:
+            self._display_bar.set_description(self._desc)
+            self._display_bar.update(total=metrics.total)
+            if metrics.completed:
+                self._display_bar.update(metrics.completed)
 
     def set_description(self, name: str) -> None:
         self._desc = truncate_operator_name(name, self._max_name_length)
+        if self._display_bar is not None:
+            self._display_bar.set_description(self._desc)
 
     def get_description(self) -> str:
         return self._desc
 
     def update(self, increment: int = 0, total: Optional[int] = None) -> None:
-        pass
+        metrics = self._metrics_by_name[self._name]
+        new_total = total if total is not None else metrics.total
+        new_completed = metrics.completed + increment
+        self._metrics_by_name[self._name] = ProgressMetrics(
+            name=metrics.name,
+            total=new_total,
+            completed=new_completed,
+        )
+        if self._display_bar is not None:
+            self._display_bar.update(increment, total)
 
     def refresh(self):
-        pass
+        if self._display_bar is not None:
+            self._display_bar.refresh()
 
     def close(self):
-        pass
+        if self._display_bar is not None:
+            self._display_bar.close()
 
 
 class NoopExecutionProgressManager(BaseExecutionProgressManager):
@@ -227,15 +266,13 @@ class NoopExecutionProgressManager(BaseExecutionProgressManager):
     ):
         for state in topology.values():
             op = state.op
-            if not isinstance(op, SubProgressBarMixin):
+            if not isinstance(op, SubProgressMixin):
                 continue
-            sub_pg_names = op.get_sub_progress_bar_names()
-            if sub_pg_names is not None:
-                for name in sub_pg_names:
-                    pg = NoopSubProgressBar(
-                        name=name, max_name_length=self.MAX_NAME_LENGTH
-                    )
-                    op.set_sub_progress_bar(name, pg)
+            updaters = op.get_sub_progress_updaters()
+            if updaters is None:
+                continue
+            for updater in updaters.values():
+                updater.set_display_bar(None)
 
     def start(self) -> None:
         pass

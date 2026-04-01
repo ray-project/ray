@@ -82,10 +82,10 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             split_block_refs.append(b)
             split_metadata.extend(m)
 
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        sub_progress_updaters = ctx.sub_progress_updaters
         bar_name = ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME
-        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        reduce_bar = sub_progress_bar_dict[bar_name]
+        assert bar_name in sub_progress_updaters, sub_progress_updaters
+        reduce_bar = sub_progress_updaters[bar_name]
 
         reduce_task = cached_remote_fn(self._exchange_spec.reduce)
         reduce_return = [
