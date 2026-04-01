@@ -18,23 +18,24 @@ class PlacementGroupCleaner:
     fate-shared with the Train controller.
     """
 
-    def __init__(self, check_interval_s: float = 1.0):
+    def __init__(
+        self,
+        controller_actor_id: str,
+        check_interval_s: float = 1.0,
+    ):
+        self._controller_actor_id = controller_actor_id
         self._check_interval_s = check_interval_s
         self._pg_queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
-        self._controller_actor_id: Optional[str] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._get_actor_timeout_s = GET_ACTOR_TIMEOUT_S
         self._exiting: bool = False
 
-    def register_controller_and_placement_group(
-        self, controller_actor_id: str, placement_group: PlacementGroup
-    ):
-        self._controller_actor_id = controller_actor_id
+    def register_placement_group(self, placement_group: PlacementGroup):
         logger.debug(
-            "PlacementGroupCleaner registered controller %s with placement group %s",
-            controller_actor_id,
+            "PlacementGroupCleaner registered placement group %s for controller %s",
             placement_group.id,
+            self._controller_actor_id,
         )
         # Send placement group update to the monitor thread via queue
         self._pg_queue.put(placement_group)
@@ -62,6 +63,7 @@ class PlacementGroupCleaner:
         Uses a queue to receive placement group updates.
         """
         curr_placement_group: Optional[PlacementGroup] = None
+
         while not self._stop_event.is_set():
             # Check for new placement group updates from queue
             try:
@@ -70,10 +72,6 @@ class PlacementGroupCleaner:
                 logger.debug(f"Updated current placement group to {pg.id}")
             except queue.Empty:
                 pass  # continue to monitor current placement group
-
-            # Skip monitoring if no placement group registered
-            if not curr_placement_group:
-                continue
 
             # Check if controller is still alive
             try:
@@ -97,8 +95,12 @@ class PlacementGroupCleaner:
         self._exit()
         self._monitor_thread = None
 
-    def _cleanup_placement_group(self, placement_group: PlacementGroup):
+    def _cleanup_placement_group(self, placement_group: Optional[PlacementGroup]):
         """Clean up the current placement group if it hasn't been removed."""
+        if placement_group is None:
+            logger.debug("No placement group registered; skipping cleanup.")
+            return
+
         if self._is_placement_group_removed(placement_group):
             logger.debug(
                 "Controller actor died but placement group already removed; "
