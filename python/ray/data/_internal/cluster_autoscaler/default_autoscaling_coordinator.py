@@ -15,6 +15,7 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray.autoscaler._private.constants import env_integer
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,12 @@ def _head_node_placement_options() -> Dict[str, Any]:
 
     These actors are cluster-scoped coordinators. Keeping them on the head node avoids
     blocking worker-node scale-down if a job driver happens to run on a worker. Use
-    the default scheduling strategy to escape any parent placement group.
+    a placement-group scheduling strategy with `placement_group=None` to ensure the
+    actor is not captured by any parent placement group.
     """
     return {
         "resources": {HEAD_NODE_RESOURCE_LABEL: HEAD_NODE_RESOURCE_CONSTRAINT},
-        "scheduling_strategy": "DEFAULT",
+        "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=None),
     }
 
 

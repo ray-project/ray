@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from ray.data._internal.cluster_autoscaler import default_autoscaling_coordinator
 from ray.data._internal.execution import autoscaling_requester
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_head_node_placement_options():
@@ -13,7 +14,7 @@ def test_head_node_placement_options():
                 default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
             )
         },
-        "scheduling_strategy": "DEFAULT",
+        "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=None),
     }
 
 
