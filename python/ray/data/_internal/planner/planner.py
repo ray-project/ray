@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     import pyarrow.fs
 
 from ray import ObjectRef
-from ray.data._internal.execution.execution_callback import add_execution_callback
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
@@ -179,19 +179,25 @@ class Planner:
         self._supports_checkpointing = False
         self._plan_fns_for_checkpointing = {}
 
-    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
+    def plan(
+        self, logical_plan: LogicalPlan
+    ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
+
+        callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
+
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
         ):
             self._supports_checkpointing = True
-
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
+
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config, data_file_dir, data_file_fs
             )
-            add_execution_callback(checkpoint_callback, logical_plan.context)
+
+            callbacks.append(checkpoint_callback)
             load_checkpoint = checkpoint_callback.load_checkpoint
 
             # Dynamically set the plan functions for checkpointing because they
@@ -210,7 +216,7 @@ class Planner:
             logical_plan.dag, logical_plan.context
         )
         physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
-        return physical_plan
+        return physical_plan, callbacks
 
     def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
         if self._supports_checkpointing:
