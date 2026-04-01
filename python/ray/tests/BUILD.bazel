@@ -69,6 +69,7 @@ py_test_module_list(
         "test_reference_counting_standalone.py",
         "test_runtime_env_agent.py",
         "test_runtime_env_agent_auth.py",
+        "test_tpu.py",
         "test_util_helpers.py",
     ],
     tags = [
@@ -565,7 +566,6 @@ py_test_module_list(
         "test_system_metrics.py",
         "test_task_metrics_reconstruction.py",
         "test_top_level_api.py",
-        "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
         "test_wait.py",
