@@ -50,7 +50,6 @@ def test_actor_pool_scaling():
         num_active_actors=MagicMock(return_value=10),
         num_running_actors=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
-        num_free_task_slots=MagicMock(return_value=5),
         num_tasks_in_flight=MagicMock(return_value=15),
         per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
         max_tasks_in_flight_per_actor=MagicMock(return_value=2),
@@ -70,6 +69,7 @@ def test_actor_pool_scaling():
         input_dependencies=[MagicMock()],
         internal_input_queue_num_blocks=MagicMock(return_value=1),
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
     )
     op_state = OpState(
         op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
@@ -105,12 +105,11 @@ def test_actor_pool_scaling():
 
     # Should scale up immediately when the actor pool has no running actors.
     with patch(actor_pool, "num_running_actors", 0):
-        with patch(actor_pool, "num_free_task_slots", 0):
-            with patch(actor_pool, "get_pool_util", float("inf")):
-                assert_autoscaling_action(
-                    delta=1,
-                    expected_reason="no running actors, scale up immediately",
-                )
+        with patch(actor_pool, "get_pool_util", float("inf")):
+            assert_autoscaling_action(
+                delta=1,
+                expected_reason="no running actors, scale up immediately",
+            )
 
     # Should be no-op since the util is below the threshold.
     with patch(actor_pool, "num_tasks_in_flight", 9):
@@ -176,10 +175,11 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # Should be no-op since the op has enough free task slots to consume the existing inputs (which is 0).
+            # With no enqueued inputs but inputs not being complete still,
+            # the autoscaler should still scale up based on utilization
             assert_autoscaling_action(
-                delta=0,
-                expected_reason="enough free task slots to consume the existing inputs",
+                delta=5,
+                expected_reason="utilization of 1.5 >= 1.0",
             )
 
     # Should be no-op since the op doesn't have enough resources.
@@ -245,7 +245,6 @@ def autoscaler_max_upscaling_delta_setup():
         current_size=MagicMock(return_value=10),
         get_current_size=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
-        num_free_task_slots=MagicMock(return_value=0),
         num_tasks_in_flight=MagicMock(return_value=40),
         max_tasks_in_flight_per_actor=MagicMock(return_value=4),
         get_pool_util=MagicMock(return_value=2.0),
