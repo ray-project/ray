@@ -677,7 +677,7 @@ if RUN_RESUME_DEMO:
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         train_loop_config=resume_train_loop_config,
-        run_config=RunConfig(name=experiment_name, storage_path=storage_path),
+        run_config=run_config,
     )
     resume_result = resume_trainer.fit()
     print(f"Resumed metrics: {resume_result.metrics}")
