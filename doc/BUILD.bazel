@@ -238,6 +238,7 @@ py_test(
     name = "doc_code_direct_transport_nccl",
     size = "small",
     srcs = ["source/ray-core/doc_code/direct_transport_nccl.py"],
+    env = {"NCCL_DEBUG": "INFO"},
     main = "source/ray-core/doc_code/direct_transport_nccl.py",
     tags = [
         "exclusive",
