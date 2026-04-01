@@ -8,14 +8,13 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 def test_head_node_placement_options():
     options = default_autoscaling_coordinator._head_node_placement_options()
 
-    assert options == {
-        "resources": {
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-                default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-            )
-        },
-        "scheduling_strategy": PlacementGroupSchedulingStrategy(placement_group=None),
+    assert options["resources"] == {
+        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
+            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
+        )
     }
+    assert isinstance(options["scheduling_strategy"], PlacementGroupSchedulingStrategy)
+    assert options["scheduling_strategy"].placement_group is None
 
 
 def test_get_or_create_autoscaling_requester_actor_pins_to_head():
@@ -33,13 +32,20 @@ def test_get_or_create_autoscaling_requester_actor_pins_to_head():
             is actor_handle
         )
 
-    mock_options.assert_called_once_with(
-        name="AutoscalingRequester",
-        namespace="AutoscalingRequester",
-        get_if_exists=True,
-        lifetime="detached",
-        **default_autoscaling_coordinator._head_node_placement_options(),
-    )
+    _, kwargs = mock_options.call_args
+    assert kwargs == {
+        "name": "AutoscalingRequester",
+        "namespace": "AutoscalingRequester",
+        "get_if_exists": True,
+        "lifetime": "detached",
+        "resources": {
+            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
+                default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
+            )
+        },
+    }
+    assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
+    assert kwargs["scheduling_strategy"].placement_group is None
     options_builder.remote.assert_called_once_with()
 
 
@@ -67,13 +73,20 @@ def test_get_or_create_autoscaling_coordinator_pins_to_head():
     remote_decorator.assert_called_once_with(
         default_autoscaling_coordinator._AutoscalingCoordinatorActor
     )
-    actor_cls.options.assert_called_once_with(
-        name="AutoscalingCoordinator",
-        namespace="AutoscalingCoordinator",
-        get_if_exists=True,
-        lifetime="detached",
-        **default_autoscaling_coordinator._head_node_placement_options(),
-    )
+    _, kwargs = actor_cls.options.call_args
+    assert kwargs == {
+        "name": "AutoscalingCoordinator",
+        "namespace": "AutoscalingCoordinator",
+        "get_if_exists": True,
+        "lifetime": "detached",
+        "resources": {
+            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
+                default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
+            )
+        },
+    }
+    assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
+    assert kwargs["scheduling_strategy"].placement_group is None
     actor_cls.options.return_value.remote.assert_called_once_with()
 
 
