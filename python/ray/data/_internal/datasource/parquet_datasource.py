@@ -886,7 +886,9 @@ def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
     kwargs should do ``int(...)`` before calling). Values outside
     ``[1, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE]`` are clamped.
     """
-    coerced = min(max(batch_size, 1), _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
+    if batch_size <= 0:
+        raise ValueError(f"Batch size must be > 0, got {batch_size}")
+    coerced = min(batch_size, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE)
     if coerced != batch_size:
         logger.debug(
             "Clamping Parquet fragment read batch_size from %s to %s "

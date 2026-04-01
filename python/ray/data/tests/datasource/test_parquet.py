@@ -2677,7 +2677,8 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
 class TestParquetFragmentBatchSizeCoercion:
     """Regression: PyArrow ``Fragment.to_batches`` uses a C int for ``batch_size``.
 
-    ``_coerce_pyarrow_fragment_batch_size`` clamps to ``[1, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE]``.
+    ``_coerce_pyarrow_fragment_batch_size`` raises for non-positive values and clamps
+    values above ``_MAX_PYARROW_TO_BATCHES_BATCH_SIZE`` to that maximum.
     """
 
     @pytest.mark.parametrize(
@@ -2686,13 +2687,17 @@ class TestParquetFragmentBatchSizeCoercion:
             (2**31, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
             (10**12, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
             (_MAX_PYARROW_TO_BATCHES_BATCH_SIZE, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (0, 1),
-            (-5, 1),
+            (0, ValueError),
+            (-3, ValueError),
             (10_000, 10_000),
         ],
     )
     def test_coerce_pyarrow_fragment_batch_size(self, raw, expected):
-        assert _coerce_pyarrow_fragment_batch_size(raw) == expected
+        if expected is ValueError:
+            with pytest.raises(ValueError, match="Batch size must be > 0"):
+                _coerce_pyarrow_fragment_batch_size(raw)
+        else:
+            assert _coerce_pyarrow_fragment_batch_size(raw) == expected
 
     @pytest.mark.parametrize(
         "batch_size,to_batches_kwargs,expected_batch_size_passed_to_to_batches",
@@ -2701,16 +2706,16 @@ class TestParquetFragmentBatchSizeCoercion:
             (None, {"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
             (10_000, None, 10_000),
             (None, {"batch_size": np.int64(10_000)}, 10_000),
-            (0, None, 1),
-            (-3, None, 1),
-            (None, {"batch_size": 0}, 1),
-            (None, {"batch_size": -1}, 1),
+            (0, None, ValueError),
+            (-3, None, ValueError),
+            (None, {"batch_size": 0}, ValueError),
+            (None, {"batch_size": -1}, ValueError),
         ],
     )
     def test_read_batches_from_coerces_fragment_batch_size_to_c_int_range(
         self, batch_size, to_batches_kwargs, expected_batch_size_passed_to_to_batches
     ):
-        """``batch_size`` passed to ``fragment.to_batches`` is clamped to C int range."""
+        """``batch_size`` passed to ``fragment.to_batches`` is coerced for PyArrow's C int."""
 
         captured: dict = {}
 
@@ -2725,20 +2730,27 @@ class TestParquetFragmentBatchSizeCoercion:
         fragment.to_batches = fake_to_batches
 
         schema = pa.schema([("x", pa.int64())])
-        out = list(
-            _read_batches_from(
-                fragment,
-                schema=schema,
-                data_columns=["x"],
-                data_columns_rename_map=None,
-                partition_columns=None,
-                partitioning=Partitioning("hive"),
-                batch_size=batch_size,
-                to_batches_kwargs=to_batches_kwargs,
+
+        def run_read():
+            return list(
+                _read_batches_from(
+                    fragment,
+                    schema=schema,
+                    data_columns=["x"],
+                    data_columns_rename_map=None,
+                    partition_columns=None,
+                    partitioning=Partitioning("hive"),
+                    batch_size=batch_size,
+                    to_batches_kwargs=to_batches_kwargs,
+                )
             )
-        )
-        assert out == []
-        assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
+
+        if expected_batch_size_passed_to_to_batches is ValueError:
+            with pytest.raises(ValueError, match="Batch size must be > 0"):
+                run_read()
+        else:
+            assert run_read() == []
+            assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
 
 
 if __name__ == "__main__":
