@@ -458,9 +458,9 @@ Status SysFsCgroupDriver::AddProcessToCgroup(const std::string &cgroup,
 
 StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
     const std::string &cgroup_path, const std::string &constraint_name) {
-  std::string file_path =
-      cgroup_path + std::filesystem::path::preferred_separator + constraint_name;
-  int fd = open(file_path.c_str(), O_RDONLY);
+  std::filesystem::path constraint_file_path =
+      std::filesystem::path(cgroup_path) / constraint_name;
+  int fd = open(constraint_file_path.c_str(), O_RDONLY);
   if (fd == -1) {
     if (errno == ENOENT) {
       return Status::InvalidArgument(

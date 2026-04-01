@@ -41,8 +41,13 @@ class NoopCgroupManager : public CgroupManagerInterface {
 
   std::string GetUserCgroupPath() const override { return ""; }
 
-  StatusOr<std::string> GetConstraintValue(
-      const std::string &cgroup_path, const std::string &constraint_name) const override {
+  StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const override {
+    return std::string{};
+  }
+
+  StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const override {
     return std::string{};
   }
 };  // namespace ray

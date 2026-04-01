@@ -247,16 +247,30 @@ NodeManager::NodeManager(
   if (config.enable_resource_isolation) {
     std::string user_cgroup_path = cgroup_manager_->GetUserCgroupPath();
     StatusOr<std::string> result =
-        cgroup_manager_->GetConstraintValue(user_cgroup_path, "memory.max");
+        cgroup_manager_->GetUserCgroupConstraintValue("memory.max");
     RAY_CHECK(result.ok()) << absl::StrFormat(
         "Failed to get user cgroup memory limit when setting up memory monitor: %s",
         result.ToString());
-    int64_t user_memory_max_bytes = std::stoll(result.value());
-    memory_monitor_ = MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
-                                                   config.enable_resource_isolation,
-                                                   /*cgroup_path=*/user_cgroup_path,
-                                                   /*cgroup_upper_limit_bytes=*/
-                                                   user_memory_max_bytes);
+    std::string user_memory_max_bytes_str = result.value();
+    RAY_CHECK(!user_memory_max_bytes_str.empty()) << absl::StrFormat(
+        "Failed to get memory.max constraint value from user cgroup %s. "
+        "Please check that the cgroup path for resource isolation is correct.",
+        user_cgroup_path);
+
+    int64_t user_memory_max_bytes;
+    if (user_memory_max_bytes_str == "max") {
+      SystemMemorySnapshot system_memory_snapshot =
+          MemoryMonitorUtils::TakeSystemMemorySnapshot(user_cgroup_path);
+      user_memory_max_bytes = system_memory_snapshot.total_bytes;
+    } else {
+      user_memory_max_bytes = std::stoll(user_memory_max_bytes_str);
+    }
+    memory_monitor_ =
+        MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                     config.enable_resource_isolation,
+                                     /*cgroup_path=*/std::move(user_cgroup_path),
+                                     /*cgroup_upper_limit_bytes=*/
+                                     user_memory_max_bytes);
   } else {
     memory_monitor_ = MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                    config.enable_resource_isolation);

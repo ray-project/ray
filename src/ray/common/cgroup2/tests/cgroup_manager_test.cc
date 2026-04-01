@@ -508,12 +508,12 @@ TEST(CgroupManagerTest, GetConstraintValueReturnsValue) {
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
 
-  StatusOr<std::string> high_value = cgroup_manager->GetConstraintValue(
-      cgroup_manager->GetUserCgroupPath(), "memory.high");
+  StatusOr<std::string> high_value =
+      cgroup_manager->GetUserCgroupConstraintValue("memory.high");
   ASSERT_TRUE(high_value.ok()) << high_value.ToString();
   ASSERT_EQ(high_value.value(), std::to_string(user_memory_high_bytes));
-  StatusOr<std::string> max_value = cgroup_manager->GetConstraintValue(
-      cgroup_manager->GetUserCgroupPath(), "memory.max");
+  StatusOr<std::string> max_value =
+      cgroup_manager->GetUserCgroupConstraintValue("memory.max");
   ASSERT_TRUE(max_value.ok()) << max_value.ToString();
   ASSERT_EQ(max_value.value(), std::to_string(user_memory_max_bytes));
 }

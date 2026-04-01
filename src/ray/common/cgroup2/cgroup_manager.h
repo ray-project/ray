@@ -119,17 +119,28 @@ class CgroupManager : public CgroupManagerInterface {
   std::string GetUserCgroupPath() const override;
 
   /**
-    Gets the constraint value within a specific cgroup for a given constraint name.
+    Gets the constraint value within the system cgroup for a given constraint name.
 
-    @param cgroup_path the path to the cgroup to get the constraint value from.
     @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
 
     @return StatusOr with the constraint value as a string if successful.
     @return Status::IOError if the constraint cannot be fetched.
-    @return Status::InvalidArgument if the cgroup or constraint does not exist.
+    @return Status::InvalidArgument if the constraint does not exist.
   */
-  StatusOr<std::string> GetConstraintValue(
-      const std::string &cgroup_path, const std::string &constraint_name) const override;
+  StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const override;
+
+  /**
+    Gets the constraint value within the user cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const override;
 
   /**
     Performs cleanup in reverse order from the Initialize function:
