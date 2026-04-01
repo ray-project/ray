@@ -1182,7 +1182,9 @@ class TestIsActorTaskRunning:
                 def _check():
                     assert _is_actor_task_running(pid, "check_long_comm")
                     assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
-                    assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                    assert (
+                        psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+                    )
 
                 wait_for_condition(_check)
 
