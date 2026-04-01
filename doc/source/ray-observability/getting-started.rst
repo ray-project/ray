@@ -106,7 +106,7 @@ You can set it when submitting a Job via the :ref:`Ray Job API <jobs-quickstart>
 
     client = JobSubmissionClient("http://127.0.0.1:8265")
     client.submit_job(
-        entrypoint="python my_script.py",
+        entrypoint="echo hello",
         metadata={"job_name": "my-training-job"},
     )
 
