@@ -60,6 +60,7 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Count,
+    DistributedShuffle,
     Filter,
     FlatMap,
     InputData,
@@ -1887,6 +1888,55 @@ class Dataset:
         op = RandomShuffle(
             self._logical_plan.dag,
             seed_config=seed_config,
+            ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=SSR_API_GROUP)
+    def distributed_shuffle(
+        self,
+        *,
+        shuffle_window_size: int,
+        seed: Optional[int] = None,
+        **ray_remote_args,
+    ) -> "Dataset":
+        """Randomly shuffle rows using a streaming windowed approach.
+
+        Unlike :meth:`~Dataset.random_shuffle`, this method does not require
+        materializing the entire dataset. Instead, it buffers rows up to
+        ``shuffle_window_size`` and shuffles within each window. This is more
+        memory-efficient and works in a streaming fashion, but only provides
+        local randomization within each window rather than a global shuffle.
+
+        This is useful for training workloads where perfect global randomization
+        is not required, but you want better randomization than
+        :meth:`~Dataset.randomize_block_order` provides.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.distributed_shuffle(shuffle_window_size=20).take(5)  # doctest: +SKIP
+            [{'id': 11}, {'id': 3}, {'id': 17}, {'id': 8}, {'id': 19}]
+
+        Args:
+            shuffle_window_size: The number of rows to buffer before emitting a
+                shuffle task. Larger windows provide better randomization but
+                consume more memory.
+            seed: Optional random seed for reproducible shuffling. If None, the
+                shuffle is non-deterministic.
+            **ray_remote_args: Additional resource requirements to request from
+                Ray (e.g., num_gpus=1 for the map tasks). See
+                :func:`ray.remote` for details.
+
+        Returns:
+            The shuffled :class:`Dataset`.
+        """
+        plan = self._plan.copy()
+        op = DistributedShuffle(
+            self._logical_plan.dag,
+            shuffle_window_size=shuffle_window_size,
+            seed=seed,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)

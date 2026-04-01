@@ -29,6 +29,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
+from ray.data._internal.distributed_shuffle import DistributedShuffleRefBundler
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -43,6 +44,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators import (
     AbstractUDFMap,
+    DistributedShuffle,
     Filter,
     FlatMap,
     MapBatches,
@@ -209,6 +211,72 @@ def plan_streaming_repartition_op(
         ref_bundler=ref_bundler,
         ray_remote_args=op.ray_remote_args,
         ray_remote_args_fn=op.ray_remote_args_fn,
+    )
+
+    return operator
+
+
+def _distributed_shuffle_fn(
+    blocks: Iterable[Block], ctx: TaskContext
+) -> Iterable[Block]:
+    """Concatenate all input blocks and shuffle the rows randomly."""
+    import pyarrow as pa
+
+    seed = ctx.kwargs.get("seed", None)
+    task_idx = ctx.task_idx
+
+    tables = []
+    for block in blocks:
+        accessor = BlockAccessor.for_block(block)
+        tables.append(accessor.to_arrow())
+
+    if not tables:
+        return
+
+    combined = pa.concat_tables(tables)
+    if combined.num_rows == 0:
+        yield combined
+        return
+
+    # Derive a per-task seed so different tasks shuffle differently.
+    if seed is not None:
+        task_seed = seed + task_idx
+    else:
+        task_seed = None
+
+    indices = np.arange(combined.num_rows)
+    np.random.RandomState(task_seed).shuffle(indices)
+    shuffled = combined.take(indices)
+
+    yield shuffled
+
+
+def plan_distributed_shuffle_op(
+    op: DistributedShuffle,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+    compute = get_compute(op.compute)
+
+    transform_fn = BlockMapTransformFn(
+        _distributed_shuffle_fn,
+    )
+    map_transformer = MapTransformer([transform_fn])
+
+    ref_bundler = DistributedShuffleRefBundler(op.shuffle_window_size)
+
+    operator = MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ref_bundler=ref_bundler,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+        map_task_kwargs={"seed": op.seed},
     )
 
     return operator

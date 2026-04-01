@@ -29,6 +29,7 @@ from ray.data._internal.logical.operators import (
     AbstractFrom,
     AbstractUDFMap,
     Count,
+    DistributedShuffle,
     Download,
     Filter,
     InputData,
@@ -50,6 +51,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
+    plan_distributed_shuffle_op,
     plan_filter_op,
     plan_project_op,
     plan_streaming_repartition_op,
@@ -168,6 +170,7 @@ class Planner:
         Count: plan_count_op,
         Project: plan_project_op,
         StreamingRepartition: plan_streaming_repartition_op,
+        DistributedShuffle: plan_distributed_shuffle_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
         Download: plan_download_op,

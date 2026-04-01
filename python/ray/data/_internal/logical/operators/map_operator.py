@@ -18,6 +18,7 @@ from ray.data.preprocessor import Preprocessor
 __all__ = [
     "AbstractMap",
     "AbstractUDFMap",
+    "DistributedShuffle",
     "Filter",
     "FlatMap",
     "MapBatches",
@@ -526,6 +527,65 @@ class StreamingRepartition(AbstractMap):
             self,
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
+        )
+        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class DistributedShuffle(AbstractMap):
+    """Logical operator for distributed local shuffle operation.
+
+    This operator buffers incoming blocks until the total number of rows reaches
+    ``shuffle_window_size``, then emits the buffered blocks to a map task that
+    shuffles the rows randomly within that window. This provides a streaming shuffle
+    that doesn't require materializing the entire dataset, at the cost of only
+    shuffling within a window rather than globally.
+
+    Args:
+        input_op: The operator preceding this operator in the plan DAG.
+        shuffle_window_size: The number of rows to buffer before emitting a shuffle
+            task. Larger windows provide better randomization but consume more memory.
+        seed: Optional random seed for reproducible shuffling.
+    """
+
+    input_op: InitVar[LogicalOperator]
+    shuffle_window_size: int
+    seed: Optional[int] = None
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self, input_op: LogicalOperator):
+        assert isinstance(input_op, LogicalOperator), input_op
+        if self.shuffle_window_size <= 0:
+            raise ValueError(
+                "shuffle_window_size must be positive for distributed shuffle, "
+                f"got {self.shuffle_window_size}"
+            )
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "_name",
+            f"DistributedShuffle[window={self.shuffle_window_size}]",
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
