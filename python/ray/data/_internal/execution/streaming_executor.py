@@ -150,7 +150,10 @@ class StreamingExecutor(Executor, threading.Thread):
         """
 
         if callbacks is not None:
-            self._callbacks.extend(callbacks)
+            self._callbacks = callbacks
+        else:
+            self._callbacks = []
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
