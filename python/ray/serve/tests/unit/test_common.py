@@ -5,14 +5,29 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
+    DeploymentStatusInternalTrigger,
     DeploymentStatusTrigger,
     ReplicaID,
     RunningReplicaInfo,
 )
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.utils import get_deployment_actor_name, get_random_string
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
+
+
+def test_get_deployment_actor_name():
+    """Test deterministic actor name for deployment-scoped actors."""
+    dep_id = DeploymentID(name="MyDeployment", app_name="my_app")
+    assert get_deployment_actor_name(dep_id, "prefix_tree", "v1") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}my_app::MyDeployment::v1::prefix_tree"
+    )
+
+    dep_id_default_app = DeploymentID(name="Other")  # app_name="default"
+    assert get_deployment_actor_name(dep_id_default_app, "x", "abc") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}default::Other::abc::x"
+    )
 
 
 def test_replica_id_formatting():
@@ -107,6 +122,33 @@ class TestDeploymentStatusInfo:
         reconstructed_info = DeploymentStatusInfo.from_proto(deserialized_proto)
 
         assert deployment_status_info == reconstructed_info
+
+    def test_handle_transition_deployment_actor_failed_when_already_deploy_failed(
+        self,
+    ):
+        """DEPLOYMENT_ACTOR_FAILED must be handled in DEPLOY_FAILED block.
+
+        When status is already DEPLOY_FAILED, repeated ticks call handle_transition
+        with DEPLOYMENT_ACTOR_FAILED. Without handling, the trigger falls through
+        and returns self (old message). With handling, returns updated copy.
+        """
+        info = DeploymentStatusInfo(
+            name="test",
+            status=DeploymentStatus.DEPLOY_FAILED,
+            status_trigger=DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message="original error message",
+        )
+        new_message = (
+            "The deployment failed to start deployment actors 2 times in a row."
+        )
+        result = info.handle_transition(
+            trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+            message=new_message,
+        )
+        assert result is not None
+        assert result.status == DeploymentStatus.DEPLOY_FAILED
+        assert result.status_trigger == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        assert result.message == new_message
 
 
 def test_running_replica_info():

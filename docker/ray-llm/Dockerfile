@@ -7,7 +7,7 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.16.0"
+ARG VLLM_SCRIPTS_REF="v0.18.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -20,13 +20,23 @@ if [[ "${PYTHON_CODE}" == "py311" ]]; then
     CUDA_CODE=cu128
     # Use nvshmem 3.3.20 which was compiled with CUDA 12.8 to be compatible with Ray LLM image built with CUDA 12.8
     NVSHMEM_VER=3.3.20
+elif [[ "${PYTHON_CODE}" == "py312" ]]; then
+    CUDA_CODE=cu130
+    # Use nvshmem 3.3.24 which is the default for vLLM and compatible with CUDA 13
+    # https://github.com/vllm-project/vllm/blob/64ac1395e8d52e3e38910a62c7eb8524126730d8/tools/ep_kernels/install_python_libraries.sh#L14
+    NVSHMEM_VER=3.3.24
 else
-    echo "ray-llm currently supports Python 3.11 only (this image is ${PYTHON_CODE})."
+    echo "ray-llm supports Python 3.11 and 3.12 only (this image is ${PYTHON_CODE})."
     exit 1
 fi
 
+# Hash verification is disabled because uv pip compile generates hashes from
+# PyPI, but unsafe-best-match may download from the CUDA index which serves
+# different builds of some packages (e.g. triton). The lock file still pins
+# exact versions, so integrity is maintained through version pinning.
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
+    --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
@@ -55,3 +65,7 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
+
+# vLLM 0.17.0 eagerly imports xgrammar -> ICU 78 -> CXXABI_1.3.15.
+# System libstdc++ only has 1.3.13; prepend conda's newer copy.
+ENV LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}

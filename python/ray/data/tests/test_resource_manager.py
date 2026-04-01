@@ -1,5 +1,6 @@
 import math
 import time
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -35,7 +36,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -102,6 +103,23 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
     return op
 
 
+def _resource_manager_for_limits_only_test(
+    options: ExecutionOptions,
+    get_total_resources,
+):
+    """``ResourceManager`` requires a valid single-sink topology; these tests only
+    call ``get_global_limits()`` and never iterate real operators."""
+    sink = MagicMock(spec=PhysicalOperator)
+    sink.output_dependencies = []
+    topology = {sink: MagicMock()}
+    return ResourceManager(
+        topology,
+        options,
+        get_total_resources,
+        DataContext.get_current(),
+    )
+
+
 class TestResourceManager:
     """Unit tests for ResourceManager."""
 
@@ -120,8 +138,8 @@ class TestResourceManager:
         # the cluster resources for CPU/GPU, and
         # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
         options = ExecutionOptions()
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"],
@@ -135,8 +153,8 @@ class TestResourceManager:
         options.resource_limits = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=1,
@@ -151,8 +169,8 @@ class TestResourceManager:
         options.exclude_resources = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(
-            MagicMock(), options, get_total_resources, DataContext.get_current()
+        resource_manager = _resource_manager_for_limits_only_test(
+            options, get_total_resources
         )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"] - 1,
@@ -178,11 +196,9 @@ class TestResourceManager:
             "GLOBAL_LIMITS_UPDATE_INTERVAL_S",
             cache_interval_s,
         ):
-            resource_manager = ResourceManager(
-                MagicMock(),
+            resource_manager = _resource_manager_for_limits_only_test(
                 ExecutionOptions(),
                 get_total_resources,
-                DataContext.get_current(),
             )
             expected_resource = ExecutionResources(4, 1, 0)
             # The first call should call ray.cluster_resources().
@@ -237,7 +253,6 @@ class TestResourceManager:
         }
 
         for op in [o1, o2, o3]:
-            op.update_resource_usage = MagicMock()
             op.current_logical_usage = MagicMock(
                 return_value=ExecutionResources(cpu=mock_cpu[op], gpu=0, memory=0)
             )
@@ -256,12 +271,16 @@ class TestResourceManager:
                 return_value=mock_internal_inqueue[op],
             )
             ref_bundle = MagicMock(
-                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
+                size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op]),
+                output_split_idx=None,
             )
             topo[op].add_output(ref_bundle)
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
@@ -306,7 +325,10 @@ class TestResourceManager:
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
-        input.size_bytes = MagicMock(return_value=1)
+        # Set block metadata size_bytes to 1 (rather than mocking the method on the
+        # instance, which doesn't survive dataclasses.replace in OpBufferQueue.pop).
+        block_ref, block_meta = input.blocks[0]
+        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
@@ -343,16 +365,11 @@ class TestResourceManager:
         o2.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
-        # No sample available yet, uses fallback: target_max_block_size * factor * buffer
-        ctx = ray.data.DataContext.get_current()
-        expected_pending_output = (
-            ctx.target_max_block_size
-            * MAX_SAFE_BLOCK_SIZE_FACTOR
-            * ctx._max_num_blocks_in_streaming_gen_buffer
-        )
-        assert o2.metrics.obj_store_mem_pending_task_outputs == expected_pending_output
+        # No sample available yet, returns None
+        assert o2.metrics.obj_store_mem_pending_task_outputs is None
         op2_usage = resource_manager.get_op_usage(o2).object_store_memory
-        assert op2_usage == expected_pending_output
+        # When pending task outputs is None, it's treated as 0
+        assert op2_usage == 0
         assert resource_manager.get_op_usage(o3).object_store_memory == 0
 
         # When the task finishes, we move the data from the streaming generator to the
@@ -378,7 +395,10 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].output_queue.pop(), input_index=0)
+        # NOTE: `pop()` returns a copy of the bundle (via `dataclasses.replace`), so we
+        # must use the returned reference for subsequent o3 metric calls.
+        o3_input = topo[o2].output_queue.pop()
+        o3.metrics.on_input_queued(o3_input, input_index=0)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -386,18 +406,19 @@ class TestResourceManager:
 
         # Task inputs count toward the previous operator's object store memory
         # usage. During no-sample phase, pending task outputs uses fallback estimate.
-        o3.metrics.on_input_dequeued(input, input_index=0)
-        o3.metrics.on_task_submitted(0, input)
+        o3.metrics.on_input_dequeued(o3_input, input_index=0)
+        o3.metrics.on_task_submitted(0, o3_input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
-        # No sample available yet, uses fallback estimate
-        assert o3.metrics.obj_store_mem_pending_task_outputs == expected_pending_output
+        # No sample available yet, returns None
+        assert o3.metrics.obj_store_mem_pending_task_outputs is None
         op3_usage = resource_manager.get_op_usage(o3).object_store_memory
-        assert op3_usage == expected_pending_output
+        # When pending task outputs is None, it's treated as 0
+        assert op3_usage == 0
 
         # Task inputs no longer count once the task is finished.
-        o3.metrics.on_output_queued(input)
+        o3.metrics.on_output_queued(o3_input)
         o3.metrics.on_task_finished(
             0,
             None,
@@ -431,7 +452,10 @@ class TestResourceManager:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -490,7 +514,10 @@ class TestResourceManager:
         }
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
 
@@ -500,6 +527,145 @@ class TestResourceManager:
         completed_ops_usage = resource_manager._get_completed_ops_usage()
 
         assert completed_ops_usage == ExecutionResources(cpu=8, object_store_memory=400)
+
+    def test_external_consumer_bytes_attributed_to_terminal_operator(
+        self, restore_data_context
+    ):
+        """External consumer bytes (e.g., iterator prefetch buffers) are charged
+        to the terminal operator's object store usage, not as a global deduction."""
+        cluster_resources = ExecutionResources(cpu=10, gpu=0, object_store_memory=1000)
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = mock_map_op(o2)
+
+        o1.mark_execution_finished()
+        o2.mark_execution_finished()
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: cluster_resources,
+            DataContext.get_current(),
+        )
+
+        for op in [o1, o2, o3]:
+            op.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        assert resource_manager._op_resource_allocator is not None
+
+        resource_manager.update_usages()
+        baseline_terminal = resource_manager.get_op_usage(o3).object_store_memory
+        baseline_upstream = resource_manager.get_op_usage(o2).object_store_memory
+
+        def _available_pool_object_store():
+            return (
+                resource_manager.get_global_limits()
+                .subtract(resource_manager._get_completed_ops_usage())
+                .max(ExecutionResources.zero())
+                .object_store_memory
+            )
+
+        pool_before = _available_pool_object_store()
+
+        resource_manager.set_external_consumer_bytes(200)
+        resource_manager.update_usages()
+
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory
+            == baseline_terminal + 200
+        )
+        assert (
+            resource_manager.get_op_usage(o2).object_store_memory == baseline_upstream
+        )
+        assert _available_pool_object_store() == pool_before
+
+        resource_manager.set_external_consumer_bytes(0)
+        resource_manager.update_usages()
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory == baseline_terminal
+        )
+
+        # Very large external bytes: terminal usage reflects them; update still succeeds.
+        resource_manager.set_external_consumer_bytes(999999)
+        resource_manager.update_usages()
+        assert (
+            resource_manager.get_op_usage(o3).object_store_memory
+            == baseline_terminal + 999999
+        )
+
+    def test_set_external_consumer_bytes_rejects_negative(self, restore_data_context):
+        resource_manager = _resource_manager_for_limits_only_test(
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+        )
+        with pytest.raises(AssertionError):
+            resource_manager.set_external_consumer_bytes(-1)
+
+    def test_external_consumer_bytes_input_data_buffer_sink(self, restore_data_context):
+        """When the execute DAG is only an InputDataBuffer, prefetch bytes still
+        attach to that terminal sink instead of being dropped by the
+        InputDataBuffer early return."""
+        buf = InputDataBuffer(DataContext.get_current(), [])
+        topo = build_streaming_topology(buf, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: ExecutionResources(cpu=10, gpu=0, object_store_memory=1000),
+            DataContext.get_current(),
+        )
+        buf.current_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.running_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+        buf.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 0
+
+        resource_manager.set_external_consumer_bytes(150)
+        resource_manager.update_usages()
+        assert resource_manager.get_op_usage(buf).object_store_memory == 150
+
+    def test_topology_rejects_multiple_terminal_operators(self, restore_data_context):
+        ctx = DataContext.get_current()
+        a = PhysicalOperator("a", [], ctx)
+        b = PhysicalOperator("b", [], ctx)
+        topology = {a: MagicMock(), b: MagicMock()}
+        with pytest.raises(ValueError, match="Expected exactly one terminal operator"):
+            ResourceManager(
+                topology,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+            )
+
+    def test_topology_rejects_empty_topology(self, restore_data_context):
+        with pytest.raises(ValueError, match="topology must be non-empty"):
+            ResourceManager(
+                {},
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+            )
+
+    def test_topology_rejects_no_terminal_operator(self, restore_data_context):
+        # Every op has a downstream in this dict, so there should be no operator with empty
+        # output_dependencies (e.g. a 2-node cycle). Real streaming DAGs from
+        # build_streaming_topology always have a unique sink.
+        a = MagicMock(spec=PhysicalOperator)
+        b = MagicMock(spec=PhysicalOperator)
+        a.output_dependencies = [b]
+        b.output_dependencies = [a]
+        topology = {a: MagicMock(), b: MagicMock()}
+        with pytest.raises(ValueError, match="No terminal operator found"):
+            ResourceManager(
+                topology,
+                ExecutionOptions(),
+                MagicMock(return_value=ExecutionResources.zero()),
+                DataContext.get_current(),
+            )
 
     def test_is_blocking_materializing_op(self, restore_data_context):
         """Test _is_blocking_materializing_op correctly identifies blocking materializing ops.
@@ -523,7 +689,10 @@ class TestResourceManager:
         topo = build_streaming_topology(o5, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
 
         # Case 1: Shuffle operator itself is blocking materializing
@@ -550,7 +719,10 @@ class TestResourceManager:
 
         topo2 = build_streaming_topology(o7, ExecutionOptions())
         resource_manager2 = ResourceManager(
-            topo2, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo2,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
 
         # o5's downstream (o6, o7) has no blocking materializing ops
@@ -605,7 +777,10 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         allocator = resource_manager._op_resource_allocator
 
@@ -619,7 +794,10 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o4, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         allocator = resource_manager._op_resource_allocator
 
@@ -640,7 +818,10 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         allocator = resource_manager._op_resource_allocator
         o3.num_active_tasks = MagicMock(return_value=0)
@@ -663,7 +844,10 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         topo = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
-            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
         )
         allocator = resource_manager._op_resource_allocator
 

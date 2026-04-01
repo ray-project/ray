@@ -11,6 +11,7 @@ Depending on your goal, you may not need all sections on this page:
 - **Build Ray with C++** - choose one:
 
   - **Distributable manylinux wheel** - uses a manylinux build container to produce a ``.whl`` file for installation on a cluster, for testing the packaged artifact locally, or for sharing (see :ref:`build-distributable-wheel`).
+  - **Ray image** - build a nightly-style ``rayproject/ray`` or ``rayproject/ray-llm`` image (see :ref:`build-ray-image`).
   - **Full source build (editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
 
 .. contents::
@@ -41,7 +42,7 @@ You can propose changes to the main project by submitting a pull request to the 
 Prepare a Python virtual environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you only need to build a distributable manylinux wheel, skip this section. See :ref:`build-distributable-wheel`.
+Skip this section if you're building a :ref:`distributable wheel <build-distributable-wheel>` or a :ref:`Ray image <build-ray-image>`.
 
 Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
@@ -165,6 +166,35 @@ and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM6
 See ``python/README-building-wheels.md`` for additional options, including building
 manylinux wheels directly with Docker.
 
+.. _build-ray-image:
+
+Building Ray images
+--------------------------
+
+.. dropdown:: Setup
+  :open:
+
+  Before you begin, make sure you have:
+
+  - A clone of the Ray repository (see :ref:`fork-ray-repo`)
+  - `uv <https://docs.astral.sh/uv/>`_ installed
+  - `Docker <https://docs.docker.com/get-docker/>`_ installed
+
+To build a Ray image, use the ``build-image.sh`` script at the repository root.
+
+.. code-block:: bash
+
+  # Build the default Ray image:
+  ./build-image.sh ray
+
+  # Build with a specific Python version:
+  ./build-image.sh ray -p 3.12
+
+  # Build a GPU image:
+  ./build-image.sh ray --platform cu12.8.1-cudnn
+
+Run ``./build-image.sh --help`` to see available image types, Python versions, and platform variants.
+
 
 .. _full-source-build:
 
@@ -196,16 +226,7 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
-The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``6.5.0`` is currently supported.
-
-For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
-
-.. code-block:: bash
-
-  sudo yum groupinstall 'Development Tools'
-  sudo yum install psmisc
-
-In RedHat, install Bazel manually from this link: https://bazel.build/versions/6.5.0/install/redhat
+The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``7.5.0`` is currently supported.
 
 Preparing to build Ray on macOS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -293,7 +314,7 @@ Building Ray on Windows (full)
 
 The following links were accurate at the time of writing. If a URL has changed, search the organization's site.
 
-- Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
+- Bazel 7.5.0 (https://github.com/bazelbuild/bazel/releases/tag/7.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniforge 3 (https://github.com/conda-forge/miniforge/blob/main/README.md)
@@ -325,8 +346,8 @@ You can also use the included script to install Bazel:
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Install Bazel 6.5.0. Go to the Bazel 6.5.0 release page and download
-``bazel-6.5.0-windows-x86_64.exe``. Copy the exe into the directory of your choice.
+4. Install Bazel 7.5.0. Go to the Bazel 7.5.0 release page and download
+``bazel-7.5.0-windows-x86_64.exe``. Copy the exe into the directory of your choice.
 Define an environment variable ``BAZEL_PATH`` to the full exe path (example:
 ``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the Bazel directory to
 ``PATH`` (example: ``set PATH=%PATH%;C:\bazel``)

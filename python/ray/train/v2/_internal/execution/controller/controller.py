@@ -425,12 +425,12 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_start(self._train_run_context)
 
-    def _shutdown(self):
+    async def _shutdown(self):
         if self._worker_group:
             self._shutdown_worker_group()
 
         for callback in self._controller_callbacks:
-            callback.before_controller_shutdown()
+            await callback.before_controller_shutdown()
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -482,9 +482,10 @@ class TrainController:
         for a non-running worker group.
 
         This method handles the complete flow of:
-        1. Getting a scaling decision for a non-running worker group
-        2. Determining the next state based on the decision type
-        3. Creating and returning the iteration result
+        1. Shutting down the non-running worker group if it still exists.
+        2. Getting a scaling decision for a non-running worker group
+        3. Determining the next state based on the decision type
+        4. Creating and returning the iteration result
 
         Args:
             controller_state: The current controller state
@@ -586,7 +587,7 @@ class TrainController:
             )
         elif isinstance(controller_state, ShuttingDownState):
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
+            await self._shutdown()
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -639,6 +640,10 @@ class TrainController:
         # Do not abort run if it's already finished.
         if self.get_state().is_terminal():
             return
+
+        for callback in self._controller_callbacks:
+            callback.before_controller_abort()
+
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
         if self._worker_group:
