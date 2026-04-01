@@ -332,6 +332,47 @@ class TestSizeBytes:
             true_value,
         )
 
+    def test_nested_torch_tensors(ray_start_regular_shared):
+        torch = pytest.importorskip("torch")
+
+        n = 2048
+        input_dict = {
+            "features": {
+                "dense": torch.randn(n, 512),
+                "sparse": torch.randn(n, 128),
+                "attention_mask": torch.ones(n, 2048),
+            },
+            "embeddings": {
+                "token_emb": torch.randn(n, 2048),
+                "position_emb": torch.randn(n, 2048),
+            },
+        }
+        target_dict = {
+            "labels": {
+                "class": torch.ones(n, dtype=torch.long),
+                "weights": torch.randn(n),
+            },
+        }
+        df = pd.DataFrame({"input": [input_dict], "target": [target_dict]})
+
+        block_accessor = PandasBlockAccessor.for_block(df)
+        block_size = block_accessor.size_bytes()
+
+        tensors = [
+            input_dict["features"]["dense"],
+            input_dict["features"]["sparse"],
+            input_dict["features"]["attention_mask"],
+            input_dict["embeddings"]["token_emb"],
+            input_dict["embeddings"]["position_emb"],
+            target_dict["labels"]["class"],
+            target_dict["labels"]["weights"],
+        ]
+        true_value = sum(t.nelement() * t.element_size() for t in tensors)
+        assert block_size == pytest.approx(true_value, rel=0.1), (
+            block_size,
+            true_value,
+        )
+
     def test_nested_objects(ray_start_regular_shared):
         size = 10
         rows = 10_000
