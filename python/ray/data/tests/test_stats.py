@@ -80,7 +80,7 @@ def get_operator(
             available = len(stats_summary.operators_stats)
             raise AssertionError(
                 f"Operator index {index} out of range. "
-                f"Found {available} operators (indices 0-{available-1})."
+                f"Found {available} operators (indices 0-{available - 1})."
             )
         return stats_summary.operators_stats[index]
 
@@ -589,7 +589,7 @@ def test_dataset_stats_basic(
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
             )
 
     for batch in ds.iter_batches():
@@ -646,7 +646,7 @@ def test_dataset_stats_basic(
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
 
 

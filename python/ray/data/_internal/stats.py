@@ -1512,18 +1512,23 @@ class OperatorStatsSummary:
             es = block_meta.exec_stats
             if es is not None:
                 num_exec += 1
-                wall_time_acc.add(es.wall_time_s)
-                cpu_time_acc.add(es.cpu_time_s)
-                udf_time_acc.add(es.udf_time_s)
+                if es.wall_time_s is not None:
+                    wall_time_acc.add(es.wall_time_s)
+                if es.cpu_time_s is not None:
+                    cpu_time_acc.add(es.cpu_time_s)
+                if es.udf_time_s is not None:
+                    udf_time_acc.add(es.udf_time_s)
                 memory_acc.add((es.max_uss_bytes or 0) / MiB)
                 tasks_per_node[es.node_id].add(es.task_idx)
-                earliest_start_time = min(earliest_start_time, es.start_time_s)
-                latest_end_time = max(latest_end_time, es.end_time_s)
+                if es.start_time_s is not None:
+                    earliest_start_time = min(earliest_start_time, es.start_time_s)
+                if es.end_time_s is not None:
+                    latest_end_time = max(latest_end_time, es.end_time_s)
                 if block_meta.num_rows is not None:
                     rows_per_task[es.task_idx] += block_meta.num_rows
 
         # Compute timing totals.
-        if num_exec:
+        if num_exec and earliest_start_time != float("inf"):
             time_total_s = latest_end_time - earliest_start_time
             # Handle -0.0 case.
             rounded_total = round(time_total_s, 2)
@@ -1707,13 +1712,19 @@ class OperatorStatsSummary:
         indent = leveled_indent(level)
         indent += leveled_indent(1) if self.is_sub_operator else ""
 
-        def _fmt_summary(s: Optional[StatsSummary]) -> Optional[str]:
+        def _fmt_dict(
+            s: Optional[StatsSummary],
+            include_sum: bool = True,
+            include_count: bool = False,
+        ) -> Optional[dict]:
             if s is None:
                 return None
-            return (
-                f"StatsSummary(min={fmt(s.min)}, max={fmt(s.max)}, "
-                f"mean={fmt(s.mean)}, sum={fmt(s.sum)}, count={s.count})"
-            )
+            return {
+                k: fmt(v)
+                for k, v in s.to_dict(
+                    include_sum=include_sum, include_count=include_count
+                ).items()
+            }
 
         out = (
             f"{indent}OperatorStatsSummary(\n"
@@ -1722,12 +1733,12 @@ class OperatorStatsSummary:
             f"{indent}   time_total_s={fmt(self.time_total_s)},\n"
             # block_execution_summary_str already ends with \n
             f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
-            f"{indent}   wall_time={_fmt_summary(self.wall_time)},\n"
-            f"{indent}   cpu_time={_fmt_summary(self.cpu_time)},\n"
-            f"{indent}   memory={_fmt_summary(self.memory)},\n"
-            f"{indent}   output_num_rows={_fmt_summary(self.output_num_rows)},\n"
-            f"{indent}   output_size_bytes={_fmt_summary(self.output_size_bytes)},\n"
-            f"{indent}   node_count={_fmt_summary(self.node_count)},\n"
+            f"{indent}   wall_time={_fmt_dict(self.wall_time)},\n"
+            f"{indent}   cpu_time={_fmt_dict(self.cpu_time)},\n"
+            f"{indent}   memory={_fmt_dict(self.memory, include_sum=False)},\n"
+            f"{indent}   output_num_rows={_fmt_dict(self.output_num_rows)},\n"
+            f"{indent}   output_size_bytes={_fmt_dict(self.output_size_bytes)},\n"
+            f"{indent}   node_count={_fmt_dict(self.node_count, include_sum=False, include_count=True)},\n"
             f"{indent})"
         )
         return out
