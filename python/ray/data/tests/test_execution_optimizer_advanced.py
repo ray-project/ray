@@ -469,7 +469,7 @@ MB = 1024**2
         (128 * MB, None, None, lambda: {"memory": 200 * MB}, DataContext(), 200 * MB),
         # An estimate isn't available, so the rule shouldn't configure memory.
         (None, None, None, None, DataContext(), None),
-        (128 * MB, 256 * MB, None, None, DataContext(), 256 * MB,),
+        (128 * MB, 256 * MB, None, None, DataContext(), 256 * MB),
     ],
 )
 def test_configure_map_task_memory_rule(
