@@ -52,7 +52,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./ci/ray_ci/macos/macos_ci.sh run_medium_test_shard_1
+      - ./ci/ray_ci/macos/macos_ci.sh run_medium_test_shard_0
     depends_on: block-macos-tests
 
   - label: ":ray: core: :mac: medium tests (shard 2)"
@@ -64,7 +64,7 @@ steps:
     job_env: MACOS
     instance_type: macos-arm64
     commands:
-      - ./ci/ray_ci/macos/macos_ci.sh run_medium_test_shard_2
+      - ./ci/ray_ci/macos/macos_ci.sh run_medium_test_shard_1
     depends_on: block-macos-tests
 
   - label: ":ray: core: :mac: large tests"

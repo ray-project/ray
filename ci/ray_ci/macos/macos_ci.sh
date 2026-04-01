@@ -37,7 +37,7 @@ run_tests() {
 run_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "ray_client|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_shard_1|medium_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
+  (bazel query 'attr(tags, "ray_client|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_0|large_size_python_tests_shard_1|medium_size_python_tests_shard_0|medium_size_python_tests_shard_1", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
@@ -57,17 +57,17 @@ run_small_test() {
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
+run_medium_test_shard_0() {
+  # shellcheck disable=SC2046
+  # 42 is the universal rayci exit code for test failures
+  (bazel query 'attr(tags, "medium_size_python_tests_shard_0", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
+    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
+}
+
 run_medium_test_shard_1() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
   (bazel query 'attr(tags, "medium_size_python_tests_shard_1", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
-}
-
-run_medium_test_shard_2() {
-  # shellcheck disable=SC2046
-  # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "medium_size_python_tests_shard_2", tests(//python/ray/tests/...))' | filter_out_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CI) || exit 42
 }
 
