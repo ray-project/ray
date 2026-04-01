@@ -426,24 +426,36 @@ def test_request_and_clear():
 
 
 @pytest.mark.parametrize(
-    "num_autoscaler_nodes, mock_gcs_ready_slices, expected_workers",
+    "num_autoscaler_nodes, mock_gcs_intact_slices, expected_workers",
     [
         # No resources -> 0 workers
         (0, 0, 0),
         # Autoscaler sees 3 nodes but slice requires 4 -> rounds to 0 workers
         (3, 0, 0),
-        # Autoscaler sees 4 nodes and determines 1 full slice is ready -> 4 workers
+        # Autoscaler sees 4 nodes and 1 intact slice -> 4 workers
         (4, 1, 4),
+        # Autoscaler sees 8 nodes (2 slices worth) but only 1 slice is intact
+        # (e.g. 1 host down in the other slice) -> capped at 4 workers
+        (8, 1, 4),
+        # Autoscaler sees 8 nodes and both slices are intact -> 8 workers
+        (8, 2, 8),
+        # Autoscaler sees 12 nodes (3 slices), all 3 intact -> 12 workers (max)
+        (12, 3, 12),
     ],
 )
-@patch("ray.util.tpu.get_num_ready_tpu_slices")
+@patch("ray.util.tpu.get_num_tpu_slices")
 def test_count_possible_workers_tpu_slice_rounding(
-    mock_get_ready_slices, num_autoscaler_nodes, mock_gcs_ready_slices, expected_workers
+    mock_get_intact_slices,
+    num_autoscaler_nodes,
+    mock_gcs_intact_slices,
+    expected_workers,
 ):
     """
-    Test that TPU scaling correctly floors to the nearest complete TPU slice.
+    Test that TPU scaling correctly floors to the nearest complete, physically
+    intact TPU slice. Intact slices are counted regardless of whether they are
+    currently idle or in use.
     """
-    mock_get_ready_slices.return_value = mock_gcs_ready_slices
+    mock_get_intact_slices.return_value = mock_gcs_intact_slices
 
     # Scaling config for TPU v6e 4x4 between 1 and 3 slices.
     scaling_config = ScalingConfig(
