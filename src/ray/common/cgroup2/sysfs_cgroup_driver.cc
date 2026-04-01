@@ -478,8 +478,7 @@ StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
                         strerror(errno)));
   }
 
-  // Cgroup constraint files are typically small,
-  // containing a single integer value (a few bytes to a few hundred bytes).
+  // Cgroup constraint files typically contains a single integer value.
   constexpr size_t kBufferSize = 256;
   std::array<char, kBufferSize> buffer{};
   ssize_t bytes_read = read(fd, buffer.data(), kBufferSize - 1);
