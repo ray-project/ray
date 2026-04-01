@@ -361,6 +361,11 @@ class PrefixCacheAffinityRouter(
             return fallback_replicas
         # End Sphinx tag: __end_pow2_router_base__
 
+        # The pow2 fallback call above advances routing-context flags
+        # (e.g. tried_session_replicas). Reset so our own routing call
+        # below starts from a clean state.
+        pending_request.routing_context.tried_session_replicas = False
+
         if (
             pending_request is not None
             and pending_request.metadata.multiplexed_model_id

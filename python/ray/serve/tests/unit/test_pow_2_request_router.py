@@ -4,6 +4,7 @@ import os
 import random
 import sys
 import time
+import unittest.mock
 from typing import Optional, Set
 
 import pytest
@@ -2438,8 +2439,8 @@ class TestSessionAffinity:
 
 
 @pytest.mark.asyncio
-async def test_rank_replicas_via_session(pow_2_router):
-    """Test rank_replicas_via_session returns the correct ranking."""
+async def test_apply_session_routing(pow_2_router):
+    """Test apply_session_routing returns mapped replicas first, then all."""
     s = pow_2_router
 
     r1 = FakeRunningReplica("r1")
@@ -2454,11 +2455,172 @@ async def test_rank_replicas_via_session(pow_2_router):
     request = fake_pending_request(session_id="s1")
     chosen = await loop.create_task(s._choose_replica_for_request(request))
 
-    other = r2 if chosen == r1 else r1
-    assert s.rank_replicas_via_session(replicas=all_replicas, session_id="s1") == [
-        [chosen],
-        [other],
-    ]
+    # First call: returns only the mapped replica, no backoff.
+    pr = fake_pending_request(session_id="s1")
+    result = s.apply_session_routing(pending_request=pr)
+    assert result == {chosen.replica_id}
+    assert pr.routing_context.tried_session_replicas is True
+    assert pr.routing_context.should_backoff is False
+
+    # Second call (same request): returns all replicas, with backoff.
+    result = s.apply_session_routing(pending_request=pr)
+    assert result == {r1.replica_id, r2.replica_id}
+    assert pr.routing_context.should_backoff is True
+
+
+@pytest.mark.asyncio
+async def test_session_eviction_ttl(pow_2_router):
+    """
+    Stale sessions should be evicted after TTL expires.
+    """
+    s = pow_2_router
+    s._session_ttl_s = 60
+    s._max_num_sessions = 10000
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    loop = get_or_create_event_loop()
+    mock_clock = MockTimer(start_time=1000.0)
+    with unittest.mock.patch(
+        "ray.serve._private.request_router.request_router.time"
+    ) as mock_time:
+        mock_time.time = mock_clock.time
+
+        # t=1000: create s1, s2
+        for sid in ["s1", "s2"]:
+            req = fake_pending_request(session_id=sid)
+            await loop.create_task(s._choose_replica_for_request(req))
+
+        # t=1030: create s3 (30s later, s1/s2 are still fresh)
+        mock_clock.advance(30)
+        req = fake_pending_request(session_id="s3")
+        await loop.create_task(s._choose_replica_for_request(req))
+        assert set(s._session_id_to_replica_ids.keys()) == {"s1", "s2", "s3"}
+
+        # t=1070: 70s after s1/s2, 40s after s3 — s1/s2 are past TTL.
+        # Lower max to 3 so adding s4 (4 total) triggers eviction.
+        mock_clock.advance(40)
+        s._max_num_sessions = 3
+        req = fake_pending_request(session_id="s4")
+        await loop.create_task(s._choose_replica_for_request(req))
+
+        # s1, s2 evicted (TTL expired), s3, s4 survive (within TTL).
+        assert "s1" not in s._session_id_to_replica_ids
+        assert "s2" not in s._session_id_to_replica_ids
+        assert "s3" in s._session_id_to_replica_ids
+        assert "s4" in s._session_id_to_replica_ids
+
+
+@pytest.mark.asyncio
+async def test_session_eviction_ttl_break(pow_2_router):
+    """Verify the early break: sessions after the first non-expired entry
+    are not scanned."""
+    s = pow_2_router
+    s._session_ttl_s = 60
+    s._max_num_sessions = 10000
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    loop = get_or_create_event_loop()
+    mock_clock = MockTimer(start_time=1000.0)
+    with unittest.mock.patch(
+        "ray.serve._private.request_router.request_router.time"
+    ) as mock_time:
+        mock_time.time = mock_clock.time
+
+        # t=1000: create s1
+        req = fake_pending_request(session_id="s1")
+        await loop.create_task(s._choose_replica_for_request(req))
+
+        # t=1050: create s2 (50s later, within TTL)
+        mock_clock.advance(50)
+        req = fake_pending_request(session_id="s2")
+        await loop.create_task(s._choose_replica_for_request(req))
+
+        # t=1100: create s3 (100s after s1, 50s after s2)
+        # Now s1 is expired but s2 is still fresh.
+        mock_clock.advance(50)
+        s._max_num_sessions = 2  # Adding s3 (3 total) triggers eviction
+        req = fake_pending_request(session_id="s3")
+        await loop.create_task(s._choose_replica_for_request(req))
+
+        # Only s1 should be evicted; the break stops before s2.
+        assert "s1" not in s._session_id_to_replica_ids
+        assert "s2" in s._session_id_to_replica_ids
+        assert "s3" in s._session_id_to_replica_ids
+
+
+@pytest.mark.asyncio
+async def test_session_eviction_max_size(pow_2_router):
+    """Oldest sessions should be evicted when max size is exceeded."""
+    s = pow_2_router
+    s._max_num_sessions = 3
+    s._session_ttl_s = 3600
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    loop = get_or_create_event_loop()
+    mock_clock = MockTimer(start_time=1000.0)
+    with unittest.mock.patch(
+        "ray.serve._private.request_router.request_router.time"
+    ) as mock_time:
+        mock_time.time = mock_clock.time
+
+        for sid in ["s1", "s2", "s3"]:
+            mock_clock.advance(1)
+            req = fake_pending_request(session_id=sid)
+            await loop.create_task(s._choose_replica_for_request(req))
+        assert len(s._session_id_to_replica_ids) == 3
+
+        # Adding s4 should evict s1 (the oldest).
+        mock_clock.advance(1)
+        req = fake_pending_request(session_id="s4")
+        await loop.create_task(s._choose_replica_for_request(req))
+        assert "s1" not in s._session_id_to_replica_ids
+        assert "s1" not in s._session_last_access
+        assert set(s._session_id_to_replica_ids.keys()) == {"s2", "s3", "s4"}
+
+
+@pytest.mark.asyncio
+async def test_session_eviction_lru_order(pow_2_router):
+    """Re-accessing a session should protect it from eviction."""
+    s = pow_2_router
+    s._max_num_sessions = 3
+    s._session_ttl_s = 3600
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    loop = get_or_create_event_loop()
+    mock_clock = MockTimer(start_time=1000.0)
+    with unittest.mock.patch(
+        "ray.serve._private.request_router.request_router.time"
+    ) as mock_time:
+        mock_time.time = mock_clock.time
+
+        for sid in ["s1", "s2", "s3"]:
+            mock_clock.advance(1)
+            req = fake_pending_request(session_id=sid)
+            await loop.create_task(s._choose_replica_for_request(req))
+
+        # Re-access s1 so it becomes the most recent.
+        mock_clock.advance(1)
+        req = fake_pending_request(session_id="s1")
+        await loop.create_task(s._choose_replica_for_request(req))
+
+        # Adding s4 should evict s2 (now the oldest), not s1.
+        mock_clock.advance(1)
+        req = fake_pending_request(session_id="s4")
+        await loop.create_task(s._choose_replica_for_request(req))
+        assert "s2" not in s._session_id_to_replica_ids
+        assert set(s._session_id_to_replica_ids.keys()) == {"s1", "s3", "s4"}
 
 
 @pytest.mark.asyncio

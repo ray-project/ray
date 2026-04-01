@@ -1,5 +1,6 @@
 import asyncio
 import enum
+import itertools
 import logging
 import math
 import random
@@ -385,13 +386,29 @@ class SessionMixin:
     requests spill to other replicas and those are added to the session's
     replica set. Mappings are tracked at the router level. When a mapped
     replica is removed, it is dropped from the session's set.
+
+    To prevent unbounded memory growth, session mappings are evicted
+    when the number of tracked sessions exceeds ``max_num_sessions``
+    or when a session has not been accessed for ``session_ttl_s`` seconds.
     """
 
-    def __init__(self, *args, **kwargs):
+    # Default limits for session map eviction.
+    DEFAULT_MAX_NUM_SESSIONS = 10000
+    DEFAULT_SESSION_TTL_S = 3600  # 1 hour
+
+    def __init__(
+        self,
+        *args,
+        max_num_sessions: int = DEFAULT_MAX_NUM_SESSIONS,
+        session_ttl_s: float = DEFAULT_SESSION_TTL_S,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self._session_id_to_replica_ids: DefaultDict[str, Set[ReplicaID]] = defaultdict(
-            set
-        )
+        self._session_id_to_replica_ids: Dict[str, Set[ReplicaID]] = {}
+        # Tracks last access time per session maintained in LRU order.
+        self._session_last_access: Dict[str, float] = {}
+        self._max_num_sessions = max_num_sessions
+        self._session_ttl_s = session_ttl_s
 
     def _get_pending_request_matching_session_id(
         self,
@@ -414,6 +431,37 @@ class SessionMixin:
         self._pending_requests_by_session_id.pop(session_id, None)
         return None
 
+    def _touch_session(self, session_id: str):
+        """
+        Update the last access time for a session (LRU bookkeeping).
+        """
+        self._session_last_access.pop(session_id, None)
+        self._session_last_access[session_id] = time.time()
+
+    def _evict_stale_sessions(self):
+        """
+        Evict sessions that exceed the TTL or the max session count.
+        """
+        now = time.time()
+        # Evict expired sessions from the front (oldest first).
+        stale = []
+        for sid, ts in self._session_last_access.items():
+            if now - ts > self._session_ttl_s:
+                stale.append(sid)
+            else:
+                break  # Remaining entries are newer
+        for sid in stale:
+            self._session_id_to_replica_ids.pop(sid, None)
+            del self._session_last_access[sid]
+
+        # Evict oldest sessions if over max size.
+        num_to_evict = len(self._session_last_access) - self._max_num_sessions
+        if num_to_evict > 0:
+            to_evict = list(itertools.islice(self._session_last_access, num_to_evict))
+            for sid in to_evict:
+                self._session_id_to_replica_ids.pop(sid, None)
+                del self._session_last_access[sid]
+
     def _update_session_mappings_on_replica_removed(self, replica_id: ReplicaID):
         """Remove a replica from all session mappings."""
         empty_sessions = []
@@ -423,28 +471,35 @@ class SessionMixin:
                 empty_sessions.append(sid)
         for sid in empty_sessions:
             del self._session_id_to_replica_ids[sid]
+            self._session_last_access.pop(sid, None)
 
     def _record_session_assignment(self, session_id: str, replica_id: ReplicaID):
         """Record that a session was routed to a specific replica."""
         if session_id:
+            if session_id not in self._session_id_to_replica_ids:
+                self._session_id_to_replica_ids[session_id] = set()
             self._session_id_to_replica_ids[session_id].add(replica_id)
+            self._touch_session(session_id)
+            # Amortize eviction: only run when we exceed the limit.
+            if len(self._session_last_access) > self._max_num_sessions:
+                self._evict_stale_sessions()
 
     def apply_session_routing(
         self,
         pending_request: Optional[PendingRequest] = None,
     ) -> Set[ReplicaID]:
-        """Apply session affinity routing.
+        """Apply session affinity routing to the pending request.
 
-        If the session_id has mapped replicas that still exist,
-        return those replicas. Otherwise return all replicas.
+        When the request is None, return all replicas. Each call will try to
+        route the request to session-mapped replicas first, then fall back to
+        all replicas.
 
         Args:
             pending_request: The pending request to be routed based on
                 session affinity policy.
 
         Returns:
-            A set of replica IDs that are candidates for the existing
-            routing call.
+            A set of replica IDs that are candidates for the current routing call.
         """
         if not pending_request:
             return self._replica_id_set
@@ -453,34 +508,22 @@ class SessionMixin:
         if not session_id:
             return self._replica_id_set
 
-        mapped_replica_ids = self._session_id_to_replica_ids.get(session_id)
-        if mapped_replica_ids:
-            alive = mapped_replica_ids & self._replica_id_set
-            if alive:
-                pending_request.routing_context.should_backoff = True
-                return alive
+        if not pending_request.routing_context.tried_session_replicas:
+            mapped_replica_ids = self._session_id_to_replica_ids.get(session_id)
+            if mapped_replica_ids:
+                alive = mapped_replica_ids & self._replica_id_set
+                if alive:
+                    self._touch_session(session_id)
+                    # Attempt to route to session-mapped replicas at most
+                    # once without backoff.
+                    pending_request.routing_context.tried_session_replicas = True
+                    pending_request.routing_context.should_backoff = False
+                    return alive
 
+        # On subsequent iterations or when there are no mapped replicas,
+        # consider all available replicas with backoff.
         pending_request.routing_context.should_backoff = True
         return self._replica_id_set
-
-    def rank_replicas_via_session(
-        self,
-        replicas: List[RunningReplica],
-        session_id: str,
-    ) -> List[List[RunningReplica]]:
-        """Rank replicas based on session affinity.
-
-        Tier 0: replicas previously mapped to this session.
-        Tier 1: all other replicas.
-        """
-        mapped_replica_ids = self._session_id_to_replica_ids.get(session_id, set())
-        ranked_replicas = [[] for _ in range(2)]
-        for replica in replicas:
-            if replica.replica_id in mapped_replica_ids:
-                ranked_replicas[0].append(replica)
-            else:
-                ranked_replicas[1].append(replica)
-        return ranked_replicas
 
 
 @PublicAPI(stability="alpha")

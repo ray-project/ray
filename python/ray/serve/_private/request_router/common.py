@@ -21,6 +21,7 @@ class RequestRoutingContext:
     tried_first_multiplexed_models: bool = False
     tried_same_node: bool = False
     tried_same_az: bool = False
+    tried_session_replicas: bool = False
     should_backoff: bool = False
 
 

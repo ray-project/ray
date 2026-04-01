@@ -99,9 +99,9 @@ class PowerOfTwoChoicesRequestRouter(
         model ID are available after that timeout, it will fall back to the regular
         procedure.
 
-        For session affinity, replicas previously mapped to the session are preferred
-        (tier 0). If they are all busy, remaining replicas are returned as tier 1 so
-        the request can spill immediately without backoff.
+        For session affinity, replicas previously mapped to the session are tried
+        first. If they are all busy, the request retries immediately with all
+        replicas without backoff.
         """
         if (
             pending_request is not None
@@ -112,16 +112,10 @@ class PowerOfTwoChoicesRequestRouter(
                 pending_request=pending_request,
             )
         elif pending_request is not None and pending_request.metadata.session_id:
-            # Returns ranked tiers instead of a flat candidate set so the request can spill
-            # to non-session replicas immediately when session-mapped replicas are full.
-            pending_request.routing_context.should_backoff = True
-            ranked = self.rank_replicas_via_session(
-                candidate_replicas, pending_request.metadata.session_id
+            # Get candidates for session affinity.
+            candidate_replica_ids = self.apply_session_routing(
+                pending_request=pending_request,
             )
-            return [
-                _power_of_two_choices({r.replica_id for r in tier}, self._replicas)
-                for tier in ranked
-            ]
         else:
             # Get candidates for locality preference.
             candidate_replica_ids = self.apply_locality_routing(
