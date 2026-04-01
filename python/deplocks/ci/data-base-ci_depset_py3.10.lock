@@ -1877,6 +1877,14 @@ kombu==5.5.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   celery
+lance-namespace==0.6.1 \
+    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
+    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
+    # via pylance
+lance-namespace-urllib3-client==0.6.1 \
+    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
+    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
+    # via lance-namespace
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
@@ -3600,6 +3608,7 @@ pydantic==2.12.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi
+    #   lance-namespace-urllib3-client
     #   pyiceberg
     #   ray
     #   taskiq
@@ -3769,13 +3778,13 @@ pyjwt==2.8.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   snowflake-connector-python
-pylance==0.22.0 \
-    --hash=sha256:29848127701f2188b331ad8399036f1fb79bacf5102fd030bfe9fd30cb02cf5b \
-    --hash=sha256:2c0bb6bf7320e500f0f5948e5b23e4d70d9c84bba15a2db2e877be9637c4dc0c \
-    --hash=sha256:341a8cbac762c1f446a05a1513dab1b7930f433a8331b08b0b89a975f3864f6a \
-    --hash=sha256:848f1a74dab14dc14bf05569404977cfcba9a95a44e513e5a3b32f1221bfa00f \
-    --hash=sha256:8999e73ce180c977f91bb4629578d742b1e86fcf53e7d27b14d6d219395c17cd \
-    --hash=sha256:cd4cc3dd3772600092685282db8cd4c21eaa68f458445b3107bd01b43afb8f11
+pylance==1.0.3 \
+    --hash=sha256:6b58e17bd1a3c3f0bdef9ce1733cbeed55f85196238239355d53cdf4f0801e68 \
+    --hash=sha256:87ab5b079b4cc4909e5c3271c4cbe7950f1e66acca88587ddf6b976870767e40 \
+    --hash=sha256:a09e486d96027af90dd35165fecff60e77db12267a9d88afcab9a54769617f77 \
+    --hash=sha256:c6605951914f48d0a5979fcc48e3385eac444fcc2e0ae672798531a0e0646541 \
+    --hash=sha256:ee20507fdb426ede1f6c122c6f131bc30ddf20962b8ff7657ec040d6e1f9cd23 \
+    --hash=sha256:f1eff23b4063a38d99c30a0ea060645d23d2d2819719e9f573e3b65fcf13366a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/data-test-requirements.txt
@@ -3940,6 +3949,7 @@ python-dateutil==2.8.2 \
     #   botocore
     #   celery
     #   google-cloud-bigquery
+    #   lance-namespace-urllib3-client
     #   pandas
     #   strictyaml
 python-dotenv==1.2.1 \
@@ -4748,6 +4758,7 @@ typing-extensions==4.15.0 \
     #   grpcio
     #   gymnasium
     #   huggingface-hub
+    #   lance-namespace-urllib3-client
     #   modin
     #   opentelemetry-api
     #   opentelemetry-sdk
@@ -4794,6 +4805,7 @@ urllib3==1.26.19 \
     #   clickhouse-connect
     #   distributed
     #   docker
+    #   lance-namespace-urllib3-client
     #   requests
     #   responses
     #   testcontainers
