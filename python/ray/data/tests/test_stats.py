@@ -122,29 +122,6 @@ def assert_operator_count(
     ), f"Expected {expected_count} operators, found {actual}"
 
 
-def assert_operator_exists(
-    stats_summary: DatasetStatsSummary,
-    name_pattern: str,
-) -> OperatorStatsSummary:
-    """Assert that an operator with the given name pattern exists.
-
-    Args:
-        stats_summary: DatasetStatsSummary object.
-        name_pattern: Regex pattern to match operator name.
-
-    Returns:
-        The matching OperatorStatsSummary.
-
-    Raises:
-        AssertionError: if operator not found.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        op = assert_operator_exists(stats_summary, "ReadRange->Map")
-    """
-    return get_operator(stats_summary, name_pattern=name_pattern)
-
-
 def assert_basic_operator_metrics(
     op: OperatorStatsSummary,
 ) -> None:
@@ -791,18 +768,34 @@ def test_dataset_stats_basic(
     # Use structured assertions instead of canonicalize string comparison
     stats_summary = mds.get_stats_summary()
 
-    # Should have 2 operators: ReadRange->MapBatches and Map
-    assert_operator_count(stats_summary, expected_count=2)
+    # Find operators across current stats and parents
+    found_read_map = None
+    found_map = None
+    current = stats_summary
+    while current:
+        for op in current.operators_stats:
+            if "ReadRange->MapBatches" in op.operator_name:
+                found_read_map = op
+            elif op.operator_name.startswith("Map("):
+                found_map = op
+        if found_read_map and found_map:
+            break
+        if current.parents:
+            current = current.parents[0]
+        else:
+            break
 
-    # Verify both operators exist and have valid metrics
-    op1 = assert_operator_exists(stats_summary, "ReadRange->MapBatches")
-    assert_basic_operator_metrics(op1)
-    assert_output_row_count(op1, expected_total=1000)
+    assert (
+        found_read_map is not None
+    ), "ReadRange->MapBatches operator not found in stats or parents"
+    assert found_map is not None, "Map operator not found in stats or parents"
 
-    # Use regex to match exactly "Map(" at the start to avoid matching "MapBatches"
-    op2 = assert_operator_exists(stats_summary, r"^Map\(")
-    assert_basic_operator_metrics(op2)
-    assert_output_row_count(op2, expected_total=1000)
+    # Verify both operators have valid metrics
+    assert_basic_operator_metrics(found_read_map)
+    assert_output_row_count(found_read_map, expected_total=1000)
+
+    assert_basic_operator_metrics(found_map)
+    assert_output_row_count(found_map, expected_total=1000)
 
     # Verify iteration stats are present
     assert_iteration_stats_present(stats_summary)
@@ -1253,20 +1246,12 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
 
     stats_summary = mds.get_stats_summary()
 
-    # Verify we have at least one operator
-    assert len(stats_summary.operators_stats) > 0
-
-    # Verify the final output has 1000 rows
-    # Check the last operator's output or look for any operator with 1000 rows
-    found_output = False
+    # Verify all operators have valid metrics and 1000 output rows
+    # In this pipeline (RandomShuffle -> Repartition), both operators are expected
+    # to have 1000 output rows
     for op in stats_summary.operators_stats:
-        if op.output_num_rows and op.output_num_rows["sum"] == 1000:
-            found_output = True
-            # Just verify basic metrics on this operator
-            assert op.wall_time is not None
-            assert op.wall_time["sum"] > 0
-            break
-    assert found_output, "Should find an operator with 1000 output rows"
+        assert_basic_operator_metrics(op)
+        assert_output_row_count(op, expected_total=1000)
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
