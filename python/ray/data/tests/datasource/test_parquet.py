@@ -18,6 +18,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import FileShuffleConfig, Schema
+from ray.data._internal.dataset_repr import explain_plan
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -554,8 +555,6 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
 
     # Test projection pushed down into read op
     ds = ray.data.read_parquet(path).select_columns("variety")
-
-    from ray.data._internal.dataset_repr import explain_plan
 
     assert explain_plan(ds._logical_plan).strip() == (
         "-------- Logical Plan --------\n"

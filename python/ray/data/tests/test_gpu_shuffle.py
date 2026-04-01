@@ -11,6 +11,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.dataset_repr import explain_plan
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -944,8 +945,6 @@ class TestGPUHashShuffle:
 
         ds = ray.data.range(num_rows, parallelism=parallelism).materialize()
         ds = ds.repartition(keys=["id"], num_blocks=num_blocks)
-        from ray.data._internal.dataset_repr import explain_plan
-
         assert "GPUShuffle" in explain_plan(ds._logical_plan)
         ds = ds.materialize()
         assert ds.num_blocks() == max(num_blocks, num_gpus)
