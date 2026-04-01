@@ -736,12 +736,15 @@ class OpResourceAllocator(ABC):
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
         # If this operator is a terminal one (no downstream eligible ops):
-        # - If there's an external consumer holding data (iter_batches,
-        #   streaming_split), don't unblock — respect output backpressure
-        #   to prevent blocks from piling up faster than the consumer
-        #   can process them.
-        # - Otherwise (e.g., write pipelines where outputs are small stats
-        #   blocks consumed inline), unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split):
+        #   - external_consumer_bytes == 0: consumer has drained all
+        #     prefetched data — unblock to produce more blocks.
+        #   - external_consumer_bytes > 0: consumer is holding data —
+        #     don't unblock, to prevent blocks from piling up faster
+        #     than the consumer can process them.
+        # - No external consumer (e.g., write pipelines where outputs
+        #   are small stats blocks): external_consumer_bytes is always 0.
+        #   Always unblock the pipeline drainer to maintain liveness.
         if not downstream_eligible_ops:
             return self._resource_manager.get_external_consumer_bytes() == 0
 
