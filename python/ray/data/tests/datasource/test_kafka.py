@@ -3,7 +3,6 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from confluent_kafka.admin import AdminClient, NewTopic
 
 import ray
 from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
@@ -1273,6 +1272,7 @@ def test_per_partition_start_offset_specific_offsets(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
     """Per-partition start_offset reads correct slice from each partition."""
+    from confluent_kafka.admin import AdminClient, NewTopic
 
     topic = "test-per-partition-start-offset"
 
@@ -1305,6 +1305,8 @@ def test_per_partition_end_offset_specific_offsets(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
     """Per-partition end_offset reads correct slice from each partition."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
     topic = "test-per-partition-end-offset"
 
     admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
@@ -1336,6 +1338,7 @@ def test_per_partition_start_offset_fallback_to_earliest(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
     """Partitions not listed in per-partition dict fall back to 'earliest'."""
+    from confluent_kafka.admin import AdminClient, NewTopic
 
     topic = "test-per-partition-fallback"
 
