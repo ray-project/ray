@@ -997,6 +997,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                     ExecutionResources.from_resource_dict(finalize_task_resource_bundle)
                 ),
                 operator_name=self.name,
+                operator_id=self.id,
             )
             self._finalizing_tasks[partition_id] = data_task
 

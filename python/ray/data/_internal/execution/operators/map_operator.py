@@ -314,7 +314,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         while self._block_ref_bundler.has_bundle():
             (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
             for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle, input_index=0)
+                self._metrics.on_input_dequeued(input_bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -489,7 +489,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs, input_index=0)
+        self._metrics.on_input_queued(refs)
 
         if self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more `RefBundle`s into a new
@@ -497,7 +497,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle, input_index=0)
+                self._metrics.on_input_dequeued(bundle)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -613,6 +613,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            operator_id=self.id,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
@@ -648,7 +649,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle, input_index=0)
+                self._metrics.on_input_dequeued(bundle)
 
             # NOTE: When `all_inputs_done` is invoked we can't guarantee that the
             #       task will be launched since all actors might be busy.
@@ -907,9 +908,14 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     blocks = list(
         itertools.chain(block for bundle in bundles for block in bundle.blocks)
     )
+    producer_op_ids = tuple(
+        itertools.chain.from_iterable(bundle.producer_op_ids for bundle in bundles)
+    )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles)
     schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
-    return RefBundle(blocks, owns_blocks=owns_blocks, schema=schema)
+    return RefBundle(
+        blocks, owns_blocks=owns_blocks, schema=schema, producer_op_ids=producer_op_ids
+    )
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:

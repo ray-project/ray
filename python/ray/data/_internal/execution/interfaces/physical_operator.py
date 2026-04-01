@@ -126,6 +126,7 @@ class DataOpTask(OpTask):
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        operator_id: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -141,6 +142,8 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            operator_id: The UUID of the operator that created this task.
+                Stamped on output RefBundles for per-producer memory attribution.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -153,6 +156,7 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._operator_id = operator_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -274,6 +278,7 @@ class DataOpTask(OpTask):
                     [(self._pending_block_ref, meta)],
                     owns_blocks=True,
                     schema=meta_with_schema.schema,
+                    producer_op_ids=(self._operator_id,),
                 ),
             )
 

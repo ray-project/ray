@@ -43,12 +43,14 @@ class LimitOperator(OneToOneOperator):
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
-        for block, metadata in refs.blocks:
+        out_producer_ids: List[Optional[str]] = []
+        for (block, metadata), producer_id in zip(refs.blocks, refs.producer_op_ids):
             num_rows = metadata.num_rows
             assert num_rows is not None
             if self._consumed_rows + num_rows <= self._limit:
                 out_blocks.append(block)
                 out_metadata.append(metadata)
+                out_producer_ids.append(producer_id)
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows += num_rows
             else:
@@ -74,6 +76,7 @@ class LimitOperator(OneToOneOperator):
                 out_blocks.append(block)
                 metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
+                out_producer_ids.append(producer_id)
                 self._output_blocks_stats.append(metadata.to_stats())
                 self._consumed_rows = self._limit
                 break
@@ -82,6 +85,7 @@ class LimitOperator(OneToOneOperator):
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
             schema=refs.schema,
+            producer_op_ids=tuple(out_producer_ids),
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)

@@ -155,7 +155,7 @@ class AllToAllOperator(
         assert not self.has_completed()
         assert input_index == 0, input_index
         self._input_buffer.add(refs)
-        self._metrics.on_input_queued(refs, input_index=0)
+        self._metrics.on_input_queued(refs)
 
     def internal_input_queue_num_blocks(self) -> int:
         return sum(len(bundle.block_refs) for bundle in self._input_buffer)
@@ -173,7 +173,7 @@ class AllToAllOperator(
         """Clear internal input queue."""
         while self._input_buffer.has_next():
             bundle = self._input_buffer.get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=0)
+            self._metrics.on_input_dequeued(bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -195,7 +195,7 @@ class AllToAllOperator(
 
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
-            self._metrics.on_input_dequeued(refs, input_index=0)
+            self._metrics.on_input_dequeued(refs)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)

@@ -181,9 +181,7 @@ class ResourceManager:
         # Outputs of this operator used downstream
         used_op_outputs_bytes = sum(
             (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(op)
-                )
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_producer(op.id)
                 + downstream_op.metrics.obj_store_mem_pending_task_inputs
             )
             for downstream_op in op.output_dependencies
@@ -317,11 +315,33 @@ class ResourceManager:
     def _get_downstream_ineligible_ops_usage(
         self, op: PhysicalOperator
     ) -> ExecutionResources:
+        """Compute the total resource usage of downstream ineligible operators
+        attributed to `op`, filtering external output queues by producer ID."""
+        producer_op_id = op.id
         return reduce(
             lambda x, y: x.add(y),
-            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
+            [
+                self._get_ineligible_op_usage(ineligible_op, producer_op_id)
+                for ineligible_op in self._get_downstream_ineligible_ops(op)
+            ],
             ExecutionResources.zero(),
         )
+
+    def _get_ineligible_op_usage(
+        self,
+        ineligible_op: PhysicalOperator,
+        producer_op_id: str,
+    ) -> ExecutionResources:
+        """Get the resource usage of an ineligible op, with its external output
+        queue memory filtered to only the portion from `producer_op_id`."""
+        usage = self.get_op_usage(ineligible_op)
+        state = self._topology[ineligible_op]
+        total_ext_outqueue = state.output_queue_bytes()
+        producer_ext_outqueue = state.output_queue_bytes(producer_op_id=producer_op_id)
+        non_outqueue_memory = usage.object_store_memory - total_ext_outqueue
+        attributed_memory = non_outqueue_memory + producer_ext_outqueue
+        assert attributed_memory >= 0
+        return usage.copy(object_store_memory=attributed_memory)
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
         """Return the memory usage of pending task outputs for the given operator."""

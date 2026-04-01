@@ -141,7 +141,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.add(bundle)
-        self._metrics.on_input_queued(bundle, input_index=0)
+        self._metrics.on_input_queued(bundle)
         # Try dispatch buffered bundles
         self._try_dispatch_bundles()
 
@@ -202,7 +202,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         """Clear internal input queue."""
         while self._buffer:
             bundle = self._buffer.get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=0)
+            self._metrics.on_input_dequeued(bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -258,7 +258,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
             # Pop preferred bundle from the buffer
             self._buffer.remove(target_bundle)
-            self._metrics.on_input_dequeued(target_bundle, input_index=0)
+            self._metrics.on_input_dequeued(target_bundle)
 
             target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
@@ -315,7 +315,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         acc = 0
         while acc < nrow:
             b = self._buffer.get_next()
-            self._metrics.on_input_dequeued(b, input_index=0)
+            self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
@@ -324,7 +324,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.add(right)
-                self._metrics.on_input_queued(right, input_index=0)
+                self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
@@ -345,16 +345,18 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
 
 def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
-    left_blocks, left_meta = [], []
-    right_blocks, right_meta = [], []
+    left_blocks, left_meta, left_producers = [], [], []
+    right_blocks, right_meta, right_producers = [], [], []
     acc = 0
-    for b, m in bundle.blocks:
+    for (b, m), producer_id in zip(bundle.blocks, bundle.producer_op_ids):
         if acc >= left_size:
             right_blocks.append(b)
             right_meta.append(m)
+            right_producers.append(producer_id)
         elif acc + m.num_rows <= left_size:
             left_blocks.append(b)
             left_meta.append(m)
+            left_producers.append(producer_id)
             acc += m.num_rows
         else:
             # Trouble case: split it up.
@@ -364,17 +366,21 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
             right_meta.append(rm)
             left_blocks.append(lb)
             right_blocks.append(rb)
+            left_producers.append(producer_id)
+            right_producers.append(producer_id)
             acc += lm.num_rows
             assert acc == left_size
     left = RefBundle(
         list(zip(left_blocks, left_meta)),
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
+        producer_op_ids=tuple(left_producers),
     )
     right = RefBundle(
         list(zip(right_blocks, right_meta)),
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
+        producer_op_ids=tuple(right_producers),
     )
     assert left.num_rows() == left_size
     assert left.num_rows() + right.num_rows() == bundle.num_rows()
