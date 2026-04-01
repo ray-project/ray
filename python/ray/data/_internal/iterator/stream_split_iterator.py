@@ -190,8 +190,9 @@ class SplitCoordinator:
         # Splits with an active consumer (from signal_new_epoch entry until
         # epoch completion in get()). Used to detect duplicate readers —
         # unlike _ready_consumers, this is NOT cleared on epoch start.
-        # Guarded by self._cond.
-        self._splits_in_use: Set[SplitIdx] = set()
+        # Guarded by self._active_consumers_lock.
+        self._active_consumers_lock = threading.Lock()
+        self._active_consumers: Set[SplitIdx] = set()
 
         # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
@@ -263,13 +264,14 @@ class SplitCoordinator:
 
         Uses Condition.wait() instead of spin-wait — zero CPU while waiting.
         """
-        with self._cond:
-            if split_idx in self._splits_in_use:
+        with self._active_consumers_lock:
+            if split_idx in self._active_consumers:
                 raise ValueError(
                     f"Duplicate reader for split {split_idx}. "
                     "Each split must have exactly one reader."
                 )
-            self._splits_in_use.add(split_idx)
+            self._active_consumers.add(split_idx)
+        with self._cond:
             self._ready_consumers.add(split_idx)
 
             if len(self._ready_consumers) == self._num_splits:
@@ -299,6 +301,8 @@ class SplitCoordinator:
                         )
 
         if self._gen_epoch_error is not None:
+            with self._active_consumers_lock:
+                self._active_consumers.discard(split_idx)
             raise self._gen_epoch_error
 
     def stats(self) -> DatasetStats:
@@ -373,8 +377,9 @@ class SplitCoordinator:
 
         finally:
             if not returned_normally:
+                with self._active_consumers_lock:
+                    self._active_consumers.discard(output_split_idx)
                 with self._cond:
-                    self._splits_in_use.discard(output_split_idx)
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
             self._coordinator_overhead_s += time.perf_counter() - start_time
