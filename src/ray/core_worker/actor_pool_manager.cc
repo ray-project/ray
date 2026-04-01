@@ -453,10 +453,13 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
 
     const auto &state = state_it->second;
-    if (!state.is_alive || actor_id == exclude_actor_id) {
+    if (!state.is_alive) {
       continue;
     }
     alive_actors.push_back(actor_id);
+    if (actor_id == exclude_actor_id) {
+      continue;
+    }
 
     const int32_t max_concurrency = pool_info.config.max_tasks_in_flight_per_actor;
     if (state.num_tasks_in_flight < max_concurrency) {
@@ -468,6 +471,9 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
   // limit. This ensures callers always get valid ObjectRefs instead of empty
   // results from SubmitTaskToPool.
   if (candidates.empty()) {
+    // If exclusion filtered out all candidates, fall back to the full
+    // alive set (including the excluded actor).  This handles single-actor
+    // pools and the case where all other actors are dead.
     candidates = std::move(alive_actors);
   }
 

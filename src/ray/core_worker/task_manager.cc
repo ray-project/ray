@@ -370,28 +370,15 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
     }
 
     if (task_entry.spec_.IsStreamingGenerator() &&
-        task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
-        task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
-      if (task_entry.num_retries_left_ == 0 && !task_entry.spec_.IsPoolTask() &&
-          task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+        task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
+      if (task_entry.num_retries_left_ == 0) {
         // If the last attempt is in progress.
         return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
       }
-      if (task_entry.spec_.IsPoolTask()) {
-        // Pool tasks: cross-actor retry is handled by InternalHeartbeat.
-        // Skip the generator-specific resubmit (MarkGeneratorFailedAndResubmit)
-        // to avoid racing with the retry already in progress.
-        return std::nullopt;
-      }
-      if (task_entry.GetStatus() == rpc::TaskStatus::SUBMITTED_TO_WORKER) {
-        // If the task is a running streaming generator, the object may have been created,
-        // deleted, and then needed again for recovery. When the task is finished /
-        // failed, ResubmitTask will be called again.
-        should_queue_generator_resubmit = true;
-      } else {
-        // Assuming the task retry is already submitted / running.
-        return std::nullopt;
-      }
+      // If the task is a running streaming generator, the object may have been created,
+      // deleted, and then needed again for recovery. When the task is finished / failed,
+      // ResubmitTask will be called again.
+      should_queue_generator_resubmit = true;
     } else if (task_entry.GetStatus() != rpc::TaskStatus::FINISHED &&
                task_entry.GetStatus() != rpc::TaskStatus::FAILED) {
       // Assuming the task retry is already submitted / running.
@@ -494,14 +481,6 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end());
     auto &task_entry = it->second;
-
-    // For pool tasks that already completed, skip resubmit — all items
-    // were produced by the previous execution.  Resubmitting would create
-    // an infinite recovery loop: objects pinned on the dead node keep
-    // being detected as lost, triggering resubmit again.
-    if (task_entry.spec_.IsPoolTask() && task_entry.num_successful_executions_ > 0) {
-      return;
-    }
 
     rpc::RayErrorInfo error_info;
     error_info.set_error_type(
