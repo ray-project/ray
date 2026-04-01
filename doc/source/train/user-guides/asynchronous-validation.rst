@@ -169,31 +169,7 @@ You can tune the following knobs to overlap validation and training as closely a
 Ray Data production vs consumption
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ideally, data production (dataset processing) and data consumption (training ingestion) happen at
-the same rate. When production outpaces consumption, excess data is written to the
-:ref:`object store <object-spilling-internals>`, which can spill to disk. Ray Data's
-backpressure system automatically balances production and consumption, but if you are still running
-into issues, you have the following knobs:
-
-* **Use fewer data CPU workers**: Reduce the ``num_cpus`` argument in
-  :func:`~ray.data.Dataset.map_batches` to slow down data production.
-* **Limit object store usage per dataset**: Set a per-dataset object store memory limit using
-  each dataset's execution options. Ray Data's backpressure system will slow down production
-  once the object store memory limit is reached.
-
-  .. code-block:: python
-
-      train_ds = ray.data.read_parquet("s3://bucket/train")
-      val_ds = ray.data.read_parquet("s3://bucket/val")
-
-      train_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
-          object_store_memory=50 * 1024**3,
-      )
-      val_ds.context.execution_options.resource_limits = ray.data.ExecutionResources(
-          object_store_memory=50 * 1024**3,
-      )
-
-See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+See :ref:`balancing-data-production-consumption` for tips on balancing data production and consumption rates.
 
 Checkpoint metrics lifecycle
 -----------------------------
