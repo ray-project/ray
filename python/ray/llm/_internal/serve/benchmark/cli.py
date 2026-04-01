@@ -41,8 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     server.add_argument(
         "-m",
         "--model",
-        default="test-model",
-        help="Model name to send in requests (default: %(default)s)",
+        default=None,
+        help="Model name to send in requests (required except for -i --client)",
     )
     server.add_argument(
         "--tokenizer",
@@ -60,26 +60,26 @@ def build_parser() -> argparse.ArgumentParser:
     workload.add_argument(
         "--isl",
         type=int,
-        default=None,
-        help="Average input sequence length",
+        default=1000,
+        help="Average input sequence length (default: %(default)s)",
     )
     workload.add_argument(
         "--hit-rate",
         type=float,
-        default=None,
-        help="Prefix cache hit rate [0, 1]",
+        default=0.5,
+        help="Prefix cache hit rate [0, 1] (default: %(default)s)",
     )
     workload.add_argument(
         "--num-turns",
         type=int,
-        default=None,
-        help="Number of turns per session",
+        default=1,
+        help="Number of turns per session (default: %(default)s)",
     )
     workload.add_argument(
         "--osl",
         type=int,
-        default=None,
-        help="Output tokens per turn",
+        default=100,
+        help="Output tokens per turn (default: %(default)s)",
     )
     workload.add_argument(
         "--shared-system-prompt-ratio",
@@ -192,8 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     interactive.add_argument(
         "--num-workers",
         type=int,
-        default=None,
-        help="Number of worker tasks",
+        default=1,
+        help="Number of process-pool workers for conversation generation (default: %(default)s)",
     )
 
     return parser
@@ -203,16 +203,23 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.interactive and args.client:
+        from ray.llm._internal.serve.benchmark.interactive import run_interactive_client
+
+        sys.exit(run_interactive_client(args))
+
+    # All other modes require --model
+    if not args.model:
+        parser.error("--model is required (except for -i --client mode)")
+
     if args.smoke:
         from ray.llm._internal.serve.benchmark.multiturn_bench import run_smoke
 
         sys.exit(run_smoke(args))
-    elif args.interactive and args.client:
-        print("Interactive client mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
     elif args.interactive:
-        print("Interactive server mode is not implemented yet.", file=sys.stderr)
-        sys.exit(1)
+        from ray.llm._internal.serve.benchmark.interactive import run_interactive_server
+
+        sys.exit(run_interactive_server(args))
     elif args.concurrency or args.request_rate:
         from ray.llm._internal.serve.benchmark.multiturn_bench import run_direct
 
@@ -220,3 +227,7 @@ def main() -> None:
     else:
         parser.print_help()
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
