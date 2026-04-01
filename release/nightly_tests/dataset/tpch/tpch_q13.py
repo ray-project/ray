@@ -36,6 +36,7 @@ def main(args):
         orders = orders.filter(
             expr=~col("o_comment").str.match_regex(f"{word1}.*{word2}")
         )
+        orders = orders.select_columns(["o_orderkey", "o_custkey"])
 
         # Left outer join: customer LEFT OUTER JOIN orders ON c_custkey = o_custkey
         # Customers with no matching orders will have null o_orderkey
