@@ -307,12 +307,22 @@ def _resolve_paths_and_filesystem(
             compatibility.
 
     Returns:
-        ``(resolved_paths, filesystem)`` where ``filesystem`` is the one that was
-        actually used to resolve and normalize each path (after each successful
-        path, the working filesystem may be updated). It may differ from the
-        ``filesystem`` argument when that argument is incompatible with a URI and
-        resolution falls back to an inferred filesystem; callers should open
-        reads with this returned instance.
+        A pair ``(resolved_paths, filesystem)``. *resolved_paths* lists the
+        normalized paths for each input path that resolved successfully, in
+        order.
+
+        If *filesystem* was ``None``, the returned *filesystem* is set from
+        ``resolved_filesystem`` on the first successful path and is left
+        unchanged on later iterations whenever it is already non-``None``.
+
+        If *filesystem* was not ``None``, the returned value is always that
+        same validated instance, even when ``_resolve_single_path_with_fallback``
+        inferred a different filesystem for a given path. Callers should pass
+        ``None`` or a filesystem compatible with the path URIs so returned paths
+        and filesystem stay consistent.
+
+        All paths are assumed to use one storage backend; mixing unrelated URI
+        schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
 
@@ -329,10 +339,8 @@ def _resolve_paths_and_filesystem(
             logger.warning(f"Failed to resolve path '{path}': {e}, skipping")
             continue
 
-        # Always use the filesystem returned for this path. When the caller's FS is
-        # incompatible with the URI (e.g. fsspec gcs + file://), fallback resolution
-        # infers a different FS; we must open with that one, not the stale input.
-        filesystem = resolved_filesystem
+        if filesystem is None:
+            filesystem = resolved_filesystem
 
         # If the PyArrow filesystem is handled by a fsspec HTTPFileSystem, the protocol/
         # scheme of paths should not be unwrapped/removed, because HTTPFileSystem
