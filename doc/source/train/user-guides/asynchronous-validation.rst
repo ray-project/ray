@@ -159,9 +159,12 @@ You can tune the following knobs to overlap validation and training as closely a
 
 * **Number of workers**: Tune the number of validation workers relative to training workers so that
   the two phases overlap as closely as possible.
-* **Batch size**: A higher batch size generally increases throughput, but may affect convergence. Adjust
-  batch size to balance speed and model quality.
-* **Validation frequency**: Tune validation frequency to maximize overlap.
+* **Batch size**: A larger batch size typically improves throughput, but it can negatively impact
+  training convergence and may lead to out-of-memory (OOM) errors.
+* **Validation frequency**: Choose a validation cadence and dataset size that balance overlap with
+  training. Validating too frequently or over too many rows can create a long validation tail.
+  Also note that breaking early from a Ray Data iterator may lead to resource leaks - this will be
+  fixed in a future release.
 
 Ray Data production vs consumption
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
