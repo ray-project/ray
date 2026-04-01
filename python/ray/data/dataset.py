@@ -1897,17 +1897,18 @@ class Dataset:
     def distributed_shuffle(
         self,
         *,
-        shuffle_window_size: int,
+        shuffle_window_bytes: int,
         seed: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Randomly shuffle rows using a streaming windowed approach.
 
         Unlike :meth:`~Dataset.random_shuffle`, this method does not require
-        materializing the entire dataset. Instead, it buffers rows up to
-        ``shuffle_window_size`` and shuffles within each window. This is more
-        memory-efficient and works in a streaming fashion, but only provides
-        local randomization within each window rather than a global shuffle.
+        materializing the entire dataset. Instead, it buffers blocks until their
+        total size exceeds ``shuffle_window_bytes`` and shuffles within each
+        window. This is more memory-efficient and works in a streaming fashion,
+        but only provides local randomization within each window rather than a
+        global shuffle.
 
         This is useful for training workloads where perfect global randomization
         is not required, but you want better randomization than
@@ -1916,11 +1917,11 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.distributed_shuffle(shuffle_window_size=20).take(5)  # doctest: +SKIP
+            >>> ds.distributed_shuffle(shuffle_window_bytes=1024).take(5)  # doctest: +SKIP
             [{'id': 11}, {'id': 3}, {'id': 17}, {'id': 8}, {'id': 19}]
 
         Args:
-            shuffle_window_size: The number of rows to buffer before emitting a
+            shuffle_window_bytes: The number of bytes to buffer before emitting a
                 shuffle task. Larger windows provide better randomization but
                 consume more memory.
             seed: Optional random seed for reproducible shuffling. If None, the
@@ -1935,7 +1936,7 @@ class Dataset:
         plan = self._plan.copy()
         op = DistributedShuffle(
             self._logical_plan.dag,
-            shuffle_window_size=shuffle_window_size,
+            shuffle_window_bytes=shuffle_window_bytes,
             seed=seed,
             ray_remote_args=ray_remote_args,
         )

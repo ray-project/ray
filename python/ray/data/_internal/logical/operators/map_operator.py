@@ -547,21 +547,22 @@ class StreamingRepartition(AbstractMap):
 class DistributedShuffle(AbstractMap):
     """Logical operator for distributed local shuffle operation.
 
-    This operator buffers incoming blocks until the total number of rows reaches
-    ``shuffle_window_size``, then emits the buffered blocks to a map task that
+    This operator buffers incoming blocks until their total size in bytes exceeds
+    ``shuffle_window_bytes``, then emits the buffered blocks to a map task that
     shuffles the rows randomly within that window. This provides a streaming shuffle
     that doesn't require materializing the entire dataset, at the cost of only
     shuffling within a window rather than globally.
 
     Args:
         input_op: The operator preceding this operator in the plan DAG.
-        shuffle_window_size: The number of rows to buffer before emitting a shuffle
-            task. Larger windows provide better randomization but consume more memory.
+        shuffle_window_bytes: The number of bytes to buffer before emitting a
+            shuffle task. Larger windows provide better randomization but consume
+            more memory.
         seed: Optional random seed for reproducible shuffling.
     """
 
     input_op: InitVar[LogicalOperator]
-    shuffle_window_size: int
+    shuffle_window_bytes: int
     seed: Optional[int] = None
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
@@ -575,17 +576,17 @@ class DistributedShuffle(AbstractMap):
 
     def __post_init__(self, input_op: LogicalOperator):
         assert isinstance(input_op, LogicalOperator), input_op
-        if self.shuffle_window_size <= 0:
+        if self.shuffle_window_bytes <= 0:
             raise ValueError(
-                "shuffle_window_size must be positive for distributed shuffle, "
-                f"got {self.shuffle_window_size}"
+                "shuffle_window_bytes must be positive for distributed shuffle, "
+                f"got {self.shuffle_window_bytes}"
             )
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
         object.__setattr__(
             self,
             "_name",
-            f"DistributedShuffle[window={self.shuffle_window_size}]",
+            f"DistributedShuffle[window_bytes={self.shuffle_window_bytes}]",
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)

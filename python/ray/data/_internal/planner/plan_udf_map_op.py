@@ -265,7 +265,7 @@ def plan_distributed_shuffle_op(
     )
     map_transformer = MapTransformer([transform_fn])
 
-    ref_bundler = DistributedShuffleRefBundler(op.shuffle_window_size)
+    ref_bundler = DistributedShuffleRefBundler(op.shuffle_window_bytes)
 
     operator = MapOperator.create(
         map_transformer,
