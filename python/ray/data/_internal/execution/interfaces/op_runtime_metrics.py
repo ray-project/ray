@@ -140,8 +140,16 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
+    # Node IDs derived from the input blocks' exec_stats at task submission time.
+    # Used to determine cache hits: if the task's first output block was produced
+    # on a node that already held an input block, it's a "cache hit" (the task
+    # ran where its data lived). For source operators (e.g., ReadRange), input
+    # blocks lack exec_stats, so input_node_ids will contain NODE_UNKNOWN and
+    # all tasks will be classified as cache misses.
     input_node_ids: Set[str] = field(default_factory=set)
     last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
+    # Set once the task's first output is observed. True if the output node
+    # matched one of the input_node_ids (data locality was preserved).
     is_cache_hit: Optional[bool] = field(init=False, default=None)
 
 
