@@ -396,14 +396,36 @@ class OpenAiIngress(DeploymentProtocol):
             self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
         )
 
-        # When enabled, install ASGI middleware that serves the /internal/route
-        # endpoint for HAProxy Lua routing decisions. Streaming requests are
-        # handled directly by the sidecar HTTP servers on the LLM replicas;
-        # the ingress is only in the routing decision path, not the data path.
+        # HTTP sidecar proxy mode: routes streaming requests directly to
+        # replica HTTP sidecars, bypassing the DeploymentHandle transport.
+        # Sidecar endpoints are discovered from RunningReplica.sidecar_endpoint
+        # via the request router (propagated through RunningReplicaInfo long-poll).
         self._sidecar_enabled = os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1"
+        self._sidecar_session = None
         self._sidecar_rr_counter = 0
+
+        # Install raw ASGI middleware to intercept streaming requests before
+        # FastAPI routing (bypasses pydantic parsing + Starlette StreamingResponse).
+        # Also install in ingress bypass mode (route-only) so /internal/route works.
+        self._ingress_bypass_enabled = False
         if self._sidecar_enabled:
             get_or_create_event_loop().create_task(self._install_sidecar_middleware())
+        else:
+            # Check for ingress bypass after config maps are loaded
+            get_or_create_event_loop().create_task(
+                self._maybe_install_ingress_bypass_middleware()
+            )
+
+    async def _maybe_install_ingress_bypass_middleware(self):
+        """Check if any LLMConfig has ingress_bypass enabled and install middleware."""
+        await self._init_completed.wait()
+        if any(
+            getattr(cfg, "ingress_bypass", False) for cfg in self._llm_configs.values()
+        ):
+            self._ingress_bypass_enabled = True
+            self._sidecar_enabled = True  # Enable sidecar path for /internal/route
+            os.environ["RAYLLM_SIDECAR_ROUTE_ONLY"] = "1"
+            await self._install_sidecar_middleware()
 
     async def _install_sidecar_middleware(self):
         """Install ASGI middleware that serves the /internal/route endpoint.

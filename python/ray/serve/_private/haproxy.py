@@ -250,6 +250,10 @@ class BackendConfig:
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
+    # Router servers for ingress bypass Lua routing.
+    # When populated, HAProxy Lua calls these to get routing decisions.
+    router_servers: List[ServerConfig] = field(default_factory=list)
+
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
@@ -632,6 +636,78 @@ class HAProxyApi(ProxyApi):
             f"HAProxy did not enter running state within {timeout_s} seconds."
         )
 
+    def _write_lua_script(self, router_servers: List[ServerConfig]) -> str:
+        """Write the Lua routing script for ingress bypass.
+
+        Returns the path to the written Lua script.
+        """
+        config_dir = os.path.dirname(self.config_file_path)
+        lua_path = os.path.join(config_dir, "sidecar_route.lua")
+
+        # Build round-robin Lua script that calls router for routing decisions
+        # then sets txn variables for HAProxy to use-server
+        router_entries = []
+        for i, srv in enumerate(router_servers):
+            router_entries.append(f'    {{ host = "{srv.host}", port = {srv.port} }}')
+        routers_lua = ",\n".join(router_entries)
+
+        lua_content = f"""-- Auto-generated Lua routing script for ingress bypass.
+-- Uses core.tcp() + HTTP/1.0 (HAProxy built-in, no external modules).
+
+local routers = {{
+{routers_lua}
+}}
+local rr_idx = 0
+
+core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
+    local body = txn.sf:req_body()
+    local content_length = 0
+    if body and body ~= "" then
+        content_length = #body
+    end
+
+    rr_idx = rr_idx + 1
+    local router = routers[((rr_idx - 1) % #routers) + 1]
+
+    local sock = core.tcp()
+    sock:settimeout(5)
+
+    local ok, err = sock:connect(router.host, tonumber(router.port))
+    if not ok then
+        return
+    end
+
+    local req = "POST /internal/route HTTP/1.0\\r\\n"
+        .. "Content-Type: application/json\\r\\n"
+        .. "Content-Length: " .. content_length .. "\\r\\n"
+        .. "\\r\\n"
+    if content_length > 0 then
+        req = req .. body
+    end
+
+    sock:send(req)
+    local response = sock:receive("*a")
+    sock:close()
+
+    if not response then
+        return
+    end
+
+    local host = response:match('"host"%s*:%s*"([^"]+)"')
+    local port = response:match('"port"%s*:%s*(%d+)')
+
+    if host and port then
+        local server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
+        txn:set_var("txn.target_server", server_name)
+    end
+end, 0)
+"""
+        with open(lua_path, "w") as f:
+            f.write(lua_content)
+
+        logger.info(f"Wrote Lua routing script to {lua_path}")
+        return lua_path
+
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
         try:
@@ -644,6 +720,18 @@ class HAProxyApi(ProxyApi):
                 self.backend_configs.values(),
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
+
+            # Check if any backend has ingress bypass (router_servers populated)
+            has_ingress_bypass = any(len(be.router_servers) > 0 for be in backends)
+
+            # Write Lua script if ingress bypass is active
+            lua_script_path = None
+            if has_ingress_bypass:
+                all_router_servers = []
+                for be in backends:
+                    all_router_servers.extend(be.router_servers)
+                if all_router_servers:
+                    lua_script_path = self._write_lua_script(all_router_servers)
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -674,6 +762,8 @@ class HAProxyApi(ProxyApi):
                     "backends_with_health_config": backends_with_health_config,
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
+                    "has_ingress_bypass": has_ingress_bypass,
+                    "lua_script_path": lua_script_path,
                 }
             )
 
@@ -1153,9 +1243,20 @@ class HAProxyManager(ProxyActorInterface):
         """Create a backend configuration from a target group and fallback target."""
         servers = [self._target_to_server(target) for target in target_group.targets]
 
+        # Router servers for ingress bypass Lua routing
+        router_servers = [
+            self._target_to_server(target) for target in target_group.router_targets
+        ]
+
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
+
+        # When ingress bypass is active, the main targets are LLMServer replicas
+        # serving vLLM's native app which uses /health not /-/healthz.
+        health_path = None  # use default
+        if router_servers:
+            health_path = "/health"
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1166,8 +1267,10 @@ class HAProxyManager(ProxyActorInterface):
             ),
             path_prefix=target_group.route_prefix,
             servers=servers,
+            router_servers=router_servers,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
+            health_check_path=health_path,
         )
 
     async def _reload_haproxy(self) -> None:

@@ -195,9 +195,41 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        # Start HTTP sidecar if enabled
-        if os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
+        # Ingress bypass: register vLLM's FastAPI app for direct ingress serving
+        if getattr(self._llm_config, "ingress_bypass", False):
+            await self._register_direct_ingress_app()
+        # Legacy sidecar mode
+        elif os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
             await self._start_http_sidecar()
+
+    async def _register_direct_ingress_app(self):
+        """Build vLLM's FastAPI app and register it for direct ingress serving.
+
+        Uses ray.serve.context.set_asgi_app() to register the app with
+        the replica's direct ingress HTTP server. The server starts after
+        port allocation in _on_initialized().
+        """
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+
+        engine = self.engine
+
+        args = engine._vllm_args
+        supported_tasks = ("generate",)
+        if hasattr(engine._engine_client, "get_supported_tasks"):
+            supported_tasks = await engine._engine_client.get_supported_tasks()
+
+        app = build_app(args, supported_tasks=supported_tasks)
+        await init_app_state(
+            engine._engine_client,
+            app.state,
+            args,
+            supported_tasks=supported_tasks,
+        )
+
+        import ray.serve.context
+
+        await ray.serve.context.set_asgi_app(app)
+        logger.info("Registered vLLM FastAPI app for direct ingress serving")
 
     async def _start_http_sidecar(self):
         """Start an HTTP sidecar serving vLLM's own OpenAI-compatible FastAPI app.
