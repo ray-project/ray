@@ -22,6 +22,7 @@ from ray.core.generated import gcs_pb2
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
+    AutoscalingActorConfig,
 )
 from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
     _estimate_total_available_task_slots,
@@ -75,7 +76,7 @@ class PoolWorker:
     def get_location(self) -> str:
         return self.node_id
 
-    def on_exit(self):
+    def __ray_shutdown__(self):
         pass
 
 
@@ -157,16 +158,18 @@ class TestActorPool(unittest.TestCase):
         max_tasks_in_flight=4,
         map_worker_cls_name="MapWorker",
     ):
-        pool = _ActorPool(
-            create_actor_fn=self._create_actor_fn,
+        config = AutoscalingActorConfig(
             min_size=min_size,
             max_size=max_size,
             initial_size=initial_size,
             max_tasks_in_flight_per_actor=max_tasks_in_flight,
             max_actor_concurrency=1,
             per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        pool = _ActorPool(
+            create_actor_fn=self._create_actor_fn,
             map_worker_cls_name=map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=False,
+            config=config,
         )
         return pool
 
@@ -225,12 +228,12 @@ class TestActorPool(unittest.TestCase):
             # Scale up
             pool.scale(ActorPoolScalingRequest(delta=1, reason="scaling up"))
             # Assert we can't scale down immediately after scale up
-            assert not pool._can_apply(downscaling_request)
+            assert not pool._can_apply_request(downscaling_request)
             assert pool._last_upscaled_at == time.time()
 
             # Check that we can still scale down if downscaling request
             # is a forced one
-            assert pool._can_apply(replace(downscaling_request, force=True))
+            assert pool._can_apply_request(replace(downscaling_request, force=True))
 
             # Advance clock
             f.tick(
@@ -240,7 +243,7 @@ class TestActorPool(unittest.TestCase):
             )
 
             # Assert can scale down after debounce period
-            assert pool._can_apply(downscaling_request)
+            assert pool._can_apply_request(downscaling_request)
 
     def test_add_pending(self):
         # Test that pending actor is added in the correct state.
@@ -788,17 +791,19 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
         actor = PoolWorker.options(_labels=labels).remote("node1")
         return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
 
-    pool = _ActorPool(
-        create_actor_fn=create_actor_fn,
+    config = AutoscalingActorConfig(
         min_size=1,
         max_size=4,
         initial_size=1,
         max_tasks_in_flight_per_actor=4,
         max_actor_concurrency=1,
         per_actor_resource_usage=ExecutionResources(cpu=1),
+    )
+    pool = _ActorPool(
+        create_actor_fn=create_actor_fn,
         map_worker_cls_name="MapWorker(TestOp)",
+        config=config,
         debounce_period_s=0,
-        _enable_actor_pool_on_exit_hook=False,
     )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):

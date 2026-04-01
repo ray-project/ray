@@ -298,8 +298,9 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             Note,
-            - If using Ray Data with Ray Train, training resources will be
-            automatically excluded.
+            - If using Ray Data with Ray Train, training resources are
+            automatically reserved and you don't need to set exclude_resources
+            for them.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
         preserve_order: Set this to preserve the ordering between blocks processed by
