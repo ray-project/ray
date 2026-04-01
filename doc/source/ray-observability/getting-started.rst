@@ -94,6 +94,24 @@ A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``r
 The Job view displays a list of active, finished, and failed Jobs, and clicking on an ID allows users to view detailed information about that Job.
 For more information on Ray Jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
 
+Job naming
+~~~~~~~~~~
+
+The **Name** column in the Jobs view displays the value of the ``job_name`` key from the Job's metadata.
+You can set it when submitting a Job via the :ref:`Ray Job API <jobs-quickstart>`:
+
+.. code-block:: python
+
+    from ray.job_submission import JobSubmissionClient
+
+    client = JobSubmissionClient("http://127.0.0.1:8265")
+    client.submit_job(
+        entrypoint="python my_script.py",
+        metadata={"job_name": "my-training-job"},
+    )
+
+If ``job_name`` is not provided in the metadata, it defaults to the Job ID.
+
 Job Profiling
 ~~~~~~~~~~~~~
 
