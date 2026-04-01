@@ -1640,7 +1640,7 @@ class OperatorStatsSummary:
             out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
                 self.memory.min,
                 self.memory.max,
-                self.memory.mean,
+                int(self.memory.mean),
             )
 
         if self.output_num_rows:
@@ -1650,7 +1650,7 @@ class OperatorStatsSummary:
             ).format(
                 self.output_num_rows.min,
                 self.output_num_rows.max,
-                self.output_num_rows.mean,
+                int(self.output_num_rows.mean),
                 self.output_num_rows.sum,
             )
 
@@ -1661,7 +1661,7 @@ class OperatorStatsSummary:
             ).format(
                 self.output_size_bytes.min,
                 self.output_size_bytes.max,
-                self.output_size_bytes.mean,
+                int(self.output_size_bytes.mean),
                 self.output_size_bytes.sum,
             )
 
@@ -1672,7 +1672,7 @@ class OperatorStatsSummary:
             ).format(
                 self.task_rows.min,
                 self.task_rows.max,
-                self.task_rows.mean,
+                int(self.task_rows.mean),
                 self.task_rows.count,
             )
 
@@ -1681,7 +1681,7 @@ class OperatorStatsSummary:
             out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
                 self.node_count.min,
                 self.node_count.max,
-                self.node_count.mean,
+                int(self.node_count.mean),
                 self.node_count.count,
             )
         if self.num_rows_per_s and self.num_rows_per_task_s:
