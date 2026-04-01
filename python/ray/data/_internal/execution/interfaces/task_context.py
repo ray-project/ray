@@ -92,19 +92,3 @@ class TaskContext:
             yield context
         finally:
             cls.reset_current()
-
-    @property
-    def sub_progress_bar_dict(self):
-        return self.sub_progress_updaters
-
-    @sub_progress_bar_dict.setter
-    def sub_progress_bar_dict(self, value):
-        self.sub_progress_updaters = value
-
-    @property
-    def sub_progress_tracker_dict(self):
-        return self.sub_progress_updaters
-
-    @sub_progress_tracker_dict.setter
-    def sub_progress_tracker_dict(self, value):
-        self.sub_progress_updaters = value

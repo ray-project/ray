@@ -207,7 +207,7 @@ class RichExecutionProgressManager(BaseExecutionProgressManager):
             if sub_progress_metrics is None or sub_progress_updaters is None:
                 continue
 
-            for name, metrics in sub_progress_metrics.items():
+            for name in sub_progress_metrics:
                 if sub_progress_bar_enabled:
                     progress = self._make_progress_bar(
                         _TREE_VERTICAL_SUB_PROGRESS, "", 10
