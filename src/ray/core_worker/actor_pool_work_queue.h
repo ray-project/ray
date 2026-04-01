@@ -55,6 +55,11 @@ struct PoolWorkItem {
   /// Timestamp when this work item was enqueued (in milliseconds).
   int64_t enqueued_at_ms = 0;
 
+  /// Whether the task has been pushed to the actor via gRPC (OnTaskSubmitted fired).
+  /// False means the task is in the ActorTaskSubmitter async pipeline but not yet
+  /// counted in num_tasks_in_flight. GetOccupiedTaskSlots includes these as pending.
+  bool pushed_to_actor = false;
+
   PoolWorkItem() = default;
 
   /// Move constructor.
@@ -66,7 +71,8 @@ struct PoolWorkItem {
         arg_ids(std::move(other.arg_ids)),
         options(std::move(other.options)),
         attempt_number(other.attempt_number),
-        enqueued_at_ms(other.enqueued_at_ms) {}
+        enqueued_at_ms(other.enqueued_at_ms),
+        pushed_to_actor(other.pushed_to_actor) {}
 
   /// Move assignment.
   PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
@@ -79,6 +85,7 @@ struct PoolWorkItem {
       options = std::move(other.options);
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
+      pushed_to_actor = other.pushed_to_actor;
     }
     return *this;
   }

@@ -268,7 +268,22 @@ int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const
   auto wq_it = work_queues_.find(pool_id);
   int64_t backlog = (wq_it != work_queues_.end()) ? wq_it->second->Size() : 0;
 
-  return total_in_flight + backlog;
+  // Count work items dispatched to ActorTaskSubmitter but not yet pushed to the
+  // actor via gRPC (OnTaskSubmitted hasn't fired yet). Without this, tasks are
+  // invisible between SubmitToActor and the async OnTaskSubmitted callback,
+  // allowing the Python scheduling loop to over-submit.
+  int64_t pending_submissions = 0;
+  auto pw_it = pool_to_work_items_.find(pool_id);
+  if (pw_it != pool_to_work_items_.end()) {
+    for (const auto &work_item_id : pw_it->second) {
+      auto wi_it = work_items_.find(work_item_id);
+      if (wi_it != work_items_.end() && !wi_it->second.pushed_to_actor) {
+        pending_submissions++;
+      }
+    }
+  }
+
+  return total_in_flight + backlog + pending_submissions;
 }
 
 int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
@@ -346,7 +361,8 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
   }
 }
 
-void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id) {
+void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
+                                       const TaskID &work_item_id) {
   absl::MutexLock lock(&mu_);
 
   auto pool_it = actor_to_pool_.find(actor_id);
@@ -365,6 +381,15 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id) {
   }
 
   state_it->second.num_tasks_in_flight++;
+
+  // Mark the work item as pushed so it is no longer counted as a pending
+  // submission in GetOccupiedTaskSlots.
+  if (!work_item_id.IsNil()) {
+    auto wi_it = work_items_.find(work_item_id);
+    if (wi_it != work_items_.end()) {
+      wi_it->second.pushed_to_actor = true;
+    }
+  }
 }
 
 void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_id) {

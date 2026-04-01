@@ -438,9 +438,10 @@ CoreWorker::CoreWorker(
               pool_id, work_item_id, task_id, actor_id, status, error_info);
         }
       });
-  actor_task_submitter_->SetPoolTaskSubmittedCallback([this](const ActorID &actor_id) {
-    actor_pool_manager_->OnTaskSubmitted(actor_id);
-  });
+  actor_task_submitter_->SetPoolTaskSubmittedCallback(
+      [this](const ActorID &actor_id, const TaskID &work_item_id) {
+        actor_pool_manager_->OnTaskSubmitted(actor_id, work_item_id);
+      });
 
   // Wire actor state notifications from GCS to ActorPoolManager.
   // When a pool actor restarts (ALIVE), this triggers DrainWorkQueue to

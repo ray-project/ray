@@ -299,9 +299,12 @@ class ActorPoolManager {
                           const rpc::RayErrorInfo *error_info);
 
   /// Notify that a task was pushed to an actor in a pool.
+  /// Transitions the work item from pending-submission to in-flight.
   ///
   /// \param actor_id The actor that received the task.
-  void OnTaskSubmitted(const ActorID &actor_id);
+  /// \param work_item_id The work item that was pushed.
+  void OnTaskSubmitted(const ActorID &actor_id,
+                       const TaskID &work_item_id = TaskID::Nil());
 
   /// Notify that an actor has come alive (e.g. after restart).
   /// Called from ActorManager::HandleActorStateNotification when state = ALIVE.
