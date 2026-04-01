@@ -187,6 +187,12 @@ class SplitCoordinator:
         # Guarded by self._cond.
         self._ready_consumers: Set[SplitIdx] = set()
 
+        # Splits with an active consumer (from signal_new_epoch entry until
+        # epoch completion in get()). Used to detect duplicate readers —
+        # unlike _ready_consumers, this is NOT cleared on epoch start.
+        # Guarded by self._cond.
+        self._splits_in_use: Set[SplitIdx] = set()
+
         # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
 
@@ -258,11 +264,12 @@ class SplitCoordinator:
         Uses Condition.wait() instead of spin-wait — zero CPU while waiting.
         """
         with self._cond:
-            if split_idx in self._ready_consumers:
+            if split_idx in self._splits_in_use:
                 raise ValueError(
-                    f"Duplicate signal_new_epoch call for split {split_idx}. "
+                    f"Duplicate reader for split {split_idx}. "
                     "Each split must have exactly one reader."
                 )
+            self._splits_in_use.add(split_idx)
             self._ready_consumers.add(split_idx)
 
             if len(self._ready_consumers) == self._num_splits:
@@ -367,9 +374,9 @@ class SplitCoordinator:
         finally:
             if not returned_normally:
                 with self._cond:
+                    self._splits_in_use.discard(output_split_idx)
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-            # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
