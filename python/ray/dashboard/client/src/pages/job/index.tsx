@@ -105,6 +105,10 @@ const JobList = () => {
               onChange={(value) => changeFilter("job_id", value)}
             />
             <SearchInput
+              label="Name"
+              onChange={(value) => changeFilter("name", value)}
+            />
+            <SearchInput
               label="Submission ID"
               onChange={(value) => changeFilter("submission_id", value)}
             />
