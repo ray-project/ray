@@ -58,6 +58,7 @@ def eval_only_train_fn(config_dict: dict) -> None:
             outputs = model(images)
             loss = criterion(outputs, labels)
             mean_valid_loss(loss)
+    # Report metrics and placeholder checkpoint so validation_fn can access them.
     ray.train.report(
         metrics={"score": mean_valid_loss.compute().item()},
         checkpoint=ray.train.Checkpoint(
