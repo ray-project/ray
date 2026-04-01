@@ -7152,7 +7152,7 @@ class Dataset:
 
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
-        if schema is None or not isinstance(schema, Schema) or not schema.names:
+        if schema is None or not isinstance(schema, Schema):
             return get_plan_as_string(self)
 
         is_materialized = isinstance(self, MaterializedDataset)

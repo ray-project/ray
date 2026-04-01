@@ -34,6 +34,9 @@ def _build_dataset_ascii_repr(
 ) -> str:
     """Render the dataset as a multi-line tabular string."""
     columns = list(schema.names)
+    if not columns:
+        return get_plan_as_string(dataset)
+
     num_rows = dataset._meta_count()
     head_rows: List[List[str]] = []
     tail_rows: List[List[str]] = []
