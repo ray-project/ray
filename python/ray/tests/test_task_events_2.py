@@ -1159,7 +1159,7 @@ class TestIsActorTaskRunning:
                     assert psutil.Process(pid).name() == "ray::A.check"
                     assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
 
-                wait_for_condition(check)
+                wait_for_condition(_check)
 
                 return pid
 
@@ -1207,7 +1207,7 @@ class TestIsActorTaskRunning:
                     assert _is_actor_task_running(pid, task_name)
                     assert psutil.Process(pid).name() == f"ray::{task_name}"
                     assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
-                
+
                 wait_for_condition(_check)
 
                 return pid
