@@ -21,7 +21,9 @@ from ray_release.config import (
 from ray_release.configs.global_config import init_global_config
 from ray_release.custom_byod_build_init_helper import (
     build_short_gpu_map,
+    collect_needed_variants,
     create_custom_build_yaml,
+    filter_release_build_yaml,
 )
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -142,6 +144,39 @@ def main(
     tests = [test for test, _ in filtered_tests]
 
     gpu_map = build_short_gpu_map(os.path.join(_bazel_workspace_dir, "ray-images.json"))
+
+    # When a test filter is active, trim the rayci YAML files to only the
+    # python versions, image types, and CUDA platforms needed by the
+    # selected tests.  Full (unfiltered) builds keep the static YAML as-is.
+    if test_filters:
+        needed_python, needed_image_types, cuda_needs = collect_needed_variants(
+            tests, gpu_map
+        )
+        logger.info(
+            f"Filtering release YAML: python={needed_python}, "
+            f"image_types={needed_image_types}, cuda={cuda_needs}"
+        )
+        release_dir = os.path.join(_bazel_workspace_dir, ".buildkite", "release")
+        # build.rayci.yml: filter by image type + dimensions.
+        build_yaml = os.path.join(release_dir, "build.rayci.yml")
+        if os.path.exists(build_yaml):
+            filter_release_build_yaml(
+                build_yaml, needed_python, needed_image_types, cuda_needs
+            )
+        # Shared files (_images, _wheel-build): filter dimensions only.
+        # These have cross-type dependencies so we cannot remove steps
+        # by image type — only trim array dimensions using a global
+        # CUDA filter.
+        for shared_yaml in ("_images.rayci.yml", "_wheel-build.rayci.yml"):
+            p = os.path.join(release_dir, shared_yaml)
+            if os.path.exists(p):
+                filter_release_build_yaml(
+                    p,
+                    needed_python,
+                    needed_image_types,
+                    cuda_needs,
+                    filter_by_image_type=False,
+                )
 
     # Generate custom image build steps
     create_custom_build_yaml(
