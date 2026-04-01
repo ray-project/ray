@@ -127,12 +127,14 @@ def test_split_coordinator_shutdown_executor(ray_start_4_cpus):
     coord = SplitCoordinator.options(name="test_split_coordinator").remote(
         dataset, NUM_SPLITS, None
     )
-    ray.get(coord.signal_epoch_done.remote(0))
+    ray.get(coord.signal_new_epoch.remote(0))
 
     # Explicitly trigger autoscaling
     ray.get(
         coord.__ray_call__.remote(
-            lambda coord: coord._current_executor._cluster_autoscaler.try_trigger_scaling()
+            lambda coord: (
+                coord._current_executor._cluster_autoscaler.try_trigger_scaling()
+            )
         )
     )
 

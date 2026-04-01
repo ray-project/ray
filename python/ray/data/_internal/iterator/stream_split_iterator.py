@@ -74,7 +74,7 @@ class StreamSplitDataIterator(DataIterator):
         def gen_blocks() -> Iterator[RefBundle]:
             # Signal that this consumer is ready for the next epoch.
             # Blocks until all consumers have signaled and the executor starts.
-            ray.get(self._coord_actor.signal_epoch_done.remote(self._output_split_idx))
+            ray.get(self._coord_actor.signal_new_epoch.remote(self._output_split_idx))
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
                 self._output_split_idx, 0
@@ -142,7 +142,7 @@ class SplitCoordinator:
     Epoch lifecycle (each split consumer; ``StreamSplitDataIterator`` issues these
     RPCs)::
 
-        signal_epoch_done(split_idx)
+        signal_new_epoch(split_idx)
                  |
                  |  wait under Condition until all ``num_splits`` consumers
                  |  have signaled; then start executor + output iterator
@@ -157,7 +157,7 @@ class SplitCoordinator:
         | get(...) -> None       |<---+
         +------------------------+
                  |
-                 +---- next pass: signal_epoch_done again
+                 +---- next pass: signal_new_epoch again
     """
 
     def __init__(
@@ -182,11 +182,8 @@ class SplitCoordinator:
         self._schema = None
         self._current_executor = None
 
-        # Consumers that have called signal_epoch_done() for the current epoch
+        # Consumers that have called signal_new_epoch() for the current epoch
         # transition. Once all unique split indices arrive, the next epoch starts.
-        # Using a set keyed by split_idx means duplicate consumers for the same
-        # split only count once, ensuring they both proceed into get() together
-        # where the _active_consumers check detects the conflict.
         # Guarded by self._cond.
         self._ready_consumers: Set[SplitIdx] = set()
 
@@ -195,11 +192,6 @@ class SplitCoordinator:
 
         # Guarded by self._cond.
         self._next_bundle: Dict[SplitIdx, RefBundle] = {}
-
-        # Consumers currently inside get(). Used to detect duplicate readers
-        # on the same split, which would corrupt data.
-        # Guarded by self._cond.
-        self._active_consumers: Set[SplitIdx] = set()
 
         # Track prefetched bytes reported by each client (from BatchIterator).
         # Guarded by self._cond.
@@ -215,7 +207,7 @@ class SplitCoordinator:
     def get_dataset_context(self) -> DataContext:
         return self._data_context
 
-    def get_dataset_tag(self, output_split_idx: int) -> str:
+    def get_dataset_tag(self, output_split_idx: SplitIdx) -> str:
         return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
 
     def get_dataset_schema(self):
@@ -259,24 +251,23 @@ class SplitCoordinator:
         except Exception as e:
             self._gen_epoch_error = e
 
-    def signal_epoch_done(self, split_idx: SplitIdx) -> None:
+    def signal_new_epoch(self, split_idx: SplitIdx) -> None:
         """Signal that this consumer is done with the current epoch and ready
         for the next one. Blocks until all consumers have signaled.
 
         Uses Condition.wait() instead of spin-wait — zero CPU while waiting.
         """
         with self._cond:
+            if split_idx in self._ready_consumers:
+                raise ValueError(
+                    f"Duplicate signal_new_epoch call for split {split_idx}. "
+                    "Each split must have exactly one reader."
+                )
             self._ready_consumers.add(split_idx)
 
             if len(self._ready_consumers) == self._num_splits:
                 # Last consumer to arrive — start the next epoch.
                 self._ready_consumers.clear()
-                # NOTE: Do NOT clear _active_consumers here. Each
-                # consumer that successfully entered get() removes its
-                # own entry in the finally block before reaching
-                # signal_epoch_done(). If a stale entry remains, it
-                # means a duplicate reader is still inside get() —
-                # keeping it lets us detect the conflict.
                 self._cur_epoch += 1
                 self._start_executor()
                 self._cond.notify_all()
@@ -335,15 +326,6 @@ class SplitCoordinator:
         start_time = time.perf_counter()
         returned_normally = False
         try:
-            with self._cond:
-                # Reject concurrent readers on the same split.
-                if output_split_idx in self._active_consumers:
-                    raise ValueError(
-                        f"Concurrent read on split {output_split_idx} detected. "
-                        "Each split must have exactly one reader at a time."
-                    )
-                self._active_consumers.add(output_split_idx)
-
             if self._gen_epoch_error is not None:
                 raise self._gen_epoch_error
             # Check for cached leftover blocks from a previous get().
@@ -383,17 +365,12 @@ class SplitCoordinator:
             return None
 
         finally:
-            with self._cond:
-                # Only clean up if we were the legitimate reader. A rejected
-                # concurrent reader was never added to _active_consumers.
-                is_active = output_split_idx in self._active_consumers
-                if is_active:
-                    self._active_consumers.discard(output_split_idx)
-                if is_active and not returned_normally:
+            if not returned_normally:
+                with self._cond:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-                # Track overhead time in the instance variable
-                self._coordinator_overhead_s += time.perf_counter() - start_time
+            # Track overhead time in the instance variable
+            self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
