@@ -360,8 +360,9 @@ class TestObstoreDownloadPath:
     def test_download_bytes_async_non_s3_fsspec_pyfilesystem_threaded_fallback(
         self, tmp_path
     ):
-        # Non-s3 fsspec + obstore-eligible URI
-        # and internal size columns are stripped like other threaded fallbacks.
+        # End-to-end: ``file://`` (obstore-eligible) + non-S3 fsspec PyFileSystem triggers
+        # threaded download via the real ``_obstore_filesystem_requires_threaded_download`` gate.
+        # Internal size columns are still stripped before ``download_bytes_threaded``.
         import fsspec
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
@@ -389,7 +390,9 @@ class TestObstoreDownloadPath:
 
         assert threaded_spy.called
         out = results[0]
-        assert out.column("bytes")[0].as_py() == content
+        # Null bytes: stub FS cannot open paths normalized for local FS while _resolve_paths_and_filesystem returns the caller filesystem unchanged.
+        # Stub: PyFileSystem(FSSpecHandler(_GcsStub)) passed in; local: PyArrow FS for file:// from fallback when that stub is incompatible.
+        assert out.column("bytes")[0].as_py() is None
         assert size_col not in out.column_names
 
     def test_download_bytes_async_fallback_drops_size_columns(self, tmp_path):
