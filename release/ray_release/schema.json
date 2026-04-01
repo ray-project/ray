@@ -86,11 +86,17 @@
 				"cloud_id": {
 					"type": "string"
 				},
+				"cloud": {
+					"type": "string"
+				},
 				"project_id": {
 					"type": "string"
 				},
 				"byod": {
 					"$ref": "#/definitions/Byod"
+				},
+				"anyscale_sdk_2026": {
+					"type": "boolean"
 				}
 			},
 			"required": [

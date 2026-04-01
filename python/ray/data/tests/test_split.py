@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -1022,6 +1023,16 @@ def test_streaming_split_reports_and_clears_prefetched_bytes(
         assert (
             bytes_val == 0
         ), f"Split {split_idx} stale bytes after 2nd epoch: {bytes_val}"
+
+
+def test_streaming_splits_schema_access(ray_start_regular_shared_2_cpus):
+    ds = ray.data.range(20, override_num_blocks=4)
+
+    iter_1, iter_2 = ds.streaming_split(2)
+
+    expected_schema = pa.schema([pa.field("id", pa.int64())])
+
+    assert expected_schema.equals(iter_1.schema().base_schema)
 
 
 if __name__ == "__main__":
