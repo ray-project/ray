@@ -5,9 +5,12 @@ points, and that callback exceptions are properly caught, routed through the
 failure decision pipeline, and do not crash the control loop.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 import ray
+from ray.exceptions import AsyncioActorExit
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
@@ -402,6 +405,20 @@ async def test_top_level_safety_net_catches_unhandled_error():
     # The run() method should not raise — the safety net catches it.
     await controller.run()
     assert controller.get_state().is_terminal()
+
+
+@pytest.mark.asyncio
+async def test_asyncio_actor_exit_is_reraised():
+    """AsyncioActorExit raised by _step must propagate through
+    _run_control_loop_iteration without being caught by the safety net."""
+
+    controller, _, _ = await _create_controller_and_drive_to_running()
+
+    with patch.object(
+        controller, "_step", new_callable=AsyncMock, side_effect=AsyncioActorExit()
+    ):
+        with pytest.raises(AsyncioActorExit):
+            await controller._run_control_loop_iteration()
 
 
 if __name__ == "__main__":

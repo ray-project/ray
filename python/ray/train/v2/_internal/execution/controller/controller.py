@@ -391,7 +391,6 @@ class TrainController:
                         f"with label_selector returned by user-specified callback {selector}"
                     )
                 label_selector = [selector.copy() for _ in range(num_workers)]
-                break
 
         # Calculate num_slices for the worker group if using TPU.
         num_slices = 1
@@ -639,6 +638,15 @@ class TrainController:
 
     async def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.
+
+        Steps:
+        1. Poll the worker group for status.
+        2. If the worker group is initializing or recovering from an error,
+            make a scaling decision and execute it.
+        3. If the worker group has finished, set the controller state to FINISHED.
+        4. If the worker group has errors, make a failure decision and execute it.
+        5. Otherwise, the worker group is running healthily.
+            Query the scaling policy for a scaling decision and execute it.
 
         Errors raised by ``_step`` are caught and routed through the failure
         policy (retry / raise).  If the failure policy itself fails, the
