@@ -110,7 +110,7 @@ You can set it when submitting a Job via the :ref:`Ray Job API <jobs-quickstart>
         metadata={"job_name": "my-training-job"},
     )
 
-If ``job_name`` is not provided in the metadata, it defaults to the Job ID.
+If ``job_name`` is not provided in the metadata, it defaults to the job ID. Job names do not need to be unique.
 
 Job Profiling
 ~~~~~~~~~~~~~
