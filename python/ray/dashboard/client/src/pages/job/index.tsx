@@ -26,6 +26,14 @@ import { JobRow } from "./JobRow";
 
 const columns = [
   { label: "Job ID" },
+  {
+    label: "Name",
+    helpInfo: (
+      <Typography>
+        The job name from the <code>job_name</code> key in the job's metadata.
+      </Typography>
+    ),
+  },
   { label: "Submission ID" },
   { label: "Entrypoint" },
   { label: "Status" },
