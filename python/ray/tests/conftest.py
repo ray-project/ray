@@ -1556,6 +1556,27 @@ def cleanup_auth_token_env():
         reset_auth_token_state()
 
 
+@pytest.fixture(autouse=False)
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    yield
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
+
+
 @pytest.fixture
 def setup_cluster_with_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with token authentication enabled."""
