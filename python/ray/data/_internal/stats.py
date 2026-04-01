@@ -72,56 +72,85 @@ def leveled_indent(lvl: int = 0, spaces_per_indent: int = 3) -> str:
 
 
 @dataclass(slots=True)
+class StatsSummary:
+    """Immutable summary of min/max/mean/sum/count statistics."""
+
+    min: int | float
+    max: int | float
+    mean: float
+    sum: int | float
+    count: int
+
+    def to_dict(
+        self,
+        *,
+        mean_as_int: bool = False,
+        include_sum: bool = True,
+        include_count: bool = True,
+    ) -> dict[str, int | float]:
+        """Serialize to a plain dict, with optional formatting.
+
+        Args:
+            mean_as_int: If True, the ``mean`` value is truncated to ``int``.
+            include_sum: If True, include a ``sum`` key.
+            include_count: If True, include a ``count`` key.
+
+        Returns:
+            A dict with ``min``, ``max``, ``mean``, and optionally ``sum``
+            and ``count``.
+        """
+        result: dict[str, int | float] = {
+            "min": self.min,
+            "max": self.max,
+            "mean": int(self.mean) if mean_as_int else self.mean,
+        }
+        if include_sum:
+            result["sum"] = self.sum
+        if include_count:
+            result["count"] = self.count
+        return result
+
+
+@dataclass(slots=True)
 class _StatsAccumulator:
     """Tracks min/max/sum/count for incremental stats computation."""
 
     min_value: int | float = float("inf")
     max_value: int | float = float("-inf")
-    sum: int | float = 0
+    acc_sum: int | float = 0
     count: int = 0
 
     def add(self, value: int | float) -> None:
         self.min_value = min(self.min_value, value)
         self.max_value = max(self.max_value, value)
-        self.sum += value
+        self.acc_sum += value
         self.count += 1
 
     def get(
         self,
         *,
-        mean_as_int: bool = False,
         round_digits: Optional[int] = None,
-        include_sum: bool = True,
-        include_count: bool = True,
-    ) -> Optional[dict[str, int | float]]:
-        """Build a summary dict from accumulated values.
+    ) -> Optional[StatsSummary]:
+        """Build a ``StatsSummary`` from accumulated values.
 
         Args:
-            mean_as_int: If True, the ``mean`` field is ``int(mean)``; otherwise
-                it is a float (optionally rounded).
             round_digits: If set, round ``min``, ``max``, ``mean``, and ``sum``
-                to this many decimal places. Applied before ``mean_as_int``.
-            include_sum: If True, include a ``sum`` key in the result.
-            include_count: If True, include a ``count`` key in the result.
+                to this many decimal places.
 
         Returns:
-            A dict with ``min``, ``max``, ``mean``, and optionally ``sum`` and
-            ``count``, or ``None`` if no values were added via :meth:`add`.
+            A :class:`StatsSummary`, or ``None`` if no values were added via
+            :meth:`add`.
         """
         if not self.count:
             return None
-        mean = self.sum / self.count
-
-        result = {
-            "min": safe_round(self.min_value, round_digits),
-            "max": safe_round(self.max_value, round_digits),
-            "mean": int(mean) if mean_as_int else safe_round(mean, round_digits),
-        }
-        if include_sum:
-            result["sum"] = safe_round(self.sum, round_digits)
-        if include_count:
-            result["count"] = self.count
-        return result
+        mean = self.acc_sum / self.count
+        return StatsSummary(
+            min=safe_round(self.min_value, round_digits),
+            max=safe_round(self.max_value, round_digits),
+            mean=safe_round(mean, round_digits),
+            sum=safe_round(self.acc_sum, round_digits),
+            count=self.count,
+        )
 
 
 class Timer:
@@ -1088,8 +1117,8 @@ class DatasetStats:
                 last_parent_op = parent_summary.operators_stats[-1]
                 # Extract output row count (handle dict type with "sum" key)
                 op_output = (
-                    last_parent_op.output_num_rows.get("sum", 0)
-                    if isinstance(last_parent_op.output_num_rows, dict)
+                    last_parent_op.output_num_rows.sum
+                    if last_parent_op.output_num_rows
                     else 0
                 )
                 logger.debug(
@@ -1115,11 +1144,7 @@ class DatasetStats:
                     # Input of subsequent sub-operators is the output of the previous sub-operator
                     prev_op = op_stats[i - 1]
                     op_stat.total_input_num_rows = (
-                        prev_op.output_num_rows["sum"]
-                        if (
-                            prev_op.output_num_rows and "sum" in prev_op.output_num_rows
-                        )
-                        else 0
+                        prev_op.output_num_rows.sum if prev_op.output_num_rows else 0
                     )
             else:
                 # Single operator scenario: input rows = total output from all parent nodes
@@ -1269,9 +1294,9 @@ class DatasetStatsSummary:
         # the total wall time (this finds the difference between the earliest start
         # and latest end for any block in any operator).
         output_num_rows = (
-            self.operators_stats[-1].output_num_rows if self.operators_stats else 0
+            self.operators_stats[-1].output_num_rows if self.operators_stats else None
         )
-        total_num_out_rows = output_num_rows["sum"] if output_num_rows else 0
+        total_num_out_rows = output_num_rows.sum if output_num_rows else 0
         wall_time = self.get_total_wall_time()
         if not total_num_out_rows or not wall_time:
             return 0.0
@@ -1379,7 +1404,7 @@ class DatasetStatsSummary:
         return sum(
             (
                 sum(
-                    ops.wall_time.get("sum", 0) if ops.wall_time else 0
+                    ops.wall_time.sum if ops.wall_time else 0
                     for ops in summ.operators_stats
                 )
             )
@@ -1389,7 +1414,7 @@ class DatasetStatsSummary:
     def get_total_cpu_time(self) -> float:
         parent_sum = sum(p.get_total_cpu_time() for p in self.parents)
         return parent_sum + sum(
-            ss.cpu_time.get("sum", 0) for ss in self.operators_stats
+            ss.cpu_time.sum if ss.cpu_time else 0 for ss in self.operators_stats
         )
 
     def get_max_heap_memory(self) -> float:
@@ -1400,7 +1425,7 @@ class DatasetStatsSummary:
 
         return max(
             parent_max,
-            *[ss.memory.get("max", 0) for ss in self.operators_stats],
+            *[ss.memory.max if ss.memory else 0 for ss in self.operators_stats],
         )
 
 
@@ -1419,21 +1444,15 @@ class OperatorStatsSummary:
     latest_end_time: Optional[float]
     # String summarizing high-level statistics from executing the operator
     block_execution_summary_str: str
-    # The fields below are dicts with stats aggregated across blocks
-    # processed in this operator. For example:
-    # {"min": ..., "max": ..., "mean": ..., "sum": ...}
-    wall_time: Optional[Dict[str, float]] = None
-    cpu_time: Optional[Dict[str, float]] = None
-    udf_time: Optional[Dict[str, float]] = None
-    # memory: no "sum" stat
-    memory: Optional[Dict[str, float]] = None
-    # Use the output_num_rows of the parent Operator as output_num_rows
+    wall_time: Optional[StatsSummary] = None
+    cpu_time: Optional[StatsSummary] = None
+    udf_time: Optional[StatsSummary] = None
+    memory: Optional[StatsSummary] = None
     total_input_num_rows: Optional[int] = None
-    output_num_rows: Optional[Dict[str, float]] = None
-    output_size_bytes: Optional[Dict[str, float]] = None
-    # node_count: "count" stat instead of "sum"
-    node_count: Optional[Dict[str, float]] = None
-    task_rows: Optional[Dict[str, float]] = None
+    output_num_rows: Optional[StatsSummary] = None
+    output_size_bytes: Optional[StatsSummary] = None
+    node_count: Optional[StatsSummary] = None
+    task_rows: Optional[StatsSummary] = None
 
     @property
     def num_rows_per_s(self) -> float:
@@ -1442,7 +1461,7 @@ class OperatorStatsSummary:
         # time_total_s.
         if not self.output_num_rows or not self.time_total_s:
             return 0.0
-        return self.output_num_rows["sum"] / self.time_total_s
+        return self.output_num_rows.sum / self.time_total_s
 
     @property
     def num_rows_per_task_s(self) -> float:
@@ -1451,9 +1470,9 @@ class OperatorStatsSummary:
         # total number of rows produced by the sum of the wall times across all
         # blocks of the operator. This assumes that on a single task the work done
         # would be equivalent, with no concurrency.
-        if not self.output_num_rows or not self.wall_time or not self.wall_time["sum"]:
+        if not self.output_num_rows or not self.wall_time or not self.wall_time.sum:
             return 0.0
-        return self.output_num_rows["sum"] / self.wall_time["sum"]
+        return self.output_num_rows.sum / self.wall_time.sum
 
     @classmethod
     def from_block_metadata(
@@ -1529,29 +1548,20 @@ class OperatorStatsSummary:
             task_rows_acc = _StatsAccumulator()
             for count in rows_per_task.values():
                 task_rows_acc.add(count)
-            task_rows_stats = task_rows_acc.get(mean_as_int=True, include_sum=False)
+            task_rows_stats = task_rows_acc.get()
             exec_summary_str = (
                 f"{task_rows_acc.count} tasks executed, {exec_summary_str}"
             )
 
         # Execution stats.
-        wall_time_stats = wall_time_acc.get(include_count=False)
-        cpu_stats = cpu_time_acc.get(include_count=False)
-        udf_stats = udf_time_acc.get(include_count=False)
-        memory_stats = memory_acc.get(
-            mean_as_int=True,
-            round_digits=2,
-            include_sum=False,
-            include_count=False,
-        )
+        wall_time_stats = wall_time_acc.get()
+        cpu_stats = cpu_time_acc.get()
+        udf_stats = udf_time_acc.get()
+        memory_stats = memory_acc.get(round_digits=2)
 
         # Output stats.
-        output_num_rows_stats = output_rows_acc.get(
-            mean_as_int=True, include_count=False
-        )
-        output_size_bytes_stats = output_sizes_acc.get(
-            mean_as_int=True, include_count=False
-        )
+        output_num_rows_stats = output_rows_acc.get()
+        output_size_bytes_stats = output_sizes_acc.get()
 
         # Node distribution stats.
         node_counts_stats = None
@@ -1559,7 +1569,7 @@ class OperatorStatsSummary:
             node_counts_acc = _StatsAccumulator()
             for tasks in tasks_per_node.values():
                 node_counts_acc.add(len(tasks))
-            node_counts_stats = node_counts_acc.get(mean_as_int=True, include_sum=False)
+            node_counts_stats = node_counts_acc.get()
 
         # Assign a value in to_summary and initialize it as None.
         total_input_num_rows = None
@@ -1593,95 +1603,87 @@ class OperatorStatsSummary:
         indent = "\t" if self.is_sub_operator else ""
         out = self.block_execution_summary_str
 
-        wall_time_stats = self.wall_time
-        if wall_time_stats:
+        if self.wall_time:
             out += indent
             out += "* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(wall_time_stats["min"]),
-                fmt(wall_time_stats["max"]),
-                fmt(wall_time_stats["mean"]),
-                fmt(wall_time_stats["sum"]),
+                fmt(self.wall_time.min),
+                fmt(self.wall_time.max),
+                fmt(self.wall_time.mean),
+                fmt(self.wall_time.sum),
             )
 
-        cpu_stats = self.cpu_time
-        if cpu_stats:
+        if self.cpu_time:
             out += indent
             out += "* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(cpu_stats["min"]),
-                fmt(cpu_stats["max"]),
-                fmt(cpu_stats["mean"]),
-                fmt(cpu_stats["sum"]),
+                fmt(self.cpu_time.min),
+                fmt(self.cpu_time.max),
+                fmt(self.cpu_time.mean),
+                fmt(self.cpu_time.sum),
             )
 
-        udf_stats = self.udf_time
-        if udf_stats:
+        if self.udf_time:
             out += indent
             out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(udf_stats["min"]),
-                fmt(udf_stats["max"]),
-                fmt(udf_stats["mean"]),
-                fmt(udf_stats["sum"]),
+                fmt(self.udf_time.min),
+                fmt(self.udf_time.max),
+                fmt(self.udf_time.mean),
+                fmt(self.udf_time.sum),
             )
 
-        memory_stats = self.memory
-        if memory_stats:
+        if self.memory:
             out += indent
             out += "* Peak heap memory usage (MiB): {} min, {} max, {} mean\n".format(
-                memory_stats["min"],
-                memory_stats["max"],
-                memory_stats["mean"],
+                self.memory.min,
+                self.memory.max,
+                self.memory.mean,
             )
 
-        output_num_rows_stats = self.output_num_rows
-        if output_num_rows_stats:
+        if self.output_num_rows:
             out += indent
             out += (
                 "* Output num rows per block: {} min, {} max, {} mean, {} total\n"
             ).format(
-                output_num_rows_stats["min"],
-                output_num_rows_stats["max"],
-                output_num_rows_stats["mean"],
-                output_num_rows_stats["sum"],
+                self.output_num_rows.min,
+                self.output_num_rows.max,
+                self.output_num_rows.mean,
+                self.output_num_rows.sum,
             )
 
-        output_size_bytes_stats = self.output_size_bytes
-        if output_size_bytes_stats:
+        if self.output_size_bytes:
             out += indent
             out += (
                 "* Output size bytes per block: {} min, {} max, {} mean, {} total\n"
             ).format(
-                output_size_bytes_stats["min"],
-                output_size_bytes_stats["max"],
-                output_size_bytes_stats["mean"],
-                output_size_bytes_stats["sum"],
+                self.output_size_bytes.min,
+                self.output_size_bytes.max,
+                self.output_size_bytes.mean,
+                self.output_size_bytes.sum,
             )
 
-        task_rows = self.task_rows
-        if task_rows:
+        if self.task_rows:
             out += indent
             out += (
                 "* Output rows per task: {} min, {} max, {} mean, {} tasks used\n"
             ).format(
-                task_rows["min"],
-                task_rows["max"],
-                task_rows["mean"],
-                task_rows["count"],
+                self.task_rows.min,
+                self.task_rows.max,
+                self.task_rows.mean,
+                self.task_rows.count,
             )
 
-        node_count_stats = self.node_count
-        if node_count_stats:
+        if self.node_count:
             out += indent
             out += "* Tasks per node: {} min, {} max, {} mean; {} nodes used\n".format(
-                node_count_stats["min"],
-                node_count_stats["max"],
-                node_count_stats["mean"],
-                node_count_stats["count"],
+                self.node_count.min,
+                self.node_count.max,
+                self.node_count.mean,
+                self.node_count.count,
             )
         if self.num_rows_per_s and self.num_rows_per_task_s:
             total_num_in_rows = (
                 self.total_input_num_rows if self.total_input_num_rows else 0
             )
-            total_num_out_rows = output_num_rows_stats["sum"]
+            total_num_out_rows = self.output_num_rows.sum
             out += indent
             out += "* Operator throughput:\n"
             out += indent + f"\t* Total input num rows: {total_num_in_rows} rows\n"
@@ -1705,16 +1707,14 @@ class OperatorStatsSummary:
         indent = leveled_indent(level)
         indent += leveled_indent(1) if self.is_sub_operator else ""
 
-        wall_time_stats = {k: fmt(v) for k, v in (self.wall_time or {}).items()}
-        cpu_stats = {k: fmt(v) for k, v in (self.cpu_time or {}).items()}
-        memory_stats = {k: fmt(v) for k, v in (self.memory or {}).items()}
-        output_num_rows_stats = {
-            k: fmt(v) for k, v in (self.output_num_rows or {}).items()
-        }
-        output_size_bytes_stats = {
-            k: fmt(v) for k, v in (self.output_size_bytes or {}).items()
-        }
-        node_conut_stats = {k: fmt(v) for k, v in (self.node_count or {}).items()}
+        def _fmt_summary(s: Optional[StatsSummary]) -> Optional[str]:
+            if s is None:
+                return None
+            return (
+                f"StatsSummary(min={fmt(s.min)}, max={fmt(s.max)}, "
+                f"mean={fmt(s.mean)}, sum={fmt(s.sum)}, count={s.count})"
+            )
+
         out = (
             f"{indent}OperatorStatsSummary(\n"
             f"{indent}   operator_name='{self.operator_name}',\n"
@@ -1722,12 +1722,12 @@ class OperatorStatsSummary:
             f"{indent}   time_total_s={fmt(self.time_total_s)},\n"
             # block_execution_summary_str already ends with \n
             f"{indent}   block_execution_summary_str={self.block_execution_summary_str}"
-            f"{indent}   wall_time={wall_time_stats or None},\n"
-            f"{indent}   cpu_time={cpu_stats or None},\n"
-            f"{indent}   memory={memory_stats or None},\n"
-            f"{indent}   output_num_rows={output_num_rows_stats or None},\n"
-            f"{indent}   output_size_bytes={output_size_bytes_stats or None},\n"
-            f"{indent}   node_count={node_conut_stats or None},\n"
+            f"{indent}   wall_time={_fmt_summary(self.wall_time)},\n"
+            f"{indent}   cpu_time={_fmt_summary(self.cpu_time)},\n"
+            f"{indent}   memory={_fmt_summary(self.memory)},\n"
+            f"{indent}   output_num_rows={_fmt_summary(self.output_num_rows)},\n"
+            f"{indent}   output_size_bytes={_fmt_summary(self.output_size_bytes)},\n"
+            f"{indent}   node_count={_fmt_summary(self.node_count)},\n"
             f"{indent})"
         )
         return out
