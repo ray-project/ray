@@ -481,6 +481,15 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
+- name: actor_scaling
+  python: "3.10"
+  cluster:
+    cluster_compute: fixed_size_1000_cpu_compute.yaml
+
+  run:
+    timeout: 1800
+    script: python actor_scaling_benchmark.py --num-actors 1000 --num-rows 1000000
+
 
 ########################
 # Sort and shuffle tests
