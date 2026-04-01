@@ -94,7 +94,7 @@ A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``r
 The Job view displays a list of active, finished, and failed Jobs, and clicking on an ID allows users to view detailed information about that Job.
 For more information on Ray Jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
 
-Job naming
+Custom names for jobs
 ~~~~~~~~~~
 
 The **Name** column in the Jobs view displays the value of the ``job_name`` key from the Job's metadata.
