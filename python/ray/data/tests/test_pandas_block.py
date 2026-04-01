@@ -1,6 +1,7 @@
 import pickle
 import random
 import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -371,6 +372,19 @@ class TestSizeBytes:
         assert block_size == pytest.approx(true_value, rel=0.1), (
             block_size,
             true_value,
+        )
+
+    def test_partially_initialized_torch_module(ray_start_regular_shared, monkeypatch):
+        monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
+
+        block = pd.DataFrame({"animals": ["Flamingo", "Centipede"]})
+        block_accessor = PandasBlockAccessor.for_block(block)
+        bytes_size = block_accessor.size_bytes()
+
+        memory_usage = block.memory_usage(index=True, deep=True).sum()
+        assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
+            bytes_size,
+            memory_usage,
         )
 
     def test_nested_objects(ray_start_regular_shared):

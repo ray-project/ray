@@ -522,10 +522,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()
-        try:
-            import torch
-        except ImportError:
-            torch = None
+        torch_tensor_type = getattr(sys.modules.get("torch"), "Tensor", None)
 
         def get_deep_size(obj):
             """Calculates the memory size of objects,
@@ -558,7 +555,9 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Handle specific cases
                 if isinstance(current, np.ndarray):
                     total_size += current.nbytes - size  # Avoid double counting
-                elif torch is not None and isinstance(current, torch.Tensor):
+                elif torch_tensor_type is not None and isinstance(
+                    current, torch_tensor_type
+                ):
                     total_size += current.nelement() * current.element_size() - size
                 elif isinstance(current, pd.DataFrame):
                     total_size += (
