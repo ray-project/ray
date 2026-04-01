@@ -525,6 +525,11 @@ class ExecutionPlan:
                     ],
                     owns_blocks=owns_blocks,
                     schema=schema,
+                    producer_op_ids=tuple(
+                        itertools.chain.from_iterable(
+                            bundle.producer_op_ids for bundle in output_bundles
+                        )
+                    ),
                 )
             else:
                 # Make sure executor is properly shutdown
