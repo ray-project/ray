@@ -2323,6 +2323,7 @@
   cluster:
     byod:
       type: llm-cu128 # llm image already has nixl
+      post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
@@ -4423,8 +4424,7 @@
 
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
-  # TODO: https://github.com/anyscale/ray/issues/573
-  frequency: manual
+  frequency: weekly
   python: "3.11"
   group: ray-examples
   team: ml

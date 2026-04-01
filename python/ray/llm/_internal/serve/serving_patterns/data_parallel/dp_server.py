@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import List, Tuple
+from typing import List, Optional, Tuple, Type
 
 from ray import serve
 from ray.experimental.internal_kv import (
@@ -12,7 +12,9 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.llm._internal.serve.utils.pg_utils import get_bundle_indices_sorted_by_node
 from ray.serve.config import (
     AutoscalingConfig,
@@ -100,7 +102,13 @@ class DPServer(LLMServer):
     fails, the entire group is restarted atomically.
     """
 
-    async def __init__(self, llm_config: LLMConfig):
+    async def __init__(
+        self,
+        llm_config: LLMConfig,
+        *,
+        engine_cls: Optional[Type[LLMEngine]] = None,
+        model_downloader: Optional[Type[LoraModelLoader]] = None,
+    ):
         ctx = serve.get_replica_context()
         gang_context = ctx.gang_context
 
@@ -176,7 +184,11 @@ class DPServer(LLMServer):
             self.dp_rank, bundles_per_replica, sorted_indices
         )
 
-        await super().__init__(llm_config)
+        await super().__init__(
+            llm_config,
+            engine_cls=engine_cls,
+            model_downloader=model_downloader,
+        )
 
     @staticmethod
     def _compute_bundle_indices(
