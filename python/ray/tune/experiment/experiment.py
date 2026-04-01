@@ -433,7 +433,9 @@ def _convert_to_experiment_list(experiments: Union[Experiment, List[Experiment],
         ]
 
     # Validate exp_list
-    if isinstance(exp_list, list) and all(isinstance(exp, Experiment) for exp in exp_list):
+    if isinstance(exp_list, list) and all(
+        isinstance(exp, Experiment) for exp in exp_list
+    ):
         if len(exp_list) > 1:
             logger.info(
                 "Running with multiple concurrent experiments. "
