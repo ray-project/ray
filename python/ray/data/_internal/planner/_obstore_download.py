@@ -487,7 +487,7 @@ async def _download_uris_with_obstore(
                 max_conc,
             )
             range_threshold = 0
-        if range_chunk_size <= 0:
+        elif range_chunk_size <= 0:
             logger.warning(
                 "RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE=%d is invalid (must be > 0). "
                 "Disabling range splitting to avoid empty range tasks and "
@@ -500,7 +500,7 @@ async def _download_uris_with_obstore(
     # obstore's reqwest client rejects http:// by default. Auto-enable it
     # to maintain parity with PyArrow (which accepts http:// via fsspec),
     # but warn about unencrypted traffic.
-    if any(uri.startswith("http://") for uri in uris):
+    if any(uri is not None and uri.startswith("http://") for uri in uris):
         fs_kwargs["client_options"] = {"allow_http": True}
         logger.warning(
             "Downloading over unencrypted HTTP. Consider using https:// instead."
