@@ -1153,9 +1153,14 @@ class TestIsActorTaskRunning:
         class A:
             def check(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, "check")
-                assert psutil.Process(pid).name() == "ray::A.check"
-                assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check")
+                    assert psutil.Process(pid).name() == "ray::A.check"
+                    assert psutil.Process(pid).cmdline()[0] == "ray::A.check"
+
+                wait_for_condition(check)
+
                 return pid
 
         a = A.remote()
@@ -1173,9 +1178,14 @@ class TestIsActorTaskRunning:
         class Actor:
             def check_long_comm(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, "check_long_comm")
-                assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
-                assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check_long_comm")
+                    assert psutil.Process(pid).name() == "ray::Actor.check_long_comm"
+                    assert psutil.Process(pid).cmdline()[0] == "ray::Actor.check_long_comm"
+
+                wait_for_condition(_check)
+
                 return pid
 
         a = Actor.remote()
@@ -1192,9 +1202,14 @@ class TestIsActorTaskRunning:
         class A:
             def check(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == f"ray::{task_name}"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == f"ray::{task_name}"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+                
+                wait_for_condition(_check)
+
                 return pid
 
         a = A.remote()
@@ -1212,9 +1227,14 @@ class TestIsActorTaskRunning:
         class A:
             def check(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == f"ray::{task_name}"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == f"ray::{task_name}"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                wait_for_condition(_check)
+
                 return pid
 
         a = A.remote()
@@ -1253,15 +1273,20 @@ class TestIsActorTaskRunning:
         class VeryLongCommActor:
             def check_long_comm(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, "check_long_comm")
-                assert (
-                    psutil.Process(pid).name()
-                    == "ray::VeryLongCommActor.check_long_comm"
-                )
-                assert (
-                    psutil.Process(pid).cmdline()[0]
-                    == "ray::VeryLongCommActor.check_long_comm"
-                )
+
+                def _check():
+                    assert _is_actor_task_running(pid, "check_long_comm")
+                    assert (
+                        psutil.Process(pid).name()
+                        == "ray::VeryLongCommActor.check_long_comm"
+                    )
+                    assert (
+                        psutil.Process(pid).cmdline()[0]
+                        == "ray::VeryLongCommActor.check_long_comm"
+                    )
+
+                wait_for_condition(_check)
+
                 return pid
 
         a = VeryLongCommActor.remote()
@@ -1279,9 +1304,13 @@ class TestIsActorTaskRunning:
         class A:
             def check(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == "ray::A"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == "ray::A"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                wait_for_condition(_check)
                 return pid
 
         a = A.remote()
@@ -1295,9 +1324,13 @@ class TestIsActorTaskRunning:
         class Actor:
             def check_long_comm(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                assert psutil.Process(pid).name() == "ray::Actor"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    assert psutil.Process(pid).name() == "ray::Actor"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                wait_for_condition(_check)
                 return pid
 
         a = Actor.remote()
@@ -1317,10 +1350,14 @@ class TestIsActorTaskRunning:
         class VeryLongCommActor:
             def check_long_comm(self):
                 pid = os.getpid()
-                assert _is_actor_task_running(pid, task_name)
-                # The first 15 characters of "ray::VeryLongCommActor"
-                assert psutil.Process(pid).name() == "ray::VeryLongCo"
-                assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                def _check():
+                    assert _is_actor_task_running(pid, task_name)
+                    # The first 15 characters of "ray::VeryLongCommActor"
+                    assert psutil.Process(pid).name() == "ray::VeryLongCo"
+                    assert psutil.Process(pid).cmdline()[0] == f"ray::{task_name}"
+
+                wait_for_condition(_check)
                 return pid
 
         a = VeryLongCommActor.remote()
