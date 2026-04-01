@@ -139,21 +139,13 @@ def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
 
     Returns the array-suffixed Buildkite step key for the publish step that
     produces the base image.  For example, for a ray image with python 3.10 and
-    platform cpu the returned key is ``anyscalebuild--platformcpu-python310``.
+    platform cpu the returned key is ``anyscalecpubuild--python310``.
     """
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return "forge"
-
-    # Determine bare key from config
-    if image_name == "ray-ml":
-        bare_key = config["release_image_step_ray_ml"]
-    elif image_name == "ray-llm":
-        bare_key = config["release_image_step_ray_llm"]
-    else:
-        bare_key = config["release_image_step_ray"]
 
     # Parse base_image tag: {build_id}-py{ver}-{suffix}
     _, tag = base_image.rsplit(":", 1)
@@ -164,17 +156,34 @@ def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
             py_index = i
             break
 
+    if image_name == "ray-ml":
+        bare_key = config["release_image_step_ray_ml"]
+        if py_index is None:
+            return bare_key
+        python_raw = tag_parts[py_index][2:]
+        return f"{bare_key}--python{python_raw}"
+
+    if image_name == "ray-llm":
+        bare_key = config["release_image_step_ray_llm"]
+    else:
+        # ray image: pick cpu or cuda key based on tag suffix
+        tag_suffix = "-".join(tag_parts[py_index + 1 :]) if py_index is not None else ""
+        if tag_suffix == "cpu":
+            bare_key = config["release_image_step_ray_cpu"]
+        else:
+            bare_key = config["release_image_step_ray_cuda"]
+
     if py_index is None:
         return bare_key
 
     python_raw = tag_parts[py_index][2:]  # e.g., "310"
+    tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
 
-    if image_name == "ray-ml":
-        # anyscalemlbuild has only a python dimension
+    if tag_suffix == "cpu":
+        # anyscalecpubuild has only a python dimension
         return f"{bare_key}--python{python_raw}"
 
-    # ray and ray-llm have two dimensions (platform, python) in alphabetical order
-    tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
+    # cuda steps have two dimensions (platform, python) in alphabetical order
     reverse_map = build_platform_reverse_map()
     full_platform = reverse_map.get(tag_suffix, tag_suffix)
     sanitized_platform = _sanitize_array_value(full_platform)

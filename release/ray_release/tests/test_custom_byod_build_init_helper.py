@@ -210,20 +210,22 @@ def test_get_prerequisite_step():
         == "anyscalemlbuild--python311"
     )
 
-    # ray has platform and python dimensions → anyscalebuild--platform{X}-python{Y}
+    # ray cpu → anyscalecpubuild (python dimension only)
     assert (
         get_prerequisite_step(
             "ray-project/ray:abc123-custom",
             "ray-project/ray:abc123-py310-cpu",
         )
-        == "anyscalebuild--platformcpu-python310"
+        == "anyscalecpubuild--python310"
     )
+
+    # ray cuda → anyscalecudabuild (platform + python dimensions)
     assert (
         get_prerequisite_step(
             "ray-project/ray:abc123-custom",
             "ray-project/ray:abc123-py311-cu123",
         )
-        == "anyscalebuild--platformcu1232cudnn9-python311"
+        == "anyscalecudabuild--platformcu1232cudnn9-python311"
     )
 
     # ray-llm has platform and python dimensions → anyscalellmbuild--platform{X}-python{Y}

@@ -120,8 +120,29 @@ steps:
       - ray-wheel-build(*)
       - raycudabaseextra-testdeps($)
 
+  - label: ":crane: publish: ray-anyscale py{{array.python}} cpu"
+    key: anyscalecpubuild
+    instance_type: release-medium
+    mount_buildkite_agent: true
+    tags:
+      - oss
+    commands:
+      - bazel run //ci/ray_ci/automation:push_release_test_image --
+        --python-version {{array.python}}
+        --platform cpu
+        --image-type ray
+        --upload
+    depends_on:
+      - ray-anyscale-cpu-build($)
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+
   - label: ":crane: publish: ray-anyscale py{{array.python}} {{array.platform}}"
-    key: anyscalebuild
+    key: anyscalecudabuild
     instance_type: release-medium
     mount_buildkite_agent: true
     tags:
@@ -133,12 +154,10 @@ steps:
         --image-type ray
         --upload
     depends_on:
-      - ray-anyscale-cpu-build($)
-      - ray-anyscale-cuda-build(*)
+      - ray-anyscale-cuda-build($)
     array:
       platform:
         - cu12.3.2-cudnn9
-        - cpu
       python:
         - "3.10"
         - "3.11"
