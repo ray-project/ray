@@ -443,7 +443,7 @@ def test_request_and_clear():
         (12, 3, 12),
     ],
 )
-@patch("ray.util.tpu.get_num_intact_tpu_slices")
+@patch("ray.util.tpu.get_num_tpu_slices")
 def test_count_possible_workers_tpu_slice_rounding(
     mock_get_intact_slices,
     num_autoscaler_nodes,

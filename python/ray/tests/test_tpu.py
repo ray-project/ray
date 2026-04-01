@@ -672,7 +672,7 @@ def test_get_num_ready_tpu_slices_calculation(
 )
 @patch("ray.is_initialized", return_value=True)
 @patch("ray.nodes")
-def test_get_num_intact_tpu_slices_calculation(
+def test_get_num_tpu_slices_calculation(
     mock_nodes_call,
     mock_is_initialized,
     topology,
@@ -685,7 +685,7 @@ def test_get_num_intact_tpu_slices_calculation(
     whether they are idle."""
     mock_nodes_call.return_value = mock_nodes
 
-    actual_intact = ray.util.tpu.get_num_intact_tpu_slices(
+    actual_intact = ray.util.tpu.get_num_tpu_slices(
         topology=topology,
         accelerator_type=accelerator_type,
     )
@@ -693,9 +693,9 @@ def test_get_num_intact_tpu_slices_calculation(
 
 
 @patch("ray.is_initialized", return_value=False)
-def test_get_num_intact_tpu_slices_uninitialized(mock_is_initialized):
+def test_get_num_tpu_slices_uninitialized(mock_is_initialized):
     """Test that the utility gracefully handles an uninitialized Ray context."""
-    assert ray.util.tpu.get_num_intact_tpu_slices("2x2x2", "v4") == 0
+    assert ray.util.tpu.get_num_tpu_slices("2x2x2", "v4") == 0
 
 
 def test_get_num_ready_tpu_slices(ray_tpu_cluster):

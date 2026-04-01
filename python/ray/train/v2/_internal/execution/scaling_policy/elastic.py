@@ -113,7 +113,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         Returns:
             The number of workers aligned to fully intact TPU slices.
         """
-        from ray.util.tpu import get_num_intact_tpu_slices, get_tpu_worker_resources
+        from ray.util.tpu import get_num_tpu_slices, get_tpu_worker_resources
 
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
 
@@ -134,7 +134,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
             if num_slices_from_resources > 0:
                 try:
-                    num_intact_slices = get_num_intact_tpu_slices(
+                    num_intact_slices = get_num_tpu_slices(
                         topology=self.scaling_config.topology,
                         accelerator_type=self.scaling_config.accelerator_type,
                     )

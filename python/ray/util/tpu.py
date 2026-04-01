@@ -12,7 +12,7 @@ from ray._private.accelerators.tpu import (
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -347,8 +347,8 @@ def get_num_ready_tpu_slices(
     return ready_and_available_slices
 
 
-@PublicAPI(stability="alpha")
-def get_num_intact_tpu_slices(
+@DeveloperAPI
+def get_num_tpu_slices(
     topology: str,
     accelerator_type: str,
 ) -> int:
@@ -357,11 +357,9 @@ def get_num_intact_tpu_slices(
     specified topology are physically intact (all hosts alive with the
     expected chip count).
 
-    Unlike ``get_num_ready_tpu_slices``, this does NOT check whether the
+    Unlike :func:`get_num_ready_tpu_slices`, this does NOT check whether the
     slices are idle. A slice is counted as long as every host in it is alive
-    and the total chip count matches the topology. This avoids requiring the
-    old worker group to be fully shut down before querying for available
-    slices during elastic scaling.
+    and the total chip count matches the topology.
 
     Args:
         topology: The TPU topology string (e.g. "2x4").
