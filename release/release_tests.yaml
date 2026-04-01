@@ -4754,7 +4754,7 @@
 
 
 - name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4762,7 +4762,8 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_tensor_parallel_autotp.sh
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
