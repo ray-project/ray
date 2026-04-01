@@ -218,6 +218,36 @@ def validate_and_report(
     metrics = {"loss": loss.item(), "epoch": epoch}
     if validate_within_trainer and epoch == num_epochs - 1:
         metrics["score"] = mean_acc.compute().item()
+
+    start_time = time.time()
+
+    # DCP save is a distributed collective so all ranks must call it together.
+    ckpt_ref = None
+    checkpoint_path = None
+    if checkpoint_save_mode in (
+        CheckpointSaveMode.TORCH_DCP_SYNC,
+        CheckpointSaveMode.TORCH_DCP_ASYNC,
+    ):
+        # TODO - This needs to be an S3 bucket
+        storage_context = ray.train.get_context().get_storage()
+        checkpoint_path = storage_context.build_checkpoint_path_from_name(
+            f"epoch={epoch}_batch={batch_idx}"
+        )
+        storage_writer = S3StorageWriter(
+            region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+            path=checkpoint_path,
+        )
+        model_dict, _ = get_state_dict(model=model, optimizers=())
+
+        if checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_SYNC:
+            # Upload directly to S3 via Torch DCP (skipping the local disk)
+            dist_cp.save({"model": model_dict}, storage_writer=storage_writer)
+        elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
+            # Initiate async upload to S3; rank 0 will wait via checkpoint_upload_fn
+            ckpt_ref = async_save({"model": model_dict}, storage_writer=storage_writer)
+        else:
+            raise NotImplementedError
+
     if ray.train.get_context().get_world_rank() == 0:
         if val_elapsed_time:
             metrics["validation_time"] = val_elapsed_time
@@ -235,7 +265,6 @@ def validate_and_report(
         else:
             validation = False
 
-        start_time = time.time()
         if checkpoint_save_mode == CheckpointSaveMode.TORCH_SAVE:
             # the model weights are saved to an intermediate temporary file
             # before uploading to the storage path
@@ -254,19 +283,6 @@ def validate_and_report(
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_SYNC:
-            # Upload directly to S3 via Torch DCP (skipping the local disk)
-            storage_context = ray.train.get_context().get_storage()
-            checkpoint_path = storage_context.build_checkpoint_path_from_name(
-                f"epoch={epoch}_batch={batch_idx}"
-            )
-            storage_writer = S3StorageWriter(
-                region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
-                path=checkpoint_path,
-            )
-
-            model_dict, _ = get_state_dict(model=model, optimizers=())
-            dist_cp.save({"model": model_dict}, storage_writer=storage_writer)
-
             ray.train.report(
                 metrics,
                 checkpoint=ray.train.Checkpoint(checkpoint_path),
@@ -274,18 +290,6 @@ def validate_and_report(
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
-            # Upload directly to S3 asynchronously
-            storage_context = ray.train.get_context().get_storage()
-            checkpoint_path = storage_context.build_checkpoint_path_from_name(
-                f"epoch={epoch}_batch={batch_idx}"
-            )
-            storage_writer = S3StorageWriter(
-                region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
-                path=checkpoint_path,
-            )
-
-            model_dict, _ = get_state_dict(model=model, optimizers=())
-            ckpt_ref = async_save({"model": model_dict}, storage_writer=storage_writer)
 
             def wait_async_save(
                 checkpoint, checkpoint_dir_name, upload_complete_ref=ckpt_ref
@@ -368,7 +372,7 @@ def run_training_with_validation(
     scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
     if validation_type == ValidationType.INLINE:
-        validation_config = ValidationConfig()
+        validation_config = None
     elif validation_type == ValidationType.TORCH_TRAINER:
         validation_config = ValidationConfig(validate_with_torch_trainer)
     elif validation_type == ValidationType.MAP_BATCHES:
@@ -403,7 +407,7 @@ def run_training_with_validation(
         scaling_config=scaling_config,
         datasets=datasets,
         torch_config=torch_config,
-        run_config=ray.train.RunConfig(storage_path=STORAGE_PATH),
+        run_config=ray.train.RunConfig(storage_path="/mnt/cluster_storage"),
     )
     result = trainer.fit()
     end_time = time.time()
