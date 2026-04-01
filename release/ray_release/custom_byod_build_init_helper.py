@@ -1,5 +1,8 @@
 import hashlib
+import json
 import os
+from functools import lru_cache
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import yaml
@@ -124,6 +127,41 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
 
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
+
+
+@lru_cache(maxsize=1)
+def _platform_reverse_map() -> Dict[str, str]:
+    """Map short platform tags (e.g. 'cu123') to full strings (e.g. 'cu12.3.2-cudnn9')."""
+    path = Path(__file__).resolve().parents[2] / "ray-images.json"
+    if not path.exists():
+        # Bazel runfiles layout
+        for parent in Path(__file__).resolve().parents:
+            candidate = parent / "ray-images.json"
+            if candidate.exists():
+                path = candidate
+                break
+    images = json.loads(path.read_text())
+    reverse: Dict[str, str] = {}
+    for cfg in images.values():
+        for platform in cfg.get("platforms", []):
+            if platform in ("cpu", "tpu"):
+                short = platform
+            else:
+                base = platform.split("-", 1)[0]
+                parts = base.split(".")
+                short = f"{parts[0]}{parts[1]}" if len(parts) >= 2 else platform
+            if short in reverse and reverse[short] != platform:
+                raise ValueError(
+                    f"Ambiguous short platform tag '{short}': "
+                    f"could be '{platform}' or '{reverse[short]}'"
+                )
+            reverse[short] = platform
+    return reverse
+
+
+def _sanitize_array_value(value: str) -> str:
+    """Strip dots and dashes from a value for rayci array key construction."""
+    return value.replace(".", "").replace("-", "")
 
 
 def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
