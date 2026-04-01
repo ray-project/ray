@@ -1,4 +1,5 @@
 import pytest
+import requests
 import sys
 
 from ray import serve
@@ -178,6 +179,86 @@ def test_transcription_model(model_name):
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_embedding_model(model_name):
+    """
+    Test that embedding models can be loaded and serve embedding requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/embeddings",
+        json={
+            "model": model_name,
+            "input": "Hello, world!",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) > 0
+    embedding = data["data"][0]["embedding"]
+    assert isinstance(embedding, list)
+    assert len(embedding) > 0
+    assert all(isinstance(x, float) for x in embedding)
+
+    serve.shutdown()
+    time.sleep(1)
+
+
+@pytest.mark.parametrize("model_name", ["BAAI/bge-small-en-v1.5"])
+def test_score_model(model_name):
+    """
+    Test that embedding models can serve score requests.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_name,
+        ),
+        deployment_config=dict(
+            num_replicas=1,
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+
+    response = requests.post(
+        "http://localhost:8000/v1/score",
+        json={
+            "model": model_name,
+            "text_1": "What is the capital of France?",
+            "text_2": ["Paris is the capital of France.", "Berlin is in Germany."],
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert "data" in data
+    assert len(data["data"]) == 2
+    for item in data["data"]:
+        assert "score" in item
+        assert isinstance(item["score"], float)
+
     serve.shutdown()
     time.sleep(1)
 

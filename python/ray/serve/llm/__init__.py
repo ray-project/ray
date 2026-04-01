@@ -29,35 +29,35 @@ if TYPE_CHECKING:
 ##########
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LLMConfig(_LLMConfig):
     """The configuration for starting an LLM deployment."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LLMServingArgs(_LLMServingArgs):
     """The configuration for starting an LLM deployment application."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ModelLoadingConfig(_ModelLoadingConfig):
     """The configuration for loading an LLM model."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class CloudMirrorConfig(_CloudMirrorConfig):
     """The configuration for mirroring an LLM model from cloud storage."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LoraConfig(_LoraConfig):
     """The configuration for loading an LLM model with LoRA."""
 
@@ -90,7 +90,7 @@ class LLMRouter(_OpenAiIngress):
 ##########
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def build_llm_deployment(
     llm_config: "LLMConfig",
     *,
@@ -174,7 +174,7 @@ def build_llm_deployment(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def build_openai_app(llm_serving_args: dict) -> "Application":
     """Helper to build an OpenAI compatible app with the llm deployment setup from
     the given llm serving args. This is the main entry point for users to create a

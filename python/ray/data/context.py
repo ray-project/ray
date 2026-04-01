@@ -38,6 +38,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    GPU_SHUFFLE = "gpu_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -199,6 +200,21 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -318,6 +334,42 @@ class IcebergConfig:
     catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
+
+
+@DeveloperAPI
+@dataclass
+class LanceConfig:
+    """Configuration for Lance datasource and datasink operations.
+
+    Args:
+        read_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance read operations.
+        read_fragments_max_attempts: Maximum number of retry attempts for Lance
+            read operations.
+        read_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance read retries.
+        write_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance write operations.
+        write_fragments_max_attempts: Maximum number of retry attempts for Lance
+            write operations.
+        write_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance write retries.
+    """
+
+    read_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    read_fragments_max_attempts: int = DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS
+    read_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S
+    )
+    write_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    write_fragments_max_attempts: int = DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS
+    write_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S
     )
 
 
@@ -528,6 +580,9 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        lance_config: Configuration for Lance datasource and datasink operations
+            including retry settings for read and write operations. See
+            :class:`LanceConfig` for details.
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
@@ -567,6 +622,16 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
+            to total GPUs available in the cluster.
+        gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
+            uses 90% of free device memory; ``None`` uses an expandable pool.
+        gpu_shuffle_spill_memory_limit: Device-to-host spill threshold per rank.
+            ``"auto"`` uses 80% of ``gpu_shuffle_rmm_pool_size``; ``None`` disables
+            spilling.
+        gpu_shuffle_setup_timeout_s: Maximum time in seconds to wait for UCXX
+            communicator setup (actor creation + root/worker init) before raising
+            a ``TimeoutError``. Defaults to 120 seconds.
     """
 
     # `None` means the block size is infinite.
@@ -625,6 +690,25 @@ class DataContext:
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
+
+    ################################################################
+    # GPU Shuffle configuration
+    ################################################################
+
+    # Number of GPU actors (ranks). Defaults to total GPUs in the cluster.
+    gpu_shuffle_num_actors: Optional[int] = None
+
+    # RMM GPU memory pool size for each rank.
+    # "auto" = 90% of free device memory; None = expandable pool (no fixed size).
+    gpu_shuffle_rmm_pool_size: Union[int, str, None] = None
+
+    # Device→host spill threshold for each rank.
+    # "auto" = 80% of rmm_pool_size; None = spilling disabled.
+    gpu_shuffle_spill_memory_limit: Union[int, str, None] = "auto"
+
+    # Maximum seconds to wait for UCXX communicator setup before raising
+    # TimeoutError.
+    gpu_shuffle_setup_timeout_s: float = 120.0
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
@@ -688,17 +772,12 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
-    # This is a temporary workaround to allow actors to perform cleanup
-    # until https://github.com/ray-project/ray/issues/53169 is fixed.
-    # This hook is known to have a race condition bug in fault tolerance.
-    # I.E., after the hook is triggered and the UDF is deleted, another
-    # retry task may still be scheduled to this actor and it will fail.
-    _enable_actor_pool_on_exit_hook: bool = False
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory

@@ -6,17 +6,16 @@ import torchvision
 import numpy as np
 import io
 import uuid
+from benchmark import Benchmark
 
-NUM_GPU_NODES = 8
 YOLO_MODEL = "yolo11n.pt"
 INPUT_PATH = "s3://anonymous@ray-example-data/videos/Hollywood2-actions-videos/Hollywood2/AVIClips/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 IMAGE_HEIGHT = 640
 IMAGE_WIDTH = 640
 # This was a change made: Alter batch size accordingly
-# batch_size = 32 for 1x large
-# batch_size = 100 for 2x, 4x, and 8x large
-BATCH_SIZE = 32
+# batch_size = 100 for 1x, 2x, 4x, and 8x large
+BATCH_SIZE = 100
 
 ray.init()
 
@@ -79,20 +78,27 @@ def crop_image(row):
     cropped_pil = pil_image.crop((x1, y1, x2, y2))
 
     buf = io.BytesIO()
-    # This was a change made: Use compress_level=2
-    cropped_pil.save(buf, format="PNG", compress_level=2)
+    cropped_pil.save(buf, format="PNG")
     cropped_pil_png = buf.getvalue()
 
     row["object"] = cropped_pil_png
     return row
 
 
-ds = ray.data.read_videos(INPUT_PATH)
-ds = ds.map(resize_frame)
-ds = ds.map_batches(
-    ExtractImageFeatures, batch_size=BATCH_SIZE, num_gpus=1.0, concurrency=NUM_GPU_NODES
-)
-ds = ds.flat_map(explode_features)
-ds = ds.map(crop_image)
-ds = ds.drop_columns(["frame"])
-ds.write_parquet(OUTPUT_PATH)
+def run_pipeline():
+    ds = ray.data.read_videos(INPUT_PATH)
+    ds = ds.map(resize_frame)
+    ds = ds.map_batches(
+        ExtractImageFeatures,
+        batch_size=BATCH_SIZE,
+        num_gpus=1.0,
+    )
+    ds = ds.flat_map(explode_features)
+    ds = ds.map(crop_image)
+    ds = ds.drop_columns(["frame"])
+    ds.write_parquet(OUTPUT_PATH)
+
+
+benchmark = Benchmark()
+benchmark.run_fn("main", run_pipeline)
+benchmark.write_result()

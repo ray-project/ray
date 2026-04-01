@@ -186,6 +186,7 @@ site/
 ;
 
 ci/lint/
+.buildkite/cicd.rayci.yml
 .buildkite/lint.rayci.yml
 .buildkite/bisect/
 ci/fossa/
@@ -233,6 +234,8 @@ build-docker.sh
 
 ci/run/
 ci/ci.sh
+.buildkite/*.rules.test.txt
+.buildkite/*.rules.txt
 @ tools
 ;
 

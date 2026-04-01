@@ -1291,6 +1291,75 @@ def test_custom_request_router_kwargs(serve_instance):
     assert handle.remote().result() == "Hello, world!"
 
 
+def test_backoff_params_imperative(serve_instance):
+    """Check that custom initial_backoff_s is actually applied during retries.
+
+    Deploys with max_ongoing_requests=1 and a large initial_backoff_s. Sends a
+    blocking request to fill the replica, then sends a second request that enters
+    backoff. Verifies the second request takes at least initial_backoff_s to
+    complete (proving the backoff sleep was applied).
+    """
+    import time
+
+    custom_initial_backoff_s = 3.0
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_ongoing_requests=1,
+        request_router_config=RequestRouterConfig(
+            initial_backoff_s=custom_initial_backoff_s,
+            backoff_multiplier=2.0,
+            max_backoff_s=custom_initial_backoff_s,
+        ),
+    )
+    class SlowApp:
+        async def __call__(self, block: bool = False) -> str:
+            if block:
+                await signal.wait.remote()
+            return "ok"
+
+    handle = serve.run(SlowApp.bind())
+
+    # Send a few warm-up requests so the long poll has time to propagate
+    # the custom backoff config to the router (avoids the race where the
+    # router is lazy-initialized with default params before the long poll
+    # fires).
+    for _ in range(5):
+        assert handle.remote().result() == "ok"
+
+    # Send a blocking request to fill the single slot.
+    blocking_ref = handle.remote(block=True)
+
+    # Wait for the blocking request to be processing.
+    time.sleep(0.5)
+
+    # Send a second request — the router's queue length probe will find the
+    # replica at capacity and enter the backoff loop.
+    start = time.monotonic()
+    second_ref = handle.remote(block=False)
+
+    # Unblock the first request while the backoff sleep is in progress.
+    # The router exhausts locality probes then sleeps for initial_backoff_s;
+    # we wait 1s (< 3s) so the signal arrives during the sleep.
+    time.sleep(1)
+    ray.get(signal.send.remote())
+
+    # Wait for both requests to complete.
+    blocking_ref.result()
+    second_ref.result()
+    elapsed = time.monotonic() - start
+
+    # With initial_backoff_s=3.0 and max_backoff_s=3.0, every backoff sleep
+    # is exactly 3.0s (min(3.0 * 2.0^attempt, 3.0) = 3.0 for all attempts).
+    # A lower bound of 3.0s proves the backoff sleep was applied.
+    # An upper bound of 5.0s proves only ONE sleep occurred (two would be ≥6s),
+    # confirming it was the initial backoff (attempt 0).
+    assert custom_initial_backoff_s <= elapsed < 5.0, (
+        f"Expected [{custom_initial_backoff_s}, 5.0)s due to a single backoff sleep, "
+        f"but request completed in {elapsed:.2f}s"
+    )
+
+
 def test_overloaded_app_builder_signatures():
     """Test that call_user_app_builder_with_args_if_necessary validates the base
     function signature with a pydantic basemodel, rather than the overload that

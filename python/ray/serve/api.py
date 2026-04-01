@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
     GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
@@ -49,6 +50,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import (
     ReplicaContext,
+    _get_deployment_actor,
     _get_global_client,
     _get_internal_replica_context,
     _set_global_client,
@@ -177,6 +179,88 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+@DeveloperAPI
+def get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Must be called from within a running Serve replica. The actor must be
+    declared in the deployment's deployment_actors config.
+
+    Args:
+        actor_name: Name of the deployment-scoped actor (as specified in
+            deployment_actors list).
+
+    Returns:
+        A Ray ``ActorHandle`` to the live actor registered under the deterministic
+        name Serve uses for this deployment, app, and replica ``code_version``.
+
+    Raises:
+        RayServeException: If this function is called outside of a running replica.
+        ValueError: If ``ray.get_actor`` cannot resolve the name (for example the
+            actor has not been created yet, was killed and not recreated yet, or the
+            name does not exist). The error text lists several possible causes,
+            including namespace mismatch; for deployment-scoped actors the typical
+            cases are that the actor is missing or still being recreated, not a wrong
+            namespace when using this API as documented.
+
+    Notes:
+        **Stale handles.** The Serve controller may kill and recreate a
+        deployment-scoped actor (for example after failed health checks). A handle
+        obtained before recreation can still point at the old, dead actor: calls
+        such as ``ray.get(handle.method.remote())`` can raise
+        ``ray.exceptions.RayActorError`` (including ``ActorDiedError``). Call
+        ``get_deployment_actor`` again to obtain a handle to the new instance.
+
+        **Lookup after recreation.** Right after recreation, ``get_deployment_actor``
+        may raise ``ValueError`` until the new actor is registered; retrying this call
+        after a short delay is appropriate if you are refreshing a handle following
+        ``RayActorError``.
+
+        **Usage patterns.** Resolving the actor inside each request avoids stale
+        handles at the cost of a ``get_actor`` per call. Alternatively, cache the
+        handle but refresh it on ``RayActorError``, retrying ``get_deployment_actor``
+        on ``ValueError`` until the name exists. See
+        ``test_cached_get_deployment_actor_handle_stale_after_recreation`` and
+        ``test_deployment_actor_restarts_on_crash`` in ``test_deployment_actors.py``.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+                def insert(self, text: str):
+                    self.max_depth += 1
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+
+    The above caches the handle in ``__init__`` for a simple demo; if the controller
+    recreates ``prefix_tree``, prefer resolving in ``__call__`` or refreshing the
+    handle as described in **Notes**.
+    """
+    return _get_deployment_actor(actor_name)
 
 
 @PublicAPI(stability="stable")
@@ -351,6 +435,9 @@ def deployment(
     gang_scheduling_config: Default[
         Union[Dict, GangSchedulingConfig, None]
     ] = DEFAULT.VALUE,
+    deployment_actors: Default[
+        Optional[List[Union[Dict, DeploymentActorConfig]]]
+    ] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -425,6 +512,10 @@ def deployment(
             Gang scheduling ensures that groups of replicas are scheduled together
             atomically, which is essential for distributed workloads that require
             coordination between replicas. See `GangSchedulingConfig` for options.
+        deployment_actors: List of deployment-scoped Ray actors managed by the controller.
+            Each actor is shared across all replicas of this deployment. Use
+            `serve.get_deployment_actor(actor_name)` from within a replica to get
+            the actor handle. See `DeploymentActorConfig` for options.
     Returns:
         `Deployment`
     """
@@ -510,6 +601,7 @@ def deployment(
         request_router_config=request_router_config,
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
+        deployment_actors=deployment_actors,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
@@ -71,13 +72,13 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
     def __init__(
         self,
         input_op: LogicalOperator,
-        seed: Optional[int] = None,
+        seed_config: Optional[RandomSeedConfig] = None,
     ):
         super().__init__(
             input_op,
             name="RandomizeBlockOrder",
         )
-        self.seed = seed
+        self.seed_config = seed_config or RandomSeedConfig()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -103,7 +104,7 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         self,
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
-        seed: Optional[int] = None,
+        seed_config: Optional[RandomSeedConfig] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
@@ -115,7 +116,7 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
             ray_remote_args=ray_remote_args,
             name=name,
         )
-        self.seed = seed
+        self.seed_config = seed_config or RandomSeedConfig()
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)

@@ -90,7 +90,8 @@ class NodeInfoGcsServiceHandler {
 
   virtual void HandleUnregisterNode(UnregisterNodeRequest request,
                                     UnregisterNodeReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+                                    SendReplyCallback send_reply_callback,
+                                    const std::string &grpc_peer) = 0;
 
   virtual void HandleCheckAlive(CheckAliveRequest request,
                                 CheckAliveReply *reply,
@@ -316,7 +317,8 @@ class AutoscalerStateServiceHandler {
 
   virtual void HandleDrainNode(DrainNodeRequest request,
                                DrainNodeReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
+                               SendReplyCallback send_reply_callback,
+                               const std::string &grpc_peer) = 0;
 
   virtual void HandleResizeRayletResourceInstances(
       ResizeRayletResourceInstancesRequest request,

@@ -476,8 +476,16 @@ def _generate_grafana_panels(
             else:
                 panels.append(panel_template)
 
-        # Update y position for next row
-        current_y_position += _calculate_panel_heights(len(row.panels))
+        # Update y position for next row based on actual panel positions
+        # when explicit grid_pos is used, or fallback to calculated height.
+        if any(p.grid_pos for p in row.panels):
+            max_y_bottom = max(
+                (p.grid_pos.y + p.grid_pos.h for p in row.panels if p.grid_pos),
+                default=current_y_position,
+            )
+            current_y_position = max_y_bottom
+        else:
+            current_y_position += _calculate_panel_heights(len(row.panels))
 
     return panels
 

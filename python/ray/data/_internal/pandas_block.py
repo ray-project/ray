@@ -277,7 +277,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return self._column.to_numpy(copy=not zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self.to_pylist()
 
     def _is_all_null(self):
@@ -346,7 +346,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# NOTE: This has to be compatible with pyarrow.lib.schema
+# NOTE: This has to be compatible with Pyarrow ``Schema``
 @dataclass(frozen=True, init=False)
 class PandasBlockSchema:
     # Stored as tuples for hash-ability.

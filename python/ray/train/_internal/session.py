@@ -20,7 +20,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TIMESTAMP,
 )
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import (

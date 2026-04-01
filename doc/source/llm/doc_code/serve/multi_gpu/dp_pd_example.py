@@ -70,9 +70,6 @@ prefill_config = LLMConfig(
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
-    experimental_configs={
-        "dp_size_per_node": 2,
-    },
 )
 
 # Configure decode with data parallel attention
@@ -90,9 +87,6 @@ decode_config = LLMConfig(
         # Reduced for CI compatibility
         "max_model_len": 1024,
         "max_num_seqs": 32,
-    },
-    experimental_configs={
-        "dp_size_per_node": 2,
     },
 )
 

@@ -69,7 +69,8 @@ def main():
 
     if node_killer is not None:
         node_killer.stop_run.remote()
-        print(f"Total node failures: {ray.get(node_killer.get_total_killed.remote())}")
+        killed_nodes = ray.get(node_killer.get_killed_nodes.remote())
+        print(f"{len(killed_nodes)} nodes were killed: {killed_nodes}")
 
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     used_gb = round(used_gb, 2)

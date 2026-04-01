@@ -265,6 +265,21 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# Controller polls deployment-scoped actors with ``__ray_ready__`` (same idea as
+# replica health checks). Defaults match deployment replica timing; override via env.
+DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S = get_env_float_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S",
+    float(DEFAULT_HEALTH_CHECK_PERIOD_S),
+)
+DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S",
+    float(DEFAULT_HEALTH_CHECK_TIMEOUT_S),
+)
+DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD = get_env_int_positive(
+    "RAY_SERVE_DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+)
+
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S = 1.0
 
@@ -615,6 +630,12 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Feature flag to include client IP address in HTTP access logs.
+# Off by default for privacy; set to "1" to enable.
+RAY_SERVE_LOG_CLIENT_ADDRESS = (
+    os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
+)
+
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
 RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
@@ -713,6 +734,11 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER = os.environ.get(
 # Time interval between each haproxy health check attempt when the server is in the DOWN state
 RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
+)
+
+# The balancing algorithm to use in HAProxy backends. Default is leastconn.
+RAY_SERVE_HAPROXY_BALANCE_ALGORITHM = get_env_str(
+    "RAY_SERVE_HAPROXY_BALANCE_ALGORITHM", "leastconn"
 )
 
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(

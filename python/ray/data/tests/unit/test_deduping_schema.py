@@ -226,6 +226,9 @@ class _DummyOp:
             num_external_outqueue_bytes=0,
         )
 
+    def num_output_splits(self):
+        return 1
+
     def get_actor_info(self):
         return SimpleNamespace(running=0, restarting=0, pending=0)
 

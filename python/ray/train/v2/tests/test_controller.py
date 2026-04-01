@@ -292,7 +292,7 @@ async def test_controller_callback(monkeypatch):
         ):
             self.resize_decision_called = True
 
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             self.shutdown_called = True
 
         def before_controller_abort(self):

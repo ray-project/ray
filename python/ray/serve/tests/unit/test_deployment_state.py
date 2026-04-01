@@ -1,7 +1,7 @@
 import sys
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -35,8 +35,12 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
+    CHECKPOINT_KEY,
     SLOW_STARTUP_WARNING_S,
     ActorReplicaWrapper,
+    DeploymentActorContainer,
+    DeploymentActorState,
+    DeploymentActorWrapper,
     DeploymentReplica,
     DeploymentState,
     DeploymentStateManager,
@@ -46,6 +50,7 @@ from ray.serve._private.deployment_state import (
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.test_utils import (
+    MockDeploymentActorWrapper,
     MockPlacementGroup,
     dead_replicas_context,
     replica_rank_context,
@@ -54,7 +59,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
-from ray.serve.config import GangSchedulingConfig
+from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -352,6 +357,354 @@ class TestReplicaStateContainer:
             exclude_version=deployment_version("nonsense"),
             states=[ReplicaState.STOPPING],
         ) == [r1]
+
+
+def _mock_deployment_actor_wrapper(deployment_id, code_version: str, name: str):
+    """Create a MockDeploymentActorWrapper for container tests."""
+    config = DeploymentActorConfig(name=name, actor_class="builtins:object")
+    return MockDeploymentActorWrapper(deployment_id, config, code_version)
+
+
+class TestDeploymentActorContainer:
+    def test_add_and_count(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_b")
+        w3 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_a")
+
+        c.add(DeploymentActorState.STARTING, w1)
+        c.add(DeploymentActorState.STARTING, w2)
+        c.add(DeploymentActorState.RECOVERING, w3)
+        assert c.count() == 3
+        assert c.count(states=[DeploymentActorState.STARTING]) == 2
+        assert c.count(states=[DeploymentActorState.RECOVERING]) == 1
+        assert c.count(code_version="v1") == 2
+        assert c.count(code_version="v2") == 1
+        assert c.count(code_version="v3") == 0
+
+    def test_add_moves_existing(self):
+        """Adding same (code_version, name) moves from old state to new."""
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+
+        c.add(DeploymentActorState.STARTING, w)
+        assert c.count() == 1
+        assert c.count(states=[DeploymentActorState.STARTING]) == 1
+
+        c.add(DeploymentActorState.RUNNING, w)
+        assert c.count() == 1
+        assert c.count(states=[DeploymentActorState.STARTING]) == 0
+        assert c.count(states=[DeploymentActorState.RUNNING]) == 1
+
+    def test_get(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_b")
+        w3 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_a")
+
+        c.add(DeploymentActorState.STARTING, w1)
+        c.add(DeploymentActorState.STARTING, w2)
+        c.add(DeploymentActorState.RECOVERING, w3)
+
+        assert set(c.get()) == {w1, w2, w3}
+        assert set(c.get(states=[DeploymentActorState.STARTING])) == {w1, w2}
+        assert c.get(states=[DeploymentActorState.RECOVERING]) == [w3]
+        assert set(c.get(code_version="v1")) == {w1, w2}
+        assert c.get(code_version="v2") == [w3]
+        assert c.get(code_version="v3") == []
+
+    def test_pop(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_b")
+        w3 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_a")
+
+        c.add(DeploymentActorState.STARTING, w1)
+        c.add(DeploymentActorState.RUNNING, w2)
+        c.add(DeploymentActorState.RUNNING, w3)
+
+        # Pop by code_version
+        removed = c.pop(code_version="v1")
+        assert len(removed) == 2
+        states_removed = {s for s, _ in removed}
+        assert states_removed == {
+            DeploymentActorState.STARTING,
+            DeploymentActorState.RUNNING,
+        }
+        assert c.count() == 1
+        assert c.get() == [w3]
+
+        # Pop remaining
+        removed = c.pop(code_version="v2")
+        assert len(removed) == 1
+        assert removed[0][1].wrapper is w3
+        assert c.count() == 0
+
+    def test_pop_by_states(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_b")
+
+        c.add(DeploymentActorState.STARTING, w1)
+        c.add(DeploymentActorState.RUNNING, w2)
+
+        removed = c.pop(code_version="v1", states=[DeploymentActorState.STARTING])
+        assert len(removed) == 1
+        assert removed[0][1].wrapper is w1
+        assert c.count() == 1
+        assert c.get() == [w2]
+
+    def test_pop_all_versions(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_b")
+
+        c.add(DeploymentActorState.RUNNING, w1)
+        c.add(DeploymentActorState.RUNNING, w2)
+
+        removed = c.pop()
+        assert len(removed) == 2
+        assert c.count() == 0
+
+    def test_get_wrapper(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_b")
+        w3 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_a")
+
+        c.add(DeploymentActorState.RUNNING, w1)
+        c.add(DeploymentActorState.RUNNING, w2)
+        c.add(DeploymentActorState.RUNNING, w3)
+
+        assert c.get_wrapper("v1", "actor_a") is w1
+        assert c.get_wrapper("v1", "actor_b") is w2
+        assert c.get_wrapper("v2", "actor_a") is w3
+        assert c.get_wrapper("v1", "actor_c") is None
+        assert c.get_wrapper("v3", "actor_a") is None
+
+        # After pop, get_wrapper returns None
+        c.pop(code_version="v1")
+        assert c.get_wrapper("v1", "actor_a") is None
+        assert c.get_wrapper("v1", "actor_b") is None
+        assert c.get_wrapper("v2", "actor_a") is w3
+
+    def test_get_code_versions(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        c = DeploymentActorContainer(dep_id)
+        assert c.get_code_versions() == set()
+
+        w1 = _mock_deployment_actor_wrapper(dep_id, "v1", "actor_a")
+        w2 = _mock_deployment_actor_wrapper(dep_id, "v2", "actor_b")
+        c.add(DeploymentActorState.RUNNING, w1)
+        c.add(DeploymentActorState.RUNNING, w2)
+        assert c.get_code_versions() == {"v1", "v2"}
+
+        c.pop(code_version="v1")
+        assert c.get_code_versions() == {"v2"}
+
+
+class TestDeploymentActorWrapper:
+    def test_properties(self):
+        """Test actor_logical_name and code_version properties."""
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        assert wrapper.actor_logical_name == "counter"
+        assert wrapper.code_version == "v1"
+
+    def test_start_success(self):
+        """Test start() returns (True, None) when actor creation succeeds."""
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+        assert success is True
+        assert err is None
+        assert wrapper._handle is mock_handle
+        assert wrapper._ready_ref is mock_ready_ref
+
+    def test_start_failure(self):
+        """Test start() returns (False, error_msg) when actor creation fails."""
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.side_effect = RuntimeError(
+            "out of resources"
+        )
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+        assert success is False
+        assert "out of resources" in err
+
+    def test_check_ready_already_ready(self):
+        """Test check_ready() when _ready_ref is None and _handle is set."""
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        wrapper._handle = object()  # Any truthy value - actor is ready
+        wrapper._ready_ref = None
+        ready, err = wrapper.check_ready()
+        assert ready is True
+        assert err is None
+
+    def test_check_ready_not_started(self):
+        """Test check_ready() when _ready_ref and _handle are None."""
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        ready, err = wrapper.check_ready()
+        assert ready is False
+        assert err is None
+
+    def test_check_ready_ref_not_ready(self):
+        """Test check_ready() when _ready_ref exists but is not ready."""
+        with patch(
+            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+            return_value=False,
+        ):
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+            )
+            wrapper._ready_ref = object()  # Pending ref, not ready yet
+            ready, err = wrapper.check_ready()
+            assert ready is False
+            assert err is None
+
+    def test_check_ready_ref_ready_then_success(self):
+        """Test check_ready() when _ready_ref is ready and ray.get succeeds."""
+        with patch(
+            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+            return_value=True,
+        ), patch("ray.serve._private.deployment_state.ray.get"):
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+            )
+            wrapper._ready_ref = object()  # Ref that will pass check
+            ready, err = wrapper.check_ready()
+            assert ready is True
+            assert err is None
+            assert wrapper._ready_ref is None
+
+    def test_check_ready_ref_ready_then_fails(self):
+        """Test check_ready() when ray.get on _ready_ref raises."""
+        with patch(
+            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+            return_value=True,
+        ), patch(
+            "ray.serve._private.deployment_state.ray.get",
+            side_effect=RuntimeError("actor crashed"),
+        ):
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+            )
+            wrapper._ready_ref = object()  # Ref that passes check, ray.get will fail
+            ready, err = wrapper.check_ready()
+            assert ready is False
+            assert "actor crashed" in err
+
+    def test_kill_with_handle(self):
+        """Test kill() when _handle is already set."""
+        with patch("ray.serve._private.deployment_state.ray.kill") as mock_kill:
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            fake_handle = object()  # Simulates existing actor handle
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+                recovered_handle=fake_handle,
+            )
+            wrapper.kill()
+            mock_kill.assert_called_once_with(fake_handle, no_restart=True)
+
+    def test_kill_without_handle(self):
+        """Test kill() when _handle is None - fetches via get_actor then kills."""
+        fake_handle = object()
+        with patch(
+            "ray.serve._private.deployment_state.ray.get_actor",
+            return_value=fake_handle,
+        ), patch("ray.serve._private.deployment_state.ray.kill") as mock_kill:
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+            )
+            wrapper.kill()
+            mock_kill.assert_called_once_with(fake_handle, no_restart=True)
+
+    def test_kill_actor_already_stopped(self):
+        """Test kill() when actor is already stopped - should not raise."""
+        with patch(
+            "ray.serve._private.deployment_state.ray.get_actor",
+            side_effect=ValueError("actor not found"),
+        ), patch("ray.serve._private.deployment_state.ray.kill"):
+            config = DeploymentActorConfig(
+                name="counter", actor_class="builtins:object"
+            )
+            wrapper = DeploymentActorWrapper(
+                deployment_id=TEST_DEPLOYMENT_ID,
+                config=config,
+                code_version="v1",
+            )
+            wrapper.kill()  # should not raise
 
 
 def check_counts(
@@ -2198,6 +2551,924 @@ def test_deploy_with_gang_placement_group_failure(mock_deployment_state_manager)
     dsm.update()
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert "The deployment failed to start" in ds.curr_status_info.message
+
+
+def _deployment_actors_config():
+    """DeploymentActorConfig for tests. Uses import path to avoid Ray init."""
+    return [
+        DeploymentActorConfig(
+            name="counter",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+    ]
+
+
+def _deployment_actors_config_two():
+    """Two deployment actors for partial-failure tests."""
+    return [
+        DeploymentActorConfig(
+            name="counter",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+        DeploymentActorConfig(
+            name="cache",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+    ]
+
+
+def _get_deployment_actor_wrapper(
+    ds: DeploymentState,
+    code_version: str,
+    actor_name: str = "counter",
+):
+    wrapper = ds._deployment_actors.get_wrapper(code_version, actor_name)
+    if wrapper is None:
+        raise KeyError(
+            f"No deployment actor wrapper for version={code_version!r} "
+            f"name={actor_name!r}"
+        )
+    return wrapper
+
+
+class TestDeploymentActors:
+    """Deployment actor tests using setter methods on wrapper instances."""
+
+    def test_deploy_with_deployment_actors_deferred_replica_creation(
+        self, mock_deployment_state_manager
+    ):
+        """Replicas are not created until deployment actors are ready."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        for _ in range(5):
+            dsm.update()
+        check_counts(ds, total=0)
+
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deploy_with_deployment_actor_failure(self, mock_deployment_state_manager):
+        """Deployment actor constructor failure transitions to DEPLOY_FAILED."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        error_msg = "Deployment actor 'counter' failed: constructor error"
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        for i in range(2):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(error_msg)
+            dsm.update()
+            if i < 1:
+                assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+            else:
+                assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+        assert error_msg in ds.curr_status_info.message
+
+    def test_delete_deployment_calls_stop_deployment_actors(
+        self, mock_deployment_state_manager
+    ):
+        """Deleting a deployment calls force_stop on deployment actors."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        wrapper_v1 = _get_deployment_actor_wrapper(ds, "1")
+        wrapper_v1.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        ds.delete()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        assert wrapper_v1.killed
+
+    def test_cleanup_orphaned_deployment_actors_on_version_change(
+        self, mock_deployment_state_manager
+    ):
+        """Orphaned version's deployment actor is killed after rollout."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        wrapper_v1 = _get_deployment_actor_wrapper(ds, "1")
+        wrapper_v1.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        wrapper_v2 = _get_deployment_actor_wrapper(ds, "2")
+        wrapper_v2.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+
+        assert wrapper_v1.killed
+        assert not wrapper_v2.killed
+
+    def test_deploy_without_deployment_actors_creates_replicas_immediately(
+        self, mock_deployment_state_manager
+    ):
+        """Deployments without deployment_actors create replicas immediately."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(version="1", num_replicas=2)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_start_retry_then_succeed(
+        self, mock_deployment_state_manager
+    ):
+        """Deployment actor fails N times then succeeds; replicas created."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 1
+
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 2
+
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_retry_counter_reset_on_redeploy(
+        self, mock_deployment_state_manager
+    ):
+        """Redeploy resets _deployment_actor_retry_counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 1
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        assert ds._deployment_actor_retry_counter == 0
+
+    def test_deployment_actor_terminal_failure(self, mock_deployment_state_manager):
+        """After threshold failures, deployment stops retrying."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        threshold = ds._deployment_actor_failed_to_start_threshold
+        for _ in range(threshold):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(
+                "persistent error"
+            )
+            dsm.update()
+
+        assert ds.deployment_actor_terminally_failed()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+
+    def test_deployment_actor_failed_handled_when_already_deploy_failed(
+        self, mock_deployment_state_manager
+    ):
+        """Repeated ticks with DEPLOYMENT_ACTOR_FAILED when already DEPLOY_FAILED.
+
+        When deployment is already in DEPLOY_FAILED (due to deployment actor
+        failure), check_curr_status hits deployment_actor_terminally_failed()
+        again on each tick. handle_transition must handle DEPLOYMENT_ACTOR_FAILED
+        in the DEPLOY_FAILED block to avoid returning None and crashing.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Reach DEPLOY_FAILED via deployment actor terminal failure
+        for _ in range(2):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(
+                "persistent error"
+            )
+            dsm.update()
+
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+
+        # Repeated ticks: deployment_actor_terminally_failed() stays True, so
+        # check_curr_status calls handle_transition(DEPLOYMENT_ACTOR_FAILED)
+        # while status is already DEPLOY_FAILED. Must not crash.
+        for _ in range(5):
+            dsm.update()
+            assert ds.curr_status_info is not None
+            assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+            assert (
+                ds.curr_status_info.status_trigger
+                == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+            )
+
+    def test_no_deployment_actors_not_terminally_failed(
+        self, mock_deployment_state_manager
+    ):
+        """Deployment without deployment_actors must not be terminally failed."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(version="1", num_replicas=1)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        assert not ds.deployment_actor_terminally_failed()
+        assert not ds._terminally_failed()
+
+        ds._deployment_actor_retry_counter = (
+            ds._deployment_actor_failed_to_start_threshold + 1
+        )
+        assert not ds.deployment_actor_terminally_failed()
+
+        dsm.update()
+        assert ds.curr_status_info.status != DeploymentStatus.DEPLOY_FAILED
+
+    def test_deployment_actor_partial_failure(self, mock_deployment_state_manager):
+        """One of two deployment actors fails; DEPLOY_FAILED after threshold."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config_two(),
+            max_constructor_retry_count=2,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        for _ in range(2):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+            _get_deployment_actor_wrapper(ds, "1", "cache").set_failed_to_start(
+                "cache actor failed"
+            )
+            dsm.update()
+
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+        assert "cache actor failed" in ds.curr_status_info.message
+
+    def test_deployment_actor_partial_failure_preserves_running(
+        self, mock_deployment_state_manager
+    ):
+        """When one actor fails, already-RUNNING actors must stay tracked."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config_two(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        assert (
+            ds._deployment_actors.count("1", states=[DeploymentActorState.STARTING])
+            == 2
+        )
+
+        _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+        _get_deployment_actor_wrapper(ds, "1", "cache").set_failed_to_start(
+            "cache actor failed"
+        )
+        dsm.update()
+
+        assert (
+            ds._deployment_actors.count("1", states=[DeploymentActorState.RUNNING]) == 1
+        )
+        counter_wrapper = ds._deployment_actors.get_wrapper("1", "counter")
+        assert counter_wrapper is not None
+
+    def test_deployment_actor_recovery_from_checkpoint(
+        self, mock_deployment_state_manager
+    ):
+        """recover_target_state_from_checkpoint restores deployment actors."""
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, v1 = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        dsm.save_checkpoint()
+        checkpoint = dsm._kv_store.get(CHECKPOINT_KEY)
+        assert checkpoint is not None
+
+        mock_handle = MagicMock()
+        with patch("ray.get_actor") as mock_get_actor:
+            mock_get_actor.return_value = mock_handle
+            new_dsm = create_dsm([ds._replicas.get()[0].replica_id.to_full_id_str()])
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        assert (
+            new_ds._deployment_actors.count(
+                "1", states=[DeploymentActorState.RECOVERING]
+            )
+            == 1
+        )
+        recovered_wrapper = _get_deployment_actor_wrapper(new_ds, "1")
+        assert recovered_wrapper._handle is mock_handle
+        recovered_wrapper.set_ready()
+        new_dsm.update()
+        assert (
+            new_ds._deployment_actors.count("1", states=[DeploymentActorState.RUNNING])
+            == 1
+        )
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+
+    def test_deployment_actor_recovery_get_actor_raises_value_error(
+        self, mock_deployment_state_manager
+    ):
+        """When ray.get_actor raises ValueError during recovery, actor is recreated."""
+        from ray.serve._private.deployment_state import CHECKPOINT_KEY
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, v1 = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        dsm.save_checkpoint()
+        assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+        # ray.get_actor raises ValueError when actor not found during recovery.
+        with patch("ray.get_actor") as mock_get_actor:
+            mock_get_actor.side_effect = ValueError("Actor not found")
+            new_dsm = create_dsm([ds._replicas.get()[0].replica_id.to_full_id_str()])
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # No deployment actors recovered (ValueError path skips add).
+        assert (
+            new_ds._deployment_actors.count(
+                "1",
+                states=[
+                    DeploymentActorState.RECOVERING,
+                    DeploymentActorState.RUNNING,
+                ],
+            )
+            == 0
+        )
+
+        # Next update: start_deployment_actors recreates the missing actor.
+        new_dsm.update()
+        assert (
+            new_ds._deployment_actors.count("1", states=[DeploymentActorState.STARTING])
+            == 1
+        )
+        _get_deployment_actor_wrapper(new_ds, "1").set_ready()
+        new_dsm.update()
+        new_ds._replicas.get()[0]._actor.set_ready()
+        new_dsm.update()
+        assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_multiple_not_ready_until_all_ready(
+        self, mock_deployment_state_manager
+    ):
+        """Replicas not created until ready_count == len(configs)."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=0)
+
+        _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+        dsm.update()
+        check_counts(ds, total=0)
+
+        _get_deployment_actor_wrapper(ds, "1", "cache").set_ready()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+
+    def test_deployment_actor_deletion_gate_with_starting(
+        self, mock_deployment_state_manager
+    ):
+        """Deletion does not complete until deployment actor is stopped."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        wrapper = _get_deployment_actor_wrapper(ds, "1")
+        wrapper.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        ds.delete()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        assert wrapper.killed
+        dsm.update()
+        assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+
+    def test_deletion_after_version_update_before_new_actors_ready(
+        self, mock_deployment_state_manager
+    ):
+        """Deletion completes when delete is called after version update but before
+        new version's deployment actors became ready.
+
+        Bug: With 2+ replicas, version update stops old replicas one-by-one
+        (rollout). After one update we have 1 RUNNING v1 replica. Delete before v2
+        actors become ready. stop_deployment_actors_if_needed removes v2 actors
+        (versions_to_keep only has v1 from replicas). Without the fix,
+        check_deployment_actors_ready would return False and block
+        _get_target_replica_delta, so downscale never runs for the remaining
+        RUNNING replica and the deployment gets stuck in deletion.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        for r in ds._replicas.get():
+            r._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Version update: deploy v2. v2 deployment actors start but don't become ready.
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=2,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        # rollout stops 1 v1 replica; we have 1 STOPPING, 1 RUNNING. v2 actor STARTING.
+        assert _get_deployment_actor_wrapper(ds, "2") is not None
+        running = ds._replicas.get(states=[ReplicaState.RUNNING])
+        assert (
+            len(running) >= 1
+        ), "Need at least 1 RUNNING v1 replica to trigger the bug"
+
+        # Delete before v2 actors become ready. stop_deployment_actors_if_needed
+        # removes v2 actors. Without the fix, deployment actors block blocks
+        # downscaling of the remaining RUNNING replica(s).
+        ds.delete()
+        for _ in range(30):
+            dsm.update()
+            if TEST_DEPLOYMENT_ID not in dsm._deployment_states:
+                break
+            stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+            for s in stopping:
+                s._actor.set_done_stopping()
+
+        assert TEST_DEPLOYMENT_ID not in dsm._deployment_states, (
+            "Deployment should complete deletion; without the fix it gets stuck "
+            "because check_deployment_actors_ready blocks downscaling."
+        )
+
+    def test_deployment_actor_retry_counter_reset_on_success(
+        self, mock_deployment_state_manager
+    ):
+        """On successful readiness, retry counter is reset."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 0
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_start_failure_increments_counter(
+        self, mock_deployment_state_manager
+    ):
+        """Failure via set_failed_to_start increments retry counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        for i in range(3):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(
+                "constructor failed"
+            )
+            dsm.update()
+            if i < 2:
+                assert ds._deployment_actor_retry_counter == i + 1
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
+    def test_deployment_actor_check_ready_failure_increments_counter(
+        self, mock_deployment_state_manager
+    ):
+        """check_ready failure increments counter; DEPLOY_FAILED after threshold."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        for i in range(3):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("check failed")
+            dsm.update()
+            assert ds._deployment_actor_retry_counter == i + 1
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
+    def test_deployment_actor_check_health_healthy_stays_running(
+        self, mock_deployment_state_manager
+    ):
+        """``check_and_update_deployment_actors`` re-adds healthy RUNNING actors."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert not w.killed
+        dsm.update()
+        assert not w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w
+
+    def test_deployment_actor_check_health_unhealthy_kills_and_recreates(
+        self, mock_deployment_state_manager
+    ):
+        """Failed ``check_health`` kills the actor without startup retry counter; recovers."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w.set_health_ok(False)
+        # Isolate health reconciliation; a full ``dsm.update()`` would also scale
+        # and start a replacement actor in the same tick.
+        ds.check_and_update_deployment_actors()
+        assert w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is None
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._in_transition is True
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+        dsm.update()
+        w2 = _get_deployment_actor_wrapper(ds, "1")
+        assert w2 is not w
+        assert not w2.killed
+        w2.set_ready()
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_reset_health_state_after_running_on_ready(
+        self, mock_deployment_state_manager
+    ):
+        """``check_deployment_actors_ready`` resets health bookkeeping when RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        assert w.reset_health_state_after_running_count == 0
+        w.set_ready()
+        dsm.update()
+        assert w.reset_health_state_after_running_count == 1
+
+    def test_deployment_actor_check_health_mixed_two_actors(
+        self, mock_deployment_state_manager
+    ):
+        """Only unhealthy deployment actors are killed; others stay RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert w_cache.killed
+        assert not w_counter.killed
+        assert ds._deployment_actors.get_wrapper("1", "cache") is None
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w_counter
+
+    def test_deployment_actors_satisfied_for_target_requires_all_slots_filled(
+        self, mock_deployment_state_manager
+    ):
+        """Missing deployment actor slots are unsatisfied until all are tracked again."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actors_satisfied_for_target()
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert not ds._deployment_actors_satisfied_for_target()
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 1
+
+    def test_deployment_actor_health_check_non_target_kills_without_startup_counter(
+        self, mock_deployment_state_manager
+    ):
+        """Like old replicas: non-target unhealthy actors are stopped, no startup counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        w_v2 = _get_deployment_actor_wrapper(ds, "2")
+        w_v2.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actor_retry_counter == 0
+
+        w_orphan = _mock_deployment_actor_wrapper(
+            TEST_DEPLOYMENT_ID, "1", "orphan_leftover"
+        )
+        w_orphan.set_health_ok(False)
+        ds._deployment_actors.add(DeploymentActorState.RUNNING, w_orphan)
+
+        ds.check_and_update_deployment_actors()
+
+        assert w_orphan.killed
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._deployment_actors.get_wrapper("1", "orphan_leftover") is None
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):
@@ -5643,6 +6914,64 @@ class TestDeploymentRankManagerIntegrationE2E:
             2,
         }, f"Expected ranks [0, 1, 2], got {[r.rank for r in ranks_mapping.values()]}"
 
+    def test_rank_recovery_skips_when_already_assigned(
+        self, mock_deployment_state_manager
+    ):
+        """Verify that recover_rank is skipped when a replica's rank is already assigned."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Deploy 3 replicas: STARTING -> RUNNING (ranks get assigned).
+        info_1, v1 = deployment_info(num_replicas=3, version="1")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds: DeploymentState = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.STARTING, 3, v1)])
+
+        self._set_replicas_ready(ds, [ReplicaState.STARTING])
+        dsm.update()
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Record the actor names and ranks for recovery.
+        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        original_ranks = {
+            r.replica_id.unique_id: ds._rank_manager.get_replica_rank(
+                r.replica_id.unique_id
+            )
+            for r in ds._replicas.get()
+        }
+        dsm.save_checkpoint()
+
+        # Simulate controller crash: create a new DSM with the live actor names.
+        new_dsm: DeploymentStateManager = create_dsm(actor_names)
+        new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+        # Enable strict rank error mode so duplicate recover_rank raises.
+        new_ds._rank_manager._fail_on_rank_error = True
+
+        # Pre-populate 1 replica's rank in the new rank manager, simulating
+        # the scenario where the rank was never released.
+        target = new_ds._replicas.get(states=[ReplicaState.RECOVERING])[0]
+        target_id = target.replica_id.unique_id
+        target_rank = original_ranks[target_id]
+        new_ds._rank_manager.recover_rank(target_id, target.actor_node_id, target_rank)
+        assert new_ds._rank_manager.has_replica_rank(target_id)
+
+        # Mark all recovering replicas as ready.
+        self._set_replicas_ready(new_ds, [ReplicaState.RECOVERING])
+
+        # This update() calls _check_startup_replicas(RECOVERING). For the
+        # pre-populated replica, has_replica_rank returns True so recover_rank
+        # is SKIPPED.
+        new_dsm.update()
+        check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+
+        # Verify all ranks were recovered correctly.
+        for rid, expected_rank in original_ranks.items():
+            assert new_ds._rank_manager.get_replica_rank(rid) == expected_rank
+
 
 class TestGetOutboundDeployments:
     def test_basic_outbound_deployments(self, mock_deployment_state_manager):
@@ -6936,6 +8265,607 @@ class TestGangHealthCheck:
         for r in ds._replicas.get([ReplicaState.STARTING]):
             r._actor.set_ready()
         dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+class TestGangRollingUpdate:
+    def _deploy_gang(self, mock_deployment_state_manager, gang_size, num_replicas):
+        """Deploy a gang-scheduled deployment and advance to HEALTHY."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
+                *args, **kwargs
+            ),
+        )
+        info, _ = deployment_info(
+            version="v1",
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        return dsm, ds
+
+    def _deploy_new_version(self, dsm, gang_size, num_replicas, version, **kwargs):
+        """Deploy a new version and return its version tag."""
+        info, v = deployment_info(
+            version=version,
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+            **kwargs,
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        return v
+
+    def _mock_gang_pgs(self, dsm, gang_size, num_new):
+        """Mock gang PG reservation for new replicas."""
+        n = num_new // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(n)],
+                    gang_ids=[f"new_gang_{i}" for i in range(n)],
+                    gang_pg_names=[f"SERVE_GANG::pg-{i}" for i in range(n)],
+                )
+            }
+        )
+
+    def _finish_stopping(self, ds):
+        """Mark all STOPPING replicas as done."""
+        for r in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+    def _finish_starting(self, ds):
+        """Mark all STARTING replicas as ready."""
+        for r in ds._replicas.get(states=[ReplicaState.STARTING]):
+            r._actor.set_ready()
+
+    def _advance_wave(self, dsm, ds, gang_size):
+        """Complete one rolling-update wave: finish stops, mock PGs, start new."""
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        self._finish_starting(ds)
+
+    def test_stop_gang_atomically(self, mock_deployment_state_manager):
+        """Stops one complete gang per wave, never partially tearing down a gang."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # First wave: exactly one gang (2 replicas) stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+        assert all(r.version != v2 for r in stopping)
+
+        # Complete wave 1, trigger wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        # Second old gang now stopping
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
+
+        # Complete wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_rollout_size_rounding(self, mock_deployment_state_manager):
+        """With gang_size=3, num_replicas=9, rollout_size rounds up from 1 to 3."""
+        gang_size, num_replicas = 3, 9
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # Exactly one gang (3 replicas) stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+
+        # Advance through all 3 waves
+        for _ in range(3):
+            self._advance_wave(dsm, ds, gang_size)
+            dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_reconfigure(self, mock_deployment_state_manager):
+        """Config-only change (same code version) reconfigures in place, no stops."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        self._deploy_new_version(
+            dsm, gang_size, num_replicas, "v1", user_config={"key": "new_value"}
+        )
+        dsm.update()
+
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+        running = ds._replicas.count(states=[ReplicaState.RUNNING])
+        updating = ds._replicas.count(states=[ReplicaState.UPDATING])
+        assert running + updating == num_replicas
+
+    def test_starting_replicas(self, mock_deployment_state_manager):
+        """Rapid v1->v2->v3: v2 STARTING replicas are stopped when v3 arrives."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        # Deploy v2, complete first wave's stops, but leave new replicas STARTING.
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v2, states=[ReplicaState.STARTING]) == gang_size
+        )
+
+        # Deploy v3 while v2 replicas are still STARTING.
+        v3 = self._deploy_new_version(dsm, gang_size, num_replicas, "v3")
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v2, states=[ReplicaState.STOPPING]) == gang_size
+        )
+
+        # State: 2 v1 RUNNING, 2 v2 STOPPING.
+        # The rolling-update budget (pending_replicas=2) is already exhausted
+        # by the missing slots, so v1 won't be stopped until new v3 replicas
+        # fill those slots first.
+
+        # Wave 1: Finish v2 stops -> update starts 2 v3 (v1 not stopped yet).
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v3, states=[ReplicaState.STARTING]) == gang_size
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Wave 2: v3 replicas ready -> update stops the old v1 gang.
+        self._finish_starting(ds)
+        dsm.update()
+        assert (
+            ds._replicas.count(version=v3, states=[ReplicaState.RUNNING]) == gang_size
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == gang_size
+
+        # Wave 3: Finish v1 stops -> update starts remaining v3 replicas.
+        self._finish_stopping(ds)
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        self._finish_starting(ds)
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v3)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_multi_gang_stop_per_wave(self, mock_deployment_state_manager):
+        """Validate that multiple gangs are stopped per wave."""
+        gang_size, num_replicas = 2, 20
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        # rollout_size = max(1, int(0.2 * 20)) = 4
+        assert len(stopping) == 4
+        stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert len(stopping_gang_ids) == 2
+
+    def test_recovering_member_skips_gang_update(self, mock_deployment_state_manager):
+        """Gang with a RECOVERING member is skipped during rolling update."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        # Move one replica to RECOVERING so its gang is incomplete.
+        running = ds._replicas.pop(states=[ReplicaState.RUNNING])
+        recovering_replica = running[0]
+        for r in running[1:]:
+            ds._replicas.add(ReplicaState.RUNNING, r)
+        ds._replicas.add(ReplicaState.RECOVERING, recovering_replica)
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # An incomplete gang (with a RECOVERING member) cannot be stopped.
+        # Additionally, the budget is insufficient because the RECOVERING
+        # replica increases the pending count, preventing any stops.
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Recover the replica so the gang is complete again
+        recovering_replica._actor.set_ready()
+        dsm.update()
+
+        # Wave 1: first complete gang stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+
+        # Complete wave 1, trigger wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        # Wave 2: second gang stops
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
+
+        # Complete wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+class TestGangDraining:
+    """Test gang-aware migration when nodes are draining."""
+
+    def _deploy_gang(
+        self, mock_deployment_state_manager, gang_size, num_replicas, nodes
+    ):
+        """Deploy a gang deployment and assign replicas to nodes round-robin."""
+        create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+        for node in nodes:
+            cluster_node_info_cache.add_node(node)
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        timer.reset(0)
+        info, v = deployment_info(
+            num_replicas=num_replicas,
+            version="v1",
+            graceful_shutdown_timeout_s=20,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        num_gangs = num_replicas // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(num_gangs)],
+                    gang_ids=[f"gang_{i}" for i in range(num_gangs)],
+                    gang_pg_names=[f"SERVE_GANG::pg-{i}" for i in range(num_gangs)],
+                )
+            }
+        )
+        dsm.update()
+        # Assign nodes round-robin and mark ready
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        for i, replica in enumerate(replicas):
+            replica._actor.set_node_id(nodes[i % len(nodes)])
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        return dsm, ds, timer, cluster_node_info_cache, v
+
+    def _mock_gang_pgs(self, dsm, gang_size, num_new):
+        """Mock gang PG reservation for new replicas."""
+        n = num_new // gang_size
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock() for _ in range(n)],
+                    gang_ids=[f"new_gang_{i}" for i in range(n)],
+                    gang_pg_names=[f"SERVE_GANG::pg-new-{i}" for i in range(n)],
+                )
+            }
+        )
+
+    def test_entire_gang_migration(self, mock_deployment_state_manager):
+        """When gang members' nodes drain, ALL members move to PENDING_MIGRATION.
+        When the deadline is up, the entire gang is stopped."""
+        gang_size, num_replicas = 2, 4
+        node_1 = "node-1"
+        node_2 = "node-2"
+        node_3 = "node-3"  # non-draining target
+        # graceful_shutdown_timeout_s=20
+        dsm, ds, timer, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+        cache.add_node(node_3)
+
+        # Drain both nodes with a 40s deadline, graceful_shutdown_timeout=20s.
+        # Gangs are stopped when: curr_time >= deadline - graceful_shutdown_timeout.
+        deadline_ms = 40 * 1000
+        cache.draining_nodes = {node_1: deadline_ms, node_2: deadline_ms}
+        # Block replacements so we can test the deadline path in isolation.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+        dsm.update()
+
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Advance 15s — still before deadline - timeout (40 - 20 = 20s).
+        # Gangs should remain PENDING_MIGRATION (no deadline-triggered stops).
+        timer.advance(15)
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Advance past deadline - graceful_shutdown_timeout (total 25s > 20s).
+        # All old gangs should now be stopped due to deadline expiry.
+        timer.advance(10)
+        dsm.update()
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == num_replicas
+
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+
+        # Schedule replacements and complete
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_3)
+            r._actor.set_ready()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_partial_node_drain_migrates_entire_gang(
+        self, mock_deployment_state_manager
+    ):
+        """When only one node in a gang is draining, ALL gang members migrate."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        node_3 = "node-3"
+        dsm, ds, timer, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+        cache.add_node(node_3)
+
+        # Drain only node_2. The gang has members on both nodes,
+        # so ALL members (including the one on healthy node_1) must migrate.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+
+        # Both replicas should be PENDING_MIGRATION, not just the one on node_2
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 0
+
+        # Schedule replacements on non-draining node_3
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_3)
+            r._actor.set_ready()
+
+        # Advance past deadline so old replicas are stopped
+        timer.advance(50)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_recovery_when_node_stops_draining(
+        self, mock_deployment_state_manager
+    ):
+        """Gang stays PENDING_MIGRATION while ANY member's node is draining,
+        and returns to RUNNING when all members' nodes stop draining."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        dsm, ds, _, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1, node_2]
+        )
+
+        # Prevent the scheduler from creating replacements during draining.
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+
+        # Drain both nodes — all members go to PENDING_MIGRATION.
+        cache.draining_nodes = {node_1: 60 * 1000, node_2: 60 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Stop draining node_1 but keep node_2 draining.
+        # The gang still has a member on node_2, so it stays PENDING_MIGRATION.
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Stop draining completely — gang should recover to RUNNING.
+        cache.draining_nodes = {}
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_starting_replicas_stopped(self, mock_deployment_state_manager):
+        """STARTING gang members on draining nodes are stopped immediately."""
+        gang_size, num_replicas = 2, 2
+        node_1 = "node-1"
+        node_2 = "node-2"
+        create_dsm, timer, cache, _ = mock_deployment_state_manager
+        cache.add_node(node_1)
+        cache.add_node(node_2)
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        timer.reset(0)
+        info, v1 = deployment_info(
+            num_replicas=num_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                TEST_DEPLOYMENT_ID: GangReservationResult(
+                    success=True,
+                    gang_pgs=[Mock()],
+                    gang_ids=["gang_0"],
+                    gang_pg_names=["SERVE_GANG::pg-0"],
+                )
+            }
+        )
+        dsm.update()
+
+        # Assign nodes but DON'T mark ready — replicas stay STARTING
+        replicas = ds._replicas.get([ReplicaState.STARTING])
+        replicas[0]._actor.set_node_id(node_1)
+        replicas[1]._actor.set_node_id(node_2)
+
+        # Drain node_2 while replicas are STARTING
+        cache.draining_nodes = {node_2: 60 * 1000}
+        dsm.update()
+
+        # Both STARTING replicas in the gang should be stopped
+        stopping = ds._replicas.count(states=[ReplicaState.STOPPING])
+        assert stopping == gang_size
+
+        # Complete stopping and start new replicas
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        self._mock_gang_pgs(dsm, gang_size, num_replicas)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_1)
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_excess_migration_stops_complete_gangs(
+        self, mock_deployment_state_manager
+    ):
+        """When replacement replicas are ready, excess gangs are stopped atomically."""
+        gang_size, num_replicas = 2, 4
+        node_1 = "node-1"
+        node_2 = "node-2"
+        dsm, ds, _, cache, v1 = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas, [node_1]
+        )
+        cache.add_node(node_2)
+
+        # Prevent replacements during initial draining
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(return_value={})
+
+        # Drain node_1 with far deadline so no deadline-triggered stops
+        cache.draining_nodes = {node_1: 600 * 1000}
+        dsm.update()
+        assert (
+            ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == num_replicas
+        )
+
+        # Start one gang worth of replacements and make them RUNNING
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_2)
+            r._actor.set_ready()
+        dsm.update()
+
+        # One complete gang of old replicas should be stopping (excess)
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        # Verify they're all from the same gang
+        gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert len(gang_ids) == 1
+
+        # Complete first gang: stop old, start+ready replacement, stop second old gang
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        self._mock_gang_pgs(dsm, gang_size, gang_size)
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_node_id(node_2)
+            r._actor.set_ready()
+        dsm.update()
+
+        # Clean up the second gang's STOPPING replicas
+        for r in ds._replicas.get([ReplicaState.STOPPING]):
+            r._actor.set_done_stopping()
+        dsm.update()
+
         check_counts(
             ds,
             total=num_replicas,

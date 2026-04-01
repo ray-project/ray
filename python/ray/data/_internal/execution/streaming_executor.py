@@ -538,7 +538,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._export_operator_schema(op)
 
             # Log metrics of newly completed operators.
-            if op.has_completed() and not self._has_op_completed[op]:
+            if not op.has_completed():
+                op.refresh_state()
+            elif not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"

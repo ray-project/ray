@@ -151,6 +151,28 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "pressure_memory_monitor_test",
+    size = "small",
+    srcs = [
+        "pressure_memory_monitor_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:pressure_memory_monitor",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/util:logging",
+        "@boost//:thread",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "grpc_util_test",
     size = "small",
     srcs = [

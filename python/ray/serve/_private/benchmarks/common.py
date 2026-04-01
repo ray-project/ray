@@ -323,7 +323,7 @@ class Benchmarker:
 # See https://github.com/ray-project/ray/issues/60680 for more details.
 
 CONTROLLER_BENCH_CONFIG = {
-    "checkpoints": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048],
+    "checkpoints": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3072, 4096],
     "marination_period_s": 180,
     "sample_interval_s": 5,
 }
@@ -338,7 +338,7 @@ _CONTROLLER_AUTOSCALING_CONFIG = {
 _CONTROLLER_WAITER_TIMEOUT_S = 1200
 
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
-# concurrent waiters (up to 2048+ in controller benchmark).
+# concurrent waiters (up to 4096 in controller benchmark).
 _SignalActorForController = _SignalActor.options(max_concurrency=100000)
 
 

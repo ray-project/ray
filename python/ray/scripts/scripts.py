@@ -676,6 +676,16 @@ Windows powershell users need additional escaping:
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if enable_resource_isolation is True.",
 )
+@click.option(
+    "--proxy-server-url",
+    required=False,
+    type=str,
+    help="[Experimental] The server url to redirect dashboard backend requests to. "
+    "By default, the dashboard requests will be directed to the Ray api server. "
+    "If you have a custom server to serve the dashboard requests, "
+    "you can set this option to override the server url. "
+    "Ex: --proxy-server-url=http://historyserver:8080 ",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -724,6 +734,7 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    proxy_server_url,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -843,6 +854,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        proxy_server_url=proxy_server_url,
         env_vars=env_vars,
     )
 
@@ -1119,13 +1131,13 @@ def start(
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."

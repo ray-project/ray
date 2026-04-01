@@ -75,6 +75,21 @@ py_test_module_list(
     ],
 )
 
+# Multi-turn OpenAI-compatible HTTP benchmark (CLI + engine unit tests)
+py_test_module_list(
+    size = "large",
+    files = glob(["serve/benchmark/test_*.py"]),
+    tags = [
+        "cpu",
+        "exclusive",
+        "team:llm",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 # Large GPU tests
 py_test_module_list(
     size = "large",

@@ -129,6 +129,7 @@ def get_request_metadata(init_options, handle_options):
         is_streaming=handle_options.stream,
         _request_protocol=request_protocol,
         grpc_context=_request_context.grpc_context,
+        _client=_request_context._client,
         _by_reference=handle_options._by_reference,
         _on_separate_loop=init_options._run_router_in_separate_loop,
         request_serialization=handle_options.request_serialization,

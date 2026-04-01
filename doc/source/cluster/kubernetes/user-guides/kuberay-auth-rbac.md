@@ -46,11 +46,11 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/head
 ```
 
 The examples above also create the following Kubernetes RBAC objects:
-* A `raylet` ServiceAccount used by all Ray containers.
-* A `ray-authenticator` ClusterRole that grants the `raylet` ServiceAccount access to the Kubernetes `TokenReview` and `SubjectAccessReview` APIs, which are used to delegate authentication to Kubernetes.
-* A `ray-authenticator` ClusterRoleBinding that binds the `ray-authenticator` ClusterRole to the `raylet` ServiceAccount.
+* A `ray-cluster-with-k8s-auth` ServiceAccount used by all Ray containers.
+* A `ray-authenticator` ClusterRole that grants the `ray-cluster-with-k8s-auth` ServiceAccount access to the Kubernetes `TokenReview` and `SubjectAccessReview` APIs, which are used to delegate authentication to Kubernetes.
+* A `ray-authenticator` ClusterRoleBinding that binds the `ray-authenticator` ClusterRole to the `ray-cluster-with-k8s-auth` ServiceAccount.
 * A `ray-writer` ClusterRole that grants write access to `RayCluster` resources.
-* A `raylet` RoleBinding that binds the `ray-writer` ClusterRole to the `raylet` ServiceAccount.
+* A `ray-cluster-with-k8s-auth` RoleBinding that binds the `ray-writer` ClusterRole to the `ray-cluster-with-k8s-auth` ServiceAccount.
 
 ## Verify initial unauthenticated access
 

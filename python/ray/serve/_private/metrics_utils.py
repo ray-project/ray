@@ -335,14 +335,27 @@ def aggregate_timeseries(
     timeseries: TimeSeries,
     aggregation_function: AggregationFunction,
     last_window_s: float = 1.0,
+    window_start: Optional[float] = None,
 ) -> Optional[float]:
     """Aggregate the values in a timeseries using a specified function."""
     if aggregation_function == AggregationFunction.MEAN:
-        return time_weighted_average(timeseries, last_window_s=last_window_s)
+        return time_weighted_average(
+            timeseries, window_start=window_start, last_window_s=last_window_s
+        )
     elif aggregation_function == AggregationFunction.MAX:
-        return max(ts.value for ts in timeseries) if timeseries else None
+        values = (
+            ts.value
+            for ts in timeseries
+            if window_start is None or ts.timestamp >= window_start
+        )
+        return max(values, default=None)
     elif aggregation_function == AggregationFunction.MIN:
-        return min(ts.value for ts in timeseries) if timeseries else None
+        values = (
+            ts.value
+            for ts in timeseries
+            if window_start is None or ts.timestamp >= window_start
+        )
+        return min(values, default=None)
     else:
         raise ValueError(f"Invalid aggregation function: {aggregation_function}")
 

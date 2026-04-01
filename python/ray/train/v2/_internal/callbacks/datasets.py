@@ -23,7 +23,7 @@ from ray.train.v2._internal.execution.worker_group.worker_group import (
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator
+    from ray.data import DataIterator, Dataset
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -50,8 +50,12 @@ class RayDatasetShardProvider:
 class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     """A callback for managing Ray Datasets for the worker group."""
 
-    def __init__(self, train_run_context: TrainRunContext):
-        self._datasets = train_run_context.datasets
+    def __init__(
+        self,
+        train_run_context: TrainRunContext,
+        datasets: Dict[str, "Dataset"],
+    ):
+        self._datasets = datasets
         self._data_config = copy.deepcopy(train_run_context.dataset_config)
         self._scaling_config = train_run_context.scaling_config
         self._coordinator_actors: List[ActorHandle] = []
@@ -169,7 +173,7 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     # ControllerCallback
     # --------------------------
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         try:
             ray.get(self._shutdown_refs, timeout=5)
         except GetTimeoutError:

@@ -126,6 +126,15 @@ message RequestRouterConfig {
 
   // kwargs which Ray Serve passes to the router class' initialize_state method.
   bytes request_router_kwargs = 5;
+
+  // Initial backoff time (in seconds) before retrying to route a request.
+  double initial_backoff_s = 6;
+
+  // Multiplier applied to the backoff time after each retry.
+  double backoff_multiplier = 7;
+
+  // Maximum backoff time (in seconds) between retries.
+  double max_backoff_s = 8;
 }
 //[End] ROUTING CONFIG
 

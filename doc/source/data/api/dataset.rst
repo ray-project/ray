@@ -46,6 +46,7 @@ Developer API
   block.BlockExecStats
   block.BlockMetadata
   block.BlockAccessor
+  RandomSeedConfig
 
 Deprecated API
 --------------

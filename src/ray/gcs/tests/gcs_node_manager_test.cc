@@ -137,7 +137,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   auto send_unregister_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
   node_manager.HandleUnregisterNode(
-      unregister_request, &unregister_reply, send_unregister_reply_callback);
+      unregister_request, &unregister_reply, send_unregister_reply_callback, "");
   // Exhaust the event loop
   while (io_context_->poll() > 0) {
   }
@@ -446,7 +446,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
     auto send_unregister_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
     node_manager.HandleUnregisterNode(
-        unregister_request, &unregister_reply, send_unregister_reply_callback);
+        unregister_request, &unregister_reply, send_unregister_reply_callback, "");
     // Ensure the unregister request is processed
     while (io_context_->poll() > 0)
       ;
@@ -641,7 +641,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
           // NoOp
         };
     node_manager.HandleUnregisterNode(
-        unregister_request, &unregister_reply, send_unregister_reply_callback);
+        unregister_request, &unregister_reply, send_unregister_reply_callback, "");
     while (io_context_->poll() > 0)
       ;
   }

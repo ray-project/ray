@@ -170,6 +170,20 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
         stack=False,
     ),
     Panel(
+        id=64,
+        title="Running Tasks by Node",
+        description="Current count of tasks that are currently executing, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='clamp_min(sum(ray_tasks{{State=~"RUNNING*",Source="executor",instance=~"$Instance",{global_filters}}}) by (instance), 0)',
+                legend="{{instance}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=33,
         title="All Actors by State",
         description='Note: not impacted by "Instance" variable.\n\nCurrent count of actors, grouped by lifecycle state (e.g., alive, restarting, dead/terminated).\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',

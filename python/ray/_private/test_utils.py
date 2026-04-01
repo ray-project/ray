@@ -10,11 +10,11 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import timeit
 import traceback
 import uuid
+from collections.abc import Hashable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -978,7 +978,6 @@ def raw_metric_timeseries(
 ) -> Dict[str, List[Any]]:
     """Return prometheus timeseries from a RayContext"""
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
@@ -1278,12 +1277,7 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 class ResourceKillerActor:
-    """Abstract base class used to implement resource killers for chaos testing.
-
-    Subclasses should implement _find_resource_to_kill, which should find a resource
-    to kill. This method should return the args to _kill_resource, which is another
-    abstract method that should kill the resource and add it to the `killed` set.
-    """
+    """Abstract base class used to implement resource killers for chaos testing."""
 
     def __init__(
         self,
@@ -1298,7 +1292,10 @@ class ResourceKillerActor:
         self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
+
+        # Set to track the killed nodes.
         self.killed = set()
+
         self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
         self.batch_size_to_kill = batch_size_to_kill
@@ -1327,44 +1324,59 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            for to_kill in to_kills:
-                self._kill_resource(*to_kill)
+            results = await asyncio.gather(
+                *[self._kill_resource(*to_kill) for to_kill in to_kills],
+                return_exceptions=True,
+            )
+            for to_kill, result in zip(to_kills, results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        f"Failed to kill resource {to_kill}, may retry later. Error: {result}"
+                    )
+                elif result is True:
+                    logger.info(f"Successfully killed resource: {to_kill}")
+                    self.killed.add(to_kill)
+
             if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
+
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
         await self.stop_run()
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Hashable]:
+        """Implemented by subclasses to discover resources to kill.
+
+        Should return a list of "resources" to kill, which will be passed into
+        _kill_resource.
+        """
         raise NotImplementedError
 
-    def _kill_resource(self, *args):
+    async def _kill_resource(self, *args: Hashable) -> bool:
+        """Implemented by subclasses to kill resources.
+
+        The method should return False or raise an exception if killing the resource
+        failed, in which case it may be retried.
+        """
         raise NotImplementedError
 
     async def stop_run(self):
         was_running = self.is_running
-        if was_running:
-            self._cleanup()
-
         self.is_running = False
         return was_running
 
-    async def get_total_killed(self):
-        """Get the total number of killed resources"""
+    async def get_killed_nodes(self) -> Set[Hashable]:
+        """Get the set of nodes that were killed."""
         await self.done
-        return self.killed
-
-    def _cleanup(self):
-        """Cleanup any resources created by the killer.
-
-        Overriding this method is optional.
-        """
-        pass
+        return self.killed.copy()
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, str, str]]:
+        def _resource_from_node_info(n: Dict) -> Tuple[str, str, str]:
+            return (n["NodeID"], n["NodeManagerAddress"], n["NodeManagerPort"])
+
         nodes_to_kill = []
         while not nodes_to_kill and self.is_running:
             worker_nodes = [
@@ -1372,7 +1384,7 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"]
                 and (node["NodeID"] != self.head_node_id)
-                and (node["NodeID"] not in self.killed)
+                and (_resource_from_node_info(node) not in self.killed)
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), worker_nodes))
@@ -1387,30 +1399,21 @@ class NodeKillerBase(ResourceKillerActor):
 
             # Collect nodes to kill, limited by batch size.
             for candidate in candidates[: self.batch_size_to_kill]:
-                nodes_to_kill.append(
-                    (
-                        candidate["NodeID"],
-                        candidate["NodeManagerAddress"],
-                        candidate["NodeManagerPort"],
-                    )
-                )
+                nodes_to_kill.append(_resource_from_node_info(candidate))
 
         return nodes_to_kill
 
 
 @ray.remote(num_cpus=0)
 class RayletKiller(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
-        if node_to_kill_port is not None:
-            try:
-                self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
-            except Exception:
-                pass
-            logging.info(
-                f"Killed node {node_id} at address: "
-                f"{node_to_kill_ip}, port: {node_to_kill_port}"
-            )
-            self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        if node_to_kill_port is None:
+            return False
+
+        self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+        return True
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
@@ -1431,51 +1434,33 @@ class RayletKiller(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminator(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
-        if node_to_kill_ip is not None:
-            try:
-                _terminate_ec2_instance(node_to_kill_ip)
-            except Exception:
-                pass
-            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
-            self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        if node_to_kill_ip is None:
+            return False
+
+        _terminate_ec2_instance(node_to_kill_ip)
+        return True
 
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
     def __init__(self, *args, grace_period_s: int = 30, **kwargs):
         super().__init__(*args, **kwargs)
-
         self._grace_period_s = grace_period_s
-        self._kill_threads: Set[threading.Thread] = set()
 
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
-        assert node_id not in self.killed
-
-        # Clean up any completed threads.
-        for thread in self._kill_threads.copy():
-            if not thread.is_alive():
-                thread.join()
-                self._kill_threads.remove(thread)
-
-        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            self._drain_node(node_id)
-            time.sleep(self._grace_period_s)
-            # Anyscale extends the drain deadline if you shut down the instance
-            # directly. To work around this, we force-stop Ray on the node. Anyscale
-            # should then terminate it shortly after without updating the drain
-            # deadline.
-            _execute_command_on_node("ray stop --force", node_to_kill_ip)
-
-        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
-        thread = threading.Thread(
-            target=_kill_node_with_grace_period,
-            args=(node_id, node_to_kill_ip),
-            daemon=True,
-        )
-        thread.start()
-        self._kill_threads.add(thread)
-        self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        self._drain_node(node_id)
+        await asyncio.sleep(self._grace_period_s)
+        # Anyscale extends the drain deadline if you shut down the instance
+        # directly. To work around this, we force-stop Ray on the node.
+        # Anyscale should then terminate it shortly after without updating
+        # the drain deadline.
+        _execute_command_on_node("ray stop --force", node_to_kill_ip)
+        return True
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1502,13 +1487,6 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
 
         assert is_accepted, "Drain node request was rejected"
 
-    def _cleanup(self):
-        for thread in self._kill_threads.copy():
-            thread.join()
-            self._kill_threads.remove(thread)
-
-        assert not self._kill_threads
-
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
@@ -1530,7 +1508,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, int, str]]:
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1557,32 +1535,30 @@ class WorkerKillerActor(ResourceKillerActor):
 
         return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
-    def _kill_resource(
-        self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+    async def _kill_resource(
+        self,
+        process_to_kill_task_id: str,
+        process_to_kill_pid: int,
+        process_to_kill_node_id: str,
     ):
-        if process_to_kill_pid is not None:
+        if process_to_kill_pid is None:
+            return False
 
-            @ray.remote
-            def kill_process(pid):
-                import psutil
+        @ray.remote
+        def kill_process(pid: int):
+            proc = psutil.Process(pid)
+            proc.kill()
 
-                proc = psutil.Process(pid)
-                proc.kill()
-
-            scheduling_strategy = (
-                ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                    node_id=process_to_kill_node_id,
-                    soft=False,
-                )
+        scheduling_strategy = (
+            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=process_to_kill_node_id,
+                soft=False,
             )
-            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
-                process_to_kill_pid
-            )
-            logging.info(
-                f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
-            )
-            # Store both task_id and pid because retried tasks have same task_id.
-            self.killed.add((process_to_kill_task_id, process_to_kill_pid))
+        )
+        await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+            process_to_kill_pid
+        )
+        return True
 
 
 def get_and_run_resource_killer(
@@ -1997,13 +1973,27 @@ def _execute_command_on_node(command: str, node_ip: str):
     # easy ssh access to worker nodes.
     ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
+    # Strip library path overrides so that the system ssh binary
+    # doesn't pick up a conflicting OpenSSL from the Ray/conda env.
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("DYLD_LIBRARY_PATH", None)
+
     try:
         subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+            ssh_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
         )
     except subprocess.CalledProcessError as e:
-        print("Exit code:", e.returncode)
-        print("Stderr:", e.stderr)
+        logger.error(
+            f"Command failed on node {node_ip}: {command}, "
+            f"exit code: {e.returncode}, stderr: {e.stderr}"
+        )
+        raise
 
 
 RPC_FAILURE_MAP = {

@@ -15,11 +15,14 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.constants import (
+    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
+    check_num_replicas_gte,
     check_running,
     check_target_groups_ready,
     get_application_url,
@@ -677,10 +680,24 @@ def test_num_replicas_auto_basic(serve_instance):
 
         wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
+        if (
+            RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE is False
+            and RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER is True
+        ):
+            # When merging timeseries from replicas and handles with LOCF, the same request can appear in
+            # both because they report at different times (e.g. replica: 4 running, handle: 2 queued).
+            # That double-counts requests and inflates the total, biasing aggregations
+            # (especially mean) upward and causing over-scaling.
+            wait_for_condition(
+                check_num_replicas_gte, name="A", target=i + 1, timeout=30
+            )
+        else:
+            wait_for_condition(
+                check_num_replicas_eq, name="A", target=i + 1, timeout=30
+            )
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
-    signal.send.remote()
+    ray.get(signal.send.remote())
 
 
 def test_deploy_one_app_failed(serve_instance):

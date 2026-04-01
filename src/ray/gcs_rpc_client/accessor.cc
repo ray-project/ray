@@ -1233,6 +1233,22 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   return Status::OK();
 }
 
+Status AutoscalerStateAccessor::ResizeRayletResourceInstances(
+    const std::string &node_id,
+    const std::unordered_map<std::string, double> &resources,
+    int64_t timeout_ms,
+    std::unordered_map<std::string, double> &total_resources) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.mutable_resources()->insert(resources.begin(), resources.end());
+
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncResizeRayletResourceInstances(
+      std::move(request), &reply, timeout_ms));
+  total_resources.insert(reply.total_resources().begin(), reply.total_resources().end());
+  return Status::OK();
+}
+
 PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

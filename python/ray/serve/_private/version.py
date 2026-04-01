@@ -7,11 +7,12 @@ from zlib import crc32
 from pydantic import BaseModel
 
 from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
-logger = logging.getLogger("ray.serve")
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class DeploymentVersion:
