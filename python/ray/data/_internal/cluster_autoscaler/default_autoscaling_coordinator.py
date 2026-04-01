@@ -5,7 +5,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import ray
 import ray.exceptions
@@ -15,11 +15,24 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray.autoscaler._private.constants import env_integer
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+HEAD_NODE_RESOURCE_CONSTRAINT = 0.001
+
+
+def _head_node_placement_options() -> Dict[str, Any]:
+    """Return placement options for detached singleton actors that must live on head.
+
+    These actors are cluster-scoped coordinators. Keeping them on the head node avoids
+    blocking worker-node scale-down if a job driver happens to run on a worker. Use
+    the default scheduling strategy to escape any parent placement group.
+    """
+    return {
+        "resources": {HEAD_NODE_RESOURCE_LABEL: HEAD_NODE_RESOURCE_CONSTRAINT},
+        "scheduling_strategy": "DEFAULT",
+    }
 
 
 @dataclass
@@ -440,12 +453,6 @@ _get_or_create_lock = threading.Lock()
 
 def get_or_create_autoscaling_coordinator():
     """Get or create the AutoscalingCoordinator actor."""
-    # Create the actor on the local node,
-    # to reduce network overhead.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
     actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
         _AutoscalingCoordinatorActor
     ).options(
@@ -453,7 +460,7 @@ def get_or_create_autoscaling_coordinator():
         namespace="AutoscalingCoordinator",
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
+        **_head_node_placement_options(),
     )
     # NOTE: Need the following lock, because Ray Core doesn't allow creating the same
     # actor from multiple threads simultaneously.
