@@ -47,19 +47,19 @@ namespace core {
 /// \param actor_id The ID of the actor that executed the task.
 /// \param status The completion status (OK for success, error for failure).
 /// \param error_info Error information if the task failed (nullptr on success).
-using PoolTaskCompletionCallback =
-    std::function<void(const ActorPoolID &pool_id,
-                       const TaskID &work_item_id,
-                       const TaskID &task_id,
-                       const ActorID &actor_id,
-                       const Status &status,
-                       const rpc::RayErrorInfo *error_info)>;
+using PoolTaskCompletionCallback = std::function<void(const ActorPoolID &pool_id,
+                                                      const TaskID &work_item_id,
+                                                      const TaskID &task_id,
+                                                      const ActorID &actor_id,
+                                                      const Status &status,
+                                                      const rpc::RayErrorInfo *error_info,
+                                                      bool is_streaming_generator)>;
 
 /// Callback type for notifying ActorPoolManager when a pool task is actually
 /// pushed to an actor. This keeps per-actor in-flight accounting aligned with
 /// the submitter path, including redirected retries.
-using PoolTaskSubmittedCallback =
-    std::function<void(const ActorID &actor_id, const TaskID &work_item_id)>;
+using PoolTaskSubmittedCallback = std::function<void(
+    const ActorID &actor_id, const TaskID &work_item_id, const TaskID &task_id)>;
 
 // Interface for testing.
 class ActorTaskSubmitterInterface {

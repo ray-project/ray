@@ -911,6 +911,90 @@ TEST_F(ActorPoolManagerTest, OnTaskSubmittedTracksPerActorInflight) {
   EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 3);
 }
 
+TEST_F(ActorPoolManagerTest, StreamingTaskHoldsSlotUntilStreamDrained) {
+  auto pool_id = CreateTestPool();
+  auto actor = CreateActorID();
+  auto work_item_id = TaskID::FromRandom(JobID());
+  auto task_id = TaskID::FromRandom(JobID());
+
+  pool_manager_->AddActorToPool(pool_id, actor, NodeID::FromRandom());
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    PoolWorkItem work_item;
+    work_item.pool_id = pool_id;
+    work_item.work_item_id = work_item_id;
+    pool_manager_->TrackWorkItem(std::move(work_item));
+  }
+
+  pool_manager_->OnTaskSubmitted(actor, work_item_id, task_id);
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 1);
+
+  pool_manager_->OnPoolTaskComplete(
+      pool_id, work_item_id, task_id, actor, Status::OK(), nullptr, true);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor].num_tasks_in_flight, 1);
+    auto it = pool_manager_->work_items_.find(work_item_id);
+    ASSERT_NE(it, pool_manager_->work_items_.end());
+    EXPECT_TRUE(it->second.execution_finished);
+    EXPECT_FALSE(it->second.stream_drained);
+  }
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 1);
+
+  pool_manager_->OnPoolTaskStreamDrained(pool_id, work_item_id, task_id, actor);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor].num_tasks_in_flight, 0);
+    EXPECT_EQ(pool_manager_->work_items_.find(work_item_id),
+              pool_manager_->work_items_.end());
+  }
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 0);
+}
+
+TEST_F(ActorPoolManagerTest, StreamingTaskDrainBeforeCompletionWaitsForSuccess) {
+  auto pool_id = CreateTestPool();
+  auto actor = CreateActorID();
+  auto work_item_id = TaskID::FromRandom(JobID());
+  auto task_id = TaskID::FromRandom(JobID());
+
+  pool_manager_->AddActorToPool(pool_id, actor, NodeID::FromRandom());
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    PoolWorkItem work_item;
+    work_item.pool_id = pool_id;
+    work_item.work_item_id = work_item_id;
+    pool_manager_->TrackWorkItem(std::move(work_item));
+  }
+
+  pool_manager_->OnTaskSubmitted(actor, work_item_id, task_id);
+  pool_manager_->OnPoolTaskStreamDrained(pool_id, work_item_id, task_id, actor);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor].num_tasks_in_flight, 1);
+    auto it = pool_manager_->work_items_.find(work_item_id);
+    ASSERT_NE(it, pool_manager_->work_items_.end());
+    EXPECT_FALSE(it->second.execution_finished);
+    EXPECT_TRUE(it->second.stream_drained);
+  }
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 1);
+
+  pool_manager_->OnPoolTaskComplete(
+      pool_id, work_item_id, task_id, actor, Status::OK(), nullptr, true);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor].num_tasks_in_flight, 0);
+    EXPECT_EQ(pool_manager_->work_items_.find(work_item_id),
+              pool_manager_->work_items_.end());
+  }
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 0);
+}
+
 // =========================================================================
 // Actor Death/Restart Recovery Tests
 // =========================================================================

@@ -652,7 +652,27 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  const auto task_id = generator_id.TaskId();
+  std::optional<std::tuple<ActorPoolID, TaskID, TaskID, ActorID>> pool_task_stream_data;
+  if (pool_task_stream_drained_callback_) {
+    absl::MutexLock task_lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end() && it->second.spec_.IsPoolTask()) {
+      const auto &msg = it->second.spec_.GetMessage();
+      if (msg.has_actor_pool_id() && !msg.actor_pool_id().empty()) {
+        TaskID work_item_id = TaskID::Nil();
+        if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+          work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
+        }
+        pool_task_stream_data.emplace(ActorPoolID::FromBinary(msg.actor_pool_id()),
+                                      work_item_id,
+                                      it->second.spec_.TaskId(),
+                                      it->second.spec_.ActorId());
+      }
+    }
+  }
+
+  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
   bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
   if (!can_gc_lineage) {
     RAY_LOG(DEBUG) << "Generator " << generator_id
@@ -662,11 +682,20 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
   RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
   object_ref_streams_.erase(generator_id);
+  lock.Release();
+  if (pool_task_stream_data.has_value()) {
+    const auto &[pool_id, work_item_id, drained_task_id, actor_id] =
+        *pool_task_stream_data;
+    pool_task_stream_drained_callback_(pool_id, work_item_id, drained_task_id, actor_id);
+  } else {
+    NotifyPoolTaskStreamDrained(task_id);
+  }
   return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
+  const auto task_id = generator_id.TaskId();
   auto backpressure_threshold = 0;
   {
     absl::MutexLock lock(&mu_);
@@ -676,7 +705,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -706,6 +735,11 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
+  if (status.IsObjectRefEndOfStream()) {
+    lock.Release();
+    NotifyPoolTaskStreamDrained(task_id);
+  }
+
   return status;
 }
 
@@ -717,6 +751,41 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
          "created "
          "and not removed.";
   return stream_it->second.IsFinished();
+}
+
+void TaskManager::NotifyPoolTaskStreamDrained(const TaskID &task_id) {
+  if (!pool_task_stream_drained_callback_) {
+    return;
+  }
+
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return;
+    }
+    spec = it->second.spec_;
+  }
+
+  if (!spec.IsPoolTask()) {
+    return;
+  }
+
+  const auto &msg = spec.GetMessage();
+  if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
+    return;
+  }
+
+  TaskID work_item_id = TaskID::Nil();
+  if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+    work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
+  }
+
+  pool_task_stream_drained_callback_(ActorPoolID::FromBinary(msg.actor_pool_id()),
+                                     work_item_id,
+                                     spec.TaskId(),
+                                     spec.ActorId());
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {

@@ -332,7 +332,8 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
                                           const TaskID &task_id,
                                           const ActorID &actor_id,
                                           const Status &status,
-                                          const rpc::RayErrorInfo *error_info) {
+                                          const rpc::RayErrorInfo *error_info,
+                                          bool is_streaming_generator) {
   RAY_LOG(DEBUG) << "Pool task complete: pool=" << pool_id
                  << ", work_item=" << work_item_id << ", task=" << task_id
                  << ", actor=" << actor_id << ", status=" << status.ToString();
@@ -346,8 +347,29 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
   }
 
   if (status.ok()) {
-    OnTaskSucceeded(pool_id, actor_id);
-    EraseTrackedWorkItem(work_item_id);
+    if (!is_streaming_generator) {
+      OnTaskSucceeded(pool_id, actor_id);
+      EraseTrackedWorkItem(work_item_id);
+      return;
+    }
+
+    auto work_item_it = work_items_.find(work_item_id);
+    if (work_item_it == work_items_.end()) {
+      return;
+    }
+    if (!work_item_it->second.current_task_id.IsNil() &&
+        work_item_it->second.current_task_id != task_id) {
+      RAY_LOG(DEBUG) << "Ignoring stale streaming task completion for work item "
+                     << work_item_id << " task " << task_id << "; current task is "
+                     << work_item_it->second.current_task_id;
+      return;
+    }
+
+    work_item_it->second.execution_finished = true;
+    if (work_item_it->second.stream_drained) {
+      OnTaskSucceeded(pool_id, actor_id);
+      EraseTrackedWorkItem(work_item_id);
+    }
   } else {
     if (error_info != nullptr) {
       OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
@@ -362,7 +384,8 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
 }
 
 void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
-                                       const TaskID &work_item_id) {
+                                       const TaskID &work_item_id,
+                                       const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
 
   auto pool_it = actor_to_pool_.find(actor_id);
@@ -388,7 +411,43 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
     auto wi_it = work_items_.find(work_item_id);
     if (wi_it != work_items_.end()) {
       wi_it->second.pushed_to_actor = true;
+      wi_it->second.current_task_id = task_id;
+      wi_it->second.execution_finished = false;
+      wi_it->second.stream_drained = false;
     }
+  }
+}
+
+void ActorPoolManager::OnPoolTaskStreamDrained(const ActorPoolID &pool_id,
+                                               const TaskID &work_item_id,
+                                               const TaskID &task_id,
+                                               const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return;
+  }
+
+  auto work_item_it = work_items_.find(work_item_id);
+  if (work_item_it == work_items_.end()) {
+    return;
+  }
+  if (!work_item_it->second.current_task_id.IsNil() &&
+      work_item_it->second.current_task_id != task_id) {
+    RAY_LOG(DEBUG) << "Ignoring stale stream-drained callback for work item "
+                   << work_item_id << " task " << task_id << "; current task is "
+                   << work_item_it->second.current_task_id;
+    return;
+  }
+  if (work_item_it->second.stream_drained) {
+    return;
+  }
+
+  work_item_it->second.stream_drained = true;
+  if (work_item_it->second.execution_finished) {
+    OnTaskSucceeded(pool_id, actor_id);
+    EraseTrackedWorkItem(work_item_id);
   }
 }
 
@@ -577,6 +636,10 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   TaskID work_item_id = work_item.work_item_id;
   int32_t attempt_number = work_item.attempt_number;
+  work_item.pushed_to_actor = false;
+  work_item.current_task_id = TaskID::Nil();
+  work_item.execution_finished = false;
+  work_item.stream_drained = false;
 
   RAY_LOG(DEBUG) << "Submitting work item " << work_item_id << " to actor " << actor_id
                  << " in pool " << pool_id << " (attempt " << attempt_number << ")";

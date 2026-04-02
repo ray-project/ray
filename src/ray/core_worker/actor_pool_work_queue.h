@@ -60,6 +60,15 @@ struct PoolWorkItem {
   /// counted in num_tasks_in_flight. GetOccupiedTaskSlots includes these as pending.
   bool pushed_to_actor = false;
 
+  /// The current TaskID for the latest submission attempt of this work item.
+  TaskID current_task_id = TaskID::Nil();
+
+  /// Whether the current attempt completed successfully on the worker side.
+  bool execution_finished = false;
+
+  /// Whether the current streaming-generator attempt has been drained or deleted.
+  bool stream_drained = false;
+
   PoolWorkItem() = default;
 
   /// Move constructor.
@@ -72,7 +81,10 @@ struct PoolWorkItem {
         options(std::move(other.options)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms),
-        pushed_to_actor(other.pushed_to_actor) {}
+        pushed_to_actor(other.pushed_to_actor),
+        current_task_id(std::move(other.current_task_id)),
+        execution_finished(other.execution_finished),
+        stream_drained(other.stream_drained) {}
 
   /// Move assignment.
   PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
@@ -86,6 +98,9 @@ struct PoolWorkItem {
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
       pushed_to_actor = other.pushed_to_actor;
+      current_task_id = std::move(other.current_task_id);
+      execution_finished = other.execution_finished;
+      stream_drained = other.stream_drained;
     }
     return *this;
   }
