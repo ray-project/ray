@@ -6,15 +6,20 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
     # Override: force health checks to fail (used by drain/disable)
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
 {%- elif backends %}
+{%-   set checked_backends = backends | selectattr("enable_health_checks") | list %}
+{%-   if checked_backends %}
     # 200 if any backend has at least one server UP
-{%-   for backend in backends %}
+{%-     for backend in checked_backends %}
     acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
-{%-   endfor %}
+{%-     endfor %}
     # Any backend with a server UP passes the health check (OR logic)
-{%-   for backend in backends %}
+{%-     for backend in checked_backends %}
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck backend_{{ backend.name or 'unknown' }}_server_up
-{%-   endfor %}
+{%-     endfor %}
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
+{%-   else %}
+    http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
+{%-   endif %}
 {%- endif %}
 """
 
