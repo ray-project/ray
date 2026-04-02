@@ -1369,6 +1369,10 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None and not target_group.router_targets:
             fallback_server = self._target_to_server(fallback_target)
 
+        disable_ingress_bypass_health_checks = (
+            os.environ.get("RAY_SERVE_DISABLE_INGRESS_BYPASS_HEALTH_CHECKS", "0") == "1"
+        )
+
         # When ingress bypass is active, the main targets are LLMServer replicas
         # serving vLLM's native app which uses /health not /-/healthz.
         health_path = None  # use default
@@ -1388,7 +1392,9 @@ class HAProxyManager(ProxyActorInterface):
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,
-            enable_health_checks=not target_group.router_targets,
+            enable_health_checks=not (
+                target_group.router_targets and disable_ingress_bypass_health_checks
+            ),
         )
 
     async def _reload_haproxy(self) -> None:
