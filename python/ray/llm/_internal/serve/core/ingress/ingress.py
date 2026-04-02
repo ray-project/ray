@@ -1,9 +1,7 @@
 import asyncio
 import copy
 import json
-import os
 import sys
-import time
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import (
@@ -397,183 +395,33 @@ class OpenAiIngress(DeploymentProtocol):
             self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
         )
 
-        # HTTP sidecar proxy mode: routes streaming requests directly to
-        # replica HTTP sidecars, bypassing the DeploymentHandle transport.
-        # Sidecar endpoints are discovered from RunningReplica.sidecar_endpoint
-        # via the request router (propagated through RunningReplicaInfo long-poll).
-        self._sidecar_enabled = os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1"
-        self._sidecar_session = None
-        import random
+        self._direct_ingress_rr_counter = 0
+        get_or_create_event_loop().create_task(
+            self._install_direct_ingress_middleware()
+        )
 
-        self._sidecar_rr_counter = random.randint(0, 10000)
-
-        # Install raw ASGI middleware to intercept streaming requests before
-        # FastAPI routing (bypasses pydantic parsing + Starlette StreamingResponse).
-        # Also install in ingress bypass mode (route-only) so /internal/route works.
-        self._ingress_bypass_enabled = False
-        if self._sidecar_enabled:
-            get_or_create_event_loop().create_task(self._install_sidecar_middleware())
-        else:
-            # Check for ingress bypass after config maps are loaded
-            get_or_create_event_loop().create_task(
-                self._maybe_install_ingress_bypass_middleware()
-            )
-
-    async def _maybe_install_ingress_bypass_middleware(self):
-        """Check if any LLMConfig has ingress_bypass enabled and install middleware."""
-        await self._init_completed.wait()
-        if any(
-            getattr(cfg, "ingress_bypass", False) for cfg in self._llm_configs.values()
-        ):
-            self._ingress_bypass_enabled = True
-            self._sidecar_enabled = True  # Enable sidecar path for /internal/route
-            os.environ["RAYLLM_SIDECAR_ROUTE_ONLY"] = "1"
-            await self._install_sidecar_middleware()
-
-    async def _install_sidecar_middleware(self):
-        """Install ASGI middleware that serves the /internal/route endpoint.
-
-        HAProxy Lua calls this endpoint to get the sidecar address for a
-        request. The ingress is only in the routing path, not the streaming
-        path — tokens flow directly from the sidecar through HAProxy to the
-        client.
-        """
-        # _asgi_app is set by ASGIAppReplicaWrapper.__init__, which runs
-        # after OpenAiIngress.__init__ in the MRO. This task is created from
-        # __init__ and must wait for the MRO chain to complete.
+    async def _install_direct_ingress_middleware(self):
         while not hasattr(self, "_asgi_app"):
             await asyncio.sleep(0.01)
 
         original_app = self._asgi_app
         ingress = self
-        type(self)._route_pick_trace_count = 0
 
-        async def sidecar_asgi_wrapper(scope, receive, send):
-            if scope["type"] == "http" and scope["path"] == "/internal/route":
-                if scope["method"] == "GET":
-                    await ingress._handle_route_get_endpoint(scope, receive, send)
-                    return
-                if scope["method"] == "POST":
-                    await ingress._handle_route_endpoint(scope, receive, send)
-                    return
+        async def direct_ingress_asgi_wrapper(scope, receive, send):
+            if (
+                scope["type"] == "http"
+                and scope["method"] == "POST"
+                and scope["path"] == "/internal/route"
+            ):
+                await ingress._handle_route_endpoint(receive, send)
+                return
+
             await original_app(scope, receive, send)
 
-        self._asgi_app = sidecar_asgi_wrapper
-        logger.info("Sidecar routing middleware installed.")
+        self._asgi_app = direct_ingress_asgi_wrapper
+        logger.info("Direct-ingress route middleware installed.")
 
-    # Timing stats for /internal/route (sampled logging)
-    _route_timing_count = 0
-    _route_timing_sum_receive = 0.0
-    _route_timing_sum_route = 0.0
-    _route_timing_sum_send = 0.0
-    _route_timing_log_interval = 500
-    _route_pick_trace_count = 0
-
-    async def _handle_route_get_endpoint(self, scope, receive, send):
-        """Lightweight GET handler for /internal/route?model=xxx."""
-        import time
-        from urllib.parse import parse_qs
-
-        import orjson
-
-        t0 = time.monotonic()
-
-        # Drain request body (ASGI requires it even for GET)
-        message = await receive()
-        while message.get("more_body", False):
-            message = await receive()
-
-        t1 = time.monotonic()
-
-        # Extract model from query string
-        query_string = scope.get("query_string", b"").decode("utf-8", errors="replace")
-        params = parse_qs(query_string)
-        model = params.get("model", [""])[0]
-
-        default_model_id = (
-            next(iter(self._llm_configs.keys())) if self._llm_configs else None
-        )
-        if not model:
-            model = default_model_id
-        if model and model not in self._llm_configs:
-            base = get_base_model_id(model)
-            if base not in self._llm_configs:
-                model = None
-        model_id = model or default_model_id
-
-        if model_id is None:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 404,
-                    "headers": [[b"content-type", b"application/json"]],
-                }
-            )
-            await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
-            return
-
-        try:
-            host, port = await self._pick_routed_sidecar_endpoint(model_id)
-        except Exception as e:
-            logger.warning(f"Route GET endpoint: routing failed: {e}")
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [[b"content-type", b"application/json"]],
-                }
-            )
-            await send(
-                {
-                    "type": "http.response.body",
-                    "body": b'{"error":"no sidecar available"}',
-                }
-            )
-            return
-
-        t2 = time.monotonic()
-
-        resp = orjson.dumps({"host": host, "port": port})
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [
-                    [b"content-type", b"application/json"],
-                    [b"content-length", str(len(resp)).encode()],
-                ],
-            }
-        )
-        await send({"type": "http.response.body", "body": resp})
-
-        t3 = time.monotonic()
-
-        # Accumulate and log timing stats
-        cls = type(self)
-        cls._route_timing_count += 1
-        cls._route_timing_sum_receive += t1 - t0
-        cls._route_timing_sum_route += t2 - t1
-        cls._route_timing_sum_send += t3 - t2
-        if cls._route_timing_count % cls._route_timing_log_interval == 0:
-            n = cls._route_timing_count
-            logger.info(
-                f"[route-timing] n={n} "
-                f"avg_receive={cls._route_timing_sum_receive/n*1000:.2f}ms "
-                f"avg_route={cls._route_timing_sum_route/n*1000:.2f}ms "
-                f"avg_send={cls._route_timing_sum_send/n*1000:.2f}ms "
-                f"avg_total={(cls._route_timing_sum_receive+cls._route_timing_sum_route+cls._route_timing_sum_send)/n*1000:.2f}ms"
-            )
-            cls._route_timing_count = 0
-            cls._route_timing_sum_receive = 0.0
-            cls._route_timing_sum_route = 0.0
-            cls._route_timing_sum_send = 0.0
-
-    async def _handle_route_endpoint(self, scope, receive, send):
-        """Return sidecar endpoint for a request (called by HAProxy Lua).
-
-        Reads the request body, extracts model, picks a sidecar endpoint via
-        the request router, and returns {"host": ..., "port": ...} as JSON.
-        """
+    async def _handle_route_endpoint(self, receive, send):
         import orjson
 
         message = await receive()
@@ -589,7 +437,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         try:
             parsed = orjson.loads(body_bytes)
-        except (orjson.JSONDecodeError, ValueError):
+        except Exception:
             await send(
                 {
                     "type": "http.response.start",
@@ -624,9 +472,8 @@ class OpenAiIngress(DeploymentProtocol):
             return
 
         try:
-            host, port = await self._pick_routed_sidecar_endpoint(model_id)
+            host, port = await self._pick_routed_direct_ingress_endpoint(model_id)
         except Exception as e:
-            logger.warning(f"Route endpoint: sidecar routing failed: {e}")
             await send(
                 {
                     "type": "http.response.start",
@@ -635,10 +482,7 @@ class OpenAiIngress(DeploymentProtocol):
                 }
             )
             await send(
-                {
-                    "type": "http.response.body",
-                    "body": b'{"error":"no sidecar available"}',
-                }
+                {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
             )
             return
 
@@ -740,12 +584,10 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
-    def _get_replica_endpoint(self, replica) -> Optional[Tuple[str, int]]:
-        """Get the direct ingress HTTP endpoint for a replica."""
-        return getattr(replica, "direct_ingress_endpoint", None)
-
-    async def _pick_routed_sidecar_endpoint(self, model_id: str) -> Tuple[str, int]:
-        """Pick a replica via the request router and return its (host, port)."""
+    async def _pick_routed_direct_ingress_endpoint(
+        self, model_id: str
+    ) -> Tuple[str, int]:
+        """Pick a replica via the request router and return its direct-ingress endpoint."""
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -756,39 +598,25 @@ class OpenAiIngress(DeploymentProtocol):
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
         replicas = list(request_router.curr_replicas.values())
-        eligible_replicas = [
-            r for r in replicas if self._get_replica_endpoint(r) is not None
+        direct_ingress_replicas = [
+            r for r in replicas if r.direct_ingress_endpoint is not None
         ]
-        if not eligible_replicas:
-            raise RuntimeError(f"No endpoint-enabled replicas for {model_id}")
+        if not direct_ingress_replicas:
+            raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
-        # Direct round-robin (stub: bypasses choose_replicas to test distribution)
-        idx = self._sidecar_rr_counter % len(eligible_replicas)
-        self._sidecar_rr_counter += 1
-        selected = self._get_replica_endpoint(eligible_replicas[idx])
+        replica_tiers = await request_router.choose_replicas(
+            candidate_replicas=direct_ingress_replicas,
+            pending_request=None,
+        )
+        for tier in replica_tiers:
+            for replica in tier:
+                endpoint = replica.direct_ingress_endpoint
+                if endpoint is not None:
+                    return endpoint
 
-        trace_path = os.environ.get("RAYLLM_ROUTE_PICK_TRACE_PATH")
-        if trace_path:
-            cls = type(self)
-            trace_limit = int(os.environ.get("RAYLLM_ROUTE_PICK_TRACE_LIMIT", "128"))
-            if cls._route_pick_trace_count < trace_limit:
-                cls._route_pick_trace_count += 1
-                eligible_endpoints = [
-                    self._get_replica_endpoint(replica) for replica in eligible_replicas
-                ]
-                trace_row = {
-                    "n": cls._route_pick_trace_count,
-                    "pid": os.getpid(),
-                    "wall_ns": time.time_ns(),
-                    "monotonic_ns": time.monotonic_ns(),
-                    "model_id": model_id,
-                    "selected": selected,
-                    "eligible": eligible_endpoints,
-                }
-                with open(trace_path, "a") as f:
-                    f.write(json.dumps(trace_row) + "\n")
-
-        return selected
+        idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
+        self._direct_ingress_rr_counter += 1
+        return direct_ingress_replicas[idx].direct_ingress_endpoint
 
     async def _get_response(
         self,

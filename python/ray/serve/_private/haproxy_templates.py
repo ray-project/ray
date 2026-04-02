@@ -6,31 +6,26 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
     # Override: force health checks to fail (used by drain/disable)
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
 {%- elif backends %}
-{%-   set checked_backends = backends | selectattr("enable_health_checks") | list %}
-{%-   if checked_backends %}
     # 200 if any backend has at least one server UP
-{%-     for backend in checked_backends %}
+{%-   for backend in backends %}
     acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
-{%-     endfor %}
+{%-   endfor %}
     # Any backend with a server UP passes the health check (OR logic)
-{%-     for backend in checked_backends %}
+{%-   for backend in backends %}
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck backend_{{ backend.name or 'unknown' }}_server_up
-{%-     endfor %}
+{%-   endfor %}
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
-{%-   else %}
-    http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck
-{%-   endif %}
 {%- endif %}
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
+    # Log to the standard system log socket with debug level.
+    log /dev/log local0 debug
+    log 127.0.0.1:{{ config.syslog_port }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if has_ingress_bypass and lua_script_path %}
-    lua-load-per-thread {{ lua_script_path }}
-    {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
     server-state-file {{ config.server_state_file }}
@@ -40,15 +35,22 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
 defaults
     mode http
+    option log-health-checks
     {% if config.timeout_connect_s is not none %}timeout connect {{ config.timeout_connect_s }}s{% endif %}
     {% if config.timeout_client_s is not none %}timeout client {{ config.timeout_client_s }}s{% endif %}
     {% if config.timeout_server_s is not none %}timeout server {{ config.timeout_server_s }}s{% endif %}
     {% if config.timeout_http_request_s is not none %}timeout http-request {{ config.timeout_http_request_s }}s{% endif %}
     {% if config.timeout_http_keep_alive_s is not none %}timeout http-keep-alive {{ config.timeout_http_keep_alive_s }}s{% endif %}
     {% if config.timeout_queue_s is not none %}timeout queue {{ config.timeout_queue_s }}s{% endif %}
+    log global
+    option httplog
+    option abortonclose
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
+    {%- endif %}
+    {%- if config.enable_hap_optimization %}
+    option idle-close-on-response
     {%- endif %}
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
     {%- if config.error_file_path %}
@@ -75,19 +77,10 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
-    {%- if has_ingress_bypass %}
-    # Lua picks sidecar target for streaming endpoints
-    acl is_streaming_path path /v1/chat/completions /v1/completions
-    http-request lua.pick_sidecar if is_streaming_path METH_POST
-    {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
-    {%- if has_ingress_bypass and backend.router_servers %}
-    # Ingress bypass: if Lua set a target server, route to it
-    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.target_server) -m found }
-    {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
@@ -97,9 +90,9 @@ backend default_backend
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
-    {%- if backend.balance_algorithm %}
-    balance {{ backend.balance_algorithm }}
-    {%- endif %}
+    log global
+    # Enable HTTP connection reuse for better performance
+    http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
@@ -129,30 +122,14 @@ backend {{ backend.name or 'unknown' }}
     option httpchk GET {{ hc.health_path }}
     http-check expect status 200
     {%- endif %}
-    {%- if hc.enable_health_checks %}
     {{ hc.default_server_directive }}
-    {%- endif %}
-    {%- if backend.router_servers %}
-    # Ingress bypass: use-server rules to route Lua-selected target
-    {%- for server in backend.servers %}
-    use-server {{ server.name }} if { var(txn.target_server) -m str sc_{{ server.host | replace('.', '_') }}_{{ server.port }} }
-    {%- endfor %}
-    {%- endif %}
     # Servers in this backend
     {%- for server in backend.servers %}
-    {%- if hc.enable_health_checks %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
-    {%- else %}
-    server {{ server.name }} {{ server.host }}:{{ server.port }}
-    {%- endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
-    {%- if hc.enable_health_checks %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
-    {%- else %}
-    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} backup
-    {%- endif %}
     {%- endif %}
 {%- endfor %}
 listen stats

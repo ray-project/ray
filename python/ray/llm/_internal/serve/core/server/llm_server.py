@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import os
-import types
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,6 +29,9 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.observability.usage_telemetry.usage import (
+    push_telemetry_report_for_all_models,
+)
 from ray.llm._internal.serve.utils.batcher import Batcher
 from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
@@ -59,18 +61,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 T = TypeVar("T")
-
-
-@ray.remote(num_cpus=0)
-class _SidecarRegistry:
-    def __init__(self):
-        self._endpoints = {}
-
-    def register(self, replica_tag: str, host: str, port: int):
-        self._endpoints[replica_tag] = (host, port)
-
-    def get_all(self):
-        return list(self._endpoints.values())
 
 
 def _merge_replica_actor_and_child_actor_bundles(
@@ -205,26 +195,13 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        # Ingress bypass: register vLLM's FastAPI app for direct ingress serving
-        if getattr(self._llm_config, "ingress_bypass", False):
-            await self._register_direct_ingress_app()
-            self._start_event_loop_lag_monitor()
-            self._start_request_count_monitor()
-        # Legacy sidecar mode
-        elif os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
-            await self._start_http_sidecar()
+        await self._register_direct_ingress_app()
 
     async def _register_direct_ingress_app(self):
-        """Build vLLM's FastAPI app and register it for direct ingress serving.
-
-        Uses ray.serve.context.set_asgi_app() to register the app with
-        the replica's direct ingress HTTP server. The server starts after
-        port allocation in _on_initialized().
-        """
+        """Build vLLM's FastAPI app and register it for direct ingress serving."""
         from vllm.entrypoints.openai.api_server import build_app, init_app_state
 
         engine = self.engine
-
         args = engine._vllm_args
         supported_tasks = ("generate",)
         if hasattr(engine._engine_client, "get_supported_tasks"):
@@ -238,267 +215,8 @@ class LLMServer(LLMServerProtocol):
             supported_tasks=supported_tasks,
         )
 
-        import ray.serve.context
-
-        await ray.serve.context.set_asgi_app(app)
+        await serve.context.set_asgi_app(app)
         logger.info("Registered vLLM FastAPI app for direct ingress serving")
-
-    async def _start_http_sidecar(self):
-        """Start the HTTP sidecar for direct OpenAI-compatible request handling."""
-        if os.environ.get("RAYLLM_SIDECAR_AIOHTTP", "0") == "1":
-            await self._start_http_sidecar_aiohttp()
-            return
-
-        logger.info("Starting HTTP sidecar initialization")
-        import socket
-
-        import uvicorn
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
-
-        engine = self.engine
-        args = engine._vllm_args
-        supported_tasks = ("generate",)
-        if hasattr(engine._engine_client, "get_supported_tasks"):
-            supported_tasks = await engine._engine_client.get_supported_tasks()
-
-        logger.info("Building vLLM FastAPI app for sidecar")
-        app = build_app(args, supported_tasks=supported_tasks)
-        logger.info("Initializing vLLM app state for sidecar")
-        await init_app_state(
-            engine._engine_client,
-            app.state,
-            args,
-            supported_tasks=supported_tasks,
-        )
-        logger.info("Initialized vLLM app state for sidecar")
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("0.0.0.0", 0))
-        port = sock.getsockname()[1]
-        sock.close()
-
-        config = uvicorn.Config(
-            app, host="0.0.0.0", port=port, log_level="warning", loop="none"
-        )
-        server = uvicorn.Server(config)
-        asyncio.get_event_loop().create_task(server.serve())
-        logger.info("Created uvicorn sidecar task on port %s", port)
-
-        self._http_sidecar_port = port
-        logger.info("Resolving node IP for sidecar")
-        self._http_sidecar_host = ray.util.get_node_ip_address()
-        logger.info(
-            f"HTTP sidecar started on {self._http_sidecar_host}:{self._http_sidecar_port}"
-        )
-
-        self._register_sidecar_endpoint()
-
-    async def _start_http_sidecar_aiohttp(self):
-        """Start the legacy raw aiohttp sidecar path used in earlier experiments."""
-        import orjson as _orjson
-        from aiohttp import web
-
-        engine = self.engine
-
-        async def _handle_openai(request, request_cls, create_fn):
-            body = _orjson.loads(await request.read())
-            parsed = request_cls(**body)
-            try:
-                result = await create_fn(parsed, raw_request=None)
-            except ValueError as e:
-                return web.json_response(
-                    {"error": {"message": str(e), "type": "invalid_request_error"}},
-                    status=400,
-                )
-
-            if isinstance(result, types.AsyncGeneratorType):
-                response = web.StreamResponse()
-                response.content_type = "text/event-stream"
-                response.headers["Cache-Control"] = "no-cache"
-                response.headers["X-Accel-Buffering"] = "no"
-                await response.prepare(request)
-                async for chunk in result:
-                    data = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                    await response.write(data)
-                await response.write_eof()
-                return response
-
-            if hasattr(result, "model_dump"):
-                return web.json_response(result.model_dump())
-
-            return web.json_response(
-                {"error": {"message": str(result), "type": "server_error"}},
-                status=500,
-            )
-
-        async def handle_chat(request):
-            from vllm.entrypoints.openai.chat_completion.protocol import (
-                ChatCompletionRequest as VLLMChatRequest,
-            )
-
-            return await _handle_openai(
-                request,
-                VLLMChatRequest,
-                engine._oai_serving_chat.create_chat_completion,
-            )
-
-        async def handle_completions(request):
-            from vllm.entrypoints.openai.completion.protocol import (
-                CompletionRequest as VLLMCompletionRequest,
-            )
-
-            return await _handle_openai(
-                request,
-                VLLMCompletionRequest,
-                engine._oai_serving_completion.create_completion,
-            )
-
-        async def handle_models(request):
-            model_id = self._llm_config.model_loading_config.model_id
-            return web.json_response(
-                {
-                    "object": "list",
-                    "data": [
-                        {
-                            "id": model_id,
-                            "object": "model",
-                            "owned_by": "organization",
-                        }
-                    ],
-                }
-            )
-
-        app = web.Application()
-        app.router.add_get("/v1/models", handle_models)
-        app.router.add_post("/v1/chat/completions", handle_chat)
-        app.router.add_post("/v1/completions", handle_completions)
-
-        runner = web.AppRunner(app, tcp_nodelay=True)
-        await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", 0)
-        await site.start()
-
-        self._http_sidecar_runner = runner
-        self._http_sidecar_site = site
-        self._http_sidecar_port = site._server.sockets[0].getsockname()[1]
-        self._http_sidecar_host = ray.util.get_node_ip_address()
-        logger.info(
-            "HTTP aiohttp sidecar started on %s:%s",
-            self._http_sidecar_host,
-            self._http_sidecar_port,
-        )
-
-        self._register_sidecar_endpoint()
-
-    def _register_sidecar_endpoint(self):
-        """Register the sidecar endpoint so standalone HAProxy can discover it."""
-
-        try:
-            logger.info("Creating or fetching sidecar registry actor")
-            registry = _SidecarRegistry.options(
-                name="_llm_sidecar_registry",
-                namespace="serve",
-                lifetime="detached",
-                get_if_exists=True,
-            ).remote()
-
-            replica_ctx = serve.context._get_internal_replica_context()
-            replica_tag = (
-                replica_ctx.replica_tag
-                if replica_ctx is not None
-                else f"pid-{os.getpid()}"
-            )
-            logger.info("Registering sidecar endpoint for replica %s", replica_tag)
-            ray.get(
-                registry.register.remote(
-                    replica_tag,
-                    self._http_sidecar_host,
-                    self._http_sidecar_port,
-                )
-            )
-            logger.info(
-                "Registered HTTP sidecar endpoint "
-                f"{self._http_sidecar_host}:{self._http_sidecar_port}"
-            )
-        except Exception:
-            logger.exception("Failed to register HTTP sidecar endpoint")
-
-    def get_sidecar_port(self) -> Optional[int]:
-        """Return the sidecar HTTP port, or None if not started."""
-        return getattr(self, "_http_sidecar_port", None)
-
-    def _start_event_loop_lag_monitor(self):
-        """Measure event loop lag by scheduling a callback and measuring delay.
-
-        Writes lag stats to /tmp/haproxy-serve/event_loop_lag.log every 500 samples.
-        """
-        import time
-
-        state = {"count": 0, "sum_lag_us": 0, "max_lag_us": 0}
-        loop = asyncio.get_event_loop()
-
-        def measure_lag():
-            expected = state.get("_next_time", None)
-            now = time.monotonic()
-            if expected is not None:
-                lag_us = (now - expected) * 1_000_000
-                state["count"] += 1
-                state["sum_lag_us"] += lag_us
-                if lag_us > state["max_lag_us"]:
-                    state["max_lag_us"] = lag_us
-
-                if state["count"] % 500 == 0:
-                    avg = state["sum_lag_us"] / state["count"]
-                    try:
-                        with open("/tmp/haproxy-serve/event_loop_lag.log", "a") as f:
-                            f.write(
-                                f"[loop-lag] n={state['count']} "
-                                f"avg={avg:.0f}us ({avg/1000:.1f}ms) "
-                                f"max={state['max_lag_us']:.0f}us "
-                                f"({state['max_lag_us']/1000:.1f}ms)\n"
-                            )
-                    except Exception:
-                        pass
-                    state["count"] = 0
-                    state["sum_lag_us"] = 0
-                    state["max_lag_us"] = 0
-
-            # Schedule next measurement in 10ms
-            state["_next_time"] = time.monotonic() + 0.01
-            loop.call_later(0.01, measure_lag)
-
-        state["_next_time"] = time.monotonic() + 0.01
-        loop.call_later(0.01, measure_lag)
-        logger.info("Event loop lag monitor started (10ms interval)")
-
-    def _start_request_count_monitor(self):
-        """Periodically log the number of ongoing requests from the vLLM engine."""
-        import time
-
-        engine = self.engine
-
-        async def monitor():
-            while True:
-                await asyncio.sleep(0.5)
-                try:
-                    # VLLMEngine -> _engine_client (AsyncLLM) -> output_processor
-                    engine_client = getattr(engine, "_engine_client", None)
-                    num_inflight = "?"
-                    if engine_client is not None:
-                        op = getattr(engine_client, "output_processor", None)
-                        if op is not None:
-                            num_inflight = len(op.request_states)
-
-                    with open("/tmp/haproxy-serve/request_counts.log", "a") as f:
-                        f.write(
-                            f"[req-count] t={time.time():.3f} "
-                            f"inflight={num_inflight}\n"
-                        )
-                except Exception as e:
-                    with open("/tmp/haproxy-serve/request_counts.log", "a") as f:
-                        f.write(f"[req-count] error={e}\n")
-
-        asyncio.ensure_future(monitor())
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
@@ -551,8 +269,8 @@ class LLMServer(LLMServerProtocol):
 
         await self.engine.start()
 
-        # Skip blocking telemetry during local sidecar experiments so replica
-        # startup can proceed even if the Serve control plane is in flux.
+        # Push telemetry reports for the model in the current deployment.
+        push_telemetry_report_for_all_models(all_models=[self._llm_config])
 
     def _get_batch_interval_ms(self, stream: bool = True) -> int:
         """Calculate the batching interval for responses."""

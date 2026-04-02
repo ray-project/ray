@@ -19,7 +19,6 @@ def get_deploy_args(
     name: str,
     replica_config: ReplicaConfig,
     ingress: bool = False,
-    router: bool = False,
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
@@ -48,7 +47,6 @@ def get_deploy_args(
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
-        "router": router,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
@@ -64,7 +62,6 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     app_name: Optional[str] = None,
     ingress: bool = False,
-    router: bool = False,
     route_prefix: Optional[str] = None,
     **kwargs,
 ) -> DeploymentInfo:
@@ -95,7 +92,6 @@ def deploy_args_to_deployment_info(
         start_time_ms=int(time.time() * 1000),
         route_prefix=route_prefix,
         ingress=ingress,
-        router=router,
     )
 
 

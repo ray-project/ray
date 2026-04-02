@@ -344,14 +344,9 @@ class ServeControllerClient:
                     deployment = deployment.options(logging_config=app.logging_config)
 
                 is_ingress = deployment.name == app.ingress_deployment_name
-                is_router = (
-                    app.router_deployment_name is not None
-                    and deployment.name == app.router_deployment_name
-                )
                 deployment_args = get_deploy_args(
                     deployment.name,
                     ingress=is_ingress,
-                    router=is_router,
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -388,18 +383,9 @@ class ServeControllerClient:
         # Validate applications before sending to controller
         self._check_ingress_deployments(built_apps)
 
-        # Pass router deployment names for ingress bypass
-        name_to_router_deployment = {
-            app.name: app.router_deployment_name
-            for app in built_apps
-            if app.router_deployment_name is not None
-        }
-
         ray.get(
             self._controller.deploy_applications.remote(
-                name_to_deployment_args_list,
-                name_to_application_args,
-                name_to_router_deployment=name_to_router_deployment,
+                name_to_deployment_args_list, name_to_application_args
             )
         )
 

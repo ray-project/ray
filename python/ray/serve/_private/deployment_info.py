@@ -21,7 +21,6 @@ class DeploymentInfo:
         end_time_ms: Optional[int] = None,
         route_prefix: str = None,
         ingress: bool = False,
-        router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -40,9 +39,6 @@ class DeploymentInfo:
 
         self.route_prefix = route_prefix
         self.ingress = ingress
-        # Whether this deployment serves as the ingress router for ingress bypass.
-        # The router deployment gets its own HAProxy backend for Lua routing calls.
-        self.router = router
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -73,7 +69,6 @@ class DeploymentInfo:
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
-            router=self.router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )

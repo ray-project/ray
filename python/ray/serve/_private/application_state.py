@@ -268,7 +268,6 @@ class ApplicationState:
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
-        self._router_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -338,10 +337,6 @@ class ApplicationState:
         return self._ingress_deployment_name
 
     @property
-    def router_deployment(self) -> Optional[str]:
-        return self._router_deployment_name
-
-    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -409,13 +404,10 @@ class ApplicationState:
 
         if deployment_infos is None:
             self._ingress_deployment_name = None
-            self._router_deployment_name = None
         else:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     self._ingress_deployment_name = name
-                if info.router:
-                    self._router_deployment_name = name
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -1393,12 +1385,6 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_deployment
 
-    def get_router_deployment_name(self, name: str) -> Optional[str]:
-        if name not in self._application_states:
-            return None
-
-        return self._application_states[name].router_deployment
-
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1627,10 +1613,6 @@ def build_serve_application(
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
-            is_router = (
-                built_app.router_deployment_name is not None
-                and deployment.name == built_app.router_deployment_name
-            )
 
             if deployment._deployment_config.deployment_actors:
                 for cfg in deployment._deployment_config.deployment_actors:
@@ -1664,7 +1646,6 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
-                    router=is_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
