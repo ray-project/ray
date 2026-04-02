@@ -105,7 +105,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch transformers datasets
+python -m pip install -U torch==2.9.1 torchvision==0.24.1 transformers==4.48.0 datasets==2.21.0
 ```
 
 
@@ -649,6 +649,9 @@ storage_path = "/mnt/cluster_storage/ray_train_tp_dtensor"  # Use persistent/sha
 run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
+    worker_runtime_env={
+        "pip": ["torch==2.9.1", "torchvision==0.24.1", "transformers==4.48.0", "datasets==2.21.0"],
+    },
 )
 
 # Initialize and launch the trainer
@@ -674,7 +677,7 @@ if RUN_RESUME_DEMO:
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         train_loop_config=resume_train_loop_config,
-        run_config=RunConfig(name=experiment_name, storage_path=storage_path),
+        run_config=run_config,
     )
     resume_result = resume_trainer.fit()
     print(f"Resumed metrics: {resume_result.metrics}")
