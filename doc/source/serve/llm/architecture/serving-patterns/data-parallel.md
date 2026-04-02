@@ -184,13 +184,16 @@ If any DP replica in a DP group fails, Ray Serve controller restarts the entire 
 
 You can run data parallel attention on both prefill and decode phases:
 
-```{figure} ../../images/dp_pd.png
+```{figure} ../../images/dp_pd.svg
 ---
-width: 700px
-name: dp-pd
+width: 500px
+name: dp-pd-architecture
 ---
-Using DP attention pattern along with PD deployments with independent DP sizes.
+Combined DP + PD architecture: each phase has its own gang-scheduled DP group.
 ```
+
+Each phase can have an independent `data_parallel_size`.
+`PDDecodeServer` orchestrates remote prefill then runs decode locally.
 
 ## See also
 
