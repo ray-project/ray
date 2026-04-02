@@ -103,8 +103,6 @@ backend default_backend
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
     log global
-    # Enable HTTP connection reuse for better performance
-    http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
