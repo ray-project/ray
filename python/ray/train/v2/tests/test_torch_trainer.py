@@ -163,9 +163,9 @@ def test_torchft_linear(ray_start_4_cpus):
 @pytest.mark.parametrize(
     "min_replicas,max_failures,expect_error,expected_train_fn_calls",
     [
-        # TODO(tseah): enable these after we have elastic training + torchft.
+        # TODO(tseah): enable this after we have elastic training + torchft.
         # (1, 0, False, 2),
-        # (1, 1, False, 3),
+        (1, 1, False, 3),
         (2, 0, True, 2),
         (2, 1, False, 3),
     ],

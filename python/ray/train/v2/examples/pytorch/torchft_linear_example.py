@@ -150,6 +150,10 @@ def train_func(config):
             running_loss = 0.0
             num_batches = 0
 
+    # Needed to avoid "split brain" where worker X dies, worker Y finishes, worker X resumes,
+    # and worker X gets stuck in loss.backward()
+    manager.shutdown()
+
     return results
 
 
