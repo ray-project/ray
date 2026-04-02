@@ -14,6 +14,7 @@ import ray
 from ray import ray_constants
 from ray._private import logging_utils
 from ray._private.gcs_utils import GcsChannel
+from ray._private.ray_constants import RAY_DASHBOARD_DISABLED_MODULES
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.dashboard.subprocesses.utils import (
@@ -97,6 +98,35 @@ class SubprocessModule(abc.ABC):
         TODO(ryw): If needed, create SubprocessModuleMinimalHandle.
         """
         return False
+
+    @staticmethod
+    def is_enabled(module_name: str = None):
+        """
+        Determine if this module should be enabled. By default, all modules are enabled.
+
+        This method can be overridden by subclasses to provide custom logic for
+        enabling/disabling the module based on configuration, environment variables,
+        or other criteria.
+
+        Args:
+            module_name: The name of the module to check.
+
+        Returns:
+            bool: True if the module should be enabled, False otherwise.
+        """
+        # Get the environment variable for disabled modules
+        # Read directly from os.environ to get the latest value at runtime
+        disabled_modules_env = os.environ.get(RAY_DASHBOARD_DISABLED_MODULES, "")
+        if disabled_modules_env:
+            # Split the environment variable by commas and strip spaces
+            disabled_modules = [
+                name.strip() for name in disabled_modules_env.split(",") if name.strip()
+            ]
+            # Check if the current module name is in the disabled list
+            return module_name not in disabled_modules
+
+        # If neither environment variable is set, return True (default behavior)
+        return True
 
     async def run(self):
         """
