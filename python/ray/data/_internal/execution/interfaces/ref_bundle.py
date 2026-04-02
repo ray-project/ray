@@ -195,28 +195,6 @@ class RefBundle:
                 total += metadata.size_bytes
         return total
 
-    def size_bytes_per_producer(self) -> Dict[Optional[str], int]:
-        """Return a dict mapping producer_op_id to total size in bytes.
-
-        Used by bundle queues to track per-producer memory on enqueue/dequeue.
-        """
-        result: Dict[Optional[str], int] = defaultdict(int)
-        for (_, metadata), block_slice, producer_id in zip(
-            self.blocks, self.slices, self.producer_op_ids
-        ):
-            if block_slice is None:
-                result[producer_id] += metadata.size_bytes
-            elif metadata.num_rows is None or metadata.num_rows == 0:
-                result[producer_id] += metadata.size_bytes
-            elif metadata.num_rows != block_slice.num_rows:
-                per_row = metadata.size_bytes / metadata.num_rows
-                result[producer_id] += max(
-                    1, int(math.ceil(per_row * block_slice.num_rows))
-                )
-            else:
-                result[producer_id] += metadata.size_bytes
-        return result
-
     def destroy_if_owned(self) -> int:
         """Clears the object store memory for these blocks if owned.
 
