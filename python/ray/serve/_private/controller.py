@@ -1540,9 +1540,11 @@ class ServeController:
         for Lua routing decisions. Main targets (LLMServer) serve data plane
         traffic via direct ingress.
         """
-        disable_ingress_bypass_routing = os.environ.get(
-            "RAY_SERVE_DISABLE_INGRESS_BYPASS_ROUTING", "0"
-        ) == "1" or os.path.exists("/tmp/ray-serve-disable-ingress-bypass-routing")
+        disable_ingress_bypass_router_targets = os.environ.get(
+            "RAY_SERVE_DISABLE_INGRESS_BYPASS_ROUTER_TARGETS", "0"
+        ) == "1" or os.path.exists(
+            "/tmp/ray-serve-disable-ingress-bypass-router-targets"
+        )
 
         # Router targets: the ingress deployment replicas (serve /internal/route)
         router_replica_details = self._get_running_replica_details_for_deployment(
@@ -1583,7 +1585,9 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     router_targets=(
-                        [] if disable_ingress_bypass_routing else router_http_targets
+                        []
+                        if disable_ingress_bypass_router_targets
+                        else router_http_targets
                     ),
                 )
             )

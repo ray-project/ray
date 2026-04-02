@@ -1357,6 +1357,14 @@ class HAProxyManager(ProxyActorInterface):
         disable_ingress_bypass_routing = os.environ.get(
             "RAY_SERVE_DISABLE_INGRESS_BYPASS_ROUTING", "0"
         ) == "1" or os.path.exists("/tmp/ray-serve-disable-ingress-bypass-routing")
+        preserve_ingress_bypass_backend_shape = os.environ.get(
+            "RAY_SERVE_PRESERVE_INGRESS_BYPASS_BACKEND_SHAPE", "0"
+        ) == "1" or os.path.exists(
+            "/tmp/ray-serve-preserve-ingress-bypass-backend-shape"
+        )
+        ingress_bypass_backend = bool(target_group.router_targets) or (
+            disable_ingress_bypass_routing and preserve_ingress_bypass_backend_shape
+        )
 
         # Router servers for ingress bypass Lua routing
         router_servers = []
@@ -1366,7 +1374,7 @@ class HAProxyManager(ProxyActorInterface):
             ]
 
         fallback_server = None
-        if fallback_target is not None and not target_group.router_targets:
+        if fallback_target is not None and not ingress_bypass_backend:
             fallback_server = self._target_to_server(fallback_target)
 
         disable_ingress_bypass_health_checks = (
@@ -1376,7 +1384,7 @@ class HAProxyManager(ProxyActorInterface):
         # When ingress bypass is active, the main targets are LLMServer replicas
         # serving vLLM's native app which uses /health not /-/healthz.
         health_path = None  # use default
-        if target_group.router_targets:
+        if ingress_bypass_backend:
             health_path = "/health"
 
         return BackendConfig(
@@ -1393,7 +1401,7 @@ class HAProxyManager(ProxyActorInterface):
             fallback_server=fallback_server,
             health_check_path=health_path,
             enable_health_checks=not (
-                target_group.router_targets and disable_ingress_bypass_health_checks
+                ingress_bypass_backend and disable_ingress_bypass_health_checks
             ),
         )
 
