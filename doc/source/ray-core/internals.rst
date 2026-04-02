@@ -17,3 +17,4 @@ For the high level architecture overview, please refer to the `whitepaper <https
     internals/ray-event-exporter.rst
     internals/port-service-discovery.rst
     internals/object-spilling.rst
+    internals/placement-groups.rst
