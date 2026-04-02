@@ -96,12 +96,12 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.compile(
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
+            tf_dataset = dataset_shard.to_tf(
+                feature_columns="x",
+                label_columns="y",
+                batch_size=1,
+            )
             for epoch in range(config["num_epochs"]):
-                tf_dataset = dataset_shard.to_tf(
-                    feature_columns="x",
-                    label_columns="y",
-                    batch_size=1,
-                )
                 model.fit(tf_dataset)
 
                 # Create checkpoint.
