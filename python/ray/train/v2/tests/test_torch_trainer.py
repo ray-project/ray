@@ -161,17 +161,17 @@ def test_torchft_linear(ray_start_4_cpus):
 
 @pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 @pytest.mark.parametrize(
-    "min_replicas,max_failures,expect_error",
+    "min_replicas,max_failures,expect_error,expected_train_fn_calls",
     [
         # TODO(tseah): enable these after we have elastic training + torchft.
-        # (1, 0, False),
-        # (1, 1, False),
-        (2, 0, True),
-        (2, 1, False),
+        # (1, 0, False, 2),
+        # (1, 1, False, 3),
+        (2, 0, True, 2),
+        (2, 1, False, 3),
     ],
 )
 def test_torchft_linear_replica_failure(
-    ray_start_4_cpus, min_replicas, max_failures, expect_error
+    ray_start_4_cpus, min_replicas, max_failures, expect_error, expected_train_fn_calls
 ):
     """Test torchft linear training behavior when a replica fails mid-training."""
 
@@ -179,8 +179,26 @@ def test_torchft_linear_replica_failure(
         train_func as torchft_linear_train_func,
     )
 
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+            return self.count
+
+        def get_count(self):
+            return self.count
+
+    counter = Counter.remote()
+
+    def train_fn(config):
+        counter.increment.remote()
+        return torchft_linear_train_func(config)
+
     trainer = TorchTrainer(
-        train_loop_per_worker=torchft_linear_train_func,
+        train_loop_per_worker=train_fn,
         train_loop_config={
             "num_steps": 20,
             "error_step": 10,
@@ -199,6 +217,8 @@ def test_torchft_linear_replica_failure(
     else:
         result = trainer.fit()
         assert result.error is None
+    # Fewer train_fn calls indicate partial worker group restarts.
+    assert ray.get(counter.get_count.remote()) == expected_train_fn_calls
     # TODO(tseah): Verify reporting and loading checkpoint after report is fixed.
 
 
