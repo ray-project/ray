@@ -1,3 +1,11 @@
+"""SGLang engine integration for Ray Serve LLM.
+
+This module is a demonstration and reference implementation only.
+It is not actively maintained and is not part of Ray's officially supported
+feature set. For community SGLang support status, see:
+https://github.com/ray-project/ray/issues/61114
+"""
+
 import copy
 import json
 import signal
