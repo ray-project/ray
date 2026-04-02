@@ -1101,11 +1101,13 @@ class DatasetStats:
         total time for the whole dataset."""
         return self.to_summary().runtime_metrics()
 
-    def set_uuid_recursive(self, dataset_uuid: str) -> None:
+    def set_uuid_recursive(self, dataset_uuid: Optional[str]) -> None:
         """Recursively set the dataset uuid (if not None) throughout all stats parents."""
-        if self.dataset_uuid is None or self.dataset_uuid == UNKNOWN_UUID:
+        if (
+            self.dataset_uuid is None or self.dataset_uuid == UNKNOWN_UUID
+        ) and dataset_uuid is not None:
             self.dataset_uuid = dataset_uuid
-        for parent in self.parents or []:
+        for parent in self.parents:
             parent.set_uuid_recursive(dataset_uuid)
 
 
