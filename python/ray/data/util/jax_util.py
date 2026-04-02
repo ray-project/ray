@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 _GLOBAL_MESH_1D_AXIS = "data"
 
+NumpyBatch = Union[np.ndarray, Dict[str, np.ndarray]]
+JaxBatch = Union["jax.Array", Dict[str, "jax.Array"]]
+DTypeLikeSpec = Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+Scalar = Union[int, float, bool]
+PadTokenIdsSpec = Union[Scalar, Dict[str, Scalar]]
+
 
 def _get_column_value(mapping_or_value: Any, key: str) -> Any:
     """Get the value for a specific column from a mapping or a single value."""
@@ -65,7 +71,7 @@ def _create_sharding_1d(axis_name: str) -> "jax.sharding.Sharding":
 def _convert_ndarray_to_jax_array(
     ndarray: np.ndarray,
     sharding: "jax.sharding.Sharding",  # noqa: F821
-    dtype: Optional[Any] = None,
+    dtype: Optional["jax.typing.DTypeLike"] = None,
 ) -> "jax.Array":  # noqa: F821
     import jax
 
@@ -89,10 +95,10 @@ def _convert_ndarray_to_jax_array(
 
 
 def _convert_batch(
-    ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
+    ndarrays: NumpyBatch,
     sharding: "jax.sharding.Sharding",
-    dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
-) -> Any:
+    dtypes: Optional[DTypeLikeSpec] = None,
+) -> JaxBatch:
     """Convert a NumPy ndarray batch to a globally sharded JAX Array batch.
 
     Args:
@@ -123,7 +129,7 @@ def _convert_batch(
     return jax_batch
 
 
-def _get_batch_size(batch: Any) -> int:
+def _get_batch_size(batch: NumpyBatch) -> int:
     """Get the batch size of a NumPy ndarray or dictionary of NumPy ndarrays."""
     if isinstance(batch, dict):
         # Use the first column to determine the batch size
@@ -134,7 +140,7 @@ def _get_batch_size(batch: Any) -> int:
     return len(batch)
 
 
-def _pad_array(arr: np.ndarray, target_size: int, pad_value: Any) -> np.ndarray:
+def _pad_array(arr: np.ndarray, target_size: int, pad_value: Scalar) -> np.ndarray:
     """Pad a single array to target_size using pad_value."""
     current_size = len(arr)
     if current_size == target_size:
@@ -144,17 +150,17 @@ def _pad_array(arr: np.ndarray, target_size: int, pad_value: Any) -> np.ndarray:
     return np.concatenate([arr, padding], axis=0)
 
 
-def _dummy_array(arr: np.ndarray, target_size: int, pad_value: Any) -> np.ndarray:
+def _dummy_array(arr: np.ndarray, target_size: int, pad_value: Scalar) -> np.ndarray:
     """Create a dummy array of target_size filled with pad_value."""
     shape = (target_size,) + arr.shape[1:]
     return np.full(shape, pad_value, dtype=arr.dtype)
 
 
 def _pad_batch(
-    batch: Any,
+    batch: NumpyBatch,
     target_size: int,
-    pad_token_ids: Any,
-) -> Any:
+    pad_token_ids: PadTokenIdsSpec,
+) -> NumpyBatch:
     """Pad a batch to target_size using pad_token_ids."""
 
     if isinstance(batch, dict):
@@ -170,10 +176,10 @@ def _pad_batch(
 
 
 def _create_dummy_batch(
-    template_batch: Any,
+    template_batch: NumpyBatch,
     target_size: int,
-    pad_token_ids: Any,
-) -> Any:
+    pad_token_ids: PadTokenIdsSpec,
+) -> NumpyBatch:
     """Create a dummy batch of target_size filled with pad_token_ids."""
 
     if isinstance(template_batch, dict):
@@ -189,13 +195,13 @@ def _create_dummy_batch(
 
 
 def _yield_batches_no_sync(
-    iterator: Iterator[Any],
+    iterator: Iterator[NumpyBatch],
     sharding: "jax.sharding.Sharding",
     num_local_devices: int,
     batch_size: int,
-    pad_token_ids: Optional[Any],
-    dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
-) -> Iterator[Any]:
+    pad_token_ids: Optional[PadTokenIdsSpec],
+    dtypes: Optional[DTypeLikeSpec] = None,
+) -> Iterator[JaxBatch]:
     """Yield batches without multi-host synchronization."""
     for batch in iterator:
         local_batch_size = _get_batch_size(batch)
@@ -220,13 +226,13 @@ def _yield_batches_no_sync(
 
 
 def _fetch_lookahead_batches(
-    iterator: Iterator[Any],
+    iterator: Iterator[NumpyBatch],
     lookahead: int,
-) -> Tuple[List[Any], List[int], Any]:
+) -> Tuple[List[Optional[NumpyBatch]], List[int], Optional[NumpyBatch]]:
     """Fetch a window of batches and prepare synchronization info."""
     local_batches = []
     local_infos = []
-    template_batch = None
+    template_batch: Optional[NumpyBatch] = None
     for _ in range(lookahead):
         try:
             batch = next(iterator)
@@ -247,20 +253,20 @@ def _fetch_lookahead_batches(
 
 
 def _yield_batches_with_sync(
-    iterator: Iterator[Any],
+    iterator: Iterator[NumpyBatch],
     sharding: "jax.sharding.Sharding",
     num_local_devices: int,
     drop_last: bool,
     batch_size: int,
-    pad_token_ids: Optional[Any],
+    pad_token_ids: Optional[PadTokenIdsSpec],
     synchronize_lookahead: int,
-    dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
-) -> Iterator[Any]:
+    dtypes: Optional[DTypeLikeSpec] = None,
+) -> Iterator[JaxBatch]:
     """Yield batches with multi-host synchronization."""
     import jax.numpy as jnp
     from jax.experimental.multihost_utils import process_allgather
 
-    template_batch = None
+    template_batch: Optional[NumpyBatch] = None
     while True:
         local_batches, local_infos, window_template = _fetch_lookahead_batches(
             iterator, synchronize_lookahead
@@ -322,6 +328,7 @@ def _yield_batches_with_sync(
                     local_batch_size = _get_batch_size(batch)
                     if local_batch_size < batch_size:
                         batch = _pad_batch(batch, batch_size, pad_token_ids)
+                assert batch is not None
                 yield _convert_batch(batch, sharding, dtypes=dtypes)
             else:
                 if max_batch_size > min_batch_size:
@@ -341,18 +348,19 @@ def _yield_batches_with_sync(
                     )
 
                 batch = local_batches[i]
+                assert batch is not None
                 yield _convert_batch(batch, sharding, dtypes=dtypes)
 
 
 def jax_sync_generator(
-    batch_iterable: Iterable[Any],
+    batch_iterable: Iterable[NumpyBatch],
     drop_last: bool,
     batch_size: int = 256,
-    pad_token_ids: Optional[Any] = None,
-    dtypes: Optional[Union[Any, Dict[str, Any]]] = None,
+    pad_token_ids: Optional[PadTokenIdsSpec] = None,
+    dtypes: Optional[DTypeLikeSpec] = None,
     synchronize_batches: bool = False,
     synchronize_lookahead: int = 10,
-) -> Iterator[Any]:
+) -> Iterator[JaxBatch]:
     """A generator that synchronizes and shards batches across JAX workers.
 
     This generator wraps a locally yielded batch iterable and ensures that all JAX
@@ -376,7 +384,7 @@ def jax_sync_generator(
             increase memory usage as more batches are buffered locally.
 
     Yields:
-        Any: Globally sharded batches.
+        JaxBatch: Globally sharded batches.
     """
     import jax
 

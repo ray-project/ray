@@ -121,6 +121,7 @@ from ray.data.block import (
     _apply_batch_format,
     _take_first_non_empty_schema,
 )
+from ray.data.collate_fn import CollateFn
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
@@ -6011,12 +6012,14 @@ class Dataset:
         dtypes: Optional[
             Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
         ] = None,
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
+        collate_fn: Optional[CollateFn] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_ids: Optional[Any] = None,
+        pad_token_ids: Optional[
+            Union[int, float, bool, Dict[str, Union[int, float, bool]]]
+        ] = None,
     ) -> Iterable[Any]:
         """Return an iterable over batches of data represented as JAX arrays.
 

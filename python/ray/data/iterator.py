@@ -626,14 +626,14 @@ class DataIterator(abc.ABC):
         dtypes: Optional[
             Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
         ] = None,
-        collate_fn: Optional[
-            Union[Callable[[Dict[str, np.ndarray]], "CollatedData"], CollateFn]
-        ] = None,
+        collate_fn: Optional[CollateFn] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_ids: Optional[Any] = None,
+        pad_token_ids: Optional[
+            Union[int, float, bool, Dict[str, Union[int, float, bool]]]
+        ] = None,
     ) -> Iterable[Any]:
         """Return a batched iterable of JAX Arrays over the dataset.
 
@@ -712,15 +712,6 @@ class DataIterator(abc.ABC):
             batch_format = "numpy"
         elif isinstance(collate_fn, PandasBatchCollateFn):
             batch_format = "pandas"
-        elif callable(collate_fn):
-            batch_format = "numpy"
-            warnings.warn(
-                "Passing a function to `iter_jax_batches(collate_fn)` is "
-                "deprecated in Ray 2.47. Please switch to using a callable class that "
-                "inherits from `ArrowBatchCollateFn`, `NumpyBatchCollateFn`, or "
-                "`PandasBatchCollateFn`.",
-                RayDeprecationWarning,
-            )
         else:
             raise ValueError(f"Unsupported collate function: {type(collate_fn)}")
 

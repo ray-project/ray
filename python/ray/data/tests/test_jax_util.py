@@ -1,4 +1,5 @@
 import sys
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -335,8 +336,6 @@ def test_jax_sync_generator_with_dtypes(ray_start_regular_shared):
         import jax  # noqa: F401
     except ImportError:
         pytest.skip("JAX not installed")
-
-    from unittest.mock import MagicMock, patch
 
     def batches():
         yield {"a": np.array([1, 2, 3])}
