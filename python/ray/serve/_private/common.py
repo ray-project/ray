@@ -661,7 +661,6 @@ class RunningReplicaInfo:
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
     direct_ingress_http_port: Optional[int] = None
-    sidecar_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.

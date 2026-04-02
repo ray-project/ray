@@ -260,16 +260,8 @@ class RunningReplica:
         return self._replica_info.is_cross_language
 
     @property
-    def sidecar_endpoint(self) -> Optional[tuple]:
-        """Return the replica sidecar endpoint as (host, port)."""
-        port = self._replica_info.sidecar_port
-        if port is not None:
-            return (self._replica_info.node_ip, port)
-        return None
-
-    @property
     def direct_ingress_endpoint(self) -> Optional[tuple]:
-        """Return the replica direct-ingress endpoint as (host, port)."""
+        """Return (host, port) of the replica's direct ingress HTTP server."""
         port = self._replica_info.direct_ingress_http_port
         if port is not None:
             return (self._replica_info.node_ip, port)

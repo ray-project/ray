@@ -310,6 +310,10 @@ class VLLMEngine(LLMEngine):
         merged = _convert_config_dicts(merged)
 
         args = _dict_to_namespace(merged)
+
+        # Save for sidecar reuse — the HTTP sidecar calls build_app(args) +
+        # init_app_state(engine_client, state, args) to serve vLLM's own
+        # FastAPI app without duplicating endpoint handlers.
         self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
