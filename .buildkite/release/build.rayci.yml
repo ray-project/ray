@@ -122,21 +122,6 @@ steps:
       - ray-wheel-build
       - raycudabaseextra-testdeps
 
-  - name: ray-anyscale-tpu-build
-    label: "wanda: ray-anyscale py{{matrix}} tpu"
-    wanda: ci/docker/ray-anyscale-tpu.wanda.yaml
-    env_file: rayci.env
-    matrix:
-      - "3.10"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-      ARCH_SUFFIX: ""
-    tags:
-      - oss
-    depends_on:
-      - ray-wheel-build
-      - raytpubaseextra-testdeps
-
   - label: ":crane: publish: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
     key: anyscalebuild
     instance_type: release-medium
@@ -152,7 +137,6 @@ steps:
     depends_on:
       - ray-anyscale-cpu-build
       - ray-anyscale-cuda-build
-      - ray-anyscale-tpu-build
     matrix:
       setup:
         python:
@@ -163,7 +147,6 @@ steps:
         platform:
           - cu12.3.2-cudnn9
           - cpu
-          - tpu
       adjustments:
         - with:
             python: "3.12"

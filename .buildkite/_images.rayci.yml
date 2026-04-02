@@ -102,16 +102,6 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: raycudabase
 
-  - name: raytpubaseextra
-    label: "wanda: ray-py{{matrix}}-tpu-base-extra"
-    wanda: docker/base-extra/tpu.wanda.yaml
-    matrix:
-      - "3.10"
-    env:
-      PYTHON_VERSION: "{{matrix}}"
-      ARCH_SUFFIX: ""
-    depends_on: raytpubase
-
   - name: ray-llmbase
     label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:
