@@ -4,6 +4,10 @@
 
 This guide demonstrates how to enable Ray token authentication with KubeRay.
 
+:::{warning}
+It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
+:::
+
 ## Prerequisites
 
 * A Kubernetes cluster. This guide uses GKE, but the concepts apply to other Kubernetes distributions.
@@ -27,7 +31,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 
 ## Deploy a Ray cluster with token authentication
 
-If you are using KubeRay v1.5.1 or newer, you can use the `authOptions` API in RayCluster to enable token authentication:
+If you are using KubeRay v1.6.0 or newer, you can use the `authOptions` API in RayCluster to enable token authentication:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth.yaml
 ```
@@ -36,7 +40,7 @@ When enabled, the KubeRay operator will:
 * Create a Kubernetes Secret containing a randomly generated token.
 * Automatically set the `RAY_AUTH_TOKEN` and `RAY_AUTH_MODE` environment variables on all Ray containers.
 
-If you are using a KubeRay version older than v1.5.1, you can enable token authentication by creating a Kubernetes Secret containing
+If you are using a KubeRay version older than v1.6.0, you can enable token authentication by creating a Kubernetes Secret containing
 your token and configuring the `RAY_AUTH_MODE` and `RAY_AUTH_TOKEN` environment variables.
 
 ```bash

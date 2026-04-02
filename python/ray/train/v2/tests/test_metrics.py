@@ -1,3 +1,4 @@
+import asyncio
 import enum
 from unittest.mock import MagicMock
 
@@ -206,7 +207,7 @@ def test_controller_metrics_callback(monkeypatch, mock_gauge):
         == t4 - t3
     )
 
-    callback.before_controller_shutdown()
+    asyncio.run(callback.before_controller_shutdown())
     assert (
         callback._metrics[ControllerMetrics.WORKER_GROUP_START_TOTAL_TIME_S].get_value()
         == 0.0
@@ -285,7 +286,7 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
         == 1
     )
 
-    callback.before_controller_shutdown()
+    asyncio.run(callback.before_controller_shutdown())
 
     assert (
         callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(

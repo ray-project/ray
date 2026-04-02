@@ -425,12 +425,12 @@ class TrainController:
         for callback in self._controller_callbacks:
             callback.after_controller_start(self._train_run_context)
 
-    def _shutdown(self):
+    async def _shutdown(self):
         if self._worker_group:
             self._shutdown_worker_group()
 
         for callback in self._controller_callbacks:
-            callback.before_controller_shutdown()
+            await callback.before_controller_shutdown()
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -493,12 +493,6 @@ class TrainController:
         Returns:
             TrainControllerLoopIterationResult with the appropriate next state
         """
-        # If we are in a non-running state we should ensure the old worker group
-        # is shut down and its resources before we ask the scaling policy to
-        # calculate newly available resources.
-        if self._worker_group:
-            self._shutdown_worker_group()
-
         scaling_decision = (
             self._scaling_policy.make_decision_for_non_running_worker_group()
         )
@@ -593,7 +587,7 @@ class TrainController:
             )
         elif isinstance(controller_state, ShuttingDownState):
             # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
+            await self._shutdown()
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 from unittest.mock import MagicMock
@@ -111,7 +112,6 @@ def test_datasets_callback(ray_start_4_cpus):
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -121,7 +121,10 @@ def test_datasets_callback(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -141,11 +144,11 @@ def test_datasets_callback(ray_start_4_cpus):
     # Under the V2 cluster autoscaler (default), the scaling policy registers training resources
     # with the AutoscalingCoordinator, so exclude_resources should not be set.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
 
@@ -636,7 +639,6 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -646,7 +648,10 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -661,11 +666,11 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
 
     # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
     )
 
@@ -696,7 +701,6 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
         resources_per_worker=scaling_config.resources_per_worker,
     )
     train_run_context = create_dummy_run_context(
-        datasets={"train": train_ds, "valid": valid_ds},
         dataset_config=data_config,
         scaling_config=scaling_config,
     )
@@ -706,7 +710,10 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     )
     worker_group._start()
 
-    callback = DatasetsCallback(train_run_context)
+    callback = DatasetsCallback(
+        train_run_context=train_run_context,
+        datasets={"train": train_ds, "valid": valid_ds},
+    )
     dataset_manager_for_each_worker = callback.before_init_train_context(
         worker_group.get_workers()
     )["dataset_shard_provider"]
@@ -722,11 +729,11 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     # Under the V2 cluster autoscaler (default), exclude_resources should be
     # zero regardless of how many training resources are reserved.
     assert (
-        processed_train_ds._base_dataset.context.execution_options.exclude_resources
+        processed_train_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
     assert (
-        processed_valid_ds._base_dataset.context.execution_options.exclude_resources
+        processed_valid_ds.get_context().execution_options.exclude_resources
         == ExecutionResources.zero()
     )
 
@@ -808,7 +815,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
             )
 
         # Simulate controller shutdown
-        policy.before_controller_shutdown()
+        asyncio.run(policy.before_controller_shutdown())
         mock_coordinator.cancel_request.remote.assert_called_once_with(
             requester_id="train-test-run-123",
         )
