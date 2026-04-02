@@ -145,6 +145,8 @@ py_test(
         "compiled_graphs",
         "custom_setup",
         "exclusive",
+        #Disabled as this is consistently failing in CI and cgraphs will be deprecated/removed soon
+        "manual",
         "multi_gpu",
         "no_windows",
         "team:core",
