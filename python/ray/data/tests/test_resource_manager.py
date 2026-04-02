@@ -769,8 +769,8 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
 
     def test_unblock_backpressure_terminal_operator(self, restore_data_context):
-        """Terminal operator (no downstream eligible ops) should unblock only
-        when there is no external consumer."""
+        """Terminal operator (no downstream eligible ops) with no external
+        consumer should always unblock (e.g., write pipeline)."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
@@ -788,19 +788,6 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         # o2 is terminal (no downstream eligible ops beyond it) and no external
         # consumer — should unblock (e.g., write pipeline).
         assert allocator._should_unblock_streaming_output_backpressure(o2) is True
-
-        # Register an external consumer (e.g., iter_batches or streaming_split).
-        # Should NOT unblock, to prevent blocks from piling up faster than the
-        # consumer can process them.
-        resource_manager.set_external_consumer_bytes(0)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
-
-        # Even after consumer drains all data, should still NOT unblock —
-        # the external consumer exists, so respect backpressure.
-        resource_manager.set_external_consumer_bytes(1000)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
-        resource_manager.set_external_consumer_bytes(0)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
 
         # Add o4 operator - o2 is no longer terminal
         o4 = mock_map_op(o3)
@@ -821,6 +808,38 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         allocator._idle_detector.detect_idle = MagicMock(return_value=False)
 
         # o2 is not terminal anymore, falls back to idle detector which returns False
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+    def test_no_unblock_backpressure_terminal_with_external_consumer(
+        self, restore_data_context
+    ):
+        """Terminal operator with an external consumer (iter_batches,
+        streaming_split) should never unblock output backpressure."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        allocator = resource_manager._op_resource_allocator
+
+        # Register an external consumer (e.g., iter_batches or streaming_split).
+        # Should NOT unblock, to prevent blocks from piling up faster than the
+        # consumer can process them.
+        resource_manager.set_external_consumer_bytes(0)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+        # Even after consumer receives and drains data, should still NOT unblock —
+        # the external consumer exists, so respect backpressure.
+        resource_manager.set_external_consumer_bytes(1000)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+        resource_manager.set_external_consumer_bytes(0)
         assert allocator._should_unblock_streaming_output_backpressure(o2) is False
 
     def test_unblock_backpressure_downstream_idle(self, restore_data_context):
