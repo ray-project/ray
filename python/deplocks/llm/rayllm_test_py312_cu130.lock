@@ -4251,7 +4251,6 @@ pydantic==2.12.3 \
     --hash=sha256:6986454a854bc3bc6e5443e1369e06a3a456af9d339eda45510f517d9ea5c6bf
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
-    #   -r python/requirements/llm/llm-requirements.txt
     #   -r python/requirements.txt
     #   anthropic
     #   compressed-tensors
