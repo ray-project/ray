@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import (
@@ -445,6 +446,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         original_app = self._asgi_app
         ingress = self
+        type(self)._route_pick_trace_count = 0
 
         async def sidecar_asgi_wrapper(scope, receive, send):
             if scope["type"] == "http" and scope["path"] == "/internal/route":
@@ -777,6 +779,8 @@ class OpenAiIngress(DeploymentProtocol):
                 trace_row = {
                     "n": cls._route_pick_trace_count,
                     "pid": os.getpid(),
+                    "wall_ns": time.time_ns(),
+                    "monotonic_ns": time.monotonic_ns(),
                     "model_id": model_id,
                     "selected": selected,
                     "eligible": eligible_endpoints,

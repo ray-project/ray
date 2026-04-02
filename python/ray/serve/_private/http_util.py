@@ -2,8 +2,10 @@ import asyncio
 import inspect
 import json
 import logging
+import os
 import pickle
 import socket
+import time
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
@@ -55,6 +57,14 @@ from ray.serve.exceptions import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _append_jsonl_atomic(path: str, row: dict) -> None:
+    fd = os.open(path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
+    try:
+        os.write(fd, (json.dumps(row, sort_keys=True) + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True)
@@ -682,6 +692,70 @@ def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
     return app
 
 
+def _maybe_wrap_asgi_arrival_trace(app: ASGIApp) -> ASGIApp:
+    """Optionally trace request arrival at the mounted ASGI app boundary."""
+    trace_path = os.environ.get("RAY_SERVE_ASGI_ARRIVAL_TRACE_PATH")
+    if not trace_path:
+        return app
+
+    trace_limit = int(os.environ.get("RAY_SERVE_ASGI_ARRIVAL_TRACE_LIMIT", "128"))
+    trace_count = 0
+    request_id_header = SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8")
+    traced_paths = {"/v1/completions", "/v1/chat/completions"}
+
+    async def traced_app(scope: Scope, receive: Receive, send: Send):
+        nonlocal trace_count
+
+        path = scope.get("path", "")
+        if (
+            scope.get("type") != "http"
+            or path not in traced_paths
+            or trace_count >= trace_limit
+        ):
+            await app(scope, receive, send)
+            return
+
+        trace_count += 1
+        headers = dict(scope.get("headers", []))
+        request_id = headers.get(request_id_header, b"").decode("utf-8", "replace")
+        server = scope.get("server") or ("", None)
+        client = scope.get("client") or ("", None)
+
+        row = {
+            "n": trace_count,
+            "pid": os.getpid(),
+            "path": path,
+            "method": scope.get("method", ""),
+            "request_id": request_id,
+            "server_host": server[0],
+            "server_port": server[1],
+            "client_host": client[0],
+            "client_port": client[1],
+            "entry_wall_ns": time.time_ns(),
+            "entry_monotonic_ns": time.monotonic_ns(),
+        }
+
+        async def traced_send(message: Message):
+            now_wall_ns = time.time_ns()
+            if message["type"] == "http.response.start":
+                row["response_start_wall_ns"] = now_wall_ns
+                row["status_code"] = message["status"]
+            elif message["type"] == "http.response.body":
+                body = message.get("body", b"")
+                if row.get("first_body_wall_ns") is None and body:
+                    row["first_body_wall_ns"] = now_wall_ns
+                if not message.get("more_body", False):
+                    row["final_body_wall_ns"] = now_wall_ns
+            await send(message)
+
+        try:
+            await app(scope, receive, traced_send)
+        finally:
+            _append_jsonl_atomic(trace_path, row)
+
+    return traced_app
+
+
 def _inject_root_path(app: ASGIApp, root_path: str):
     """Middleware to inject root_path to the ASGI app."""
     if not root_path:
@@ -736,6 +810,7 @@ async def start_asgi_http_server(
     Returns a task that blocks until the server exits (e.g., due to error).
     """
     app = _apply_middlewares(app, http_options.middlewares)
+    app = _maybe_wrap_asgi_arrival_trace(app)
     app, root_path = _apply_root_path(app, http_options.root_path)
 
     sock = socket.socket(

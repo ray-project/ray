@@ -664,6 +664,13 @@ class HAProxyApi(ProxyApi):
         """
         config_dir = os.path.dirname(self.config_file_path)
         lua_path = os.path.join(config_dir, "sidecar_route.lua")
+        detail_trace_path = os.environ.get(
+            "RAY_SERVE_HAPROXY_LUA_TRACE_PATH",
+            "/tmp/haproxy-serve/lua-detail-trace.jsonl",
+        )
+        detail_trace_limit = int(
+            os.environ.get("RAY_SERVE_HAPROXY_LUA_TRACE_LIMIT", "128")
+        )
 
         router_entries = []
         for i, srv in enumerate(router_servers):
@@ -694,9 +701,25 @@ local route_body_empty = 0
 local route_target_set = 0
 local route_target_missing = 0
 local ROUTE_LOG_INTERVAL = 500
+local DETAIL_TRACE_PATH = {json.dumps(detail_trace_path)}
+local DETAIL_TRACE_LIMIT = {detail_trace_limit}
+local detail_trace_count = 0
 
 local function elapsed_us(t0, t1)
     return (t1.sec - t0.sec) * 1000000 + (t1.usec - t0.usec)
+end
+
+local function maybe_write_detail_trace(row)
+    if DETAIL_TRACE_PATH == "" or detail_trace_count >= DETAIL_TRACE_LIMIT then
+        return
+    end
+    detail_trace_count = detail_trace_count + 1
+    local f = io.open(DETAIL_TRACE_PATH, "a")
+    if not f then
+        return
+    end
+    f:write(row)
+    f:close()
 end
 
 local function get_or_connect(router)
@@ -776,6 +799,7 @@ core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
     local model = ""
     rr_idx = (rr_idx % #routers) + 1
     local router = routers[rr_idx]
+    local route_no = route_total + 1
 
     local t0 = core.now()
 
@@ -838,8 +862,33 @@ core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
         local server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
         txn:set_var("txn.target_server", server_name)
         route_target_set = route_target_set + 1
+        maybe_write_detail_trace(string.format(
+            "{{\\"n\\":%d,\\"router_idx\\":%d,\\"router_host\\":\\"%s\\",\\"router_port\\":%d,\\"t0_us\\":%d,\\"t1_us\\":%d,\\"duration_us\\":%d,\\"status_line\\":%s,\\"target_host\\":\\"%s\\",\\"target_port\\":%d,\\"target_server\\":\\"%s\\"}}\\n",
+            route_no,
+            rr_idx,
+            router.host,
+            router.port,
+            t0.sec * 1000000 + t0.usec,
+            t_end.sec * 1000000 + t_end.usec,
+            elapsed_us(t0, t_end),
+            status_line and string.format("%q", status_line) or '""',
+            host,
+            tonumber(port),
+            server_name
+        ))
     else
         route_target_missing = route_target_missing + 1
+        maybe_write_detail_trace(string.format(
+            "{{\\"n\\":%d,\\"router_idx\\":%d,\\"router_host\\":\\"%s\\",\\"router_port\\":%d,\\"t0_us\\":%d,\\"t1_us\\":%d,\\"duration_us\\":%d,\\"status_line\\":%s,\\"target_server\\":\\"\\"}}\\n",
+            route_no,
+            rr_idx,
+            router.host,
+            router.port,
+            t0.sec * 1000000 + t0.usec,
+            t_end.sec * 1000000 + t_end.usec,
+            elapsed_us(t0, t_end),
+            status_line and string.format("%q", status_line) or '""'
+        ))
     end
 
     if route_total % ROUTE_LOG_INTERVAL == 0 then
