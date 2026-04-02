@@ -237,7 +237,7 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     # Check for 8-chip host types, v5litepod or v6e (1x1, 2x2, 2x4 only)
     if accelerator_version.strip().lower() == SINGLE_HOST_8_CHIPS_TPU_TYPE or (
         accelerator_version.strip().lower() == "v6e"
-        and topology in TPU_V6E_SINGLE_HOST_TOPOLOGIES
+        and topology.strip().lower() in TPU_V6E_SINGLE_HOST_TOPOLOGIES
     ):
         if total_chips < 8:
             return total_chips
