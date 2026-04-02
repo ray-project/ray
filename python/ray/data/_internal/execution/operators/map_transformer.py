@@ -333,6 +333,11 @@ class BatchMapTransformFn(MapTransformFn):
 
         self._batch_fn = batch_fn
 
+    @property
+    def batch_format(self) -> Optional[BatchFormat]:
+        """The batch format this transform expects its input in."""
+        return self._batch_format
+
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
         # TODO make batch-udf zero-copy by default
         ensure_copy = not self._zero_copy_batch and self._batch_size is not None

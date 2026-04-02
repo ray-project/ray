@@ -1,3 +1,4 @@
+import os
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
@@ -15,9 +16,20 @@ from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_transformer import (
+    BatchMapTransformFn,
+    MapTransformer,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.context import DataContext
+
+# Per-task heap overhead multiplier for numpy batch format tasks.
+# Arrow → numpy conversion (strings, decimals, dates) allocates worker heap that
+# Ray Core's object-store accounting cannot see; a `memory` request makes it visible.
+# Tunable via RAY_DATA_NUMPY_TASK_MEMORY_FACTOR (default: 0.5 × target_max_block_size).
+_NUMPY_TASK_MEMORY_FACTOR: float = float(
+    os.environ.get("RAY_DATA_NUMPY_TASK_MEMORY_FACTOR", "0.5")
+)
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -86,6 +98,28 @@ class TaskPoolMapOperator(MapOperator):
 
         self._max_concurrency = max_concurrency
         self._current_logical_usage = ExecutionResources.zero()
+
+        # For numpy tasks, inject a `memory` request so Ray Core's node-level
+        # scheduler accounts for untracked worker heap (Arrow→numpy conversion).
+        # _ray_remote_args is always a dict here (set by parent via _canonicalize_ray_remote_args).
+        if "memory" not in self._ray_remote_args:
+            uses_numpy = any(
+                isinstance(fn, BatchMapTransformFn) and fn.batch_format == "numpy"
+                for fn in map_transformer.get_transform_fns()
+            )
+            if uses_numpy:
+                block_size = data_context.target_max_block_size or 0
+                estimated_heap = int(block_size * _NUMPY_TASK_MEMORY_FACTOR)
+                if estimated_heap > 0:
+                    self._ray_remote_args = {
+                        **self._ray_remote_args,
+                        "memory": estimated_heap,
+                    }
+                    # Mirror into metrics so the dashboard shows the injected budget.
+                    self._remote_args_for_metrics = {
+                        **self._remote_args_for_metrics,
+                        "memory": estimated_heap,
+                    }
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`

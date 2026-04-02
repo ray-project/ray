@@ -1,3 +1,4 @@
+import logging
 import warnings
 from typing import Optional
 
@@ -9,6 +10,8 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import get_total_obj_store_mem_on_node
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
+
+logger = logging.getLogger(__name__)
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
@@ -130,17 +133,37 @@ class Batcher(BatcherInterface):
                 output.add_block(accessor.to_block())
                 needed -= accessor.num_rows()
             else:
-                # Try de-fragmenting table in case its columns
-                # have too many chunks (potentially hindering performance of
-                # subsequent slicing operation)
+                # We only need part of this block. Slice first, then de-fragment only
+                # the small batch slice — not the full block. Previously the full block
+                # was de-fragmented first, creating an untracked heap copy (100+ MiB).
+                batch_slice = accessor.slice(0, needed, copy=False)
                 if isinstance(accessor, ArrowBlockAccessor):
-                    accessor = BlockAccessor.for_block(
-                        transform_pyarrow.try_combine_chunked_columns(block)
+                    # De-fragment the batch slice so downstream Arrow→numpy conversion
+                    # gets a contiguous array. Log when the source block is fragmented
+                    # (many parquet row groups merged) to aid memory diagnostics.
+                    block_max_chunks = max(
+                        (col.num_chunks for col in accessor._table.columns),
+                        default=0,
                     )
-
-                # We only need part of the block to fill out a batch.
-                output.add_block(accessor.slice(0, needed, copy=False))
-                # Add the rest of the block to the leftovers.
+                    if (
+                        block_max_chunks
+                        >= transform_pyarrow.MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
+                    ):
+                        logger.debug(
+                            "Batcher: source block has up to %d chunks per column "
+                            "(>= threshold %d). Previously this would have triggered "
+                            "a full-block heap copy (~%d MiB); now only de-fragmenting "
+                            "the %d-row batch slice.",
+                            block_max_chunks,
+                            transform_pyarrow.MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+                            accessor.size_bytes() // (1024 * 1024),
+                            needed,
+                        )
+                    batch_slice = transform_pyarrow.try_combine_chunked_columns(
+                        batch_slice
+                    )
+                output.add_block(batch_slice)
+                # Leftover is a zero-copy view of the original plasma-backed block.
                 leftover.append(accessor.slice(needed, accessor.num_rows(), copy=False))
                 needed = 0
 
