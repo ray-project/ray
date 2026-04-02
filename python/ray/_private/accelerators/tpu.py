@@ -148,7 +148,11 @@ def _accelerator_type_check(accelerator_type: str):
 
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-    if accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES):
+    # v6e-8 is a corner case with v6 TPUs that have 8 chips per host
+    if (
+        accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES)
+        or accelerator_type == "v6e-8"
+    ):
         return 8
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
