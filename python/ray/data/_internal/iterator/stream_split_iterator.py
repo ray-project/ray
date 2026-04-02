@@ -230,6 +230,8 @@ class SplitCoordinator:
                     plan = self._base_dataset._plan
                     # Re-execute dataset
                     self._current_executor = plan.create_executor()
+                    # Register the streaming split external consumers with the executor's resource manager.
+                    self._current_executor.set_external_consumer_bytes(0)
                     self._output_iterator = execute_to_legacy_bundle_iterator(
                         self._current_executor, plan
                     )
