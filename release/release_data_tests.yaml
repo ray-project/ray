@@ -518,30 +518,8 @@
   python: "3.10"
   matrix:
     setup:
-      - data_size_gb: 50
-        num_partitions: 100
-      - data_size_gb: 50
-        num_partitions: 200
-      - data_size_gb: 50
-        num_partitions: 500
-      - data_size_gb: 85
-        num_partitions: 100
-      - data_size_gb: 85
-        num_partitions: 200
-      - data_size_gb: 85
-        num_partitions: 500
-      - data_size_gb: 120
-        num_partitions: 200
-      - data_size_gb: 120
-        num_partitions: 500
-      - data_size_gb: 170
-        num_partitions: 200
-      - data_size_gb: 170
-        num_partitions: 500
-      - data_size_gb: 256
-        num_partitions: 200
-      - data_size_gb: 256
-        num_partitions: 500
+      data_size_gb: [50, 85, 120, 170, 256]
+      num_partitions: [100, 200, 500]
 
   cluster:
     cluster_compute: fixed_size_ooc_shuffle_compute.yaml
