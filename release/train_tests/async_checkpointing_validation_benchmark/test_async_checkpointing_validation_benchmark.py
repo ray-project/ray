@@ -14,7 +14,7 @@ from torch.optim import Adam
 from torchvision import transforms
 from torchvision.models import VisionTransformer
 from torchvision.transforms import ToTensor, Normalize
-from s3torchconnector.dcp import S3StorageWriter
+from s3torchconnector.dcp import S3StorageReader, S3StorageWriter
 
 import ray
 import ray.train
@@ -83,14 +83,22 @@ def create_model():
 class Predictor:
     def __init__(self, checkpoint):
         self.model = create_model()
-        with checkpoint.as_directory() as checkpoint_dir:
-            model_pt_path = os.path.join(checkpoint_dir, "model.pt")
-            if os.path.exists(model_pt_path):
-                self.model.load_state_dict(torch.load(model_pt_path))
-            else:
-                state_dict = {"model": self.model.state_dict()}
-                dist_cp.load(state_dict, checkpoint_id=checkpoint_dir)
-                self.model.load_state_dict(state_dict["model"])
+
+        checkpoint_path = str(checkpoint.path)
+        if checkpoint_path.startswith("s3://"):
+            reader = S3StorageReader(
+                region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+                path=checkpoint_path,
+            )
+            state_dict = {"model": self.model.state_dict()}
+            dist_cp.load(state_dict, storage_reader=reader)
+            self.model.load_state_dict(state_dict["model"])
+        else:
+            with checkpoint.as_directory() as checkpoint_dir:
+                self.model.load_state_dict(
+                    torch.load(os.path.join(checkpoint_dir, "model.pt"))
+                )
+
         self.model.cuda().eval()
 
     def __call__(self, batch):
@@ -124,14 +132,21 @@ def validate_with_map_batches(checkpoint):
 def eval_only_train_func(config_dict):
     # Load the checkpoint
     model = create_model()
-    with config_dict["checkpoint"].as_directory() as checkpoint_dir:
-        model_pt_path = os.path.join(checkpoint_dir, "model.pt")
-        if os.path.exists(model_pt_path):
-            model.load_state_dict(torch.load(model_pt_path))
-        else:
-            state_dict = {"model": model.state_dict()}
-            dist_cp.load(state_dict, checkpoint_id=checkpoint_dir)
-            model.load_state_dict(state_dict["model"])
+
+    checkpoint = config_dict["checkpoint"]
+    checkpoint_path = str(checkpoint.path)
+    if checkpoint_path.startswith("s3://"):
+        reader = S3StorageReader(
+            region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
+            path=checkpoint_path,
+        )
+        state_dict = {"model": model.state_dict()}
+        dist_cp.load(state_dict, storage_reader=reader)
+        model.load_state_dict(state_dict["model"])
+    else:
+        with checkpoint.as_directory() as checkpoint_dir:
+            model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
+
     model.cuda().eval()
 
     # Get the data
@@ -228,11 +243,8 @@ def validate_and_report(
         CheckpointSaveMode.TORCH_DCP_SYNC,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
     ):
-        # TODO - This needs to be an S3 bucket
-        storage_context = ray.train.get_context().get_storage()
-        checkpoint_path = storage_context.build_checkpoint_path_from_name(
-            f"epoch={epoch}_batch={batch_idx}"
-        )
+        # The STORAGE_PATH is a S3 bucket associated with a job and workspace.
+        checkpoint_path = f"{STORAGE_PATH}/checkpoints/epoch={epoch}_batch={batch_idx}"
         storage_writer = S3StorageWriter(
             region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
             path=checkpoint_path,
