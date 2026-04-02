@@ -150,7 +150,7 @@ class RunningTaskInfo:
     last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
     # Set once the task's first output is observed. True if the output node
     # matched one of the input_node_ids (data locality was preserved).
-    is_cache_hit: Optional[bool] = field(init=False, default=None)
+    is_task_locality_hit: Optional[bool] = field(init=False, default=None)
 
 
 @dataclass
@@ -392,42 +392,42 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
     )
 
-    task_scheduling_time_cache_hit_s: float = metric_field(
+    task_scheduling_time_task_locality_hit_s: float = metric_field(
         default=0,
         description="Cumulative task scheduling time (s) for cache-hit tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    task_scheduling_time_cache_miss_s: float = metric_field(
+    task_scheduling_time_task_locality_miss_s: float = metric_field(
         default=0,
         description="Cumulative task scheduling time (s) for cache-miss tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    bytes_inputs_of_cache_hit_tasks: int = metric_field(
+    bytes_inputs_of_task_locality_hit_tasks: int = metric_field(
         default=0,
         description="Total input bytes of completed cache-hit tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    bytes_inputs_of_cache_miss_tasks: int = metric_field(
+    bytes_inputs_of_task_locality_miss_tasks: int = metric_field(
         default=0,
         description="Total input bytes of completed cache-miss tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    task_completion_time_cache_hit_s: float = metric_field(
+    task_completion_time_task_locality_hit_s: float = metric_field(
         default=0,
         description="Total wall time (s) of completed cache-hit tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    task_completion_time_cache_miss_s: float = metric_field(
+    task_completion_time_task_locality_miss_s: float = metric_field(
         default=0,
         description="Total wall time (s) of completed cache-miss tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
-    num_tasks_cache_hit: int = metric_field(
+    num_tasks_task_locality_hit: int = metric_field(
         default=0,
         description="Number of tasks whose first output block was on a node where the input was located.",
         metrics_group=MetricsGroup.TASKS,
     )
-    num_tasks_cache_miss: int = metric_field(
+    num_tasks_task_locality_miss: int = metric_field(
         default=0,
         description="Number of tasks whose first output block was on a node where the input was NOT located.",
         metrics_group=MetricsGroup.TASKS,
@@ -704,20 +704,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
         internal_only=True,
     )
-    def average_task_scheduling_time_cache_hit_s(self) -> Optional[float]:
-        if self.num_tasks_cache_hit == 0:
+    def average_task_scheduling_time_task_locality_hit_s(self) -> Optional[float]:
+        if self.num_tasks_task_locality_hit == 0:
             return None
-        return self.task_scheduling_time_cache_hit_s / self.num_tasks_cache_hit
+        return (
+            self.task_scheduling_time_task_locality_hit_s
+            / self.num_tasks_task_locality_hit
+        )
 
     @metric_property(
         description="Average scheduling time (s) for cache-miss tasks.",
         metrics_group=MetricsGroup.TASKS,
         internal_only=True,
     )
-    def average_task_scheduling_time_cache_miss_s(self) -> Optional[float]:
-        if self.num_tasks_cache_miss == 0:
+    def average_task_scheduling_time_task_locality_miss_s(self) -> Optional[float]:
+        if self.num_tasks_task_locality_miss == 0:
             return None
-        return self.task_scheduling_time_cache_miss_s / self.num_tasks_cache_miss
+        return (
+            self.task_scheduling_time_task_locality_miss_s
+            / self.num_tasks_task_locality_miss
+        )
 
     @metric_property(
         description="Average task's time spent in output back-pressure (in seconds).",
@@ -1097,13 +1103,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 and first_output_node_id != NODE_UNKNOWN
                 and first_output_node_id in task_info.input_node_ids
             )
-            task_info.is_cache_hit = is_hit
+            task_info.is_task_locality_hit = is_hit
             if is_hit:
-                self.num_tasks_cache_hit += 1
-                self.task_scheduling_time_cache_hit_s += scheduling_delta
+                self.num_tasks_task_locality_hit += 1
+                self.task_scheduling_time_task_locality_hit_s += scheduling_delta
             else:
-                self.num_tasks_cache_miss += 1
-                self.task_scheduling_time_cache_miss_s += scheduling_delta
+                self.num_tasks_task_locality_miss += 1
+                self.task_scheduling_time_task_locality_miss_s += scheduling_delta
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
@@ -1142,12 +1148,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.task_completion_time.observe(task_wall_time_s)
 
         # Accumulate throughput accumulators split by cache hit/miss
-        if task_info.is_cache_hit is True:
-            self.bytes_inputs_of_cache_hit_tasks += task_info.inputs.size_bytes()
-            self.task_completion_time_cache_hit_s += task_wall_time_s
-        elif task_info.is_cache_hit is False:
-            self.bytes_inputs_of_cache_miss_tasks += task_info.inputs.size_bytes()
-            self.task_completion_time_cache_miss_s += task_wall_time_s
+        if task_info.is_task_locality_hit is True:
+            self.bytes_inputs_of_task_locality_hit_tasks += (
+                task_info.inputs.size_bytes()
+            )
+            self.task_completion_time_task_locality_hit_s += task_wall_time_s
+        elif task_info.is_task_locality_hit is False:
+            self.bytes_inputs_of_task_locality_miss_tasks += (
+                task_info.inputs.size_bytes()
+            )
+            self.task_completion_time_task_locality_miss_s += task_wall_time_s
 
         # NOTE: This metric tracks task's wall-clock time as measured by
         #       the workers executing the task

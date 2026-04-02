@@ -202,14 +202,14 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
-            "'task_scheduling_time_cache_hit_s': N",
-            "'task_scheduling_time_cache_miss_s': Z",
-            "'bytes_inputs_of_cache_hit_tasks': N",
-            "'bytes_inputs_of_cache_miss_tasks': Z",
-            "'task_completion_time_cache_hit_s': N",
-            "'task_completion_time_cache_miss_s': Z",
-            "'num_tasks_cache_hit': N",
-            "'num_tasks_cache_miss': Z",
+            "'task_scheduling_time_task_locality_hit_s': N",
+            "'task_scheduling_time_task_locality_miss_s': Z",
+            "'bytes_inputs_of_task_locality_hit_tasks': N",
+            "'bytes_inputs_of_task_locality_miss_tasks': Z",
+            "'task_completion_time_task_locality_hit_s': N",
+            "'task_completion_time_task_locality_miss_s': Z",
+            "'num_tasks_task_locality_hit': N",
+            "'num_tasks_task_locality_miss': Z",
             "'block_generation_time': N",
             "'block_serialization_time_s': N",
             (
@@ -286,14 +286,14 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': Z",
             "'num_tasks_finished': Z",
             "'num_tasks_failed': Z",
-            "'task_scheduling_time_cache_hit_s': Z",
-            "'task_scheduling_time_cache_miss_s': Z",
-            "'bytes_inputs_of_cache_hit_tasks': Z",
-            "'bytes_inputs_of_cache_miss_tasks': Z",
-            "'task_completion_time_cache_hit_s': Z",
-            "'task_completion_time_cache_miss_s': Z",
-            "'num_tasks_cache_hit': Z",
-            "'num_tasks_cache_miss': Z",
+            "'task_scheduling_time_task_locality_hit_s': Z",
+            "'task_scheduling_time_task_locality_miss_s': Z",
+            "'bytes_inputs_of_task_locality_hit_tasks': Z",
+            "'bytes_inputs_of_task_locality_miss_tasks': Z",
+            "'task_completion_time_task_locality_hit_s': Z",
+            "'task_completion_time_task_locality_miss_s': Z",
+            "'num_tasks_task_locality_hit': Z",
+            "'num_tasks_task_locality_miss': Z",
             "'block_generation_time': Z",
             "'block_serialization_time_s': Z",
             (
@@ -770,14 +770,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      task_scheduling_time_cache_hit_s: Z,\n"
-        "      task_scheduling_time_cache_miss_s: N,\n"
-        "      bytes_inputs_of_cache_hit_tasks: Z,\n"
-        "      bytes_inputs_of_cache_miss_tasks: N,\n"
-        "      task_completion_time_cache_hit_s: Z,\n"
-        "      task_completion_time_cache_miss_s: N,\n"
-        "      num_tasks_cache_hit: Z,\n"
-        "      num_tasks_cache_miss: N,\n"
+        "      task_scheduling_time_task_locality_hit_s: Z,\n"
+        "      task_scheduling_time_task_locality_miss_s: N,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: Z,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: N,\n"
+        "      task_completion_time_task_locality_hit_s: Z,\n"
+        "      task_completion_time_task_locality_miss_s: N,\n"
+        "      num_tasks_task_locality_hit: Z,\n"
+        "      num_tasks_task_locality_miss: N,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
@@ -930,14 +930,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
-        "      task_scheduling_time_cache_hit_s: N,\n"
-        "      task_scheduling_time_cache_miss_s: Z,\n"
-        "      bytes_inputs_of_cache_hit_tasks: N,\n"
-        "      bytes_inputs_of_cache_miss_tasks: Z,\n"
-        "      task_completion_time_cache_hit_s: N,\n"
-        "      task_completion_time_cache_miss_s: Z,\n"
-        "      num_tasks_cache_hit: N,\n"
-        "      num_tasks_cache_miss: Z,\n"
+        "      task_scheduling_time_task_locality_hit_s: N,\n"
+        "      task_scheduling_time_task_locality_miss_s: Z,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "      task_completion_time_task_locality_hit_s: N,\n"
+        "      task_completion_time_task_locality_miss_s: Z,\n"
+        "      num_tasks_task_locality_hit: N,\n"
+        "      num_tasks_task_locality_miss: Z,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
@@ -1043,14 +1043,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_have_outputs: N,\n"
         "            num_tasks_finished: N,\n"
         "            num_tasks_failed: Z,\n"
-        "            task_scheduling_time_cache_hit_s: N,\n"
-        "            task_scheduling_time_cache_miss_s: Z,\n"
-        "            bytes_inputs_of_cache_hit_tasks: N,\n"
-        "            bytes_inputs_of_cache_miss_tasks: Z,\n"
-        "            task_completion_time_cache_hit_s: N,\n"
-        "            task_completion_time_cache_miss_s: Z,\n"
-        "            num_tasks_cache_hit: N,\n"
-        "            num_tasks_cache_miss: Z,\n"
+        "            task_scheduling_time_task_locality_hit_s: N,\n"
+        "            task_scheduling_time_task_locality_miss_s: Z,\n"
+        "            bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "            bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "            task_completion_time_task_locality_hit_s: N,\n"
+        "            task_completion_time_task_locality_miss_s: Z,\n"
+        "            num_tasks_task_locality_hit: N,\n"
+        "            num_tasks_task_locality_miss: Z,\n"
         "            block_generation_time: N,\n"
         "            block_serialization_time_s: N,\n"
         "            task_submission_backpressure_time: N,\n"
