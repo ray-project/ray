@@ -155,6 +155,7 @@ def gen_expected_metrics(
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
+    task_locality_hit: bool = False,
 ):
     if is_map:
         metrics = [
@@ -202,14 +203,14 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
-            "'task_scheduling_time_task_locality_hit_s': Z",
-            "'task_scheduling_time_task_locality_miss_s': N",
-            "'bytes_inputs_of_task_locality_hit_tasks': Z",
-            "'bytes_inputs_of_task_locality_miss_tasks': N",
-            "'task_completion_time_task_locality_hit_s': Z",
-            "'task_completion_time_task_locality_miss_s': N",
-            "'num_tasks_task_locality_hit': Z",
-            "'num_tasks_task_locality_miss': N",
+            f"'task_scheduling_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_scheduling_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'bytes_inputs_of_task_locality_hit_tasks': {'N' if task_locality_hit else 'Z'}",
+            f"'bytes_inputs_of_task_locality_miss_tasks': {'Z' if task_locality_hit else 'N'}",
+            f"'task_completion_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_completion_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'num_tasks_task_locality_hit': {'N' if task_locality_hit else 'Z'}",
+            f"'num_tasks_task_locality_miss': {'Z' if task_locality_hit else 'N'}",
             "'block_generation_time': N",
             "'block_serialization_time_s': N",
             (
@@ -357,6 +358,16 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+    task_locality_hit=True,
 )
 
 MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
@@ -600,7 +611,7 @@ def test_dataset_stats_basic(
                 f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single task throughput: N rows/s\n"
-                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
@@ -611,8 +622,12 @@ def test_dataset_stats_basic(
         pass
     stats = canonicalize(ds.materialize().stats())
 
-    extra_metrics = gen_extra_metrics_str(
+    extra_metrics_source = gen_extra_metrics_str(
         STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
+        verbose_stats_logs,
+    )
+    extra_metrics_nonsource = gen_extra_metrics_str(
+        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT,
         verbose_stats_logs,
     )
 
@@ -631,7 +646,7 @@ def test_dataset_stats_basic(
         f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single task throughput: N rows/s\n"
-        f"{extra_metrics}\n"
+        f"{extra_metrics_source}\n"
         f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
@@ -646,7 +661,7 @@ def test_dataset_stats_basic(
         f"    * Total output num rows: N rows\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single task throughput: N rows/s\n"
-        f"{extra_metrics}\n"
+        f"{extra_metrics_nonsource}\n"
         f"Dataset iterator time breakdown:\n"
         f"* Total time overall: T\n"
         f"    * Total time in Ray Data iterator initialization code: T\n"
