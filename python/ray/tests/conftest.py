@@ -1151,7 +1151,9 @@ def _ray_start_chaos_cluster(request):
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed.remote())
+        killed = {
+            node_id for node_id, _, _ in ray.get(node_killer.get_killed_nodes.remote())
+        }
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
@@ -1552,6 +1554,27 @@ def cleanup_auth_token_env():
         reset_auth_token_state()
         yield
         reset_auth_token_state()
+
+
+@pytest.fixture(autouse=False)
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    yield
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
 
 
 @pytest.fixture
