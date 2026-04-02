@@ -3,6 +3,7 @@ comet-ml==3.44.1
 mlflow>=2.22.0
 wandb>=0.23.1
 trackio<1.0
+gradio>=6.8.0,<7.0.0 #gradio dep bump for trackio
 
 # ML training frameworks
 xgboost==2.1.0
