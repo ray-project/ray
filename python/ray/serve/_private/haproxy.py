@@ -248,6 +248,9 @@ class BackendConfig:
     # Endpoint path that the health check mechanism will send a request to. It's typically an HTTP path.
     health_check_path: Optional[str] = "/-/healthz"
 
+    # Whether HAProxy should actively health-check servers in this backend.
+    enable_health_checks: bool = True
+
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
@@ -268,6 +271,13 @@ class BackendConfig:
         - health_path: path for HTTP health checks (or None)
         - default_server_directive: complete "default-server" line with all params
         """
+        if not self.enable_health_checks:
+            return {
+                "enable_health_checks": False,
+                "health_path": None,
+                "default_server_directive": "",
+            }
+
         # Resolve values: backend-specific overrides global defaults
         fall = (
             self.health_check_fall
@@ -323,6 +333,7 @@ class BackendConfig:
         default_server_directive = "default-server " + " ".join(parts)
 
         return {
+            "enable_health_checks": True,
             "health_path": health_path,
             "default_server_directive": default_server_directive,
         }
@@ -1377,6 +1388,7 @@ class HAProxyManager(ProxyActorInterface):
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,
+            enable_health_checks=not target_group.router_targets,
         )
 
     async def _reload_haproxy(self) -> None:

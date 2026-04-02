@@ -125,7 +125,9 @@ backend {{ backend.name or 'unknown' }}
     option httpchk GET {{ hc.health_path }}
     http-check expect status 200
     {%- endif %}
+    {%- if hc.enable_health_checks %}
     {{ hc.default_server_directive }}
+    {%- endif %}
     {%- if backend.router_servers %}
     # Ingress bypass: use-server rules to route Lua-selected target
     {%- for server in backend.servers %}
@@ -134,11 +136,19 @@ backend {{ backend.name or 'unknown' }}
     {%- endif %}
     # Servers in this backend
     {%- for server in backend.servers %}
+    {%- if hc.enable_health_checks %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
+    {%- else %}
+    server {{ server.name }} {{ server.host }}:{{ server.port }}
+    {%- endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
+    {%- if hc.enable_health_checks %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    {%- else %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} backup
+    {%- endif %}
     {%- endif %}
 {%- endfor %}
 listen stats
