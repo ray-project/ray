@@ -51,6 +51,7 @@ apt-get upgrade -y
 APT_PKGS=(
     sudo
     tzdata
+    ca-certificates
     git
     libjemalloc-dev
     wget
