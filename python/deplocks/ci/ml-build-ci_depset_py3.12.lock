@@ -1068,6 +1068,12 @@ fqdn==1.5.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jsonschema
+freezegun==1.1.0 \
+    --hash=sha256:177f9dd59861d871e27a484c3332f35a6e3f5d14626f2bf91be37891f18927f3 \
+    --hash=sha256:2ae695f7eb96c62529f03a038461afe3c692db3465e215355e1bb4b0ab408712
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/train-test-requirements.txt
 frozenlist==1.4.1 \
     --hash=sha256:04ced3e6a46b4cfffe20f9ae482818e34eba9b5fb0ce4056e4cc9b6e212d09b7 \
     --hash=sha256:0633c8d5337cb5c77acbccc6357ac49a1770b8c487e5b3505c57b949b4b82e98 \
@@ -4129,6 +4135,7 @@ python-dateutil==2.8.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   arrow
     #   celery
+    #   freezegun
     #   holidays
     #   jupyter-client
     #   matplotlib

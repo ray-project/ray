@@ -97,12 +97,12 @@ class TensorflowTrainer(DataParallelTrainer):
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             for epoch in range(config["num_epochs"]):
-                for batch in dataset_shard.iter_batches(batch_format="pandas"):
-                    x = batch["x"].values.astype("float32").reshape(-1, 1)
-                    y = batch["y"].values.astype("float32").reshape(-1, 1)
-                    tf_dataset = tf.data.Dataset.from_tensor_slices(
-                        (x, y)).batch(1)
-                    model.fit(tf_dataset)
+                tf_dataset = dataset_shard.to_tf(
+                    feature_columns="x",
+                    label_columns="y",
+                    batch_size=1,
+                )
+                model.fit(tf_dataset)
 
                 # Create checkpoint.
                 checkpoint_dir = tempfile.mkdtemp()
