@@ -1,5 +1,6 @@
 import collections
 import logging
+import sys
 import time
 from dataclasses import dataclass, field, fields
 from enum import Enum
@@ -131,10 +132,11 @@ DEFAULT_BATCH_FORMAT = "numpy"
 def _is_cudf_dataframe(obj: Any) -> bool:
     """Check if the object is a cudf.DataFrame (lazy import).
 
-    Checks the object's module name first to avoid importing cudf (which
-    loads CUDA and ~1.5 GiB of RSS) when the object clearly isn't from cudf.
+    Checks ``sys.modules`` first to avoid importing cudf (which loads CUDA
+    and ~1.5 GiB of RSS) when it hasn't been imported yet.  If cudf is not
+    in ``sys.modules``, no object in the process can be a cudf DataFrame.
     """
-    if not getattr(type(obj), "__module__", "").startswith("cudf"):
+    if "cudf" not in sys.modules:
         return False
     try:
         import cudf
