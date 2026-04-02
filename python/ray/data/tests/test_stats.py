@@ -37,6 +37,7 @@ from ray.data._internal.stats import (
     DatasetStatsSummary,
     NodeMetrics,
     OperatorStatsSummary,
+    StatsSummary,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -79,7 +80,7 @@ def get_operator(
             available = len(stats_summary.operators_stats)
             raise AssertionError(
                 f"Operator index {index} out of range. "
-                f"Found {available} operators (indices 0-{available-1})."
+                f"Found {available} operators (indices 0-{available - 1})."
             )
         return stats_summary.operators_stats[index]
 
@@ -588,7 +589,7 @@ def test_dataset_stats_basic(
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
-                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
             )
 
     for batch in ds.iter_batches():
@@ -645,7 +646,7 @@ def test_dataset_stats_basic(
         f"\n"
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
 
 
@@ -1244,9 +1245,9 @@ def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
     op = get_operator(stats_summary, name_pattern="ReadRange->Map")
 
     # Check key metrics explicitly - tests are now clear about what they verify
-    assert op.output_num_rows["sum"] == 1000
-    assert op.wall_time["max"] > 0
-    assert op.wall_time["sum"] > 0
+    assert op.output_num_rows.sum == 1000
+    assert op.wall_time.max > 0
+    assert op.wall_time.sum > 0
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_context):
@@ -1261,8 +1262,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_co
     op = get_operator(stats_summary, name_pattern="ReadRange.*Map")
     assert "ReadRange" in op.operator_name
     assert "Map" in op.operator_name
-    assert op.wall_time["sum"] > 0
-    assert op.output_num_rows["sum"] == 100
+    assert op.wall_time.sum > 0
+    assert op.output_num_rows.sum == 100
 
     # Check split was executed
     dses = ds.split_at_indices([49])
@@ -1277,8 +1278,8 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path, restore_data_co
         stats_summary = mds.get_stats_summary()
         map_op = get_operator(stats_summary, name_pattern=r"Map\(")
         assert "Map" in map_op.operator_name
-        assert map_op.wall_time["sum"] > 0
-        assert map_op.output_num_rows["sum"] > 0
+        assert map_op.wall_time.sum > 0
+        assert map_op.output_num_rows.sum > 0
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, op_two_block):
@@ -1289,38 +1290,43 @@ def test_calculate_blocks_stats(ray_start_regular_shared, op_two_block):
     )
     calculated_stats = stats.to_summary().operators_stats[0]
 
-    assert calculated_stats.output_num_rows == {
-        "min": min(block_params["num_rows"]),
-        "max": max(block_params["num_rows"]),
-        "mean": np.mean(block_params["num_rows"]),
-        "sum": sum(block_params["num_rows"]),
-    }
-    assert calculated_stats.output_size_bytes == {
-        "min": min(block_params["size_bytes"]),
-        "max": max(block_params["size_bytes"]),
-        "mean": np.mean(block_params["size_bytes"]),
-        "sum": sum(block_params["size_bytes"]),
-    }
-    assert calculated_stats.wall_time == {
-        "min": min(block_params["wall_time"]),
-        "max": max(block_params["wall_time"]),
-        "mean": np.mean(block_params["wall_time"]),
-        "sum": sum(block_params["wall_time"]),
-    }
-    assert calculated_stats.cpu_time == {
-        "min": min(block_params["cpu_time"]),
-        "max": max(block_params["cpu_time"]),
-        "mean": np.mean(block_params["cpu_time"]),
-        "sum": sum(block_params["cpu_time"]),
-    }
+    assert calculated_stats.output_num_rows == StatsSummary(
+        min=min(block_params["num_rows"]),
+        max=max(block_params["num_rows"]),
+        mean=np.mean(block_params["num_rows"]),
+        sum=sum(block_params["num_rows"]),
+        count=len(block_params["num_rows"]),
+    )
+    assert calculated_stats.output_size_bytes == StatsSummary(
+        min=min(block_params["size_bytes"]),
+        max=max(block_params["size_bytes"]),
+        mean=np.mean(block_params["size_bytes"]),
+        sum=sum(block_params["size_bytes"]),
+        count=len(block_params["size_bytes"]),
+    )
+    assert calculated_stats.wall_time == StatsSummary(
+        min=min(block_params["wall_time"]),
+        max=max(block_params["wall_time"]),
+        mean=np.mean(block_params["wall_time"]),
+        sum=sum(block_params["wall_time"]),
+        count=len(block_params["wall_time"]),
+    )
+    assert calculated_stats.cpu_time == StatsSummary(
+        min=min(block_params["cpu_time"]),
+        max=max(block_params["cpu_time"]),
+        mean=np.mean(block_params["cpu_time"]),
+        sum=sum(block_params["cpu_time"]),
+        count=len(block_params["cpu_time"]),
+    )
 
     node_counts = Counter(block_params["node_id"])
-    assert calculated_stats.node_count == {
-        "min": min(node_counts.values()),
-        "max": max(node_counts.values()),
-        "mean": np.mean(list(node_counts.values())),
-        "count": len(node_counts),
-    }
+    assert calculated_stats.node_count == StatsSummary(
+        min=min(node_counts.values()),
+        max=max(node_counts.values()),
+        mean=np.mean(list(node_counts.values())),
+        sum=sum(node_counts.values()),
+        count=len(node_counts),
+    )
 
 
 def test_summarize_blocks(ray_start_regular_shared, op_two_block):
@@ -1338,38 +1344,43 @@ def test_summarize_blocks(ray_start_regular_shared, op_two_block):
     assert "Read" in op.operator_name
 
     # Verify all metrics are present and match expected values
-    assert op.output_num_rows == {
-        "min": min(block_params["num_rows"]),
-        "max": max(block_params["num_rows"]),
-        "mean": int(np.mean(block_params["num_rows"])),
-        "sum": sum(block_params["num_rows"]),
-    }
-    assert op.output_size_bytes == {
-        "min": min(block_params["size_bytes"]),
-        "max": max(block_params["size_bytes"]),
-        "mean": int(np.mean(block_params["size_bytes"])),
-        "sum": sum(block_params["size_bytes"]),
-    }
-    assert op.wall_time == {
-        "min": min(block_params["wall_time"]),
-        "max": max(block_params["wall_time"]),
-        "mean": np.mean(block_params["wall_time"]),
-        "sum": sum(block_params["wall_time"]),
-    }
-    assert op.cpu_time == {
-        "min": min(block_params["cpu_time"]),
-        "max": max(block_params["cpu_time"]),
-        "mean": np.mean(block_params["cpu_time"]),
-        "sum": sum(block_params["cpu_time"]),
-    }
+    assert op.output_num_rows == StatsSummary(
+        min=min(block_params["num_rows"]),
+        max=max(block_params["num_rows"]),
+        mean=np.mean(block_params["num_rows"]),
+        sum=sum(block_params["num_rows"]),
+        count=len(block_params["num_rows"]),
+    )
+    assert op.output_size_bytes == StatsSummary(
+        min=min(block_params["size_bytes"]),
+        max=max(block_params["size_bytes"]),
+        mean=np.mean(block_params["size_bytes"]),
+        sum=sum(block_params["size_bytes"]),
+        count=len(block_params["size_bytes"]),
+    )
+    assert op.wall_time == StatsSummary(
+        min=min(block_params["wall_time"]),
+        max=max(block_params["wall_time"]),
+        mean=np.mean(block_params["wall_time"]),
+        sum=sum(block_params["wall_time"]),
+        count=len(block_params["wall_time"]),
+    )
+    assert op.cpu_time == StatsSummary(
+        min=min(block_params["cpu_time"]),
+        max=max(block_params["cpu_time"]),
+        mean=np.mean(block_params["cpu_time"]),
+        sum=sum(block_params["cpu_time"]),
+        count=len(block_params["cpu_time"]),
+    )
 
     node_counts = Counter(block_params["node_id"])
-    assert op.node_count == {
-        "min": min(node_counts.values()),
-        "max": max(node_counts.values()),
-        "mean": int(np.mean(list(node_counts.values()))),
-        "count": len(node_counts),
-    }
+    assert op.node_count == StatsSummary(
+        min=min(node_counts.values()),
+        max=max(node_counts.values()),
+        mean=np.mean(list(node_counts.values())),
+        sum=sum(node_counts.values()),
+        count=len(node_counts),
+    )
 
     # Verify to_string() produces output containing operator name
     stats_str = calculated_stats.to_string()
@@ -1405,10 +1416,10 @@ def test_get_total_stats(ray_start_regular_shared, op_two_block):
     )
 
     cpu_time_stats = op_stats.cpu_time
-    assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.get("sum")
+    assert dataset_stats_summary.get_total_cpu_time() == cpu_time_stats.sum
 
     peak_memory_stats = op_stats.memory
-    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
+    assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.max
 
 
 def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
@@ -1444,8 +1455,8 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     op = get_operator(write_stats, name_pattern="ReadRange->Write")
     assert "ReadRange" in op.operator_name
     assert "Write" in op.operator_name
-    assert op.wall_time["sum"] > 0
-    assert op.output_num_rows["sum"] > 0
+    assert op.wall_time.sum > 0
+    assert op.output_num_rows.sum > 0
     assert write_stats.num_rows_per_s > 0
 
     # Test 2: Materialize then write_parquet
@@ -1458,14 +1469,14 @@ def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Capture stats before write_parquet
     materialized_stats = ds2.get_stats_summary()
     map_op = get_operator(materialized_stats, name_pattern="Map")
-    assert map_op.wall_time["sum"] > 0
+    assert map_op.wall_time.sum > 0
 
     # After write_parquet, ds.get_stats_summary() returns _write_ds stats
     # This tests the _write_ds delegation branch
     ds2.write_parquet(str(tmp_path))
     combined_stats = ds2.get_stats_summary()
     write_op = get_operator(combined_stats, name_pattern="Write")
-    assert write_op.wall_time["sum"] > 0
+    assert write_op.wall_time.sum > 0
 
 
 def test_time_backpressure(ray_start_regular_shared, restore_data_context):
