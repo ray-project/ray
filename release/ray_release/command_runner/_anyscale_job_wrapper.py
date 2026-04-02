@@ -248,11 +248,11 @@ def run_oom_check():
                 return_code = 1
         else:
             logger.error(
-                "RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
+                f"RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
             )
             return_code = 1
-    except Exception as e:
-        logger.error(f"Error during OOM check: {e}")
+    except (OSError, json.JSONDecodeError, AttributeError) as e:
+        logger.exception(f"Error during OOM check: {e}")
         return_code = 1
     return return_code
 
