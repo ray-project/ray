@@ -118,9 +118,9 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
         id=65,
         title="Unexpected Worker Failures",
-        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly."
+        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly. "
         "This typically indicates the worker process unexpectedly failed due to "
-        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code)."
+        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code). "
         "If errors of this type is encountered when the node is under memory pressure, "
         "The failures are likely OOM kills.",
         unit="failures",
