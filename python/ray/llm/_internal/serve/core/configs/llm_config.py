@@ -222,15 +222,6 @@ class LLMConfig(BaseModelExtended):
             return load_class(value)
         return value
 
-    ingress_bypass: bool = Field(
-        default=False,
-        description=(
-            "Enable direct-ingress serving for LLM replicas. When True, "
-            "LLMServer registers vLLM's FastAPI app with Ray Serve's per-replica "
-            "direct-ingress HTTP server."
-        ),
-    )
-
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "

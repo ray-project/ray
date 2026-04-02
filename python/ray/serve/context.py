@@ -32,7 +32,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
-_SET_ASGI_APP_CALLBACK = None
 
 
 @DeveloperAPI
@@ -114,22 +113,6 @@ def _set_global_client(client):
 
 def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
-
-
-def _set_asgi_app_callback(callback):
-    """Set by Replica to allow user callables to register a custom ASGI app."""
-    global _SET_ASGI_APP_CALLBACK
-    _SET_ASGI_APP_CALLBACK = callback
-
-
-async def set_asgi_app(app):
-    """Register a custom ASGI app for replica direct-ingress serving."""
-    if _SET_ASGI_APP_CALLBACK is None:
-        raise RuntimeError(
-            "set_asgi_app can only be called from within a running Serve replica"
-        )
-
-    await _SET_ASGI_APP_CALLBACK(app)
 
 
 def _get_deployment_actor(actor_name: str):

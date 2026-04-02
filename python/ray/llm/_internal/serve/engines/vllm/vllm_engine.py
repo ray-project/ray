@@ -310,7 +310,6 @@ class VLLMEngine(LLMEngine):
         merged = _convert_config_dicts(merged)
 
         args = _dict_to_namespace(merged)
-        self._vllm_args = args
 
         # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
         # Without this, vLLM falls back to 'generate' only.

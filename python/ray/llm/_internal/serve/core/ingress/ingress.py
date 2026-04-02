@@ -725,7 +725,7 @@ class OpenAiIngress(DeploymentProtocol):
         return model
 
     async def _pick_routed_sidecar_endpoint(self, model_id: str) -> Tuple[str, int]:
-        """Pick a replica via the request router and return its stream endpoint."""
+        """Pick a replica via the request router and return its sidecar endpoint."""
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -735,17 +735,10 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        use_direct_ingress = os.environ.get("RAYLLM_USE_DIRECT_INGRESS", "0") == "1"
-        endpoint_attr = (
-            "direct_ingress_endpoint" if use_direct_ingress else "sidecar_endpoint"
-        )
         replicas = list(request_router.curr_replicas.values())
-        sidecar_replicas = [
-            r for r in replicas if getattr(r, endpoint_attr) is not None
-        ]
+        sidecar_replicas = [r for r in replicas if r.sidecar_endpoint is not None]
         if not sidecar_replicas:
-            endpoint_name = "direct-ingress" if use_direct_ingress else "sidecar"
-            raise RuntimeError(f"No {endpoint_name}-enabled replicas for {model_id}")
+            raise RuntimeError(f"No sidecar-enabled replicas for {model_id}")
 
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=sidecar_replicas,
@@ -753,13 +746,13 @@ class OpenAiIngress(DeploymentProtocol):
         )
         for tier in replica_tiers:
             for replica in tier:
-                endpoint = getattr(replica, endpoint_attr)
+                endpoint = replica.sidecar_endpoint
                 if endpoint is not None:
                     return endpoint
 
         idx = self._sidecar_rr_counter % len(sidecar_replicas)
         self._sidecar_rr_counter += 1
-        return getattr(sidecar_replicas[idx], endpoint_attr)
+        return sidecar_replicas[idx].sidecar_endpoint
 
     async def _get_response(
         self,
