@@ -116,6 +116,22 @@ OVERVIEW_AND_HEALTH_PANELS = [
 
 RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
     Panel(
+        id=65,
+        title="Unexpected Worker Failures",
+        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly."
+        "This typically indicates the worker process unexpectedly failed due to "
+        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code)."
+        "If errors of this type is encountered when the node is under memory pressure, "
+        "The failures are likely OOM kills.",
+        unit="failures",
+        targets=[
+            Target(
+                expr='sum(ray_node_manager_unexpected_worker_failure_total{{instance=~"$Instance", {global_filters}}}) by (Type, Name, instance)',
+                legend="Unexpected worker failure: {{Name}}, {{Type}}, {{instance}}",
+            ),
+        ],
+    ),
+    Panel(
         id=26,
         title="All Tasks by State",
         description="Current count of tasks, grouped by scheduler state (e.g., pending, running, finished).\n\nState: the task state, as described by rpc::TaskStatus proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
