@@ -26,6 +26,9 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
+    {%- if has_ingress_bypass and lua_script_path %}
+    lua-load-per-thread {{ lua_script_path }}
+    {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
     server-state-file {{ config.server_state_file }}
@@ -77,10 +80,19 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
+    {%- if has_ingress_bypass %}
+    # Lua picks sidecar target for streaming endpoints
+    acl is_streaming_path path /v1/chat/completions /v1/completions
+    http-request lua.pick_sidecar if is_streaming_path METH_POST
+    {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
+    {%- if has_ingress_bypass and backend.router_servers %}
+    # Ingress bypass: if Lua set a target server, route to it
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.target_server) -m found }
+    {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
@@ -123,6 +135,12 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    {%- if backend.router_servers %}
+    # Ingress bypass: use-server rules to route Lua-selected target
+    {%- for server in backend.servers %}
+    use-server {{ server.name }} if { var(txn.target_server) -m str sc_{{ server.host | replace('.', '_') }}_{{ server.port }} }
+    {%- endfor %}
+    {%- endif %}
     # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
