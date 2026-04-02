@@ -358,5 +358,73 @@ def test_ray_init_with_runtime_env_as_object(
     assert "gcs://" in parsed_runtime_env["py_modules"][0]
 
 
+def test_no_raylet_head_node():
+    """Integration test: ray start --head --no-raylet starts GCS without raylet
+    and persists the temp_dir in the GCS KV store so that components like the
+    KubeRay autoscaler can discover the log directory."""
+    from ray._private.utils import read_ray_address
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "ray.scripts.scripts",
+        "start",
+        "--head",
+        "--no-raylet",
+        "--port",
+        "0",
+        "--min-worker-port=0",
+        "--max-worker-port=0",
+    ]
+    stop_cmd = [sys.executable, "-m", "ray.scripts.scripts", "stop", "--force"]
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode()
+    except subprocess.CalledProcessError as e:
+        print(f"ray start failed:\n{e.output.decode()}")
+        raise
+    assert "Ray runtime started." in out
+
+    try:
+        from ray._raylet import GcsClient
+        from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
+        address = read_ray_address()
+        gcs_client = GcsClient(address=address)
+
+        # 1. The GCS KV store must contain the head node's temp_dir.
+        raw_temp_dir = gcs_client.internal_kv_get(
+            b"head_node_temp_dir",
+            ray_constants.KV_NAMESPACE_SESSION,
+        )
+        assert raw_temp_dir is not None, "head_node_temp_dir not found in GCS KV store"
+        temp_dir = raw_temp_dir.decode()
+        assert os.path.isabs(temp_dir), f"Expected absolute path, got: {temp_dir}"
+        assert os.path.isdir(temp_dir), f"temp_dir does not exist: {temp_dir}"
+
+        # 2. No raylet should have registered as the head node.
+        head_selector = GetAllNodeInfoRequest.NodeSelector()
+        head_selector.is_head_node = True
+        head_node_infos = gcs_client.get_all_node_info(
+            node_selectors=[head_selector],
+        )
+        assert (
+            len(head_node_infos) == 0
+        ), f"Expected no head raylet registration, but found {len(head_node_infos)}"
+
+        # 3. _get_log_dir should succeed via the GCS KV fallback path.
+        from ray.autoscaler._private.kuberay.run_autoscaler import _get_log_dir
+
+        log_dir = _get_log_dir(gcs_client)
+        assert log_dir.endswith(
+            "logs"
+        ), f"Expected log_dir ending in 'logs', got: {log_dir}"
+        assert (
+            temp_dir in log_dir
+        ), f"log_dir should be under temp_dir. log_dir={log_dir}, temp_dir={temp_dir}"
+    finally:
+        ray.shutdown()
+        subprocess.check_call(stop_cmd)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

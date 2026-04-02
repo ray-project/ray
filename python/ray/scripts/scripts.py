@@ -686,6 +686,14 @@ Windows powershell users need additional escaping:
     "you can set this option to override the server url. "
     "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
+@click.option(
+    "--no-raylet",
+    is_flag=True,
+    default=False,
+    help="If set, the head node will not start a raylet process, running only "
+    "management components (GCS, Dashboard, Monitor). Drivers are scheduled "
+    "on worker nodes instead. Only valid with --head.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -735,8 +743,18 @@ def start(
     system_reserved_memory,
     cgroup_path,
     proxy_server_url,
+    no_raylet,
 ):
     """Start Ray processes manually on the local machine."""
+
+    if no_raylet and not head:
+        cli_logger.abort(
+            "The `{}` flag can only be used when starting a head node with `{}`.",
+            cf.bold("--no-raylet"),
+            cf.bold("--head"),
+        )
+    if no_raylet:
+        os.environ["RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"] = "1"
 
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
@@ -856,6 +874,7 @@ def start(
         resource_isolation_config=resource_isolation_config,
         proxy_server_url=proxy_server_url,
         env_vars=env_vars,
+        no_raylet=no_raylet,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:

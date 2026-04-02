@@ -188,6 +188,7 @@ class RayParams:
         node_id: Optional[str] = None,
         resource_isolation_config: Optional[ResourceIsolationConfig] = None,
         proxy_server_url: Optional[str] = None,
+        no_raylet: bool = False,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -248,6 +249,7 @@ class RayParams:
         self.cluster_id = cluster_id
         self.node_id = node_id
         self.proxy_server_url = proxy_server_url
+        self.no_raylet = no_raylet
 
         self.resource_isolation_config = resource_isolation_config
         if not self.resource_isolation_config:

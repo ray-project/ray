@@ -31,17 +31,36 @@ def _get_log_dir(gcs_client: GcsClient) -> str:
     head_node_selector.is_head_node = True
 
     # We need to wait until head node's raylet is registered in GCS.
-    node_infos = get_all_node_info_until_retrieved(
-        gcs_client,
-        node_selectors=[head_node_selector],
-    )
-
-    node_info = next(iter(node_infos))
-    temp_dir = getattr(node_info, "temp_dir", None)
-    if temp_dir is None:
-        raise Exception(
-            "Node temp_dir was not found in NodeInfo. did the head node's raylet start successfully?"
+    # In --no-raylet mode the head node never registers, so fall back
+    # to the temp_dir persisted in GCS KV store
+    try:
+        node_infos = get_all_node_info_until_retrieved(
+            gcs_client,
+            node_selectors=[head_node_selector],
         )
+
+        node_info = next(iter(node_infos))
+        temp_dir = getattr(node_info, "temp_dir", None)
+    except Exception:
+        temp_dir = None
+
+    if temp_dir is None:
+        raw = gcs_client.internal_kv_get(
+            b"head_node_temp_dir",
+            ray._private.ray_constants.KV_NAMESPACE_SESSION,
+        )
+        if raw is not None:
+            temp_dir = raw.decode()
+            logger.info(
+                "Head node raylet not found; retrieved temp_dir from GCS KV: %s",
+                temp_dir,
+            )
+        else:
+            raise Exception(
+                "Could not determine head node temp_dir. Neither the head node's raylet registered in GCS nor was temp_dir found in the GCS KV store. "
+                "Did the head node start successfully?"
+            )
+
     return os.path.join(temp_dir, ray._private.ray_constants.SESSION_LATEST, "logs")
 
 

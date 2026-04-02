@@ -404,27 +404,28 @@ class Node:
             # Wait for the node info to be available in the GCS so that
             # we know it's started up.
 
-            # Grace period to let the Raylet register with the GCS.
-            # We retry in a loop in case it takes longer than expected.
-            time.sleep(0.1)
-            start_time = time.monotonic()
-            raylet_start_wait_time_s = 30
-            while True:
-                try:
-                    # Will raise a RuntimeError if the node info is not available.
-                    node_info = ray._private.services.get_node(
-                        self.gcs_address,
-                        self._node_id,
-                    )
-                    break
-                except RuntimeError as e:
-                    logger.info(f"Failed to get node info {e}")
-                if time.monotonic() - start_time > raylet_start_wait_time_s:
-                    raise Exception(
-                        "The current node timed out during startup. This "
-                        "could happen because some of the raylet failed to "
-                        "startup or the GCS has become overloaded."
-                    )
+            if not (self._ray_params.no_raylet and self.head):
+                # Grace period to let the Raylet register with the GCS.
+                # We retry in a loop in case it takes longer than expected.
+                time.sleep(0.1)
+                start_time = time.monotonic()
+                raylet_start_wait_time_s = 30
+                while True:
+                    try:
+                        # Will raise a RuntimeError if the node info is not available.
+                        node_info = ray._private.services.get_node(
+                            self.gcs_address,
+                            self._node_id,
+                        )
+                        break
+                    except RuntimeError as e:
+                        logger.info(f"Failed to get node info {e}")
+                    if time.monotonic() - start_time > raylet_start_wait_time_s:
+                        raise Exception(
+                            "The current node timed out during startup. This "
+                            "could happen because some of the raylet failed to "
+                            "startup or the GCS has become overloaded."
+                        )
 
         if connect_only:
             # Fetch node info to get labels.
@@ -439,13 +440,16 @@ class Node:
         # 1. user is starting a new ray cluster and does not specify the port, components self-bind.
         # 2. user is connecting to an existing ray cluster, no port info is provided.
         # We always update port info from GCS to ensure consistency.
-        self._ray_params.node_manager_port = node_info["node_manager_port"]
-        self._ray_params.runtime_env_agent_port = node_info["runtime_env_agent_port"]
-        self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
-        self._ray_params.metrics_export_port = node_info["metrics_export_port"]
-        self._ray_params.dashboard_agent_listen_port = node_info[
-            "dashboard_agent_listen_port"
-        ]
+        if node_info is not None:
+            self._ray_params.node_manager_port = node_info["node_manager_port"]
+            self._ray_params.runtime_env_agent_port = node_info[
+                "runtime_env_agent_port"
+            ]
+            self._ray_params.metrics_agent_port = node_info["metrics_agent_port"]
+            self._ray_params.metrics_export_port = node_info["metrics_export_port"]
+            self._ray_params.dashboard_agent_listen_port = node_info[
+                "dashboard_agent_listen_port"
+            ]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -1453,7 +1457,16 @@ class Node:
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
-        self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
+        if self._ray_params.no_raylet and self.head:
+            # Persist the temp_dir to GCS so KubeRay autoscaler can discover it without raylet.
+            self.get_gcs_client().internal_kv_put(
+                b"head_node_temp_dir",
+                self.temp_dir.encode(),
+                True,
+                ray_constants.KV_NAMESPACE_SESSION,
+            )
+        else:
+            self.start_raylet(plasma_directory, fallback_directory, object_store_memory)
 
     def _get_system_processes_for_resource_isolation(self) -> str:
         """Returns a list of system processes that will be isolated by raylet.
