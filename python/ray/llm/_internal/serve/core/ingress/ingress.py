@@ -92,27 +92,6 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class _FallThrough(Exception):
-    """Signals that sidecar middleware should pass the request to FastAPI."""
-
-    def __init__(self, body_bytes: bytes = b""):
-        self.body_bytes = body_bytes
-
-
-def _make_receive(body_bytes: bytes):
-    """Create an ASGI receive callable that replays already-read body bytes."""
-    sent = False
-
-    async def receive():
-        nonlocal sent
-        if not sent:
-            sent = True
-            return {"type": "http.request", "body": body_bytes, "more_body": False}
-        return {"type": "http.disconnect"}
-
-    return receive
-
-
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
     "autoscaling_config": {
@@ -417,62 +396,181 @@ class OpenAiIngress(DeploymentProtocol):
             self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
         )
 
+        # HTTP sidecar proxy mode: routes streaming requests directly to
+        # replica HTTP sidecars, bypassing the DeploymentHandle transport.
+        # Sidecar endpoints are discovered from RunningReplica.sidecar_endpoint
+        # via the request router (propagated through RunningReplicaInfo long-poll).
         self._sidecar_enabled = os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1"
         self._sidecar_session = None
-        self._sidecar_rr_counter = 0
+        import random
+
+        self._sidecar_rr_counter = random.randint(0, 10000)
+
+        # Install raw ASGI middleware to intercept streaming requests before
+        # FastAPI routing (bypasses pydantic parsing + Starlette StreamingResponse).
+        # Also install in ingress bypass mode (route-only) so /internal/route works.
+        self._ingress_bypass_enabled = False
         if self._sidecar_enabled:
             get_or_create_event_loop().create_task(self._install_sidecar_middleware())
+        else:
+            # Check for ingress bypass after config maps are loaded
+            get_or_create_event_loop().create_task(
+                self._maybe_install_ingress_bypass_middleware()
+            )
+
+    async def _maybe_install_ingress_bypass_middleware(self):
+        """Check if any LLMConfig has ingress_bypass enabled and install middleware."""
+        await self._init_completed.wait()
+        if any(
+            getattr(cfg, "ingress_bypass", False) for cfg in self._llm_configs.values()
+        ):
+            self._ingress_bypass_enabled = True
+            self._sidecar_enabled = True  # Enable sidecar path for /internal/route
+            os.environ["RAYLLM_SIDECAR_ROUTE_ONLY"] = "1"
+            await self._install_sidecar_middleware()
 
     async def _install_sidecar_middleware(self):
-        import aiohttp
+        """Install ASGI middleware that serves the /internal/route endpoint.
 
+        HAProxy Lua calls this endpoint to get the sidecar address for a
+        request. The ingress is only in the routing path, not the streaming
+        path — tokens flow directly from the sidecar through HAProxy to the
+        client.
+        """
+        # _asgi_app is set by ASGIAppReplicaWrapper.__init__, which runs
+        # after OpenAiIngress.__init__ in the MRO. This task is created from
+        # __init__ and must wait for the MRO chain to complete.
         while not hasattr(self, "_asgi_app"):
             await asyncio.sleep(0.01)
 
-        self._sidecar_session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(
-                limit=0,
-                enable_cleanup_closed=True,
-                force_close=False,
-                keepalive_timeout=90,
-            )
-        )
-
         original_app = self._asgi_app
         ingress = self
-        route_only = os.environ.get("RAYLLM_SIDECAR_ROUTE_ONLY", "0") == "1"
-        sidecar_paths = {"/v1/chat/completions", "/v1/completions"}
 
         async def sidecar_asgi_wrapper(scope, receive, send):
-            if (
-                scope["type"] == "http"
-                and scope["method"] == "POST"
-                and scope["path"] == "/internal/route"
-            ):
-                await ingress._handle_route_endpoint(receive, send)
-                return
-
-            if (
-                scope["type"] == "http"
-                and scope["method"] == "POST"
-                and scope["path"] in sidecar_paths
-                and not route_only
-            ):
-                try:
-                    await ingress._handle_sidecar_asgi(scope, receive, send)
+            if scope["type"] == "http" and scope["path"] == "/internal/route":
+                if scope["method"] == "GET":
+                    await ingress._handle_route_get_endpoint(scope, receive, send)
                     return
-                except _FallThrough as ft:
-                    receive = _make_receive(ft.body_bytes)
-
+                if scope["method"] == "POST":
+                    await ingress._handle_route_endpoint(scope, receive, send)
+                    return
             await original_app(scope, receive, send)
 
         self._asgi_app = sidecar_asgi_wrapper
-        logger.info(
-            "Sidecar ASGI middleware installed (mode=%s).",
-            "route-only" if route_only else "proxy",
-        )
+        logger.info("Sidecar routing middleware installed.")
 
-    async def _handle_route_endpoint(self, receive, send):
+    # Timing stats for /internal/route (sampled logging)
+    _route_timing_count = 0
+    _route_timing_sum_receive = 0.0
+    _route_timing_sum_route = 0.0
+    _route_timing_sum_send = 0.0
+    _route_timing_log_interval = 500
+
+    async def _handle_route_get_endpoint(self, scope, receive, send):
+        """Lightweight GET handler for /internal/route?model=xxx."""
+        import time
+        from urllib.parse import parse_qs
+
+        import orjson
+
+        t0 = time.monotonic()
+
+        # Drain request body (ASGI requires it even for GET)
+        message = await receive()
+        while message.get("more_body", False):
+            message = await receive()
+
+        t1 = time.monotonic()
+
+        # Extract model from query string
+        query_string = scope.get("query_string", b"").decode("utf-8", errors="replace")
+        params = parse_qs(query_string)
+        model = params.get("model", [""])[0]
+
+        default_model_id = (
+            next(iter(self._llm_configs.keys())) if self._llm_configs else None
+        )
+        if not model:
+            model = default_model_id
+        if model and model not in self._llm_configs:
+            base = get_base_model_id(model)
+            if base not in self._llm_configs:
+                model = None
+        model_id = model or default_model_id
+
+        if model_id is None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
+            return
+
+        try:
+            host, port = await self._pick_routed_sidecar_endpoint(model_id)
+        except Exception as e:
+            logger.warning(f"Route GET endpoint: routing failed: {e}")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error":"no sidecar available"}',
+                }
+            )
+            return
+
+        t2 = time.monotonic()
+
+        resp = orjson.dumps({"host": host, "port": port})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length", str(len(resp)).encode()],
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": resp})
+
+        t3 = time.monotonic()
+
+        # Accumulate and log timing stats
+        cls = type(self)
+        cls._route_timing_count += 1
+        cls._route_timing_sum_receive += t1 - t0
+        cls._route_timing_sum_route += t2 - t1
+        cls._route_timing_sum_send += t3 - t2
+        if cls._route_timing_count % cls._route_timing_log_interval == 0:
+            n = cls._route_timing_count
+            logger.info(
+                f"[route-timing] n={n} "
+                f"avg_receive={cls._route_timing_sum_receive/n*1000:.2f}ms "
+                f"avg_route={cls._route_timing_sum_route/n*1000:.2f}ms "
+                f"avg_send={cls._route_timing_sum_send/n*1000:.2f}ms "
+                f"avg_total={(cls._route_timing_sum_receive+cls._route_timing_sum_route+cls._route_timing_sum_send)/n*1000:.2f}ms"
+            )
+            cls._route_timing_count = 0
+            cls._route_timing_sum_receive = 0.0
+            cls._route_timing_sum_route = 0.0
+            cls._route_timing_sum_send = 0.0
+
+    async def _handle_route_endpoint(self, scope, receive, send):
+        """Return sidecar endpoint for a request (called by HAProxy Lua).
+
+        Reads the request body, extracts model, picks a sidecar endpoint via
+        the request router, and returns {"host": ..., "port": ...} as JSON.
+        """
         import orjson
 
         message = await receive()
@@ -488,7 +586,7 @@ class OpenAiIngress(DeploymentProtocol):
 
         try:
             parsed = orjson.loads(body_bytes)
-        except Exception:
+        except (orjson.JSONDecodeError, ValueError):
             await send(
                 {
                     "type": "http.response.start",
@@ -525,6 +623,7 @@ class OpenAiIngress(DeploymentProtocol):
         try:
             host, port = await self._pick_routed_sidecar_endpoint(model_id)
         except Exception as e:
+            logger.warning(f"Route endpoint: sidecar routing failed: {e}")
             await send(
                 {
                     "type": "http.response.start",
@@ -533,7 +632,10 @@ class OpenAiIngress(DeploymentProtocol):
                 }
             )
             await send(
-                {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error":"no sidecar available"}',
+                }
             )
             return
 
@@ -546,95 +648,6 @@ class OpenAiIngress(DeploymentProtocol):
             }
         )
         await send({"type": "http.response.body", "body": resp})
-
-    async def _handle_sidecar_asgi(self, scope, receive, send):
-        import orjson
-
-        message = await receive()
-        body_bytes = message.get("body", b"")
-        if message.get("more_body", False):
-            parts = [body_bytes]
-            while True:
-                message = await receive()
-                parts.append(message.get("body", b""))
-                if not message.get("more_body", False):
-                    break
-            body_bytes = b"".join(parts)
-
-        try:
-            parsed = orjson.loads(body_bytes)
-        except Exception:
-            raise _FallThrough(body_bytes)
-
-        if not parsed.get("stream", False):
-            raise _FallThrough(body_bytes)
-
-        default_model_id = (
-            next(iter(self._llm_configs.keys())) if self._llm_configs else None
-        )
-        model = parsed.get("model", default_model_id)
-        if model and model not in self._llm_configs:
-            base = get_base_model_id(model)
-            if base not in self._llm_configs:
-                raise _FallThrough(body_bytes)
-
-        model_id = model or default_model_id
-        if model_id is None:
-            raise _FallThrough(body_bytes)
-
-        try:
-            host, port = await self._pick_routed_sidecar_endpoint(model_id)
-        except Exception as e:
-            logger.warning("Sidecar routing failed, falling through: %s", e)
-            raise _FallThrough(body_bytes)
-
-        url = f"http://{host}:{port}{scope['path']}"
-
-        started = False
-        try:
-            async with self._sidecar_session.post(
-                url,
-                data=body_bytes,
-                headers={"Content-Type": "application/json"},
-            ) as resp:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": resp.status,
-                        "headers": [
-                            [b"content-type", b"text/event-stream"],
-                            [b"cache-control", b"no-cache"],
-                        ],
-                    }
-                )
-                started = True
-                async for chunk in resp.content.iter_any():
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": chunk,
-                            "more_body": True,
-                        }
-                    )
-                await send(
-                    {"type": "http.response.body", "body": b"", "more_body": False}
-                )
-        except Exception as e:
-            logger.error("Sidecar proxy error: %s", e)
-            error_body = (
-                f'data: {{"error": {{"message": "{e}"}}}}\n\n' "data: [DONE]\n\n"
-            ).encode()
-            if not started:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 502,
-                        "headers": [[b"content-type", b"text/event-stream"]],
-                    }
-                )
-            await send(
-                {"type": "http.response.body", "body": error_body, "more_body": False}
-            )
 
     async def _default_get_lora_model_metadata_func(
         self, model_id: str, llm_config: LLMConfig
@@ -724,8 +737,12 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
+    def _get_replica_endpoint(self, replica) -> Optional[Tuple[str, int]]:
+        """Get the direct ingress HTTP endpoint for a replica."""
+        return getattr(replica, "direct_ingress_endpoint", None)
+
     async def _pick_routed_sidecar_endpoint(self, model_id: str) -> Tuple[str, int]:
-        """Pick a replica via the request router and return its stream endpoint."""
+        """Pick a replica via the request router and return its (host, port)."""
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -735,31 +752,17 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        use_direct_ingress = os.environ.get("RAYLLM_USE_DIRECT_INGRESS", "0") == "1"
-        endpoint_attr = (
-            "direct_ingress_endpoint" if use_direct_ingress else "sidecar_endpoint"
-        )
         replicas = list(request_router.curr_replicas.values())
-        sidecar_replicas = [
-            r for r in replicas if getattr(r, endpoint_attr) is not None
+        eligible_replicas = [
+            r for r in replicas if self._get_replica_endpoint(r) is not None
         ]
-        if not sidecar_replicas:
-            endpoint_name = "direct-ingress" if use_direct_ingress else "sidecar"
-            raise RuntimeError(f"No {endpoint_name}-enabled replicas for {model_id}")
+        if not eligible_replicas:
+            raise RuntimeError(f"No endpoint-enabled replicas for {model_id}")
 
-        replica_tiers = await request_router.choose_replicas(
-            candidate_replicas=sidecar_replicas,
-            pending_request=None,
-        )
-        for tier in replica_tiers:
-            for replica in tier:
-                endpoint = getattr(replica, endpoint_attr)
-                if endpoint is not None:
-                    return endpoint
-
-        idx = self._sidecar_rr_counter % len(sidecar_replicas)
+        # Direct round-robin (stub: bypasses choose_replicas to test distribution)
+        idx = self._sidecar_rr_counter % len(eligible_replicas)
         self._sidecar_rr_counter += 1
-        return getattr(sidecar_replicas[idx], endpoint_attr)
+        return self._get_replica_endpoint(eligible_replicas[idx])
 
     async def _get_response(
         self,
