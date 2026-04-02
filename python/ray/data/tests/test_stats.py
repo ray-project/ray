@@ -144,38 +144,54 @@ def assert_basic_operator_metrics(
     """
     # Check wall time
     assert op.wall_time is not None, "wall_time should not be None"
-    assert "min" in op.wall_time, "wall_time should have 'min'"
-    assert "max" in op.wall_time, "wall_time should have 'max'"
-    assert "mean" in op.wall_time, "wall_time should have 'mean'"
-    assert "sum" in op.wall_time, "wall_time should have 'sum'"
-    assert op.wall_time["sum"] > 0, "wall_time sum should be positive"
+    assert hasattr(op.wall_time, "min"), "wall_time should have 'min' attribute"
+    assert hasattr(op.wall_time, "max"), "wall_time should have 'max' attribute"
+    assert hasattr(op.wall_time, "mean"), "wall_time should have 'mean' attribute"
+    assert hasattr(op.wall_time, "sum"), "wall_time should have 'sum' attribute"
+    assert op.wall_time.sum > 0, "wall_time sum should be positive"
 
     # Check cpu time (may be None on some platforms)
     if op.cpu_time is not None:
-        assert "min" in op.cpu_time, "cpu_time should have 'min'"
-        assert "max" in op.cpu_time, "cpu_time should have 'max'"
-        assert "mean" in op.cpu_time, "cpu_time should have 'mean'"
-        assert "sum" in op.cpu_time, "cpu_time should have 'sum'"
+        assert hasattr(op.cpu_time, "min"), "cpu_time should have 'min' attribute"
+        assert hasattr(op.cpu_time, "max"), "cpu_time should have 'max' attribute"
+        assert hasattr(op.cpu_time, "mean"), "cpu_time should have 'mean' attribute"
+        assert hasattr(op.cpu_time, "sum"), "cpu_time should have 'sum' attribute"
 
     # Check memory stats
     assert op.memory is not None, "memory should not be None"
-    assert "min" in op.memory, "memory should have 'min'"
-    assert "max" in op.memory, "memory should have 'max'"
-    assert "mean" in op.memory, "memory should have 'mean'"
+    assert hasattr(op.memory, "min"), "memory should have 'min' attribute"
+    assert hasattr(op.memory, "max"), "memory should have 'max' attribute"
+    assert hasattr(op.memory, "mean"), "memory should have 'mean' attribute"
 
     # Check output rows
     assert op.output_num_rows is not None, "output_num_rows should not be None"
-    assert "min" in op.output_num_rows, "output_num_rows should have 'min'"
-    assert "max" in op.output_num_rows, "output_num_rows should have 'max'"
-    assert "mean" in op.output_num_rows, "output_num_rows should have 'mean'"
-    assert "sum" in op.output_num_rows, "output_num_rows should have 'sum'"
+    assert hasattr(
+        op.output_num_rows, "min"
+    ), "output_num_rows should have 'min' attribute"
+    assert hasattr(
+        op.output_num_rows, "max"
+    ), "output_num_rows should have 'max' attribute"
+    assert hasattr(
+        op.output_num_rows, "mean"
+    ), "output_num_rows should have 'mean' attribute"
+    assert hasattr(
+        op.output_num_rows, "sum"
+    ), "output_num_rows should have 'sum' attribute"
 
     # Check output size
     assert op.output_size_bytes is not None, "output_size_bytes should not be None"
-    assert "min" in op.output_size_bytes, "output_size_bytes should have 'min'"
-    assert "max" in op.output_size_bytes, "output_size_bytes should have 'max'"
-    assert "mean" in op.output_size_bytes, "output_size_bytes should have 'mean'"
-    assert "sum" in op.output_size_bytes, "output_size_bytes should have 'sum'"
+    assert hasattr(
+        op.output_size_bytes, "min"
+    ), "output_size_bytes should have 'min' attribute"
+    assert hasattr(
+        op.output_size_bytes, "max"
+    ), "output_size_bytes should have 'max' attribute"
+    assert hasattr(
+        op.output_size_bytes, "mean"
+    ), "output_size_bytes should have 'mean' attribute"
+    assert hasattr(
+        op.output_size_bytes, "sum"
+    ), "output_size_bytes should have 'sum' attribute"
 
     # Check block execution summary
     assert op.block_execution_summary_str is not None
@@ -203,7 +219,7 @@ def assert_output_row_count(
         assert_output_row_count(op, expected_total=1000)
     """
     assert op.output_num_rows is not None
-    actual_total = op.output_num_rows["sum"]
+    actual_total = op.output_num_rows.sum
 
     if expected_total is not None:
         assert (
