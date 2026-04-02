@@ -101,6 +101,9 @@ backend default_backend
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
+    {%- if backend.balance_algorithm %}
+    balance {{ backend.balance_algorithm }}
+    {%- endif %}
     # Set backend-specific timeouts, overriding defaults if specified
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s

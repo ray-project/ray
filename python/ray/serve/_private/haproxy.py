@@ -264,6 +264,9 @@ class BackendConfig:
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
+    # Optional per-backend balance algorithm override.
+    balance_algorithm: Optional[str] = None
+
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
 
@@ -1380,12 +1383,20 @@ class HAProxyManager(ProxyActorInterface):
         disable_ingress_bypass_health_checks = (
             os.environ.get("RAY_SERVE_DISABLE_INGRESS_BYPASS_HEALTH_CHECKS", "0") == "1"
         )
+        force_ingress_bypass_roundrobin = os.environ.get(
+            "RAY_SERVE_FORCE_INGRESS_BYPASS_ROUNDROBIN", "0"
+        ) == "1" or os.path.exists("/tmp/ray-serve-force-ingress-bypass-roundrobin")
 
         # When ingress bypass is active, the main targets are LLMServer replicas
         # serving vLLM's native app which uses /health not /-/healthz.
         health_path = None  # use default
         if ingress_bypass_backend:
             health_path = "/health"
+
+        balance_algorithm = None
+        if disable_ingress_bypass_routing and ingress_bypass_backend:
+            if force_ingress_bypass_roundrobin:
+                balance_algorithm = "roundrobin"
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1399,6 +1410,7 @@ class HAProxyManager(ProxyActorInterface):
             router_servers=router_servers,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
+            balance_algorithm=balance_algorithm,
             health_check_path=health_path,
             enable_health_checks=not (
                 ingress_bypass_backend and disable_ingress_bypass_health_checks
