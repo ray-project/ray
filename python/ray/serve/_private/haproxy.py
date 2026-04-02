@@ -1355,7 +1355,7 @@ class HAProxyManager(ProxyActorInterface):
             ]
 
         fallback_server = None
-        if fallback_target is not None:
+        if fallback_target is not None and not target_group.router_targets:
             fallback_server = self._target_to_server(fallback_target)
 
         # When ingress bypass is active, the main targets are LLMServer replicas
