@@ -597,3 +597,9 @@ RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
 NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
     "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
 )
+
+# The default maximum size of the http request entity.
+# Used to overwrite the _client_max_size of BaseRequest.
+RAY_HTTP_REQUEST_ENTITY_MAX_SIZE = env_integer(
+    "RAY_HTTP_REQUEST_ENTITY_MAX_SIZE", 1024**2
+)
