@@ -388,18 +388,10 @@ class ServeControllerClient:
         # Validate applications before sending to controller
         self._check_ingress_deployments(built_apps)
 
-        # Pass router deployment names for ingress bypass
-        name_to_router_deployment = {
-            app.name: app.router_deployment_name
-            for app in built_apps
-            if app.router_deployment_name is not None
-        }
-
         ray.get(
             self._controller.deploy_applications.remote(
                 name_to_deployment_args_list,
                 name_to_application_args,
-                name_to_router_deployment=name_to_router_deployment,
             )
         )
 
