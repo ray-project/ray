@@ -1,8 +1,6 @@
 import asyncio
 import copy
-import hashlib
 import os
-import time
 import types
 from typing import (
     TYPE_CHECKING,
@@ -175,12 +173,6 @@ class LLMServer(LLMServerProtocol):
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
         self._init_multiplex_loader(model_downloader)
-        self._sidecar_stream_trace_enabled = False
-        self._sidecar_stream_trace_sample_rate = 0.0
-        self._sidecar_stream_trace_fd = None
-        self._sidecar_stream_trace_lock = None
-        self._sidecar_stream_trace_path = None
-        self._sidecar_stream_trace_replica_tag = None
 
     @classmethod
     def sync_init(
@@ -217,72 +209,7 @@ class LLMServer(LLMServerProtocol):
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
         if os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
-            self._configure_sidecar_stream_trace()
             await self._start_http_sidecar()
-
-    def _configure_sidecar_stream_trace(self):
-        enabled = os.environ.get("RAYLLM_SIDECAR_STREAM_TRACE", "0") == "1"
-        self._sidecar_stream_trace_enabled = enabled
-        if not enabled:
-            return
-
-        try:
-            sample_rate = float(
-                os.environ.get("RAYLLM_SIDECAR_STREAM_TRACE_SAMPLE_RATE", "0.02")
-            )
-        except ValueError:
-            sample_rate = 0.02
-        self._sidecar_stream_trace_sample_rate = min(max(sample_rate, 0.0), 1.0)
-
-        trace_dir = os.environ.get(
-            "RAYLLM_SIDECAR_STREAM_TRACE_DIR", "/tmp/llmserver-sidecar-trace"
-        )
-        os.makedirs(trace_dir, exist_ok=True)
-        self._sidecar_stream_trace_path = os.path.join(
-            trace_dir, f"{os.getpid()}.jsonl"
-        )
-        self._sidecar_stream_trace_fd = os.open(
-            self._sidecar_stream_trace_path,
-            os.O_CREAT | os.O_WRONLY | os.O_APPEND,
-            0o644,
-        )
-        self._sidecar_stream_trace_lock = asyncio.Lock()
-
-        replica_ctx = serve.context._get_internal_replica_context()
-        self._sidecar_stream_trace_replica_tag = (
-            replica_ctx.replica_tag if replica_ctx is not None else f"pid-{os.getpid()}"
-        )
-
-        logger.info(
-            "LLM sidecar stream tracing enabled (sample_rate=%.3f, path=%s)",
-            self._sidecar_stream_trace_sample_rate,
-            self._sidecar_stream_trace_path,
-        )
-
-    def _should_trace_sidecar_request(self, request_id: str) -> bool:
-        if not self._sidecar_stream_trace_enabled:
-            return False
-        if self._sidecar_stream_trace_sample_rate >= 1.0:
-            return True
-        digest = hashlib.blake2b(request_id.encode("utf-8"), digest_size=8).digest()
-        fraction = int.from_bytes(digest, "big") / float(2**64 - 1)
-        return fraction < self._sidecar_stream_trace_sample_rate
-
-    async def _write_sidecar_stream_trace(self, record: Dict[str, Any]):
-        if (
-            not self._sidecar_stream_trace_enabled
-            or self._sidecar_stream_trace_fd is None
-        ):
-            return
-
-        import orjson
-
-        record.setdefault("ts_ns", time.time_ns())
-        record.setdefault("pid", os.getpid())
-        record.setdefault("replica_tag", self._sidecar_stream_trace_replica_tag)
-        line = orjson.dumps(record) + b"\n"
-        async with self._sidecar_stream_trace_lock:
-            os.write(self._sidecar_stream_trace_fd, line)
 
     async def _start_http_sidecar(self):
         """Start the legacy aiohttp sidecar used by route-once experiments."""
@@ -290,168 +217,33 @@ class LLMServer(LLMServerProtocol):
         from aiohttp import web
 
         engine = self.engine
-        llm_server = self
 
         async def _handle_openai(request, request_cls, create_fn):
-            request_start = time.perf_counter()
-            raw_body_start = request_start
-            body_bytes = await request.read()
-            raw_body_ms = (time.perf_counter() - raw_body_start) * 1000.0
-
-            json_parse_start = time.perf_counter()
-            body = _orjson.loads(body_bytes)
-            json_parse_ms = (time.perf_counter() - json_parse_start) * 1000.0
-
-            model_parse_start = time.perf_counter()
+            body = _orjson.loads(await request.read())
             parsed = request_cls(**body)
-            model_parse_ms = (time.perf_counter() - model_parse_start) * 1000.0
-
-            request_id = (
-                getattr(parsed, "request_id", None) or f"sidecar-{time.time_ns()}"
-            )
-            trace_request = llm_server._should_trace_sidecar_request(request_id)
-            base_trace = {
-                "request_id": request_id,
-                "path": request.path,
-                "stream": bool(getattr(parsed, "stream", False)),
-                "max_tokens": getattr(parsed, "max_tokens", None),
-                "raw_body_bytes": len(body_bytes),
-                "raw_body_ms": raw_body_ms,
-                "json_parse_ms": json_parse_ms,
-                "model_parse_ms": model_parse_ms,
-            }
-
-            create_start = time.perf_counter()
             try:
                 result = await create_fn(parsed, raw_request=None)
             except ValueError as e:
-                if trace_request:
-                    await llm_server._write_sidecar_stream_trace(
-                        {
-                            **base_trace,
-                            "status": 400,
-                            "create_call_ms": (time.perf_counter() - create_start)
-                            * 1000.0,
-                            "handler_total_ms": (time.perf_counter() - request_start)
-                            * 1000.0,
-                            "error": str(e),
-                        }
-                    )
                 return web.json_response(
                     {"error": {"message": str(e), "type": "invalid_request_error"}},
                     status=400,
                 )
-            create_call_ms = (time.perf_counter() - create_start) * 1000.0
 
             if isinstance(result, types.AsyncGeneratorType):
                 response = web.StreamResponse()
                 response.content_type = "text/event-stream"
                 response.headers["Cache-Control"] = "no-cache"
                 response.headers["X-Accel-Buffering"] = "no"
-                prepare_start = time.perf_counter()
                 await response.prepare(request)
-                response_prepare_ms = (time.perf_counter() - prepare_start) * 1000.0
-                stream_start = time.perf_counter()
-                iter_resume_start = time.perf_counter()
-                chunk_count = 0
-                stream_bytes = 0
-                first_chunk_wait_ms = None
-                first_write_ms = None
-                total_write_ms = 0.0
-                max_write_ms = 0.0
-                nonfirst_generator_wait_ms_sum = 0.0
-                nonfirst_generator_wait_ms_max = 0.0
-                nonfirst_write_ms_sum = 0.0
-                nonfirst_write_ms_max = 0.0
                 async for chunk in result:
-                    chunk_ready = time.perf_counter()
-                    generator_wait_ms = (chunk_ready - iter_resume_start) * 1000.0
                     data = chunk.encode("utf-8") if isinstance(chunk, str) else chunk
-                    write_start = time.perf_counter()
                     await response.write(data)
-                    write_ms = (time.perf_counter() - write_start) * 1000.0
-                    total_write_ms += write_ms
-                    max_write_ms = max(max_write_ms, write_ms)
-                    if chunk_count == 0:
-                        first_chunk_wait_ms = generator_wait_ms
-                        first_write_ms = write_ms
-                    else:
-                        nonfirst_generator_wait_ms_sum += generator_wait_ms
-                        nonfirst_generator_wait_ms_max = max(
-                            nonfirst_generator_wait_ms_max, generator_wait_ms
-                        )
-                        nonfirst_write_ms_sum += write_ms
-                        nonfirst_write_ms_max = max(nonfirst_write_ms_max, write_ms)
-                    chunk_count += 1
-                    stream_bytes += len(data)
-                    iter_resume_start = time.perf_counter()
-                eof_start = time.perf_counter()
                 await response.write_eof()
-                write_eof_ms = (time.perf_counter() - eof_start) * 1000.0
-                if trace_request:
-                    nonfirst_chunk_count = max(chunk_count - 1, 0)
-                    await llm_server._write_sidecar_stream_trace(
-                        {
-                            **base_trace,
-                            "status": 200,
-                            "create_call_ms": create_call_ms,
-                            "response_prepare_ms": response_prepare_ms,
-                            "first_chunk_wait_ms": first_chunk_wait_ms,
-                            "first_write_ms": first_write_ms,
-                            "chunk_count": chunk_count,
-                            "nonfirst_chunk_count": nonfirst_chunk_count,
-                            "stream_bytes": stream_bytes,
-                            "nonfirst_generator_wait_ms_sum": nonfirst_generator_wait_ms_sum,
-                            "nonfirst_generator_wait_ms_mean": (
-                                nonfirst_generator_wait_ms_sum / nonfirst_chunk_count
-                                if nonfirst_chunk_count
-                                else 0.0
-                            ),
-                            "nonfirst_generator_wait_ms_max": nonfirst_generator_wait_ms_max,
-                            "nonfirst_write_ms_sum": nonfirst_write_ms_sum,
-                            "nonfirst_write_ms_mean": (
-                                nonfirst_write_ms_sum / nonfirst_chunk_count
-                                if nonfirst_chunk_count
-                                else 0.0
-                            ),
-                            "nonfirst_write_ms_max": nonfirst_write_ms_max,
-                            "total_write_ms": total_write_ms,
-                            "max_write_ms": max_write_ms,
-                            "write_eof_ms": write_eof_ms,
-                            "stream_total_ms": (time.perf_counter() - stream_start)
-                            * 1000.0,
-                            "handler_total_ms": (time.perf_counter() - request_start)
-                            * 1000.0,
-                        }
-                    )
                 return response
 
             if hasattr(result, "model_dump"):
-                if trace_request:
-                    await llm_server._write_sidecar_stream_trace(
-                        {
-                            **base_trace,
-                            "status": 200,
-                            "streaming": False,
-                            "create_call_ms": create_call_ms,
-                            "handler_total_ms": (time.perf_counter() - request_start)
-                            * 1000.0,
-                        }
-                    )
                 return web.json_response(result.model_dump())
 
-            if trace_request:
-                await llm_server._write_sidecar_stream_trace(
-                    {
-                        **base_trace,
-                        "status": 500,
-                        "streaming": False,
-                        "create_call_ms": create_call_ms,
-                        "handler_total_ms": (time.perf_counter() - request_start)
-                        * 1000.0,
-                        "error": str(result),
-                    }
-                )
             return web.json_response(
                 {"error": {"message": str(result), "type": "server_error"}},
                 status=500,
