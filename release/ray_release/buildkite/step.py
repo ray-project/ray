@@ -8,6 +8,7 @@ from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
+    DEFAULT_CLOUD_NAME,
     as_smoke_test,
     get_test_project_id,
 )
@@ -32,6 +33,7 @@ DOCKER_PLUGIN_KEY = "docker#v5.8.0"
 _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
+        "ANYSCALE_CLOUD_NAME": str(DEFAULT_CLOUD_NAME),
         "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
         "RELEASE_AWS_BUCKET": str(RELEASE_AWS_BUCKET),
         "RELEASE_AWS_LOCATION": "dev",
