@@ -687,6 +687,13 @@ local pool = {{}}  -- key: "host:port" -> socket
 local timing_count = 0
 local timing_sum_total = 0
 local TIMING_LOG_INTERVAL = 500
+local route_total = 0
+local route_status_non_200 = 0
+local route_response_missing = 0
+local route_body_empty = 0
+local route_target_set = 0
+local route_target_missing = 0
+local ROUTE_LOG_INTERVAL = 500
 
 local function elapsed_us(t0, t1)
     return (t1.sec - t0.sec) * 1000000 + (t1.usec - t0.usec)
@@ -696,7 +703,7 @@ local function get_or_connect(router)
     local key = router.host .. ":" .. router.port
     local sock = pool[key]
     if sock then
-        return sock, true  -- reused
+        return sock, true
     end
     sock = core.tcp()
     sock:settimeout(5)
@@ -705,7 +712,7 @@ local function get_or_connect(router)
         return nil, false
     end
     pool[key] = sock
-    return sock, false  -- new connection
+    return sock, false
 end
 
 local function release(router, sock)
@@ -725,7 +732,7 @@ end
 local function do_request(router, model)
     local sock, reused = get_or_connect(router)
     if not sock then
-        return nil
+        return nil, nil
     end
 
     local req = "GET /internal/route?model=" .. model .. " HTTP/1.1\\r\\n"
@@ -736,19 +743,17 @@ local function do_request(router, model)
     if not ok then
         drop(router)
         sock, reused = get_or_connect(router)
-        if not sock then return nil end
+        if not sock then return nil, nil end
         ok, err = sock:send(req)
-        if not ok then drop(router); return nil end
+        if not ok then drop(router); return nil, nil end
     end
 
-    -- Read status line
     local status_line, err = sock:receive("*l")
     if not status_line then
         drop(router)
-        return nil
+        return nil, nil
     end
 
-    -- Read headers to get Content-Length
     local content_length = 0
     while true do
         local line = sock:receive("*l")
@@ -757,26 +762,24 @@ local function do_request(router, model)
         if cl then content_length = tonumber(cl) end
     end
 
-    -- Read body
     local body = ""
     if content_length > 0 then
         body, err = sock:receive(content_length)
-        if not body then drop(router); return nil end
+        if not body then drop(router); return nil, status_line end
     end
 
     release(router, sock)
-    return body
+    return body, status_line
 end
 
 core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
     local model = ""
-
-    rr_idx = rr_idx + 1
-    local router = routers[((rr_idx - 1) % #routers) + 1]
+    rr_idx = (rr_idx % #routers) + 1
+    local router = routers[rr_idx]
 
     local t0 = core.now()
 
-    local body = do_request(router, model)
+    local response_body, status_line = do_request(router, model)
 
     local t_end = core.now()
 
@@ -799,16 +802,61 @@ core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
         timing_sum_total = 0
     end
 
-    if not body or body == "" then
+    route_total = route_total + 1
+    if not status_line or not string.find(status_line, " 200 ") then
+        route_status_non_200 = route_status_non_200 + 1
+    end
+    if not response_body or response_body == "" then
+        if not response_body then
+            route_response_missing = route_response_missing + 1
+        else
+            route_body_empty = route_body_empty + 1
+        end
+        if route_total % ROUTE_LOG_INTERVAL == 0 then
+            local msg = string.format(
+                "[lua-route] total=%d target_set=%d target_missing=%d response_missing=%d body_empty=%d non_200=%d\\n",
+                route_total,
+                route_target_set,
+                route_target_missing,
+                route_response_missing,
+                route_body_empty,
+                route_status_non_200
+            )
+            local f = io.open("/tmp/haproxy-serve/lua-route.log", "a")
+            if f then
+                f:write(msg)
+                f:close()
+            end
+        end
         return
     end
 
-    local host = body:match('"host"%s*:%s*"([^"]+)"')
-    local port = body:match('"port"%s*:%s*(%d+)')
+    local host = response_body:match('"host"%s*:%s*"([^"]+)"')
+    local port = response_body:match('"port"%s*:%s*(%d+)')
 
     if host and port then
         local server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
         txn:set_var("txn.target_server", server_name)
+        route_target_set = route_target_set + 1
+    else
+        route_target_missing = route_target_missing + 1
+    end
+
+    if route_total % ROUTE_LOG_INTERVAL == 0 then
+        local msg = string.format(
+            "[lua-route] total=%d target_set=%d target_missing=%d response_missing=%d body_empty=%d non_200=%d\\n",
+            route_total,
+            route_target_set,
+            route_target_missing,
+            route_response_missing,
+            route_body_empty,
+            route_status_non_200
+        )
+        local f = io.open("/tmp/haproxy-serve/lua-route.log", "a")
+        if f then
+            f:write(msg)
+            f:close()
+        end
     end
 end, 0)
 """

@@ -465,6 +465,7 @@ class OpenAiIngress(DeploymentProtocol):
     _route_timing_sum_route = 0.0
     _route_timing_sum_send = 0.0
     _route_timing_log_interval = 500
+    _route_pick_trace_count = 0
 
     async def _handle_route_get_endpoint(self, scope, receive, send):
         """Lightweight GET handler for /internal/route?model=xxx."""
@@ -762,7 +763,28 @@ class OpenAiIngress(DeploymentProtocol):
         # Direct round-robin (stub: bypasses choose_replicas to test distribution)
         idx = self._sidecar_rr_counter % len(eligible_replicas)
         self._sidecar_rr_counter += 1
-        return self._get_replica_endpoint(eligible_replicas[idx])
+        selected = self._get_replica_endpoint(eligible_replicas[idx])
+
+        trace_path = os.environ.get("RAYLLM_ROUTE_PICK_TRACE_PATH")
+        if trace_path:
+            cls = type(self)
+            trace_limit = int(os.environ.get("RAYLLM_ROUTE_PICK_TRACE_LIMIT", "128"))
+            if cls._route_pick_trace_count < trace_limit:
+                cls._route_pick_trace_count += 1
+                eligible_endpoints = [
+                    self._get_replica_endpoint(replica) for replica in eligible_replicas
+                ]
+                trace_row = {
+                    "n": cls._route_pick_trace_count,
+                    "pid": os.getpid(),
+                    "model_id": model_id,
+                    "selected": selected,
+                    "eligible": eligible_endpoints,
+                }
+                with open(trace_path, "a") as f:
+                    f.write(json.dumps(trace_row) + "\n")
+
+        return selected
 
     async def _get_response(
         self,
