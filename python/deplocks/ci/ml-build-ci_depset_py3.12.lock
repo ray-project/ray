@@ -20,6 +20,7 @@ absl-py==1.4.0 \
     #   open-spiel
     #   tensorboard
     #   tensorflow
+    #   tensorflow-probability
 accelerate==0.28.0 \
     --hash=sha256:32019a49f4b3a85cc179ac4e38e9e2971f1a997dee026be0512816499464c4d5 \
     --hash=sha256:8ae25f8a8dc4cf12283842c469113836300545fb0dfa46fef331fb0a2ac8b421
@@ -606,6 +607,7 @@ cloudpickle==3.1.1 \
     #   gymnasium
     #   hyperopt
     #   statsforecast
+    #   tensorflow-probability
 cma==3.2.2 \
     --hash=sha256:0e3994b1f93c065b3eb2e68dbc589d9e694e191698d0aa58cb70cbdb803ade4e \
     --hash=sha256:47ac71ddd2b9a922daa601516064a585a1a3dbbae7802bca935db25e525547eb
@@ -814,6 +816,7 @@ decorator==5.1.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
     #   moviepy
+    #   tensorflow-probability
 deepspeed==0.17.2 \
     --hash=sha256:d9b636e5c7b7b3cb6d0694d145cdbb6cc97665ec8faf0180e6f7dcc4987a5251
     # via
@@ -874,6 +877,7 @@ dm-tree==0.1.9 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
+    #   tensorflow-probability
 einops==0.8.1 \
     --hash=sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737 \
     --hash=sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84
@@ -1199,6 +1203,7 @@ gast==0.6.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
+    #   tensorflow-probability
 glfw==2.6.3 \
     --hash=sha256:5dc26b55554ac6758d064b343be7d3689f7bab7be90cdf8cf5df128dac63859b \
     --hash=sha256:5fb9854daa1b3e1e9cebc03c77b2cb2bd42e112e82de1b891381e6508c61fc05 \
@@ -1619,6 +1624,32 @@ izulu==0.50.0 \
     --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
     --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
     # via taskiq
+jax==0.4.28 ; sys_platform != 'darwin' \
+    --hash=sha256:6a181e6b5a5b1140e19cdd2d5c4aa779e4cb4ec627757b918be322d8e81035ba \
+    --hash=sha256:dcf0a44aff2e1713f0a2b369281cd5b79d8c18fc1018905c4125897cb06b37e9
+    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
+jaxlib==0.4.28 ; sys_platform != 'darwin' \
+    --hash=sha256:2ff8290edc7b92c7eae52517f65492633e267b2e9067bad3e4c323d213e77cf5 \
+    --hash=sha256:459a4ddcc3e120904b9f13a245430d7801d707bca48925981cbdc59628057dc8 \
+    --hash=sha256:45ce0f3c840cff8236cff26c37f26c9ff078695f93e0c162c320c281f5041275 \
+    --hash=sha256:46a1aa857f4feee8a43fcba95c0e0ab62d40c26cc9730b6c69655908ba359f8d \
+    --hash=sha256:4a56ebf05b4a4c1791699d874e072f3f808f0986b4010b14fb549a69c90ca9dc \
+    --hash=sha256:4f98cc837b2b6c6dcfe0ab7ff9eb109314920946119aa3af9faa139718ff2787 \
+    --hash=sha256:793857faf37f371cafe752fea5fc811f435e43b8fb4b502058444a7f5eccf829 \
+    --hash=sha256:8dd8bffe3853702f63cd924da0ee25734a4d19cd5c926be033d772ba7d1c175d \
+    --hash=sha256:a421d237f8c25d2850166d334603c673ddb9b6c26f52bc496704b8782297bd66 \
+    --hash=sha256:a8b31c0e5eea36b7915696b9be40ea8646edc395a3e5437bf7ef26b7239a567a \
+    --hash=sha256:aa77a9360a395ba9faf6932df637686fb0c14ddcf4fdc1d2febe04bc88a580a6 \
+    --hash=sha256:b01562ec8ad75719b7d0389752489e97eb6b4dcb4c8c113be491634d5282ad3c \
+    --hash=sha256:b41a6b0d506c09f86a18ecc05bd376f072b548af89c333107e49bb0c09c1a3f8 \
+    --hash=sha256:d4d762c3971d74e610a0e85a7ee063cea81a004b365b2a7dc65133f08b04fac5 \
+    --hash=sha256:d6c09a545329722461af056e735146d2c8c74c22ac7426a845eb69f326b4f7a0 \
+    --hash=sha256:de2e8521eb51e16e85093a42cb51a781773fa1040dcf9245d7ea160a14ee5a5b \
+    --hash=sha256:e3bcdc6f8e60f8554f415c14d930134e602e3ca33c38e546274fd545f875769b \
+    --hash=sha256:eee428eac31697a070d655f1f24f6ab39ced76750d93b1de862377a52dcc2401 \
+    --hash=sha256:f038e68bd10d1a3554722b0bbe36e6a448384437a75aa9d283f696f0ed9f8c09 \
+    --hash=sha256:fabe77c174e9e196e9373097cefbb67e00c7e5f9d864583a7cfcf9dabd2429b6
+    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 jaxtyping==0.3.4 \
     --hash=sha256:70e438db2f361575d04cccea50f77f9c8fe92f8b2086dc0ce89e5f1658bebaab \
     --hash=sha256:b4aac576a1b6c62a363f76f543f21c7cd4c7bb8714816c2c875f28b7abcdb770
@@ -2432,6 +2463,8 @@ ml-dtypes==0.5.4 \
     --hash=sha256:f21c9219ef48ca5ee78402d5cc831bd58ea27ce89beda894428bc67a52da5328
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jax
+    #   jaxlib
     #   keras
     #   tensorflow
 moocore==0.1.10 \
@@ -2920,6 +2953,8 @@ numpy==2.2.6 \
     #   h5py
     #   hyperopt
     #   imageio
+    #   jax
+    #   jaxlib
     #   keras
     #   matplotlib
     #   minigrid
@@ -2954,6 +2989,7 @@ numpy==2.2.6 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
+    #   tensorflow-probability
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
@@ -3107,6 +3143,7 @@ opt-einsum==3.3.0 \
     --hash=sha256:59f6475f77bbc37dcf7cd748519c0ec60722e91e63ca114e68821c0c54a46549
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jax
     #   pyro-ppl
     #   tensorflow
 optree==0.18.0 \
@@ -4813,6 +4850,8 @@ scipy==1.14.1 \
     #   directsearch
     #   gpytorch
     #   hyperopt
+    #   jax
+    #   jaxlib
     #   linear-operator
     #   open-spiel
     #   pymoo
@@ -4905,6 +4944,7 @@ six==1.16.0 \
     #   python-dateutil
     #   rfc3339-validator
     #   tensorflow
+    #   tensorflow-probability
     #   triad
 smart-open==6.2.0 \
     --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
@@ -5116,12 +5156,17 @@ tensorflow==2.20.0 \
     --hash=sha256:c25edad45e8cb9e76366f7a8c835279f9169028d610f3b52ce92d332a1b05438 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
-    # via tf-keras
+    # via
+    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   tf-keras
 tensorflow-estimator==2.15.0 \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+tensorflow-probability==0.24.0 \
+    --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
+    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
@@ -5146,6 +5191,7 @@ tf-keras==2.20.0 \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
