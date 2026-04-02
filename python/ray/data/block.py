@@ -129,7 +129,13 @@ DEFAULT_BATCH_FORMAT = "numpy"
 
 
 def _is_cudf_dataframe(obj: Any) -> bool:
-    """Check if the object is a cudf.DataFrame (lazy import)."""
+    """Check if the object is a cudf.DataFrame (lazy import).
+
+    Checks the object's module name first to avoid importing cudf (which
+    loads CUDA and ~1.5 GiB of RSS) when the object clearly isn't from cudf.
+    """
+    if not getattr(type(obj), "__module__", "").startswith("cudf"):
+        return False
     try:
         import cudf
 
