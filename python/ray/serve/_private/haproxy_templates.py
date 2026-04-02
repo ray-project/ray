@@ -19,9 +19,6 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 """
 
 HAPROXY_CONFIG_TEMPLATE = """global
-    # Log to the standard system log socket with debug level.
-    log /dev/log local0 debug
-    log 127.0.0.1:{{ config.syslog_port }} local0 debug
     stats socket {{ config.socket_path }} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn {{ config.maxconn }}
@@ -38,15 +35,12 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- endif %}
 defaults
     mode http
-    option log-health-checks
     {% if config.timeout_connect_s is not none %}timeout connect {{ config.timeout_connect_s }}s{% endif %}
     {% if config.timeout_client_s is not none %}timeout client {{ config.timeout_client_s }}s{% endif %}
     {% if config.timeout_server_s is not none %}timeout server {{ config.timeout_server_s }}s{% endif %}
     {% if config.timeout_http_request_s is not none %}timeout http-request {{ config.timeout_http_request_s }}s{% endif %}
     {% if config.timeout_http_keep_alive_s is not none %}timeout http-keep-alive {{ config.timeout_http_keep_alive_s }}s{% endif %}
     {% if config.timeout_queue_s is not none %}timeout queue {{ config.timeout_queue_s }}s{% endif %}
-    log global
-    option httplog
     option abortonclose
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
@@ -102,7 +96,6 @@ backend default_backend
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
-    log global
     # Set backend-specific timeouts, overriding defaults if specified
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
