@@ -1,8 +1,12 @@
 from unittest.mock import MagicMock, patch
 
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.data._internal.cluster_autoscaler import default_autoscaling_coordinator
 from ray.data._internal.execution import autoscaling_requester
-from ray.data._internal.head_node_placement import head_node_placement_options
+from ray.data._internal.head_node_placement import (
+    HEAD_NODE_RESOURCE_CONSTRAINT,
+    head_node_placement_options,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -10,9 +14,7 @@ def test_head_node_placement_options():
     options = head_node_placement_options()
 
     assert options["resources"] == {
-        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-        )
+        HEAD_NODE_RESOURCE_NAME: HEAD_NODE_RESOURCE_CONSTRAINT
     }
     assert isinstance(options["scheduling_strategy"], PlacementGroupSchedulingStrategy)
     assert options["scheduling_strategy"].placement_group is None
@@ -39,9 +41,7 @@ def test_get_or_create_autoscaling_requester_actor_pins_to_head():
     assert kwargs["get_if_exists"] is True
     assert kwargs["lifetime"] == "detached"
     assert kwargs["resources"] == {
-        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-        )
+        HEAD_NODE_RESOURCE_NAME: HEAD_NODE_RESOURCE_CONSTRAINT
     }
     assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
     assert kwargs["scheduling_strategy"].placement_group is None
@@ -78,9 +78,7 @@ def test_get_or_create_autoscaling_coordinator_pins_to_head():
     assert kwargs["get_if_exists"] is True
     assert kwargs["lifetime"] == "detached"
     assert kwargs["resources"] == {
-        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-        )
+        HEAD_NODE_RESOURCE_NAME: HEAD_NODE_RESOURCE_CONSTRAINT
     }
     assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
     assert kwargs["scheduling_strategy"].placement_group is None
