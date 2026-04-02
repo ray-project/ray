@@ -32,7 +32,7 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -405,9 +405,7 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    ctx = DataContext.get_current()
-
-    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+    if ds_format == "pandas":
         pytest.skip(
             "Pandas derives integer columns with null as doubles, "
             "therefore deviating schemas for blocks containing nulls"
