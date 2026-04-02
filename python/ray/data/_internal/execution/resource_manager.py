@@ -101,6 +101,8 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        self._has_external_consumer: bool = False
+
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
@@ -175,12 +177,18 @@ class ResourceManager:
                     f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
                 )
 
+    @property
+    def has_external_consumer(self) -> bool:
+        """Return whether there is any external consumer."""
+        return self._has_external_consumer
+
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
         assert (
             num_bytes >= 0
         ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
+        self._has_external_consumer = True
 
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
@@ -736,17 +744,14 @@ class OpResourceAllocator(ABC):
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
         # If this operator is a terminal one (no downstream eligible ops):
-        # - External consumer (iter_batches, streaming_split):
-        #   - external_consumer_bytes == 0: consumer has drained all
-        #     prefetched data — unblock to produce more blocks.
-        #   - external_consumer_bytes > 0: consumer is holding data —
-        #     don't unblock, to prevent blocks from piling up faster
-        #     than the consumer can process them.
-        # - No external consumer (e.g., write pipelines where outputs
-        #   are small stats blocks): external_consumer_bytes is always 0.
-        #   Always unblock the pipeline drainer to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): don't unblock
+        #   backpressure to prevent blocks from piling up faster than the consumer can
+        #   process them. The consumer is always able to drain blocks, so we don't need to
+        #   unblock backpressure to maintain liveness.
+        # - No external consumer (e.g., write pipelines where we control draining):
+        #   always unblock to maintain liveness.
         if not downstream_eligible_ops:
-            return self._resource_manager.get_external_consumer_bytes() == 0
+            return not self._resource_manager.has_external_consumer
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure
