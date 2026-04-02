@@ -15,3 +15,4 @@ typer
 meson
 pybind11
 hf_transfer
+pydantic>=2.12.0
