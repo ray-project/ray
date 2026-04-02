@@ -95,7 +95,7 @@ The Job view displays a list of active, finished, and failed Jobs, and clicking 
 For more information on Ray Jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
 
 Custom names for jobs
-~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 The **Name** column in the Jobs view displays the value of the ``job_name`` key from the Job's metadata.
 You can set it when submitting a Job via the :ref:`Ray Job API <jobs-quickstart>`:
