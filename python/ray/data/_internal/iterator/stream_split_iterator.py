@@ -79,27 +79,42 @@ class StreamSplitDataIterator(DataIterator):
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
                 self._output_split_idx, 0
             )
-            while True:
-                block_ref_and_md: Optional[RefBundle] = ray.get(future)
-                if not block_ref_and_md:
-                    break
-                else:
-                    # Calculate prefetched bytes: BatchIterator's current prefetch
-                    # plus the block we just received (which will be added to
-                    # BatchIterator's sliding window when we yield it).
-                    prefetched_bytes = (
-                        self._iter_stats.iter_prefetched_bytes
-                        + block_ref_and_md.size_bytes()
+            try:
+                while True:
+                    block_ref_and_md: Optional[RefBundle] = ray.get(future)
+                    if not block_ref_and_md:
+                        break
+                    else:
+                        # Calculate prefetched bytes: BatchIterator's current prefetch
+                        # plus the block we just received (which will be added to
+                        # BatchIterator's sliding window when we yield it).
+                        prefetched_bytes = (
+                            self._iter_stats.iter_prefetched_bytes
+                            + block_ref_and_md.size_bytes()
+                        )
+                        future = self._coord_actor.get.remote(
+                            self._output_split_idx,
+                            prefetched_bytes,
+                        )
+                        yield RefBundle(
+                            blocks=block_ref_and_md.blocks,
+                            owns_blocks=False,
+                            schema=block_ref_and_md.schema,
+                        )
+            finally:
+                # If the generator is closed early (consumer broke out of
+                # iter_batches), an in-flight get() may have already returned
+                # normally without clearing _active_consumers.  Clean up here
+                # so the next epoch doesn't hit a spurious "Duplicate reader".
+                try:
+                    ray.get(
+                        self._coord_actor.clear_active_consumer.remote(
+                            self._output_split_idx
+                        )
                     )
-                    future = self._coord_actor.get.remote(
-                        self._output_split_idx,
-                        prefetched_bytes,
-                    )
-                    yield RefBundle(
-                        blocks=block_ref_and_md.blocks,
-                        owns_blocks=False,
-                        schema=block_ref_and_md.schema,
-                    )
+                except Exception:
+                    # Best-effort: Ray may already be shutting down.
+                    pass
 
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
@@ -382,7 +397,19 @@ class SplitCoordinator:
                 with self._cond:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-            self._coordinator_overhead_s += time.perf_counter() - start_time
+            with self._cond:
+                self._coordinator_overhead_s += time.perf_counter() - start_time
+
+    def clear_active_consumer(self, split_idx: SplitIdx) -> None:
+        """Remove a consumer from the active set.
+
+        Called by the client-side generator when it is closed early (e.g. the
+        consumer broke out of iter_batches before exhausting the epoch).  This
+        prevents a stale entry from causing a spurious "Duplicate reader"
+        error on the next epoch.
+        """
+        with self._active_consumers_lock:
+            self._active_consumers.discard(split_idx)
 
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
