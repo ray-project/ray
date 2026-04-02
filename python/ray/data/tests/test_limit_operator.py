@@ -87,7 +87,7 @@ def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
     )
 
     execution_plan = ds._plan
-    physical_plan = get_execution_plan(execution_plan._logical_plan)
+    physical_plan, _ = get_execution_plan(execution_plan._logical_plan)
 
     # Use StreamingExecutor directly to have access to the actual topology
     executor = StreamingExecutor(DataContext.get_current())
