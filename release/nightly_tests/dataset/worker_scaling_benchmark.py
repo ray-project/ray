@@ -9,7 +9,10 @@ import argparse
 import ray
 from benchmark import Benchmark, OperatorStatsTracker
 
-NUM_ROWS: int = 100_000_000
+BLOCKS_PER_WORKER: int = 10
+TARGET_BLOCK_SIZE_BYTES: int = 128 * 1024 * 1024  # 128 MiB
+BYTES_PER_ROW: int = 8  # ray.data.range produces one int64 per row
+ROWS_PER_BLOCK: int = TARGET_BLOCK_SIZE_BYTES // BYTES_PER_ROW
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,8 +49,9 @@ def main(args: argparse.Namespace):
     ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
 
     def benchmark_fn():
-        override_num_blocks = 2 * args.num_workers
-        ds = ray.data.range(NUM_ROWS, override_num_blocks=override_num_blocks)
+        num_blocks = BLOCKS_PER_WORKER * args.num_workers
+        num_rows = num_blocks * ROWS_PER_BLOCK
+        ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
         if args.worker_type == "actors":
             ds = ds.map_batches(
@@ -66,9 +70,9 @@ def main(args: argparse.Namespace):
         for bundle in ds.iter_internal_ref_bundles():
             total_rows += bundle.num_rows()
         metrics = OperatorStatsTracker.collect()
-        assert total_rows == NUM_ROWS
-        metrics["num_blocks"] = override_num_blocks
-        metrics["num_rows"] = NUM_ROWS
+        assert total_rows == num_rows
+        metrics["num_blocks"] = num_blocks
+        metrics["num_rows"] = num_rows
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)
