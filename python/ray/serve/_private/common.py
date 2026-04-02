@@ -660,6 +660,7 @@ class RunningReplicaInfo:
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
+    direct_ingress_http_port: Optional[int] = None
     sidecar_port: Optional[int] = None
 
     def __post_init__(self):

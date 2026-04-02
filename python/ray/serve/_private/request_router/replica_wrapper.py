@@ -268,6 +268,14 @@ class RunningReplica:
         return None
 
     @property
+    def direct_ingress_endpoint(self) -> Optional[tuple]:
+        """Return the replica direct-ingress endpoint as (host, port)."""
+        port = self._replica_info.direct_ingress_http_port
+        if port is not None:
+            return (self._replica_info.node_ip, port)
+        return None
+
+    @property
     def stub(self):
         if self._stub is None:
             self._channel = grpc.aio.insecure_channel(
