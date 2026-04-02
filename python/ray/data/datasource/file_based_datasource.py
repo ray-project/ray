@@ -331,8 +331,10 @@ class FileBasedDatasource(Datasource):
         parallelism = min(parallelism, len(paths))
 
         read_tasks = []
-        split_paths = np.array_split(paths, parallelism)
-        split_file_sizes = np.array_split(file_sizes, parallelism)
+        # Convert numpy arrays back to Python lists so downstream code
+        # (e.g. meta providers) doesn't receive numpy string types.
+        split_paths = [p.tolist() for p in np.array_split(paths, parallelism)]
+        split_file_sizes = [s.tolist() for s in np.array_split(file_sizes, parallelism)]
 
         for read_paths, file_sizes in zip(split_paths, split_file_sizes):
             if len(read_paths) <= 0:
