@@ -208,8 +208,31 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        if os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
+        if getattr(self._llm_config, "ingress_bypass", False):
+            await self._register_direct_ingress_app()
+        elif os.environ.get("RAYLLM_HTTP_SIDECAR", "0") == "1":
             await self._start_http_sidecar()
+
+    async def _register_direct_ingress_app(self):
+        """Build vLLM's FastAPI app and register it for direct ingress serving."""
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+
+        engine = self.engine
+        args = engine._vllm_args
+        supported_tasks = ("generate",)
+        if hasattr(engine._engine_client, "get_supported_tasks"):
+            supported_tasks = await engine._engine_client.get_supported_tasks()
+
+        app = build_app(args, supported_tasks=supported_tasks)
+        await init_app_state(
+            engine._engine_client,
+            app.state,
+            args,
+            supported_tasks=supported_tasks,
+        )
+
+        await serve.context.set_asgi_app(app)
+        logger.info("Registered vLLM FastAPI app for direct ingress serving")
 
     async def _start_http_sidecar(self):
         """Start the legacy aiohttp sidecar used by route-once experiments."""
