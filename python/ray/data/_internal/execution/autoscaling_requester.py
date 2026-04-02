@@ -4,9 +4,7 @@ import time
 from typing import Dict, List
 
 import ray
-from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
-    _head_node_placement_options,
-)
+from ray.data._internal.head_node_placement import head_node_placement_options
 
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
@@ -119,5 +117,5 @@ def get_or_create_autoscaling_requester_actor():
             namespace="AutoscalingRequester",
             get_if_exists=True,
             lifetime="detached",
-            **_head_node_placement_options(),
+            **head_node_placement_options(),
         ).remote()

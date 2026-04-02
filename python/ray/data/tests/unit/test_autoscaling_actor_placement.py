@@ -2,11 +2,12 @@ from unittest.mock import MagicMock, patch
 
 from ray.data._internal.cluster_autoscaler import default_autoscaling_coordinator
 from ray.data._internal.execution import autoscaling_requester
+from ray.data._internal.head_node_placement import head_node_placement_options
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_head_node_placement_options():
-    options = default_autoscaling_coordinator._head_node_placement_options()
+    options = head_node_placement_options()
 
     assert options["resources"] == {
         default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
@@ -33,16 +34,14 @@ def test_get_or_create_autoscaling_requester_actor_pins_to_head():
         )
 
     _, kwargs = mock_options.call_args
-    assert kwargs == {
-        "name": "AutoscalingRequester",
-        "namespace": "AutoscalingRequester",
-        "get_if_exists": True,
-        "lifetime": "detached",
-        "resources": {
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-                default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-            )
-        },
+    assert kwargs["name"] == "AutoscalingRequester"
+    assert kwargs["namespace"] == "AutoscalingRequester"
+    assert kwargs["get_if_exists"] is True
+    assert kwargs["lifetime"] == "detached"
+    assert kwargs["resources"] == {
+        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
+            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
+        )
     }
     assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
     assert kwargs["scheduling_strategy"].placement_group is None
@@ -74,16 +73,14 @@ def test_get_or_create_autoscaling_coordinator_pins_to_head():
         default_autoscaling_coordinator._AutoscalingCoordinatorActor
     )
     _, kwargs = actor_cls.options.call_args
-    assert kwargs == {
-        "name": "AutoscalingCoordinator",
-        "namespace": "AutoscalingCoordinator",
-        "get_if_exists": True,
-        "lifetime": "detached",
-        "resources": {
-            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
-                default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
-            )
-        },
+    assert kwargs["name"] == "AutoscalingCoordinator"
+    assert kwargs["namespace"] == "AutoscalingCoordinator"
+    assert kwargs["get_if_exists"] is True
+    assert kwargs["lifetime"] == "detached"
+    assert kwargs["resources"] == {
+        default_autoscaling_coordinator.HEAD_NODE_RESOURCE_LABEL: (
+            default_autoscaling_coordinator.HEAD_NODE_RESOURCE_CONSTRAINT
+        )
     }
     assert isinstance(kwargs["scheduling_strategy"], PlacementGroupSchedulingStrategy)
     assert kwargs["scheduling_strategy"].placement_group is None
