@@ -1,13 +1,14 @@
 import copy
 import dataclasses
 import os
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
@@ -30,54 +31,6 @@ from ray.util.placement_group import (
 KV_TRANSFER_PARAMS_KEY = "kv_transfer_params"
 vllm = try_import("vllm")
 logger = get_logger(__name__)
-
-
-class BundleConfig(BaseModelExtended):
-    """Configuration for placement group bundle.
-
-    Note: Counts are floats to align with Ray resource typing.
-    """
-
-    CPU: float = Field(default=0.0, ge=0.0, description="Number of CPUs per bundle")
-    GPU: float = Field(default=1.0, ge=0.0, description="Number of GPUs per bundle")
-
-    class Config:
-        extra = "allow"  # Allow arbitrary resource types
-
-
-class PlacementGroupConfig(BaseModelExtended):
-    """Configuration for placement group."""
-
-    bundle_per_worker: Optional[BundleConfig] = Field(
-        default=None,
-        description=(
-            "Resource bundle specification for each worker. "
-            "Auto-replicated based on tensor_parallel_size * pipeline_parallel_size. "
-            "Cannot be used together with 'bundles'."
-        ),
-    )
-    bundles: Optional[List[BundleConfig]] = Field(
-        default=None, description="List of resource bundles"
-    )
-    strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
-        default="PACK", description="Placement group strategy"
-    )
-
-    @model_validator(mode="after")
-    def validate_bundle_options(self):
-        if self.bundle_per_worker is not None and self.bundles is not None:
-            raise ValueError(
-                "Cannot specify both 'bundle_per_worker' and 'bundles' in "
-                "placement_group_config. Use 'bundle_per_worker' for simple "
-                "per-worker resource specification (auto-replicated by tp*pp), "
-                "or 'bundles' for full control."
-            )
-        if self.bundle_per_worker is None and self.bundles is None:
-            raise ValueError(
-                "placement_group_config must specify either 'bundle_per_worker' "
-                "or 'bundles'."
-            )
-        return self
 
 
 class VLLMEngineConfig(BaseModelExtended):

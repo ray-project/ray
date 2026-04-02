@@ -498,10 +498,10 @@ def test_async_udf_queue_capped(concurrency):
             "ray",
             dict(bundles=[{"CPU": 1, "GPU": 1}] * 4, strategy="STRICT_PACK"),
         ),
-        # Custom placement group leaving GPU and strategy unspecified
+        # Strategy omitted (PACK default). Omitted GPU now validates as 0.0; explicit GPU: 1 for this GPU job.
         (
             "ray",
-            dict(bundles=[{"CPU": 1}] * 4),
+            dict(bundles=[{"CPU": 1, "GPU": 1}] * 4),
         ),
         # Empty placement group
         (

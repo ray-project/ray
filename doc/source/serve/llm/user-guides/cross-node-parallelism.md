@@ -79,6 +79,10 @@ You can customize how Ray places vLLM engine workers across nodes using `placeme
 
 The `bundle_per_worker` option inside `placement_group_config` lets you specify resources for each worker without manually creating the full bundle list. Ray automatically replicates this bundle based on `tensor_parallel_size * pipeline_parallel_size`. This field is mutually exclusive with `bundles`.
 
+:::{note}
+In each bundle dict, `CPU` and `GPU` are numeric amounts. If you omit either key, it is treated as **0** — set both explicitly when your workers need CPUs and GPUs (there is no implicit default GPU when you only specify CPU, or vice versa).
+:::
+
 ::::{tab-set}
 
 :::{tab-item} Python
