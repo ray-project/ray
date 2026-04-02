@@ -55,9 +55,9 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
-# Accelerators that are 4 chips per host: v2, v3, v4, v5p, v7x
+# Accelerators that are 4 chips per host: v2, v3, v4, v5p, v6e, v7x
 # Accelerators that are 8 chips per host: v5e
-SINGLE_HOST_8_CHIPS_TPU_TYPES = "v5litepod"
+SINGLE_HOST_8_CHIPS_TPU_TYPE = "v5litepod"
 
 # TPU v6e single host topologies
 TPU_V6E_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
@@ -155,7 +155,7 @@ def _accelerator_type_check(accelerator_type: str):
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
     if (
-        accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES)
+        accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPE)
         or accelerator_type in TPU_V6E_SINGLE_HOST_TYPES
     ):
         return 8
@@ -235,7 +235,7 @@ def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     total_chips = get_num_chips_from_topology(topology)
 
     # Check for 8-chip host types, v5litepod or v6e (1x1, 2x2, 2x4 only)
-    if accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES or (
+    if accelerator_version.strip().lower() == SINGLE_HOST_8_CHIPS_TPU_TYPE or (
         accelerator_version.strip().lower() == "v6e"
         and topology in TPU_V6E_SINGLE_HOST_TOPOLOGIES
     ):
