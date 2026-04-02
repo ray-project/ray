@@ -2323,6 +2323,7 @@
   cluster:
     byod:
       type: llm-cu128 # llm image already has nixl
+      post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
@@ -4753,7 +4754,7 @@
 
 
 - name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4761,7 +4762,8 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_tensor_parallel_autotp.sh
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
