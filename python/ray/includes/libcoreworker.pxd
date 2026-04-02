@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.functional cimport function
 from libcpp.memory cimport shared_ptr, unique_ptr
@@ -14,6 +14,7 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CActorPoolID,
     CClusterID,
     CNodeID,
     CJobID,
@@ -105,6 +106,53 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
                 (CRayStatus() nogil) check_signals)
         CRayStatus WaitAllObjectsReported()
 
+cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" nogil:
+    cdef cppclass CActorPoolConfig "ray::core::ActorPoolConfig":
+        int32_t max_retry_attempts
+        int32_t retry_backoff_ms
+        float retry_backoff_multiplier
+        int32_t max_retry_backoff_ms
+        c_bool retry_on_system_errors
+        int32_t max_tasks_in_flight_per_actor
+        int32_t min_size
+        int32_t max_size
+        int32_t initial_size
+
+    cdef cppclass CPoolStats "ray::core::PoolStats":
+        int64_t total_tasks_submitted
+        int64_t total_tasks_failed
+        int64_t total_tasks_retried
+        int32_t num_actors
+        size_t backlog_size
+        int32_t total_in_flight
+
+    cdef cppclass CActorPoolManager "ray::core::ActorPoolManager":
+        CActorPoolID RegisterPool(
+            const CActorPoolConfig &config,
+            const c_vector[CActorID] &initial_actors)
+        void UnregisterPool(const CActorPoolID &pool_id)
+        void AddActorToPool(
+            const CActorPoolID &pool_id,
+            const CActorID &actor_id,
+            const CNodeID &location)
+        void RemoveActorFromPool(
+            const CActorPoolID &pool_id,
+            const CActorID &actor_id)
+        c_vector[CObjectReference] SubmitTaskToPool(
+            const CActorPoolID &pool_id,
+            const CRayFunction &function,
+            c_vector[unique_ptr[CTaskArg]] args,
+            const CTaskOptions &task_options)
+        c_vector[CActorID] GetPoolActors(const CActorPoolID &pool_id) const
+        CPoolStats GetPoolStats(const CActorPoolID &pool_id) const
+        c_bool HasPool(const CActorPoolID &pool_id) const
+        int64_t GetOccupiedTaskSlots(const CActorPoolID &pool_id) const
+        int32_t GetNumActiveActors(const CActorPoolID &pool_id) const
+        int32_t GetActorTasksInFlight(
+            const CActorPoolID &pool_id,
+            const CActorID &actor_id) const
+
+
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
         CActorID GetActorID() const
@@ -161,6 +209,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string call_site,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
+        c_vector[CObjectReference] SubmitTaskToActorPool(
+            const CActorPoolID &pool_id,
+            const CRayFunction &function,
+            c_vector[unique_ptr[CTaskArg]] args,
+            const CTaskOptions &task_options)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -329,6 +382,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int GetMemoryStoreSize()
 
         CWorkerContext &GetWorkerContext()
+        CActorPoolManager &GetActorPoolManager()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
         unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()

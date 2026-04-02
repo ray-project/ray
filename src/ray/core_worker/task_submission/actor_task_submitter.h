@@ -38,6 +38,29 @@
 namespace ray {
 namespace core {
 
+/// Callback type for notifying ActorPoolManager when a pool task completes.
+/// This enables cross-actor retry by allowing the pool to re-enqueue failed tasks.
+///
+/// \param pool_id The ID of the actor pool.
+/// \param work_item_id The ID of the work item within the pool.
+/// \param task_id The ID of the completed task.
+/// \param actor_id The ID of the actor that executed the task.
+/// \param status The completion status (OK for success, error for failure).
+/// \param error_info Error information if the task failed (nullptr on success).
+using PoolTaskCompletionCallback = std::function<void(const ActorPoolID &pool_id,
+                                                      const TaskID &work_item_id,
+                                                      const TaskID &task_id,
+                                                      const ActorID &actor_id,
+                                                      const Status &status,
+                                                      const rpc::RayErrorInfo *error_info,
+                                                      bool is_streaming_generator)>;
+
+/// Callback type for notifying ActorPoolManager when a pool task is actually
+/// pushed to an actor. This keeps per-actor in-flight accounting aligned with
+/// the submitter path, including redirected retries.
+using PoolTaskSubmittedCallback = std::function<void(
+    const ActorID &actor_id, const TaskID &work_item_id, const TaskID &task_id)>;
+
 // Interface for testing.
 class ActorTaskSubmitterInterface {
  public:
@@ -184,6 +207,22 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
+  /// Set the callback for pool task completion notifications.
+  /// This is used to notify ActorPoolManager when tasks that belong to an
+  /// actor pool complete, enabling cross-actor retry.
+  ///
+  /// \param[in] callback The callback to invoke when a pool task completes.
+  void SetPoolTaskCompletionCallback(PoolTaskCompletionCallback callback) {
+    pool_task_completion_callback_ = std::move(callback);
+  }
+
+  /// Set the callback for pool task submission notifications.
+  /// This is used to notify ActorPoolManager when a task is actually pushed to an actor
+  /// in a pool.
+  void SetPoolTaskSubmittedCallback(PoolTaskSubmittedCallback callback) {
+    pool_task_submitted_callback_ = std::move(callback);
+  }
 
   /// Get the given actor id's address.
   /// It returns nullopt if the actor's address is not reported.
@@ -456,6 +495,17 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+
+  /// Callback for notifying ActorPoolManager when pool tasks complete.
+  /// This enables cross-actor retry by allowing the pool to re-enqueue failed tasks.
+  /// Set once during CoreWorker construction via SetPoolTaskCompletionCallback()
+  /// before any concurrent access; immutable thereafter.
+  PoolTaskCompletionCallback pool_task_completion_callback_;
+
+  /// Callback for notifying ActorPoolManager when a pool task is submitted to
+  /// a specific actor. Set once during CoreWorker construction via
+  /// SetPoolTaskSubmittedCallback() before any concurrent access.
+  PoolTaskSubmittedCallback pool_task_submitted_callback_;
 };
 
 }  // namespace core

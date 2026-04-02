@@ -622,6 +622,12 @@ message TaskSpec {
   optional string tensor_transport = 44;
   // A list of fallback options defining the fallback strategy for scheduling.
   FallbackStrategy fallback_strategy = 45;
+  // The ID of the actor pool this task belongs to, if any.
+  // This is used for cross-actor retry within a pool.
+  optional bytes actor_pool_id = 46;
+  // The ID of the work item within the actor pool.
+  // Used to track work items across retries.
+  optional bytes actor_pool_work_item_id = 47;
 }
 
 message TaskInfoEntry {

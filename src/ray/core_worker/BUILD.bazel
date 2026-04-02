@@ -14,6 +14,7 @@ ray_cc_library(
         "core_worker_shutdown_executor.h",
     ],
     deps = [
+        ":actor_pool_manager",
         ":common",
         ":core_worker_context",
         ":core_worker_options",
@@ -138,6 +139,38 @@ ray_cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_pool_work_queue",
+    srcs = ["actor_pool_work_queue.cc"],
+    hdrs = ["actor_pool_work_queue.h"],
+    deps = [
+        ":common",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+    ],
+)
+
+ray_cc_library(
+    name = "actor_pool_manager",
+    srcs = ["actor_pool_manager.cc"],
+    hdrs = ["actor_pool_manager.h"],
+    deps = [
+        ":actor_pool_work_queue",
+        ":common",
+        ":lease_policy",
+        ":task_manager_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/core_worker/actor_management:actor_manager",
+        "//src/ray/core_worker/task_submission:actor_task_submitter",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:time",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_prod",
     ],
 )
 

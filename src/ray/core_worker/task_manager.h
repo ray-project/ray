@@ -56,6 +56,10 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &error_message,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
+using PoolTaskStreamDrainedCallback = std::function<void(const ActorPoolID &pool_id,
+                                                         const TaskID &work_item_id,
+                                                         const TaskID &task_id,
+                                                         const ActorID &actor_id)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -234,6 +238,12 @@ class TaskManager : public TaskManagerInterface {
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
 
+  /// Set the callback for successful streaming pool tasks whose generator stream has
+  /// been fully drained or deleted by the caller.
+  void SetPoolTaskStreamDrainedCallback(PoolTaskStreamDrainedCallback callback) {
+    pool_task_stream_drained_callback_ = std::move(callback);
+  }
+
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply,
                            const rpc::Address &worker_addr,
@@ -402,6 +412,10 @@ class TaskManager : public TaskManagerInterface {
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const
       ABSL_LOCKS_EXCLUDED(mu_);
 
+  /// Notify ActorPoolManager when a pool-backed streaming generator has been fully
+  /// drained or deleted by the caller. No-op for non-pool tasks.
+  void NotifyPoolTaskStreamDrained(const TaskID &task_id) ABSL_LOCKS_EXCLUDED(mu_);
+
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
   ///
@@ -471,6 +485,14 @@ class TaskManager : public TaskManagerInterface {
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is waiting for execution.
   bool IsTaskWaitingForExecution(const TaskID &task_id) const;
+
+  /// Move the submitted-task dependency for a pending pool task from the old
+  /// actor creation dummy object to the new one.
+  ///
+  /// Returns false if the task is no longer pending.
+  bool MovePoolTaskActorDependency(const TaskID &task_id,
+                                   const ObjectID &old_actor_creation_dummy_id,
+                                   const ObjectID &new_actor_creation_dummy_id);
 
   /// Return the number of submissible tasks. This includes both tasks that are
   /// pending execution and tasks that have finished but that may be
@@ -760,6 +782,8 @@ class TaskManager : public TaskManagerInterface {
 
   /// For when a streaming generator task currently in progress needs to be resubmitted.
   std::function<bool(const TaskSpecification &spec)> queue_generator_resubmit_;
+
+  PoolTaskStreamDrainedCallback pool_task_stream_drained_callback_;
 
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;

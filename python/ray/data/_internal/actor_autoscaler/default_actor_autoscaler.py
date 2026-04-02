@@ -56,8 +56,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         op_state: "OpState",
     ) -> ActorPoolScalingRequest:
         # If all inputs have been consumed, short-circuit
+        # TODO: add a timeout to ensure that operator is not blocked indefinitely
         if op.has_completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
+            op._inputs_complete
+            and op_state.total_enqueued_input_blocks() == 0
+            and op.num_active_tasks() == 0  # ensure no tasks are running
         ):
             num_to_scale_down = self._compute_downscale_delta(actor_pool)
             return ActorPoolScalingRequest.downscale(

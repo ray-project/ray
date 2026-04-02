@@ -10,6 +10,7 @@ import os
 from ray.includes.unique_ids cimport (
     CActorClassID,
     CActorID,
+    CActorPoolID,
     CNodeID,
     CConfigID,
     CJobID,
@@ -422,6 +423,45 @@ cdef class PlacementGroupID(BaseID):
     @classmethod
     def size(cls):
         return CPlacementGroupID.Size()
+
+    def binary(self):
+        return self.data.Binary()
+
+    def hex(self):
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        return self.data.Hash()
+
+
+cdef class ActorPoolID(BaseID):
+
+    def __init__(self, id):
+        check_id(id, CActorPoolID.Size())
+        self.data = CActorPoolID.FromBinary(<c_string>id)
+
+    cdef CActorPoolID native(self):
+        return <CActorPoolID>self.data
+
+    @classmethod
+    def from_random(cls):
+        return cls(CActorPoolID.FromRandom().Binary())
+
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CActorPoolID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
+
+    @classmethod
+    def nil(cls):
+        return cls(CActorPoolID.Nil().Binary())
+
+    @classmethod
+    def size(cls):
+        return CActorPoolID.Size()
 
     def binary(self):
         return self.data.Binary()

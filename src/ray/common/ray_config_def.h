@@ -1088,3 +1088,7 @@ RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
 RAY_CONFIG(int64_t,
            idle_worker_killing_memory_threshold_bytes,
            1024 * 1024 * 1024)  // 1GB
+
+// Delay in milliseconds before re-enqueuing a pool task for reconstruction when
+// no healthy actors are available in the pool.
+RAY_CONFIG(int64_t, actor_pool_retry_delay_ms, 1000)

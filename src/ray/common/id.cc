@@ -309,6 +309,12 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
+ActorPoolID ActorPoolID::FromRandom() {
+  std::string data(kLength, 0);
+  FillRandom(&data);
+  return ActorPoolID::FromBinary(data);
+}
+
 LeaseID LeaseID::FromRandom() {
   std::string data(kLength, 0);
   FillRandom(&data);
@@ -343,6 +349,7 @@ ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 ID_OSTREAM_OPERATOR(PlacementGroupID);
+ID_OSTREAM_OPERATOR(ActorPoolID);
 ID_OSTREAM_OPERATOR(LeaseID);
 
 const NodeID kGCSNodeID = NodeID::FromBinary(std::string(kUniqueIDSize, 0));

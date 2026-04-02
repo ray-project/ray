@@ -327,6 +327,26 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
+class ActorPoolID : public BaseID<ActorPoolID> {
+ public:
+  static constexpr size_t kLength = kUniqueIDSize;
+
+  static constexpr size_t Size() { return kLength; }
+
+  /// Creates a random `ActorPoolID`.
+  ///
+  /// \return A randomly generated `ActorPoolID`.
+  /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
+  static ActorPoolID FromRandom();
+
+  ActorPoolID() : BaseID() {}
+
+  MSGPACK_DEFINE(id_);
+
+ private:
+  uint8_t id_[kLength];
+};
+
 class LeaseID : public BaseID<LeaseID> {
  private:
   static constexpr size_t kUniqueBytesLength = 4;
@@ -370,6 +390,8 @@ static_assert(sizeof(ObjectID) == ObjectID::kLength + sizeof(size_t),
               "ObjectID size is not as expected");
 static_assert(sizeof(PlacementGroupID) == PlacementGroupID::kLength + sizeof(size_t),
               "PlacementGroupID size is not as expected");
+static_assert(sizeof(ActorPoolID) == ActorPoolID::kLength + sizeof(size_t),
+              "ActorPoolID size is not as expected");
 static_assert(sizeof(LeaseID) == LeaseID::kLength + sizeof(size_t),
               "LeaseID size is not as expected");
 
@@ -379,6 +401,7 @@ std::ostream &operator<<(std::ostream &os, const ActorID &id);
 std::ostream &operator<<(std::ostream &os, const TaskID &id);
 std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
+std::ostream &operator<<(std::ostream &os, const ActorPoolID &id);
 std::ostream &operator<<(std::ostream &os, const LeaseID &id);
 
 #define DEFINE_UNIQUE_ID(type)                                                           \
@@ -613,6 +636,7 @@ DEFINE_UNIQUE_ID(ActorID);
 DEFINE_UNIQUE_ID(TaskID);
 DEFINE_UNIQUE_ID(ObjectID);
 DEFINE_UNIQUE_ID(PlacementGroupID);
+DEFINE_UNIQUE_ID(ActorPoolID);
 DEFINE_UNIQUE_ID(LeaseID);
 #include "ray/common/id_def.h"
 

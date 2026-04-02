@@ -431,6 +431,9 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
 
   if (task_entry.num_retries_left_ > 0) {
     task_entry.num_retries_left_--;
+  } else if (task_entry.spec_.IsPoolTask()) {
+    // Pool tasks use pool-bound reconstruction; retries are managed by
+    // ActorPoolManager, so num_retries_left_ stays at 0.
   } else {
     RAY_CHECK(task_entry.num_retries_left_ == -1);
   }
@@ -538,6 +541,34 @@ bool TaskManager::IsTaskWaitingForExecution(const TaskID &task_id) const {
   return it->second.IsWaitingForExecution();
 }
 
+bool TaskManager::MovePoolTaskActorDependency(
+    const TaskID &task_id,
+    const ObjectID &old_actor_creation_dummy_id,
+    const ObjectID &new_actor_creation_dummy_id) {
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end() || !it->second.IsPending()) {
+      return false;
+    }
+    RAY_CHECK(it->second.spec_.IsActorTask());
+    RAY_CHECK(it->second.spec_.IsPoolTask());
+  }
+
+  if (old_actor_creation_dummy_id == new_actor_creation_dummy_id) {
+    return true;
+  }
+
+  std::vector<ObjectID> deleted;
+  reference_counter_.UpdateSubmittedTaskReferences(
+      /*return_ids=*/{},
+      /*argument_ids_to_add=*/{new_actor_creation_dummy_id},
+      /*argument_ids_to_remove=*/{old_actor_creation_dummy_id},
+      &deleted);
+  in_memory_store_.Delete(deleted);
+  return true;
+}
+
 size_t TaskManager::NumSubmissibleTasks() const {
   absl::MutexLock lock(&mu_);
   return submissible_tasks_.size();
@@ -621,7 +652,27 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  const auto task_id = generator_id.TaskId();
+  std::optional<std::tuple<ActorPoolID, TaskID, TaskID, ActorID>> pool_task_stream_data;
+  if (pool_task_stream_drained_callback_) {
+    absl::MutexLock task_lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end() && it->second.spec_.IsPoolTask()) {
+      const auto &msg = it->second.spec_.GetMessage();
+      if (msg.has_actor_pool_id() && !msg.actor_pool_id().empty()) {
+        TaskID work_item_id = TaskID::Nil();
+        if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+          work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
+        }
+        pool_task_stream_data.emplace(ActorPoolID::FromBinary(msg.actor_pool_id()),
+                                      work_item_id,
+                                      it->second.spec_.TaskId(),
+                                      it->second.spec_.ActorId());
+      }
+    }
+  }
+
+  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
   bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
   if (!can_gc_lineage) {
     RAY_LOG(DEBUG) << "Generator " << generator_id
@@ -631,11 +682,20 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
 
   RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
   object_ref_streams_.erase(generator_id);
+  lock.Release();
+  if (pool_task_stream_data.has_value()) {
+    const auto &[pool_id, work_item_id, drained_task_id, actor_id] =
+        *pool_task_stream_data;
+    pool_task_stream_drained_callback_(pool_id, work_item_id, drained_task_id, actor_id);
+  } else {
+    NotifyPoolTaskStreamDrained(task_id);
+  }
   return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
+  const auto task_id = generator_id.TaskId();
   auto backpressure_threshold = 0;
   {
     absl::MutexLock lock(&mu_);
@@ -645,7 +705,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -675,6 +735,11 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
+  if (status.IsObjectRefEndOfStream()) {
+    lock.Release();
+    NotifyPoolTaskStreamDrained(task_id);
+  }
+
   return status;
 }
 
@@ -686,6 +751,41 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
          "created "
          "and not removed.";
   return stream_it->second.IsFinished();
+}
+
+void TaskManager::NotifyPoolTaskStreamDrained(const TaskID &task_id) {
+  if (!pool_task_stream_drained_callback_) {
+    return;
+  }
+
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return;
+    }
+    spec = it->second.spec_;
+  }
+
+  if (!spec.IsPoolTask()) {
+    return;
+  }
+
+  const auto &msg = spec.GetMessage();
+  if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
+    return;
+  }
+
+  TaskID work_item_id = TaskID::Nil();
+  if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+    work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
+  }
+
+  pool_task_stream_drained_callback_(ActorPoolID::FromBinary(msg.actor_pool_id()),
+                                     work_item_id,
+                                     spec.TaskId(),
+                                     spec.ActorId());
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
@@ -989,7 +1089,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec_;
-
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
@@ -1056,8 +1155,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
-    // stored in plasma.
-    bool task_retryable = it->second.num_retries_left_ != 0 &&
+    // stored in plasma. Pool tasks are always retryable via pool-bound
+    // reconstruction regardless of num_retries_left_.
+    bool is_pool_task = it->second.spec_.IsPoolTask();
+    bool task_retryable = (it->second.num_retries_left_ != 0 || is_pool_task) &&
                           !it->second.reconstructable_return_ids_.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
