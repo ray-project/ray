@@ -46,13 +46,9 @@ defaults
     {% if config.timeout_http_request_s is not none %}timeout http-request {{ config.timeout_http_request_s }}s{% endif %}
     {% if config.timeout_http_keep_alive_s is not none %}timeout http-keep-alive {{ config.timeout_http_keep_alive_s }}s{% endif %}
     {% if config.timeout_queue_s is not none %}timeout queue {{ config.timeout_queue_s }}s{% endif %}
-    option abortonclose
     {%- if config.tcp_nodelay %}
     # Set TCP_NODELAY on all connections
     option http-no-delay
-    {%- endif %}
-    {%- if config.enable_hap_optimization %}
-    option idle-close-on-response
     {%- endif %}
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
     {%- if config.error_file_path %}
