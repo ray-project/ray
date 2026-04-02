@@ -162,10 +162,6 @@ class ElasticScalingPolicy(ScalingPolicy):
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
         )
 
-    def requires_shutdown_before_non_running_decision(self) -> bool:
-        # TODO: try to relax this condition e.g. if num_workers remains the same.
-        return self.scaling_config.use_tpu
-
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         self._maybe_send_resource_request()
 
