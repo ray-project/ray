@@ -192,9 +192,9 @@ steps:
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
         --python-version 3.12
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
     depends_on:
-      - databuild-multipy
+      - datalbuild-multipy
       - forge
 
   - label: ":ray: core: modin tests"
