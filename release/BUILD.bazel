@@ -571,6 +571,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_anyscale_job_runner",
+    size = "small",
+    srcs = ["ray_release/tests/test_anyscale_job_runner.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
 py_library(
     name = "bisect_lib",
     srcs = ["ray_release/scripts/ray_bisect.py"],
