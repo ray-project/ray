@@ -9,7 +9,6 @@ from ray.exceptions import RayError
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
-    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.logical.interfaces.operator import Operator
     from ray.data.dataset import Dataset, Schema
 
@@ -20,14 +19,12 @@ _DATASET_REPR_MAX_COLUMN_WIDTH = 40  # Max width per column cell in the table.
 _DATASET_REPR_GET_TIMEOUT_S = 30.0  # Timeout for fetching preview blocks.
 
 __all__ = [
-    "_build_dataset_ascii_repr",
-    "explain_plan",
-    "generate_plan_string",
-    "get_plan_as_string",
+    "build_dataset_ascii_repr",
+    "build_dataset_summary_repr",
 ]
 
 
-def _build_dataset_ascii_repr(
+def build_dataset_ascii_repr(
     dataset: "Dataset",
     schema: "Schema",
     is_materialized: bool,
@@ -35,7 +32,7 @@ def _build_dataset_ascii_repr(
     """Render the dataset as a multi-line tabular string."""
     columns = list(schema.names)
     if not columns:
-        return get_plan_as_string(dataset)
+        return build_dataset_summary_repr(dataset)
 
     num_rows = dataset._meta_count()
     head_rows: List[List[str]] = []
@@ -316,7 +313,7 @@ def _render_row(values: List[str], column_widths: List[int]) -> str:
     return f"│{'┆'.join(cells)}│"
 
 
-def generate_plan_string(
+def _format_operator_dag(
     op: "Operator",
     curr_str: str = "",
     depth: int = 0,
@@ -342,14 +339,14 @@ def generate_plan_string(
         curr_str += f"{trailing_space}+- {op_str}\n"
 
     for input in op.input_dependencies:
-        curr_str, input_max_depth = generate_plan_string(
+        curr_str, input_max_depth = _format_operator_dag(
             input, curr_str, depth + 1, including_source, show_op_repr
         )
         curr_max_depth = max(curr_max_depth, input_max_depth)
     return curr_str, curr_max_depth
 
 
-def get_plan_as_string(dataset: "Dataset") -> str:
+def build_dataset_summary_repr(dataset: "Dataset") -> str:
     """Create a cosmetic string representation of a dataset.
 
     This is used for Dataset.__repr__ when no tabular preview is available.
@@ -365,7 +362,7 @@ def get_plan_as_string(dataset: "Dataset") -> str:
     plan_max_depth = 0
 
     if not dataset._plan.has_computed_output():
-        plan_str, plan_max_depth = generate_plan_string(
+        plan_str, plan_max_depth = _format_operator_dag(
             logical_plan.dag, including_source=False
         )
 
@@ -481,32 +478,3 @@ def get_plan_as_string(dataset: "Dataset") -> str:
     else:
         plan_str += f"{INDENT_STR * (plan_max_depth - 1)}+- {dataset_str}"
     return plan_str
-
-
-def explain_plan(logical_plan: "LogicalPlan") -> str:
-    """Return a string representation of the logical and physical plan."""
-    from ray.data._internal.logical.optimizers import (
-        LogicalOptimizer,
-        PhysicalOptimizer,
-    )
-    from ray.data._internal.planner import create_planner
-
-    sections = []
-
-    def _add_section(title, plan):
-        plan_str, _ = generate_plan_string(plan.dag, show_op_repr=True)
-        banner = f"\n-------- {title} --------\n"
-        sections.append(f"{banner}{plan_str}")
-
-    _add_section("Logical Plan", logical_plan)
-
-    optimized_logical = LogicalOptimizer().optimize(logical_plan)
-    _add_section("Logical Plan (Optimized)", optimized_logical)
-
-    physical_plan, _ = create_planner().plan(optimized_logical)
-    _add_section("Physical Plan", physical_plan)
-
-    optimized_physical = PhysicalOptimizer().optimize(physical_plan)
-    _add_section("Physical Plan (Optimized)", optimized_physical)
-
-    return "".join(sections)

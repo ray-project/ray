@@ -18,7 +18,6 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import FileShuffleConfig, Schema
-from ray.data._internal.dataset_repr import explain_plan
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -28,7 +27,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.util import explain_plan, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext

@@ -11,7 +11,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.dataset_repr import explain_plan
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -26,6 +25,7 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 
