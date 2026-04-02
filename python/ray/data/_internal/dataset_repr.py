@@ -383,6 +383,9 @@ def build_dataset_summary_repr(dataset: "Dataset") -> str:
         # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
         if not has_n_ary_operator:
             assert isinstance(dag, SourceOperator), dag
+            # We infer from logical plan's dag directly as we know that
+            # we don't have any cached values, so inferring is the only
+            # option left.
             if schema is None:
                 schema = dag.infer_schema()
             if count is None:
