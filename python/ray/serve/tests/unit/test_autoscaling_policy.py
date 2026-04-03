@@ -1,3 +1,4 @@
+import math
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -152,18 +153,22 @@ def _run_upscale_downscale_flow(
 
     Uses a mocked clock so that each policy call advances wall-clock time by
     CONTROL_LOOP_INTERVAL_S, matching what the real control loop would do.
+
+    Wait counts use math.ceil(delay_s * ticks_per_second): int(delay / interval)
+    undercounts when float division yields 5.999... for 0.6/0.1, but wall-clock
+    delay logic requires elapsed >= delay_s.
     """
 
-    upscale_wait_periods = int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
-    downscale_wait_periods = int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
-    # Check if downscale_to_zero_delay_s is set
+    ticks_per_second = round(1.0 / CONTROL_LOOP_INTERVAL_S)
+    upscale_wait_periods = math.ceil(config.upscale_delay_s * ticks_per_second)
+    downscale_wait_periods = math.ceil(config.downscale_delay_s * ticks_per_second)
     if config.downscale_to_zero_delay_s:
-        downscale_to_zero_wait_periods = int(
-            config.downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
+        downscale_to_zero_wait_periods = math.ceil(
+            config.downscale_to_zero_delay_s * ticks_per_second
         )
     else:
-        downscale_to_zero_wait_periods = int(
-            config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S
+        downscale_to_zero_wait_periods = math.ceil(
+            config.downscale_delay_s * ticks_per_second
         )
 
     # Initialize local policy_state from the base context, so both default and
@@ -172,11 +177,10 @@ def _run_upscale_downscale_flow(
 
     # Track a fake clock that advances by CONTROL_LOOP_INTERVAL_S per call,
     # simulating real control-loop timing for the wall-clock delay logic.
-    # Uses integer division (tick / 10) instead of multiplication (tick * 0.1)
-    # to avoid IEEE 754 double-rounding: a*0.1 rounds 0.1 first then
+    # Uses integer division (tick / ticks_per_second) instead of multiplication
+    # (tick * 0.1) to avoid IEEE 754 double-rounding: a*0.1 rounds 0.1 first then
     # multiplies, whereas a/10 is a single correctly-rounded operation.
     fake_tick = [0]
-    ticks_per_second = round(1.0 / CONTROL_LOOP_INTERVAL_S)
 
     def _advance_time():
         current = fake_tick[0] / ticks_per_second
