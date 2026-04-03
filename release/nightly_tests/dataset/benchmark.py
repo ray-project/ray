@@ -49,7 +49,7 @@ class OperatorStatsTracker(ExecutionCallback):
         self._start_time: float = 0
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
-        self._start_time = time.time()
+        self._start_time = self._start_time
         self._op_start.clear()
         self._op_end.clear()
 
@@ -59,29 +59,30 @@ class OperatorStatsTracker(ExecutionCallback):
         for i, op in enumerate(executor._topology):
             op_key = f"{op.name}_{i}"
             if op_key not in self._op_start and op.metrics.num_tasks_submitted > 0:
-                self._op_start[op_key] = time.time()
+                self._op_start[op_key] = time.perf_counter()
                 self._op_end[op_key] = None
             if (
                 op_key in self._op_start
                 and self._op_end[op_key] is None
                 and op.has_completed()
             ):
-                self._op_end[op_key] = time.time()
+                self._op_end[op_key] = time.perf_counter()
 
     def collect(self) -> Dict[str, Any]:
 
         stats: Dict[str, Dict[str, Any]] = {}
-
+        now = time.time()
+        seconds_since_start = time.perf_counter() - self._start_time
         for key, start in self._op_start.items():
             end = self._op_end.get(key)
-            start_dt = self._make_readable_timestamp(ts=start)
             duration_s = round(end - start, 2) if end is not None else None
+            start_dt = self._make_readable_timestamp(ts=now - duration_s)
             stats[key] = {
                 "start": start_dt,
                 "duration_s": duration_s,
             }
 
-        start_time = self._make_readable_timestamp(ts=self._start_time)
+        start_time = self._make_readable_timestamp(ts=now - seconds_since_start)
         return {"start_time": start_time, "op_stats": stats}
 
     def _make_readable_timestamp(self, ts: float) -> str:
