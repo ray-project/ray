@@ -276,6 +276,24 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
     )
 
 
+def test_split_preserves_producer_op_ids(ray_start_regular_shared):
+    """_split() propagates producer_op_ids to both halves."""
+    import dataclasses
+
+    from ray.data._internal.execution.operators.output_splitter import _split
+
+    refs = make_ref_bundles([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]])
+    # Merge into one bundle with two blocks, each tagged with a different producer.
+    from ray.data._internal.execution.interfaces import RefBundle
+
+    bundle = RefBundle.merge_ref_bundles(refs)
+    bundle = dataclasses.replace(bundle, producer_op_ids=("op_a", "op_b"))
+
+    left, right = _split(bundle, 5)
+    assert left.producer_op_ids == ("op_a",)
+    assert right.producer_op_ids == ("op_b",)
+
+
 if __name__ == "__main__":
     import sys
 

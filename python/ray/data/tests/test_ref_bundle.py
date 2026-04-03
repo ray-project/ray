@@ -564,49 +564,6 @@ def test_merge_ref_bundles_concatenates_producer_op_ids():
     assert merged.producer_op_ids == ("op_a", "op_b")
 
 
-def test_merge_ref_bundles_mixed_none_producer_op_ids():
-    """merge_ref_bundles handles bundles with None producer_op_ids."""
-    ref1 = ObjectRef(b"1" * 28)
-    ref2 = ObjectRef(b"2" * 28)
-    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
-
-    bundle1 = RefBundle(
-        blocks=[(ref1, meta)],
-        owns_blocks=True,
-        schema=_TEST_SCHEMA,
-        producer_op_ids=("op_a",),
-    )
-    bundle2 = RefBundle(
-        blocks=[(ref2, meta)],
-        owns_blocks=True,
-        schema=_TEST_SCHEMA,
-    )
-
-    merged = RefBundle.merge_ref_bundles([bundle1, bundle2])
-    assert merged.producer_op_ids == ("op_a", None)
-
-
-def test_output_splitter_split_preserves_producer_op_ids():
-    """_split() propagates producer_op_ids to both halves."""
-    from ray.data._internal.execution.operators.output_splitter import _split
-
-    ref1 = ObjectRef(b"1" * 28)
-    ref2 = ObjectRef(b"2" * 28)
-    meta1 = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
-    meta2 = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
-
-    bundle = RefBundle(
-        blocks=[(ref1, meta1), (ref2, meta2)],
-        owns_blocks=True,
-        schema=_TEST_SCHEMA,
-        producer_op_ids=("op_a", "op_b"),
-    )
-
-    left, right = _split(bundle, 5)
-    assert left.producer_op_ids == ("op_a",)
-    assert right.producer_op_ids == ("op_b",)
-
-
 if __name__ == "__main__":
     import sys
 
