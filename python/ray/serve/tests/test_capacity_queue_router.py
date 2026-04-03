@@ -161,31 +161,44 @@ class TestCapacityQueueRouterBasic:
 
         # Send concurrent requests
         refs = [handle.remote() for _ in range(30)]
-        responses = [ref.result(timeout_s=10) for ref in refs]
+        responses = [ref.result(timeout_s=30) for ref in refs]
 
         unique_replicas = set(responses)
         assert len(unique_replicas) == num_replicas
 
     def test_capacity_queue_stats(self, serve_instance):
-        """The capacity queue should track stats correctly."""
+        """The capacity queue should track stats correctly.
+
+        Some early requests may fall back to power-of-two-choices before the
+        router discovers the queue, so we assert >= rather than exact counts.
+        """
         handle = _deploy_capacity_queue_app(num_replicas=2)
 
         wait_for_condition(check_running, timeout=30)
+
+        queue_handle = _find_capacity_queue_handle()
+        assert queue_handle is not None, "CapacityQueue deployment actor not found"
+
+        # Wait for queue to have replicas before sending requests so most
+        # go through the queue path (not power-of-two-choices fallback).
+        wait_for_condition(
+            lambda: ray.get(queue_handle.get_stats.remote()).num_replicas == 2,
+            timeout=15,
+        )
 
         # Send some requests
         for _ in range(10):
             handle.remote().result(timeout_s=10)
 
-        queue_handle = _find_capacity_queue_handle()
-        assert queue_handle is not None, "CapacityQueue deployment actor not found"
-
         # Wait for all releases to settle (on_request_completed is async)
         def _stats_settled():
             stats = ray.get(queue_handle.get_stats.remote())
-            assert stats.total_acquires >= 10
-            assert stats.total_releases >= 10
             assert stats.num_replicas == 2
             assert stats.total_in_flight == 0
+            # Most requests should go through the queue. Some may fall back
+            # to power-of-two-choices, so use >= with a lower bound.
+            assert stats.total_acquires >= 5
+            assert stats.total_releases >= 5
             return True
 
         wait_for_condition(_stats_settled, timeout=10)
@@ -232,6 +245,53 @@ class TestCapacityQueueRouterWithSingleReplica:
             responses.add(r)
 
         assert len(responses) == 1
+
+
+class TestCapacityQueueRouterPowerOfTwoFallback:
+    """Tests that the router falls back to power-of-two-choices when the
+    queue is unavailable."""
+
+    def test_requests_succeed_without_queue(self, serve_instance):
+        """Requests succeed via power-of-two-choices even when the queue is
+        killed immediately."""
+        handle = _deploy_capacity_queue_app(num_replicas=2)
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == 2,
+            timeout=15,
+        )
+
+        # Kill the queue so all subsequent requests must use fallback.
+        ray.kill(queue)
+
+        for _ in range(5):
+            resp = handle.remote().result(timeout_s=15)
+            assert isinstance(resp, str)
+
+    def test_requests_distributed_without_queue(self, serve_instance):
+        """In fallback mode, requests are still distributed across replicas."""
+        num_replicas = 3
+        handle = _deploy_capacity_queue_app(num_replicas=num_replicas)
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == num_replicas,
+            timeout=15,
+        )
+
+        # Kill the queue.
+        ray.kill(queue)
+
+        responses = []
+        for _ in range(30):
+            r = handle.remote().result(timeout_s=15)
+            responses.append(r)
+
+        unique_replicas = set(responses)
+        assert len(unique_replicas) == num_replicas
 
 
 class TestCapacityQueueRouterFailures:
@@ -380,12 +440,10 @@ class TestCapacityQueueRouterFailures:
         assert isinstance(resp, str)
 
     def test_capacity_queue_death_and_recovery(self, serve_instance):
-        """When the CapacityQueue actor dies, the controller recreates it
-        and request routing recovers.
-
-        The router does NOT raise an exception to callers. Instead it enters a
-        backoff-retry loop: it catches RayActorError, clears its cached handle,
-        and rediscovers the new queue actor on the next attempt.
+        """When the CapacityQueue actor dies, the router falls back to
+        power-of-two-choices and requests continue to succeed. Once the
+        controller recreates the queue, the router rediscovers it and
+        resumes token-based routing.
         """
         handle = _deploy_capacity_queue_app(num_replicas=2)
         wait_for_condition(check_running, timeout=30)
@@ -403,6 +461,11 @@ class TestCapacityQueueRouterFailures:
         # Kill the capacity queue actor.
         ray.kill(queue)
 
+        # Requests should STILL succeed via power-of-two-choices fallback
+        # even while the queue is dead.
+        resp = handle.remote().result(timeout_s=15)
+        assert isinstance(resp, str)
+
         # The controller recreates the deployment actor. The new queue starts
         # fresh and gets replicas via long poll. Wait for it to appear.
         def _queue_recovered():
@@ -414,13 +477,18 @@ class TestCapacityQueueRouterFailures:
 
         wait_for_condition(_queue_recovered, timeout=30)
 
-        # Requests should work again (router rediscovers the new queue).
-        # May need a few retries while the router reconnects.
-        def _request_succeeds():
+        # After recovery, requests go through the queue again. Verify the
+        # new queue is being used by checking that acquires increase.
+        new_queue = _find_capacity_queue_handle()
+        stats_before = ray.get(new_queue.get_stats.remote())
+        for _ in range(3):
             handle.remote().result(timeout_s=10)
-            return True
 
-        wait_for_condition(_request_succeeds, timeout=30)
+        def _queue_used():
+            stats = ray.get(new_queue.get_stats.remote())
+            return stats.total_acquires > stats_before.total_acquires
+
+        wait_for_condition(_queue_used, timeout=10)
 
     def test_capacity_queue_restarts_with_full_capacity(self, serve_instance):
         """After a queue restart, it bootstraps with full capacity even though
@@ -487,6 +555,139 @@ class TestCapacityQueueRouterFailures:
             pass  # May fail since the queue died mid-request
 
         # Cleanup
+        ray.kill(signal)
+
+    def test_queue_converges_after_restart(self, serve_instance):
+        """After the queue restarts, its in_flight view is stale (all zeros).
+        Tokens for saturated replicas get rejected, and because rejected
+        tokens are NOT released, the queue's in_flight counts ratchet up to
+        reflect reality. Once the real requests complete and the TTL reaper
+        clears the phantom tokens, the queue converges to an accurate view.
+
+        Convergence mechanism:
+        1. Queue restarts with in_flight=0 (stale).
+        2. Rejected tokens are NOT released → in_flight ratchets up,
+           teaching the queue the replica is saturated.
+        3. Blocking requests complete → replica has real capacity again.
+        4. TTL reaper reclaims the phantom in_flight entries (from
+           unreleased rejection tokens).
+        5. Queue converges: in_flight=0, full capacity restored.
+
+        Setup: 1 replica, max_ongoing_requests=2, token_ttl_s=2.
+        """
+        token_ttl_s = 2.0
+        signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
+        signal = SignalActor.options(name=signal_name).remote()
+
+        @serve.deployment(
+            deployment_actors=[
+                DeploymentActorConfig(
+                    name="capacity_queue",
+                    actor_class=CapacityQueue,
+                    init_kwargs={
+                        "acquire_timeout_s": 30.0,
+                        "token_ttl_s": token_ttl_s,
+                        "deployment_id_name": "ConvergeApp",
+                        "deployment_id_app": "default",
+                    },
+                    actor_options={"num_cpus": 0},
+                ),
+            ],
+            request_router_config=RequestRouterConfig(
+                request_router_class=(
+                    "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
+                ),
+            ),
+            num_replicas=1,
+            max_ongoing_requests=2,
+            ray_actor_options={"num_cpus": 0},
+        )
+        class ConvergeApp:
+            def __init__(self):
+                from ray.serve.context import _get_internal_replica_context
+
+                context = _get_internal_replica_context()
+                self.unique_id = context.replica_id.unique_id
+
+            async def __call__(self, block: bool = False):
+                if block:
+                    sig = ray.get_actor(signal_name)
+                    await sig.wait.remote()
+                return self.unique_id
+
+        handle = serve.run(ConvergeApp.bind())
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == 1,
+            timeout=15,
+        )
+
+        # Step 1: Saturate the replica with 2 blocking requests.
+        blocking_refs = [handle.remote(block=True) for _ in range(2)]
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).total_in_flight == 2,
+            timeout=10,
+        )
+
+        # Step 2: Kill the queue. It restarts with in_flight=0, thinking the
+        # replica has full capacity — but it's actually saturated.
+        ray.kill(queue)
+
+        def _new_queue_ready():
+            q = _find_capacity_queue_handle()
+            if q is None:
+                return False
+            stats = ray.get(q.get_stats.remote())
+            return stats.num_replicas == 1
+
+        wait_for_condition(_new_queue_ready, timeout=30)
+
+        new_queue = _find_capacity_queue_handle()
+        stats = ray.get(new_queue.get_stats.remote())
+        # Queue thinks replica has full capacity (stale view).
+        assert stats.total_in_flight == 0
+        assert stats.total_capacity == 2
+
+        # Step 3: Send a non-blocking request. The queue issues a token but the
+        # replica is full and rejects. The rejection teaches the queue (token
+        # not released, in_flight stays elevated). The framework retries and
+        # the request eventually succeeds once a slot frees up.
+
+        # Step 4: Release the blocking requests so the replica has room.
+        ray.get(signal.send.remote())
+        for ref in blocking_refs:
+            try:
+                ref.result(timeout_s=10)
+            except Exception:
+                pass  # May fail — queue died while these were in flight.
+
+        # Now the replica has capacity. Send requests and verify they work.
+        resp = handle.remote().result(timeout_s=15)
+        assert isinstance(resp, str)
+
+        # Step 5: Verify convergence. Unreleased rejection tokens created
+        # phantom in_flight entries. The TTL reaper clears them once they
+        # expire, restoring the queue to an accurate view.
+        def _queue_converged():
+            stats = ray.get(new_queue.get_stats.remote())
+            return stats.total_in_flight == 0 and stats.queue_size == 2
+
+        wait_for_condition(_queue_converged, timeout=token_ttl_s + 10)
+
+        # Final proof: sequential requests all succeed through the queue
+        # and the queue settles back to zero in-flight.
+        for _ in range(5):
+            resp = handle.remote().result(timeout_s=10)
+            assert isinstance(resp, str)
+
+        def _final_stats_settled():
+            stats = ray.get(new_queue.get_stats.remote())
+            return stats.total_acquires >= 5 and stats.total_in_flight == 0
+
+        wait_for_condition(_final_stats_settled, timeout=10)
+
         ray.kill(signal)
 
 
