@@ -163,11 +163,12 @@ replicas and use it in the routing policy.
 (capacity-queue-request-router)=
 ## Define a centralized capacity queue request router
 
-In the previous examples the routing decisions are based on the locally visible state of the target replicas from the perspective of the router replica. This view is **eventually consistent** not immediately because the serve controller frequently broadcasts the replica information to the router. Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same replica, causing transient load imbalance or triggering
-rejections and retries. For some applications this can result in lower throughput. A **centralized** approach avoids this: a single actor
-tracks per-replica in-flight counts, and every router acquires a *capacity token*
-before forwarding a request. This way, each token guarantees the target replica has room,
-eliminating the rejection protocol entirely.
+In the previous examples the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
+replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router.
+Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same
+replica, causing transient load imbalance or triggering rejections and retries. For some applications this can result in lower throughput. A
+**centralized** approach avoids this: a single actor tracks per-replica in-flight counts, and every router acquires a *capacity token*
+before forwarding a request. This way, each token guarantees the target replica has room, eliminating the rejection protocol entirely.
 
 This example demonstrates how we can implement such routing policy. The example has three pieces:
 
