@@ -302,8 +302,11 @@ class StoreRegistry:
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
                 # but warn about unencrypted traffic.
-                co = {**kwargs.get("client_options", {}), "allow_http": True}
-                kwargs["client_options"] = co
+                client_options = {
+                    **kwargs.get("client_options", {}),
+                    "allow_http": True,
+                }
+                kwargs["client_options"] = client_options
                 if not getattr(self, "_warned_http", False):
                     self._warned_http = True
                     logger.warning(
