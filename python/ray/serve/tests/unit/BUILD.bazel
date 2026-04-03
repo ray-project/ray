@@ -24,9 +24,6 @@ py_test_run_all_subdirectory(
 
 py_test_module_list(
     size = "small",
-    data = [
-        "//doc:source/serve/doc_code/capacity_queue_request_router.py",
-    ],
     files = [
         "test_capacity_queue.py",
     ],
@@ -35,7 +32,6 @@ py_test_module_list(
         ":conftest",
         "//python/ray/serve:serve_lib",
         "//python/ray/serve/tests:common",
-        "//python/ray/serve/tests:doc_fixture",
     ],
 )
 

@@ -190,7 +190,7 @@ This `@ray.remote` class will be managed by the Serve controller as a
 [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) — one
 instance shared across all replicas of the deployment:
 
-```{literalinclude} ../doc_code/capacity_queue_request_router.py
+```{literalinclude} /../../python/ray/serve/_private/experimental/capacity_queue_request_router.py
 :start-after: __begin_define_capacity_queue__
 :end-before: __end_define_capacity_queue__
 :language: python
@@ -217,7 +217,7 @@ to acquire a token instead of using the default power-of-two-choices algorithm,
 and uses [`on_request_completed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_completed.rst)
 to release the token when the request finishes:
 
-```{literalinclude} ../doc_code/capacity_queue_request_router.py
+```{literalinclude} /../../python/ray/serve/_private/experimental/capacity_queue_request_router.py
 :start-after: __begin_define_capacity_queue_router__
 :end-before: __end_define_capacity_queue_router__
 :language: python

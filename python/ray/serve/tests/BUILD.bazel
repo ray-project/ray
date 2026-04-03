@@ -14,17 +14,6 @@ py_library(
     ],
 )
 
-py_library(
-    name = "doc_fixture",
-    srcs = [
-        "fixtures/__init__.py",
-        "fixtures/doc_fixture.py",
-    ],
-    visibility = [
-        "//python/ray/serve/tests:__subpackages__",
-    ],
-)
-
 # Minimal installation test (should *not* include conftest).
 py_test_module_list(
     size = "small",
@@ -333,9 +322,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
-    data = [
-        "//doc:source/serve/doc_code/capacity_queue_request_router.py",
-    ],
     files = [
         "test_capacity_queue_router.py",
     ],
@@ -346,7 +332,6 @@ py_test_module_list(
     deps = [
         ":common",
         ":conftest",
-        ":doc_fixture",
         "//python/ray/serve:serve_lib",
     ],
 )

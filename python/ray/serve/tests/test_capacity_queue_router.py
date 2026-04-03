@@ -4,17 +4,13 @@ from collections import Counter
 
 import pytest
 
-# isort: off
-# doc_fixture must be imported before capacity_queue_request_router
-import ray.serve.tests.fixtures.doc_fixture  # noqa: F401
-from capacity_queue_request_router import CapacityQueue
-
-# isort: on
-
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
+from ray.serve._private.experimental.capacity_queue_request_router import (
+    CapacityQueue,
+)
 from ray.serve._private.test_utils import check_running
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 
@@ -40,7 +36,9 @@ def _deploy_capacity_queue_app(
             ),
         ],
         request_router_config=RequestRouterConfig(
-            request_router_class=("capacity_queue_request_router:CapacityQueueRouter"),
+            request_router_class=(
+                "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+            ),
         ),
         num_replicas=num_replicas,
         max_ongoing_requests=max_ongoing_requests,
@@ -82,7 +80,9 @@ def _deploy_blocking_capacity_queue_app(
             ),
         ],
         request_router_config=RequestRouterConfig(
-            request_router_class=("capacity_queue_request_router:CapacityQueueRouter"),
+            request_router_class=(
+                "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+            ),
         ),
         num_replicas=num_replicas,
         max_ongoing_requests=max_ongoing_requests,
@@ -289,7 +289,7 @@ class TestCapacityQueueRouterFailures:
             ],
             request_router_config=RequestRouterConfig(
                 request_router_class=(
-                    "capacity_queue_request_router:CapacityQueueRouter"
+                    "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
                 ),
             ),
             num_replicas=2,
