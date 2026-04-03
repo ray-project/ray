@@ -40,6 +40,7 @@ from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.datasource.image_datasink import ImageDatasink
 from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
@@ -80,6 +81,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
@@ -113,6 +115,7 @@ from ray.data.block import (
     U,
     UserDefinedFunction,
     _apply_batch_format,
+    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -642,8 +645,10 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame`` (requires cudf to be installed).
+                If ``batch_format`` is set to ``None`` input block format
+                will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -968,8 +973,9 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
+                If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -980,7 +986,7 @@ class Dataset:
             A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "cudf"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -1016,6 +1022,15 @@ class Dataset:
                 if column_idx == -1:
                     return batch.append_column(col, column)
                 return batch.set_column(column_idx, col, column)
+
+            elif batch_format == "cudf":
+                import cudf
+
+                # cuDF uses pandas-like API: batch[col] = column
+                if isinstance(column, (cudf.DataFrame, cudf.Index, cudf.Series)):
+                    column.index = batch.index
+                batch[col] = column
+                return batch
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -1801,7 +1816,7 @@ class Dataset:
     def random_shuffle(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -1815,17 +1830,34 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds = ray.data.range(100)
             >>> ds.random_shuffle().take(3)  # doctest: +SKIP
-            {'id': 41}, {'id': 21}, {'id': 92}]
+            [{'id': 41}, {'id': 21}, {'id': 92}]
             >>> ds.random_shuffle(seed=42).take(3)  # doctest: +SKIP
-            {'id': 77}, {'id': 21}, {'id': 63}]
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Fully deterministic across executions:
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(3)  # doctest: +SKIP
+            [{'id': 24}, {'id': 97}, {'id': 17}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 29}, {'id': 79}, {'id': 39}]
+            >>> ds.random_shuffle(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(3)  # doctest: +SKIP
+            [{'id': 40}, {'id': 7}, {'id': 90}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same shuffle order across executions). If None, the shuffle
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on seed behavior.
             num_blocks: This parameter is deprecated. It was previously intended to
                 specify the number of output blocks in the shuffled dataset, but is no
                 longer supported. To control the number of output blocks, use
@@ -1844,10 +1876,18 @@ class Dataset:
                 "does not support to change the number of output blocks. Use "
                 "repartition() instead.",  # noqa: E501
             )
+
+        # We set use_timestamp_as_default=True to pin the seed at plan time
+        # so that retried shuffle tasks produce the same output.
+        # See https://github.com/ray-project/ray/pull/50924.
+        seed_config = RandomSeedConfig.create_seed_config(
+            seed, use_timestamp_as_default=True
+        )
+
         plan = self._plan.copy()
         op = RandomShuffle(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
@@ -1858,7 +1898,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int] = None,
+        seed: Optional[int | RandomSeedConfig] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -1873,28 +1913,46 @@ class Dataset:
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
             >>> ds.randomize_block_order().take(5)  # doctest: +SKIP
             {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=False)).take(5)  # doctest: +SKIP
+            [{'id': 44}, {'id': 45}, {'id': 46}, {'id': 47}, {'id': 80}]
+
+            Reproducible but non-deterministic across executions (e.g., training epochs):
+            >>> ds = ray.data.range(100)
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 40}, {'id': 41}, {'id': 42}, {'id': 43}, {'id': 28}]
+            >>> ds.randomize_block_order(seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(5)  # doctest: +SKIP
+            [{'id': 92}, {'id': 93}, {'id': 94}, {'id': 95}, {'id': 88}]
 
         Args:
-            seed: Fix the random seed to use, otherwise one is chosen
-                based on system randomness.
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same block order across executions). If None, the block
+                order is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             The block-shuffled :class:`Dataset`.
         """  # noqa: E501
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         plan = self._plan.copy()
         op = RandomizeBlocks(
             self._logical_plan.dag,
-            seed=seed,
+            seed_config=seed_config,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int] = None
+        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
+        In other words, this method "randomly filters" the rows of the dataset without
+        shuffling (i.e., changing the order of the rows).
 
         .. note::
 
@@ -1903,18 +1961,29 @@ class Dataset:
 
         Examples:
             >>> import ray
+            >>> from ray.data import RandomSeedConfig
             >>> ds1 = ray.data.range(100)
             >>> ds1.random_sample(0.1).count()  # doctest: +SKIP
             10
+            >>> # Deterministic across executions
             >>> ds2 = ray.data.range(1000)
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
             >>> ds2.random_sample(0.123, seed=42).take(2)  # doctest: +SKIP
             [{'id': 2}, {'id': 9}]
+            >>> # Different sample each execution
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 2}, {'id': 9}]
+            >>> ds2.random_sample(0.123, seed=RandomSeedConfig(seed=42, reseed_after_execution=True)).take(2)  # doctest: +SKIP
+            [{'id': 15}, {'id': 23}]
 
         Args:
-            fraction: The fraction of elements to sample.
-            seed: Seeds the python random pRNG generator.
+            fraction: The fraction of elements to sample. It must be between 0 and 1 (inclusive).
+            seed: An optional random seed. Can be an integer or a :class:`RandomSeedConfig`
+                object. If an integer is provided, it defaults to fully deterministic
+                behavior (same sample across executions). If None, the sample
+                is non-deterministic. See :class:`RandomSeedConfig` for more details on
+                seed behavior.
 
         Returns:
             Returns a :class:`Dataset` containing the sampled rows.
@@ -1928,18 +1997,24 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
+        seed_config = RandomSeedConfig.create_seed_config(seed)
+
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
-        def random_sample(batch: DataBatch, seed: Optional[int]):
+        def random_sample(
+            batch: DataBatch, seed_config: RandomSeedConfig, data_context: DataContext
+        ):
             ctx = TaskContext.get_current()
+
+            seed_result = seed_config.get_seed_tuple(data_context=data_context)
 
             if "rng" in ctx.kwargs:
                 rng = ctx.kwargs["rng"]
-            elif seed is None:
+            elif seed_result is None:
                 rng = np.random.default_rng()
                 ctx.kwargs["rng"] = rng
             else:
-                rng = np.random.default_rng([ctx.task_idx, seed])
+                rng = np.random.default_rng(seed_result.to_rng_args(ctx.task_idx))
                 ctx.kwargs["rng"] = rng
 
             mask_idx = np.where(rng.random(len(batch)) < fraction)[0]
@@ -1952,7 +2027,7 @@ class Dataset:
 
         return self.map_batches(
             random_sample,
-            fn_args=[seed],
+            fn_args=(seed_config, self.context),
             batch_format=None,
             batch_size=None,
         )
@@ -3675,7 +3750,9 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -3876,6 +3953,42 @@ class Dataset:
         # from calculating `sum()` from numpy batches.
         return int(count)
 
+    def _base_schema(
+        self, fetch_if_missing: bool = True
+    ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+        """Gets the underlying raw schema value not wrapped in Schema class."""
+        base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
+        if base_schema is None:
+            base_schema = self._logical_plan.dag.infer_schema()
+        if base_schema is None and fetch_if_missing:
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy of
+            # this plan, which we then execute to get its schema.
+            dag = self._logical_plan.dag
+            if isinstance(dag, StreamingSplit):
+                # Unwrap StreamingSplit since it is a terminal operator
+                # that cannot be wrapped into other ops like Limit.
+                dag = dag.input_dependencies[0]
+                limited_ds = Dataset(
+                    ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None),
+                        self._plan._context,
+                    ),
+                    LogicalPlan(dag, self._plan._context),
+                ).limit(1)
+            else:
+                limited_ds = self.limit(1)
+            iter_ref_bundles, _, executor = limited_ds._execute_to_iterator()
+            if executor is not None:
+                # Make sure executor is fully shutdown upon exiting
+                with executor:
+                    base_schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
+        if base_schema is not None:
+            self._plan._cache.set_schema(self._logical_plan.dag, base_schema)
+        return base_schema
+
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -3905,7 +4018,7 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        base_schema = self._base_schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             return Schema(base_schema, data_context=self._plan._context)
         return None
@@ -4002,7 +4115,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return list(set(self._plan.input_files()))
+        return self._logical_plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5456,11 +5569,14 @@ class Dataset:
         path: str,
         *,
         schema: Optional["pyarrow.Schema"] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: SaveMode = SaveMode.CREATE,
         min_rows_per_file: int = 1024 * 1024,
         max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        table_id: Optional[List[str]] = None,
+        namespace_impl: Optional[str] = None,
+        namespace_properties: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5476,9 +5592,12 @@ class Dataset:
                 ds.write_lance("/tmp/data/")
 
         Args:
-            path: The path to the destination Lance dataset.
+            path: The path to the destination Lance dataset. Ignored when namespace
+                parameters are provided; the namespace-resolved location is used.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
-            mode: The write mode. Can be "create", "append", or "overwrite".
+            mode: The write mode using SaveMode enum:
+                SaveMode.CREATE, SaveMode.APPEND, or SaveMode.OVERWRITE.
+                Namespace-backed writes currently support only SaveMode.CREATE.
             min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -5486,6 +5605,11 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            table_id: The table identifier as a list of strings, used with namespace params.
+            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
+            namespace_properties: Properties for connecting to the namespace.
+                When namespace params are provided, only SaveMode.CREATE is
+                currently supported.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5500,10 +5624,66 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            table_id=table_id,
+            namespace_impl=namespace_impl,
+            namespace_properties=namespace_properties,
         )
 
         self.write_datasink(
             datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_kafka(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        key_field: Optional[str] = None,
+        key_serializer: str = "string",
+        value_serializer: str = "json",
+        producer_config: Optional[Dict[str, Any]] = None,
+        *,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """
+        Convenience method to write Ray Dataset to Kafka.
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_kafka("my-topic", "localhost:9092")
+
+        Args:
+            topic: Kafka topic name
+            bootstrap_servers: Comma-separated Kafka broker addresses
+            key_field: Optional field name to use as message key
+            key_serializer: Key serialization format ('json', 'string', or 'bytes')
+            value_serializer: Value serialization format ('json', 'string', or 'bytes')
+            producer_config: Additional Kafka producer configuration (confluent-kafka/librdkafka format)
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+        """
+        sink = KafkaDatasink(
+            topic=topic,
+            bootstrap_servers=bootstrap_servers,
+            key_field=key_field,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+            producer_config=producer_config,
+        )
+        self.write_datasink(
+            sink,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
@@ -5679,7 +5859,9 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -6574,11 +6756,7 @@ class Dataset:
             A string containing execution timing information, or an empty string if
             the dataset has not been executed.
         """
-        if self._current_executor:
-            return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.stats()
-        return self._get_stats_summary().to_string()
+        return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
     def explain(self):
@@ -6618,6 +6796,23 @@ class Dataset:
         print(self._plan.explain())
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats().to_summary()
+
+    @DeveloperAPI
+    def get_stats_summary(self) -> DatasetStatsSummary:
+        """Get stats summary from dataset, handling both streaming and plan stats.
+
+        After materialize() with streaming execution, stats are stored in
+        _current_executor. This method returns the correct stats summary
+        regardless of execution mode.
+
+        Returns:
+            DatasetStatsSummary object containing execution statistics.
+        """
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.get_stats_summary()
         return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
@@ -6954,7 +7149,7 @@ class Dataset:
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
         if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self.__class__)
+            return self._plan.get_plan_as_string(self)
 
         is_materialized = isinstance(self, MaterializedDataset)
         return _build_dataset_ascii_repr(self, schema, is_materialized)
@@ -6989,7 +7184,18 @@ class Dataset:
         return ray.get(num_rows)
 
     def _meta_count(self) -> Optional[int]:
-        return self._plan.meta_count()
+        """Get the number of rows after applying all plan optimizations, if possible.
+
+        This method will never trigger any computation.
+
+        Returns:
+            The number of records of the result Dataset, or None.
+        """
+        dag = self._logical_plan.dag
+        num_rows = self._plan._cache.get_num_rows(dag)
+        if num_rows is None:
+            num_rows = dag.infer_metadata().num_rows
+        return num_rows
 
     def _get_uuid(self) -> str:
         return self._uuid
@@ -7113,7 +7319,7 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return self.base_schema.names
+        return list(self.base_schema.names)
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:

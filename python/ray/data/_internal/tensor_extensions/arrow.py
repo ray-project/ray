@@ -2,6 +2,7 @@ import abc
 import functools
 import json
 import logging
+import os
 import sys
 import threading
 import warnings
@@ -21,11 +22,7 @@ from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
     convert_to_numpy,
 )
-from ray.data._internal.object_extensions.arrow import (
-    MIN_PYARROW_VERSION_SCALAR_SUBCLASS,
-    ArrowPythonObjectArray,
-    _object_extension_type_allowed,
-)
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.tensor_extensions.utils import (
     ArrayLike,
     _is_ndarray_variable_shaped_tensor,
@@ -44,9 +41,7 @@ from ray.util.common import INT32_MAX
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
 
-
 PYARROW_VERSION = get_pyarrow_version()
-
 
 # Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
@@ -57,21 +52,24 @@ MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR = parse_version("16.0.0")
 # Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
 MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
-
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
 class _SerializationFormat(Enum):
-    # JSON format is legacy and inefficient, only kept for backward compatibility
     JSON = 0
     CLOUDPICKLE = 1
 
 
 # Set the default serialization format for Arrow extension types.
+# JSON is the default (safe). Cloudpickle is opt-in for backward compatibility.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.JSON  # legacy
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
-    else _SerializationFormat.CLOUDPICKLE  # default
+    _SerializationFormat.CLOUDPICKLE
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_CLOUDPICKLE", 0) == 1
+    else _SerializationFormat.JSON
+)
+
+_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
+    os.environ.get("RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", "0") == "1"
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
@@ -131,18 +129,23 @@ def _extension_array_concat_supported() -> bool:
 
 
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
-    """Deserialize data with cloudpickle first, fallback to JSON."""
+    """Deserialize extension type metadata from Parquet field metadata.
+    Uses JSON only by default. cloudpickle deserialization is available as an
+    opt-in for files written by Ray 2.49-2.54, but MUST NOT be used with
+    untrusted Parquet files.
+    """
     try:
-        # Try cloudpickle first (new format)
-        return cloudpickle.loads(serialized)
-    except Exception:
-        # Fallback to JSON format (legacy)
-        try:
-            return json.loads(serialized)
-        except json.JSONDecodeError:
-            raise ValueError(
-                f"Unable to deserialize {field_name} from {type(serialized)}"
-            )
+        return json.loads(serialized)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
+            # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
+            # WARNING: Do not enable this for files from untrusted sources.
+            return cloudpickle.loads(serialized)
+        raise ValueError(
+            f"Unable to deserialize {field_name}. If this file was written by "
+            f"Ray 2.49-2.54, set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1 "
+            f"(trusted sources only)."
+        )
 
 
 @DeveloperAPI(stability="beta")
@@ -302,38 +305,29 @@ def convert_to_pyarrow_array(
             bool
         ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
-        if not _object_extension_type_allowed():
-            object_ext_type_fallback_allowed = False
+        # NOTE: By default setting is unset which (for compatibility reasons)
+        #       is allowing the fallback
+        object_ext_type_fallback_allowed = (
+            enable_fallback_config is None or enable_fallback_config
+        )
+
+        if object_ext_type_fallback_allowed:
             object_ext_type_detail = (
-                "skipping fallback to serialize as pickled python"
-                f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
-                f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
+                "falling back to serialize as pickled python objects"
             )
         else:
-            # NOTE: By default setting is unset which (for compatibility reasons)
-            #       is allowing the fallback
-            object_ext_type_fallback_allowed = (
-                enable_fallback_config is None or enable_fallback_config
+            object_ext_type_detail = (
+                "skipping fallback to serialize as pickled python objects "
+                "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
+                "= False)"
             )
-
-            if object_ext_type_fallback_allowed:
-                object_ext_type_detail = (
-                    "falling back to serialize as pickled python objects"
-                )
-            else:
-                object_ext_type_detail = (
-                    "skipping fallback to serialize as pickled python objects "
-                    "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
-                    "= False)"
-                )
 
         # To avoid logging following warning for every block it's
         # only going to be logged in following cases
         #   - It's being logged for the first time, and
         #   - When config enabling fallback is not set explicitly (in this case
         #       fallback will still occur by default for compatibility reasons), or
-        #   - Fallback is disallowed (either explicitly or due to use of incompatible
-        #       Pyarrow version)
+        #   - Fallback is disallowed (explicitly)
         if (
             enable_fallback_config is None or not object_ext_type_fallback_allowed
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
@@ -433,7 +427,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -515,7 +509,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this
@@ -1336,8 +1330,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 dtype.byteorder == "=" and sys.byteorder == "big"
             ):
                 raise ValueError(
-                    "Only little-endian string tensors are supported, "
-                    f"but got: {dtype}"
+                    f"Only little-endian string tensors are supported, but got: {dtype}"
                 )
             pa_value_type = pa.binary(dtype.itemsize)
 

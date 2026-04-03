@@ -31,6 +31,19 @@ steps:
     matrix:
       - "3.10"
 
+  - name: coregpu-cu130-build-multipy
+    label: "wanda: coregpu-cu130-build-py{{matrix}}"
+    wanda: ci/docker/core.build.wanda.yaml
+    tags: cibase
+    depends_on: oss-ci-base_cu130-multipy
+    env:
+      PYTHON: "{{matrix}}"
+      BASE_TYPE: "cu130"
+      BUILD_VARIANT: "gpu-cu130-build"
+      RAYCI_IS_GPU_BUILD: "true"
+    matrix:
+      - "3.10"
+
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
@@ -179,9 +192,9 @@ steps:
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
         --python-version 3.12
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
     depends_on:
-      - databuild-multipy
+      - datalbuild-multipy
       - forge
 
   - label: ":ray: core: modin tests"
@@ -524,3 +537,20 @@ steps:
     depends_on:
       - block-core-gpu-tests
       - coregpubuild-multipy
+
+  - label: ":ray: core: multi gpu cu130 tests"
+    key: core-multi-gpu-cu130-tests
+    tags:
+      - cgraphs_direct_transport
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //doc/... core
+        --gpus 4
+        --build-name coregpu-cu130-build-py3.10
+        --python-version 3.10
+        --only-tags multi_gpu
+        --install-mask all-ray-libraries
+    depends_on:
+      - block-core-gpu-tests
+      - coregpu-cu130-build-multipy

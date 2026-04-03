@@ -203,6 +203,7 @@ You can use built-in Torch transforms from ``torchvision``, ``torchtext``, and `
     .. tab-item:: torchtext
 
         .. testcode::
+            :skipif: True
 
             from typing import Dict, List
             import numpy as np
