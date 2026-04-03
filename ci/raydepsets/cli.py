@@ -13,7 +13,7 @@ import click
 from networkx import DiGraph, ancestors as networkx_ancestors, topological_sort
 from pip_requirements_parser import RequirementsFile
 
-from .workspace import Depset, Workspace
+from ci.raydepsets.workspace import Depset, Workspace
 
 DEFAULT_UV_FLAGS = """
     --no-header

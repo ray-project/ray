@@ -12,7 +12,6 @@ py_library(
 py_library(
     name = "raydepsets_lib",
     srcs = [
-        "__init__.py",
         "cli.py",
     ],
     data = ["//:uv_file"],
@@ -31,41 +30,6 @@ py_binary(
     srcs = ["raydepsets.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [":raydepsets_lib"],
-)
-
-# ---------------------------------------------------------------------------
-# Standalone binary (zipapp) — no Bazel runfiles or runtime needed.
-#
-# Build:
-#   bazel run //ci/raydepsets:build_raydepsets_binary -- /output/path/raydepsets
-#
-# The builder vendors all Python deps into a self-contained zipapp.
-# Copy the output anywhere and run:
-#   ./raydepsets build <config_path> --workspace-dir /path/to/ray
-#
-# Prerequisites on the target machine:
-#   - Python >= 3.10
-#   - `uv` on $PATH  (or pass --uv-path /path/to/uv)
-# ---------------------------------------------------------------------------
-
-py_binary(
-    name = "build_raydepsets_binary",
-    srcs = ["build_zipapp.py"],
-    data = [
-        "__init__.py",
-        "__main__.py",
-        "cli.py",
-        "workspace.py",
-    ],
-    exec_compatible_with = ["//bazel:py3"],
-    main = "build_zipapp.py",
-    visibility = ["//visibility:public"],
-    deps = [
-        ci_require("click"),
-        ci_require("networkx"),
-        ci_require("pip_requirements_parser"),
-        ci_require("pyyaml"),
-    ],
 )
 
 py_test(
