@@ -495,7 +495,6 @@ def test_producer_op_ids():
     )
     assert bundle2.producer_op_ids == (None, None)
 
-    # Can be set explicitly.
     bundle3 = RefBundle(
         blocks=[(ref, meta)],
         owns_blocks=True,
@@ -504,11 +503,6 @@ def test_producer_op_ids():
     )
     assert bundle3.producer_op_ids == ("op1",)
 
-
-def test_producer_op_ids_length_mismatch():
-    """producer_op_ids must match len(blocks)."""
-    ref = ObjectRef(b"1" * 28)
-    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
     with pytest.raises(AssertionError, match="producer_op_ids and blocks must match"):
         RefBundle(
             blocks=[(ref, meta)],
