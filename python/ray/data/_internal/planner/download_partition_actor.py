@@ -2,7 +2,7 @@ import asyncio
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List, Optional, cast
+from typing import Iterator, List, Optional, cast, override
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -230,6 +230,7 @@ class AsyncPartitionActor(PartitionActor):
             block, uri_column_name
         )
 
+    @override
     def _sample_sizes(self, uris: List[str]) -> List[int]:
         """Fetch file sizes concurrently using obstore's async HEAD API.
 
