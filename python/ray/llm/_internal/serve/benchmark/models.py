@@ -16,7 +16,7 @@ class TurnResult:
     ttft_ms: float  # time to first token
     fc_ms: float  # first-chunk latency (time to N-th content chunk)
     itl_ms: float  # mean inter-token latency across output tokens
-    latency_ms: float  # total request latency
+    e2e_latency_ms: float  # total request latency
     input_tokens: int  # reported by server (usage.prompt_tokens)
     output_tokens: int  # reported by server (usage.completion_tokens)
     generated_text: str  # generated text
@@ -32,7 +32,7 @@ class TurnMetric:
     ttft_ms: float
     fc_ms: float  # first-chunk latency
     itl_ms: float  # mean inter-token latency
-    latency_ms: float
+    e2e_latency_ms: float
     input_tokens: int
     output_tokens: int
     start_time_ms: float  # relative to benchmark start
@@ -132,49 +132,59 @@ class WorkloadSpec:
         self._sys_tokens = max(0, int(round(sys_tokens)))
 
     def _feasibility_suggestions(self) -> str:
-        """Compute feasible boundary values for each parameter and return suggestions."""
-        isl, h, n, a, f = (
-            self.isl,
-            self.hit_rate,
-            self.num_turns,
-            self.osl,
-            self.shared_system_prompt_ratio,
-        )
+        """Compute feasible boundary values for each parameter and return suggestions.
+
+        For each workload parameter, search for a boundary value that makes
+        the solver yield user_tokens >= 0.5 and sys_tokens >= -0.5 (the
+        minimum values that round to physically meaningful token counts:
+        at least 1 user token and non-negative system tokens).
+        """
+        isl = self.isl
+        hit_rate = self.hit_rate
+        num_turns = self.num_turns
+        osl = self.osl
+        sharing = self.shared_system_prompt_ratio
         lines = []
 
-        def _try_solve(isl_, h_, n_, a_, f_):
-            """Return (u, s) or None if degenerate."""
-            d = 1 - (1 - f_) * (n_ + 1) / (2 * n_)
-            if abs(d) < 1e-9:
-                if h_ > 1e-9:
+        def _try_solve(isl_, hit_rate_, num_turns_, osl_, sharing_):
+            """Solve for (user_tokens, sys_tokens) or return None if degenerate."""
+            denom = 1 - (1 - sharing_) * (num_turns_ + 1) / (2 * num_turns_)
+            if abs(denom) < 1e-9:
+                if hit_rate_ > 1e-9:
                     return None
                 return (float(isl_), 0.0)
-            num = (1 - h_) * isl_ - (1 - f_) / n_ * (isl_ - (n_ - 1) * a_ / 2)
-            u = num / d
-            s = isl_ - (n_ + 1) / 2 * u - (n_ - 1) / 2 * a_
-            return (u, s)
+            numer = (1 - hit_rate_) * isl_ - (1 - sharing_) / num_turns_ * (
+                isl_ - (num_turns_ - 1) * osl_ / 2
+            )
+            user_tokens = numer / denom
+            sys_tokens = (
+                isl_ - (num_turns_ + 1) / 2 * user_tokens - (num_turns_ - 1) / 2 * osl_
+            )
+            return (user_tokens, sys_tokens)
 
-        def _feasible(isl_, h_, n_, a_, f_):
-            r = _try_solve(isl_, h_, n_, a_, f_)
-            return r is not None and r[0] >= 0.5 and r[1] >= -0.5
+        def _feasible(isl_, hit_rate_, num_turns_, osl_, sharing_):
+            result = _try_solve(isl_, hit_rate_, num_turns_, osl_, sharing_)
+            # user_tokens >= 0.5 rounds to at least 1 token per turn;
+            # sys_tokens >= -0.5 rounds to at least 0 system prompt tokens.
+            return result is not None and result[0] >= 0.5 and result[1] >= -0.5
 
         # Min ISL (binary search)
         lo, hi = isl, isl * 20
-        if _feasible(hi, h, n, a, f):
+        if _feasible(hi, hit_rate, num_turns, osl, sharing):
             while hi - lo > 1:
                 mid = (lo + hi) // 2
-                if _feasible(mid, h, n, a, f):
+                if _feasible(mid, hit_rate, num_turns, osl, sharing):
                     hi = mid
                 else:
                     lo = mid
             lines.append(f"  - ISL >= {hi} (with current params)")
 
         # Max OSL
-        lo, hi = 1, a
-        if _feasible(isl, h, n, lo, f):
+        lo, hi = 1, osl
+        if _feasible(isl, hit_rate, num_turns, lo, sharing):
             while hi - lo > 1:
                 mid = (lo + hi) // 2
-                if _feasible(isl, h, n, mid, f):
+                if _feasible(isl, hit_rate, num_turns, mid, sharing):
                     lo = mid
                 else:
                     hi = mid
@@ -183,9 +193,9 @@ class WorkloadSpec:
         # Min hit_rate / max hit_rate (search in 0.01 steps)
         for h_try in range(0, 100):
             h_val = h_try / 100.0
-            if _feasible(isl, h_val, n, a, f):
-                if h_val != h:
-                    if h_val > h:
+            if _feasible(isl, h_val, num_turns, osl, sharing):
+                if h_val != hit_rate:
+                    if h_val > hit_rate:
                         lines.append(
                             f"  - hit_rate >= {h_val:.2f} (with current ISL/OSL)"
                         )
@@ -196,18 +206,18 @@ class WorkloadSpec:
                 break
 
         # Max num_turns
-        for n_try in range(n, 0, -1):
-            if _feasible(isl, h, n_try, a, f):
-                if n_try != n:
+        for n_try in range(num_turns, 0, -1):
+            if _feasible(isl, hit_rate, n_try, osl, sharing):
+                if n_try != num_turns:
                     lines.append(f"  - num_turns <= {n_try} (with current ISL/OSL)")
                 break
 
         # Min shared_system_prompt_ratio
-        if f < 1.0:
-            for f_try in range(int(f * 100), 101):
+        if sharing < 1.0:
+            for f_try in range(int(sharing * 100), 101):
                 f_val = f_try / 100.0
-                if _feasible(isl, h, n, a, f_val):
-                    if f_val != f:
+                if _feasible(isl, hit_rate, num_turns, osl, f_val):
+                    if f_val != sharing:
                         lines.append(f"  - shared_system_prompt_ratio >= {f_val:.2f}")
                     break
 

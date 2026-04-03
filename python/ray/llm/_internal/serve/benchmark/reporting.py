@@ -35,7 +35,7 @@ def report_results(
     all_ttft = [m.ttft_ms for m in metrics]
     all_fc = [m.fc_ms for m in metrics]
     all_itl = [v for m in metrics for v in m.itl_ms_list]
-    all_latency = [m.latency_ms for m in metrics]
+    all_latency = [m.e2e_latency_ms for m in metrics]
     all_input = [m.input_tokens for m in metrics]
     all_output = [m.output_tokens for m in metrics]
 
@@ -93,7 +93,7 @@ def report_results(
         t_fc = mean([m.fc_ms for m in turn_metrics])
         t_itl_all = [v for m in turn_metrics for v in m.itl_ms_list]
         t_itl = mean(t_itl_all) if t_itl_all else 0.0
-        t_lat = mean([m.latency_ms for m in turn_metrics])
+        t_lat = mean([m.e2e_latency_ms for m in turn_metrics])
         t_isl = mean([m.input_tokens for m in turn_metrics])
         print(
             f"    {t + 1:<6} {len(turn_metrics):<7} {t_isl:<9.0f} "

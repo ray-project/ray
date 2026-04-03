@@ -114,7 +114,7 @@ async def send_chat_completion(
         ttft_ms=ttft_ns / 1e6,
         fc_ms=fc_ns / 1e6,
         itl_ms=itl_ms,
-        latency_ms=latency_ns / 1e6,
+        e2e_latency_ms=latency_ns / 1e6,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         generated_text=generated_text,

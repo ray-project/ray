@@ -63,7 +63,7 @@ async def execute_single_turn(
         ttft_ms=result.ttft_ms,
         fc_ms=result.fc_ms,
         itl_ms=result.itl_ms,
-        latency_ms=result.latency_ms,
+        e2e_latency_ms=result.e2e_latency_ms,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         start_time_ms=(req_start_ns - bench_start_ns) / 1e6,

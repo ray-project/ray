@@ -29,7 +29,7 @@ async def test_send_chat_completion(mock_server: str) -> None:
     assert result.input_tokens == 10
     assert result.output_tokens == 4
     assert result.ttft_ms > 0
-    assert result.latency_ms > 0
+    assert result.e2e_latency_ms > 0
     assert result.fc_ms > 0
     assert isinstance(result.itl_ms, float)
 
