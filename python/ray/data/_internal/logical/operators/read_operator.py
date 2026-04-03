@@ -52,6 +52,8 @@ class Read(
             from ray.data._internal.compute import TaskPoolStrategy
 
             object.__setattr__(self, "compute", TaskPoolStrategy())
+        if self.ray_remote_args is None:
+            object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
         object.__setattr__(self, "_input_dependencies", [])
         object.__setattr__(self, "_num_outputs", num_outputs)
