@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
     from ray.train.v2._internal.execution.worker_group import (
+        ExecutionGroup,
         ReplicaGroup,
         Worker,
         WorkerGroup,
@@ -39,6 +40,16 @@ class ExecutionGroupCallback(RayTrainCallback):
         """
         return {}
 
+    def after_execution_group_start(self, execution_group: "ExecutionGroup"):
+        """Called after an execution group is started or replaced.
+        All workers in the execution group should be ready to execute tasks."""
+        pass
+
+    def before_execution_group_shutdown(self, execution_group: "ExecutionGroup"):
+        """Called before an execution group is shut down.
+        Workers may be dead at this point due to actor failures."""
+        pass
+
 
 @DeveloperAPI
 class WorkerGroupCallback(ExecutionGroupCallback):
@@ -53,7 +64,7 @@ class WorkerGroupCallback(ExecutionGroupCallback):
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
         All workers should be ready to execute tasks."""
-        pass
+        return super().after_execution_group_start(worker_group)
 
     def after_worker_group_training_start(self, worker_group: "WorkerGroup"):
         pass
@@ -66,7 +77,7 @@ class WorkerGroupCallback(ExecutionGroupCallback):
         """Called before the worker group is shut down.
         Workers may be dead at this point due to actor failures, so this method
         should catch and handle exceptions if attempting to execute tasks."""
-        pass
+        return super().before_execution_group_shutdown(worker_group)
 
     def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is shut down."""
@@ -93,12 +104,12 @@ class ReplicaGroupCallback(ExecutionGroupCallback):
     def after_replica_group_start(self, replica_group: "ReplicaGroup"):
         """Called after a replica group is started or replaced.
         All workers in the replica group should be ready to execute tasks."""
-        pass
+        return super().after_execution_group_start(replica_group)
 
     def before_replica_group_shutdown(self, replica_group: "ReplicaGroup"):
         """Called before a replica group is shut down.
         Workers may be dead at this point due to actor failures."""
-        pass
+        return super().before_execution_group_shutdown(replica_group)
 
 
 @DeveloperAPI

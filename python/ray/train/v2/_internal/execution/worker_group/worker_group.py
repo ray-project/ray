@@ -457,7 +457,7 @@ class WorkerGroup(ExecutionGroup):
                 as a single group.
 
         Returns:
-            Sorted list of Workers.
+            Sorted list of Workers sorted by world_rank.
         """
         indices = (
             placement_group_bundle_indices
@@ -495,7 +495,7 @@ class WorkerGroup(ExecutionGroup):
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
         workers = [
-            Worker(actor, meta, resources_per_worker, bundle_index=idx)
+            Worker(actor, meta, resources_per_worker, placement_group_bundle_index=idx)
             for idx, actor, meta in zip(indices, actors, actor_metadatas)
         ]
 
@@ -818,7 +818,9 @@ class WorkerGroup(ExecutionGroup):
         # Save old replica group state.
         old_replica_group = self._replica_groups[replica_group_index]
         old_workers = old_replica_group.get_workers()
-        old_placement_group_bundle_indices = [w.bundle_index for w in old_workers]
+        old_placement_group_bundle_indices = [
+            w.placement_group_bundle_index for w in old_workers
+        ]
 
         # Shutdown old replica group.
         # It can be inactive if we failed to initialize the workers in the previous attempt.

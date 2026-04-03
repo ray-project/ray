@@ -8,15 +8,13 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ExecutionGroup,
-    ReplicaGroup,
-    WorkerGroup,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class WorkingDirectorySetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
-    def _after_execution_group_start(self, execution_group: ExecutionGroup):
+    def after_execution_group_start(self, execution_group: ExecutionGroup):
         """Shared logic for setting up the working directory on an execution group."""
 
         def chdir_to_working_dir() -> None:
@@ -31,9 +29,3 @@ class WorkingDirectorySetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
             os.chdir(local_working_directory)
 
         execution_group.execute(chdir_to_working_dir)
-
-    def after_worker_group_start(self, worker_group: WorkerGroup):
-        self._after_execution_group_start(worker_group)
-
-    def after_replica_group_start(self, replica_group: ReplicaGroup):
-        self._after_execution_group_start(replica_group)
