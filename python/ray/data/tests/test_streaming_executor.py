@@ -1231,6 +1231,24 @@ class TestDataOpTask:
 
         assert bytes_read == pytest.approx(128 * MiB)
 
+    def test_on_data_ready_stamps_producer_op_ids(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
+        output_bundles = []
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            output_ready_callback=lambda b: output_bundles.append(b),
+            operator_id="test-op-uuid",
+        )
+
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.on_data_ready(None)
+
+        assert len(output_bundles) == 1
+        assert output_bundles[0].producer_op_ids == ("test-op-uuid",)
+
     def test_on_data_ready_multiple_outputs(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
 

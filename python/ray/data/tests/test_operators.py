@@ -113,6 +113,33 @@ def test_all_to_all_operator():
     assert op.has_completed()
 
 
+def test_all_to_all_operator_stamps_producer_op_ids():
+    def dummy_all_transform(bundles: List[RefBundle], ctx):
+        return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(5)])
+    )
+    op = AllToAllOperator(
+        dummy_all_transform,
+        input_op,
+        DataContext.get_current(),
+        target_max_block_size_override=DataContext.get_current().target_max_block_size,
+        num_outputs=2,
+        name="TestAll",
+    )
+
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.all_inputs_done()
+
+    while op.has_next():
+        bundle = op.get_next()
+        for pid in bundle.producer_op_ids:
+            assert pid == op.id
+
+
 def test_num_outputs_total():
     # The number of outputs is always known for InputDataBuffer.
     input_op = InputDataBuffer(

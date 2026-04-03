@@ -116,6 +116,30 @@ def test_limit_operator_memory_leak_fix(ray_start_regular_shared, tmp_path):
     assert output_queue_size == 0, f"Expected 0 items, but got {output_queue_size}."
 
 
+def test_limit_operator_preserves_producer_op_ids(ray_start_regular_shared):
+    """Test that LimitOperator propagates producer_op_ids through output bundles."""
+    refs = make_ref_bundles([[1, 2, 3], [4, 5, 6]])
+    # Tag each bundle with a producer ID.
+    import dataclasses
+
+    refs = [
+        dataclasses.replace(r, producer_op_ids=("op_a",) * len(r.blocks)) for r in refs
+    ]
+    input_op = InputDataBuffer(DataContext.get_current(), refs)
+    limit_op = LimitOperator(4, input_op, DataContext.get_current())
+
+    while input_op.has_next() and not limit_op._limit_reached():
+        limit_op.add_input(input_op.get_next(), 0)
+
+    outputs = []
+    while limit_op.has_next():
+        outputs.append(limit_op.get_next())
+
+    for bundle in outputs:
+        for pid in bundle.producer_op_ids:
+            assert pid == "op_a"
+
+
 def test_limit_estimated_num_output_bundles():
     # Test limit operator estimation
     input_op = InputDataBuffer(

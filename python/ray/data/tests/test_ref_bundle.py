@@ -481,6 +481,132 @@ def test_ref_bundle_eq_and_hash():
     assert bundle != diff_meta_bundle
 
 
+def test_producer_op_ids_default_none():
+    """producer_op_ids defaults to (None,) * len(blocks)."""
+    ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+    bundle = RefBundle(blocks=[(ref, meta)], owns_blocks=True, schema=_TEST_SCHEMA)
+    assert bundle.producer_op_ids == (None,)
+
+    bundle2 = RefBundle(
+        blocks=[(ref, meta), (ref, meta)], owns_blocks=True, schema=_TEST_SCHEMA
+    )
+    assert bundle2.producer_op_ids == (None, None)
+
+
+def test_producer_op_ids_explicit():
+    """producer_op_ids can be set explicitly."""
+    ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+    bundle = RefBundle(
+        blocks=[(ref, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op1",),
+    )
+    assert bundle.producer_op_ids == ("op1",)
+
+
+def test_producer_op_ids_length_mismatch():
+    """producer_op_ids must match len(blocks)."""
+    ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+    with pytest.raises(AssertionError, match="producer_op_ids and blocks must match"):
+        RefBundle(
+            blocks=[(ref, meta)],
+            owns_blocks=True,
+            schema=_TEST_SCHEMA,
+            producer_op_ids=("op1", "op2"),
+        )
+
+
+def test_slice_preserves_producer_op_ids():
+    """slice() propagates producer_op_ids to both halves."""
+    ref1 = ObjectRef(b"1" * 28)
+    ref2 = ObjectRef(b"2" * 28)
+    meta1 = BlockMetadata(num_rows=6, size_bytes=60, exec_stats=None, input_files=None)
+    meta2 = BlockMetadata(num_rows=4, size_bytes=40, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(ref1, meta1), (ref2, meta2)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op_a", "op_b"),
+    )
+
+    consumed, remaining = bundle.slice(8)
+    # consumed gets all of block1 (6 rows) + partial block2 (2 rows)
+    assert consumed.producer_op_ids == ("op_a", "op_b")
+    # remaining gets rest of block2
+    assert remaining.producer_op_ids == ("op_b",)
+
+
+def test_merge_ref_bundles_concatenates_producer_op_ids():
+    """merge_ref_bundles concatenates producer_op_ids from all bundles."""
+    ref1 = ObjectRef(b"1" * 28)
+    ref2 = ObjectRef(b"2" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+
+    bundle1 = RefBundle(
+        blocks=[(ref1, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op_a",),
+    )
+    bundle2 = RefBundle(
+        blocks=[(ref2, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op_b",),
+    )
+
+    merged = RefBundle.merge_ref_bundles([bundle1, bundle2])
+    assert merged.producer_op_ids == ("op_a", "op_b")
+
+
+def test_merge_ref_bundles_mixed_none_producer_op_ids():
+    """merge_ref_bundles handles bundles with None producer_op_ids."""
+    ref1 = ObjectRef(b"1" * 28)
+    ref2 = ObjectRef(b"2" * 28)
+    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+
+    bundle1 = RefBundle(
+        blocks=[(ref1, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op_a",),
+    )
+    bundle2 = RefBundle(
+        blocks=[(ref2, meta)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+    )
+
+    merged = RefBundle.merge_ref_bundles([bundle1, bundle2])
+    assert merged.producer_op_ids == ("op_a", None)
+
+
+def test_output_splitter_split_preserves_producer_op_ids():
+    """_split() propagates producer_op_ids to both halves."""
+    from ray.data._internal.execution.operators.output_splitter import _split
+
+    ref1 = ObjectRef(b"1" * 28)
+    ref2 = ObjectRef(b"2" * 28)
+    meta1 = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+    meta2 = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(ref1, meta1), (ref2, meta2)],
+        owns_blocks=True,
+        schema=_TEST_SCHEMA,
+        producer_op_ids=("op_a", "op_b"),
+    )
+
+    left, right = _split(bundle, 5)
+    assert left.producer_op_ids == ("op_a",)
+    assert right.producer_op_ids == ("op_b",)
+
+
 if __name__ == "__main__":
     import sys
 
