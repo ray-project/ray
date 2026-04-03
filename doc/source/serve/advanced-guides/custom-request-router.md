@@ -163,20 +163,18 @@ replicas and use it in the routing policy.
 (capacity-queue-request-router)=
 ## Define a centralized capacity queue request router
 
-The previous examples make routing decisions independently on each router using
-locally visible replica state. Under high concurrency with multiple routers, this
-can cause several routers to simultaneously pick the same replica, triggering
-rejections and retries. A **centralized** approach avoids this: a single actor
+In the previous examples the routing decisions are based on the locally visible state of the target replicas from the perspective of the router replica. This view is **eventually consistent** not immediately because the serve controller frequently broadcasts the replica information to the router. Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same replica, causing transient load imbalance or triggering
+rejections and retries. For some applications this can result in lower throughput. A **centralized** approach avoids this: a single actor
 tracks per-replica in-flight counts, and every router acquires a *capacity token*
-before forwarding a request. Each token guarantees the target replica has room,
+before forwarding a request. This way, each token guarantees the target replica has room,
 eliminating the rejection protocol entirely.
 
-The pattern has three pieces:
+This example demonstrates how we can implement such routing policy. The example has three pieces:
 
 1. A **`CapacityQueue`** actor that tracks per-replica capacity and hands out
    tokens using a least-loaded selection strategy.
 2. A **`CapacityQueueRouter`** custom request router that acquires a token before
-   routing and releases it when the request completes.
+   routing and releases it when the request completes. Remember that in a real application, we can have multiple replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas. The centralized `CapacityQueue` actor is meant to keep their local information synchronized with reality.
 3. A **deployment** that ties them together using a
    [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for
    the queue and a
@@ -188,7 +186,7 @@ The pattern has three pieces:
 Create a file `capacity_queue_request_router.py` with the `CapacityQueue` class.
 This `@ray.remote` class will be managed by the Serve controller as a
 [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) — one
-instance shared across all replicas of the deployment:
+actor instance shared across all replicas of the deployment whose lifecycle is tied to the lifecycle of the deployment (not replicas):
 
 ```{literalinclude} /../../python/ray/serve/_private/experimental/capacity_queue_request_router.py
 :start-after: __begin_define_capacity_queue__
