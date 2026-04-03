@@ -243,6 +243,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -258,6 +259,7 @@
     frequency: weekly
 
     cluster:
+      anyscale_sdk_2026: true
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
@@ -273,6 +275,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -288,6 +291,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_cpu_4_aws.yaml
@@ -305,6 +309,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -320,6 +325,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -335,6 +341,7 @@
     frequency: manual
 
     cluster:
+      anyscale_sdk_2026: true
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
@@ -349,6 +356,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -372,6 +380,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: dreambooth_compute_aws.yaml
@@ -393,6 +402,7 @@
   team: ml
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: dreambooth_compute_aws.yaml
@@ -409,6 +419,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_gptj_test.sh
@@ -425,6 +436,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_dolly_test.sh
@@ -443,6 +455,7 @@
   frequency: manual
   team: ml
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_vicuna_test.sh
