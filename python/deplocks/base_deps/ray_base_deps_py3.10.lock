@@ -142,9 +142,9 @@ aiosignal==1.4.0 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.10.lock
     #   aiohttp
-async-timeout==4.0.3 ; python_full_version < '3.11' \
-    --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
-    --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
+async-timeout==5.0.1 ; python_full_version < '3.11' \
+    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
+    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.10.lock
     #   aiohttp
