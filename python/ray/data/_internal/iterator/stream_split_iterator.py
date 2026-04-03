@@ -381,9 +381,15 @@ class SplitCoordinator:
         # Advance to the next epoch
         self._try_start_new_epoch(starting_epoch)
 
-        assert self._output_iterator is not None
-        assert (
-            self._cur_epoch == starting_epoch + 1
-        ), f"Expected current epoch to be {starting_epoch + 1} (got {self._cur_epoch})"
+        if self._output_iterator is None:
+            raise ValueError(
+                "Invalid iterator: output iterator is not initialized. "
+                "This may indicate too many concurrent consumers."
+            )
+        if self._cur_epoch != starting_epoch + 1:
+            raise ValueError(
+                f"Invalid iterator: too many concurrent consumers detected. "
+                f"Expected epoch {starting_epoch + 1}, got {self._cur_epoch}."
+            )
 
         return self._cur_epoch
