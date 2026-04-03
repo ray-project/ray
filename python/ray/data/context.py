@@ -299,6 +299,11 @@ DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     1,
 )
 
+DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S: float = env_float(
+    "RAY_DATA_ACTOR_POOL_UTIL_AVG_WINDOW_S",
+    10.0,
+)
+
 
 # Disable dynamic output queue size backpressure by default.
 DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
@@ -399,6 +404,9 @@ class AutoscalingConfig:
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
             and scheduling pressure. Defaults to 1 for conservative scaling.
+        actor_pool_util_avg_window_s: Time window in seconds to calculate the rolling
+            average of actor pool utilization. Using a rolling average instead of
+            instantaneous values reduces scaling fluctuations. Defaults to 10s.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -414,6 +422,9 @@ class AutoscalingConfig:
     actor_pool_max_upscaling_delta: Optional[
         int
     ] = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
+
+    # Time window in seconds for rolling average of actor pool utilization
+    actor_pool_util_avg_window_s: float = DEFAULT_ACTOR_POOL_UTIL_AVG_WINDOW_S
 
 
 def _execution_options_factory() -> "ExecutionOptions":

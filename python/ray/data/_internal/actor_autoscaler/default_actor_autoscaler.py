@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import math
 import sys
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
 from .base_actor_autoscaler import ActorAutoscaler
+from ray.data._internal.average_calculator import TimeWindowAverageCalculator
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data.context import WARN_PREFIX, AutoscalingConfig
 
@@ -37,6 +38,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         self._actor_pool_max_upscaling_delta: Optional[
             int
         ] = config.actor_pool_max_upscaling_delta
+        self._actor_pool_util_avg_window_s: float = config.actor_pool_util_avg_window_s
+        # Per-pool rolling average calculators, keyed by pool id.
+        self._pool_util_calculators: Dict[int, TimeWindowAverageCalculator] = {}
 
         self._validate_autoscaling_config()
 
@@ -81,8 +85,24 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         if op.metrics.num_inputs_received == 0:
             return ActorPoolScalingRequest.no_op(reason="no inputs received")
 
-        # Determine whether to scale up based on the actor pool utilization.
-        util = actor_pool.get_pool_util()
+        # Determine whether to scale up based on the rolling average of
+        # actor pool utilization to reduce scaling fluctuations.
+        pool_id = id(actor_pool)
+        if pool_id not in self._pool_util_calculators:
+            self._pool_util_calculators[pool_id] = TimeWindowAverageCalculator(
+                self._actor_pool_util_avg_window_s
+            )
+
+        instantaneous_util = actor_pool.get_pool_util()
+        calculator = self._pool_util_calculators[pool_id]
+
+        # If pool has no actors, skip averaging and scale up immediately.
+        if instantaneous_util == float("inf"):
+            util = instantaneous_util
+        else:
+            calculator.report(instantaneous_util)
+            avg = calculator.get_average()
+            util = avg if avg is not None else instantaneous_util
 
         if util >= self._actor_pool_scaling_up_threshold:
             # Do not scale up if either
@@ -118,7 +138,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     delta=1, reason="no running actors, scale up immediately"
                 )
 
-            delta = self._compute_upscale_delta(actor_pool, op_state)
+            delta = self._compute_upscale_delta(actor_pool, util)
             # At least scale up by 1
             delta = max(1, delta)
             # Cap delta
@@ -220,12 +240,12 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             )
 
     def _compute_upscale_delta(
-        self, actor_pool: AutoscalingActorPool, op_state: OpState
+        self, actor_pool: AutoscalingActorPool, util: float
     ) -> int:
         # Calculate desired delta based on utilization
         return math.ceil(
             actor_pool.current_size()
-            * (actor_pool.get_pool_util() / self._actor_pool_scaling_up_threshold - 1)
+            * (util / self._actor_pool_scaling_up_threshold - 1)
         )
 
     def _compute_downscale_delta(self, actor_pool: "AutoscalingActorPool") -> int:

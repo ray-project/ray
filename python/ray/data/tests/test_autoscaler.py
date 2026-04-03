@@ -90,6 +90,10 @@ def test_actor_pool_scaling():
     ):
         nonlocal actor_pool, op, op_state
 
+        # Clear rolling average calculators so each assertion starts fresh
+        # and uses the instantaneous util value (single-sample average).
+        autoscaler._pool_util_calculators.clear()
+
         assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool,
             op=op,
@@ -868,6 +872,308 @@ def test_autoscaling_config_validation_negative_upscaling_threshold(
                 actor_pool_max_upscaling_delta=5,
             ),
         )
+
+
+@pytest.fixture
+def sliding_window_setup():
+    """Shared setup for sliding-window autoscaler tests.
+
+    Creates an autoscaler with default 10s window, threshold=1.0 up / 0.5 down,
+    and a 10-actor pool with standard mocks.
+    """
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
+        ),
+    )
+
+    actor_pool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=5),
+        max_size=MagicMock(return_value=15),
+        current_size=MagicMock(return_value=10),
+        num_active_actors=MagicMock(return_value=10),
+        num_running_actors=MagicMock(return_value=10),
+        num_pending_actors=MagicMock(return_value=0),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
+        max_actor_concurrency=MagicMock(return_value=1),
+    )
+
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        has_completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        input_dependencies=[MagicMock()],
+        internal_input_queue_num_blocks=MagicMock(return_value=1),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
+    )
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+
+    return autoscaler, actor_pool, op, op_state
+
+
+def test_sliding_window_dampens_transient_spike(sliding_window_setup):
+    """A single utilization spike among many low-util observations should be
+    averaged out and NOT trigger a scale-up.
+
+    Scenario (threshold=1.0, window=10s):
+      - 9 observations at util=0.7 (below threshold)
+      - 1 observation spike at util=1.5 (above threshold)
+      - Rolling average = (0.7*9 + 1.5) / 10 = 0.78 -> no scale-up
+    """
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    mock_time = MagicMock()
+    # All observations within the 10s window: t=1.0, 2.0, ..., 10.0
+    timestamps = []
+    for i in range(10):
+        # report() calls time.time() once, get_average() calls once
+        t = float(i + 1)
+        timestamps.extend([t, t])
+    mock_time.side_effect = timestamps
+
+    util_values = [0.7] * 9 + [1.5]
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        for util_val in util_values:
+            actor_pool.get_pool_util = MagicMock(return_value=util_val)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # Average = (0.7*9 + 1.5) / 10 = 0.78, which is within [0.5, 1.0] -> no-op
+    assert result.delta == 0, (
+        f"Transient spike should be dampened by rolling average, "
+        f"but got delta={result.delta}"
+    )
+
+
+def test_sliding_window_sustained_high_util_triggers_scale_up(sliding_window_setup):
+    """Sustained high utilization over the window should trigger scale-up.
+
+    Scenario (threshold=1.0, window=10s):
+      - 10 observations all at util=1.5 (above threshold)
+      - Rolling average = 1.5 -> scale-up
+    """
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    mock_time = MagicMock()
+    timestamps = []
+    for i in range(10):
+        t = float(i + 1)
+        timestamps.extend([t, t])
+    mock_time.side_effect = timestamps
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        for _ in range(10):
+            actor_pool.get_pool_util = MagicMock(return_value=1.5)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # Average = 1.5 >= threshold(1.0) -> scale up
+    # delta = ceil(10 * (1.5/1.0 - 1)) = ceil(5) = 5
+    assert result.delta == 5, f"Expected scale-up delta=5, got {result.delta}"
+
+
+def test_sliding_window_sustained_low_util_triggers_scale_down(sliding_window_setup):
+    """Sustained low utilization over the window should trigger scale-down.
+
+    Scenario (threshold_down=0.5, window=10s):
+      - 10 observations all at util=0.3
+      - Rolling average = 0.3 -> scale-down
+    """
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    mock_time = MagicMock()
+    timestamps = []
+    for i in range(10):
+        t = float(i + 1)
+        timestamps.extend([t, t])
+    mock_time.side_effect = timestamps
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        for _ in range(10):
+            actor_pool.get_pool_util = MagicMock(return_value=0.3)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # Average = 0.3 <= threshold_down(0.5) -> scale down
+    assert result.delta == -1, f"Expected scale-down delta=-1, got {result.delta}"
+
+
+def test_sliding_window_old_values_expire(sliding_window_setup):
+    """Values older than the window should be trimmed, so the average reflects
+    only recent observations.
+
+    Scenario (threshold=1.0, window=10s):
+      - Phase 1: 5 observations at util=1.5 at t=1..5 (high util)
+      - Phase 2: 5 observations at util=0.7 at t=12..16 (low util, phase 1 expired)
+      - After phase 2, only the 0.7 values remain in the window -> average=0.7
+    """
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    mock_time = MagicMock()
+    timestamps = []
+    # Phase 1: high util at t=1..5 (each observation: report + get_average)
+    for i in range(5):
+        t = float(i + 1)
+        timestamps.extend([t, t])
+    # Phase 2: low util at t=12..16 (old values from t=1..5 are > 10s ago)
+    for i in range(5):
+        t = float(i + 12)
+        timestamps.extend([t, t])
+    mock_time.side_effect = timestamps
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        # Phase 1: high util
+        for _ in range(5):
+            actor_pool.get_pool_util = MagicMock(return_value=1.5)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+        # After phase 1, average=1.5 -> scale up
+        assert result.delta > 0, "Phase 1 should trigger scale-up"
+
+        # Phase 2: low util, old high-util values have expired
+        for _ in range(5):
+            actor_pool.get_pool_util = MagicMock(return_value=0.7)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # Only 0.7 values remain in window -> average=0.7, within [0.5, 1.0] -> no-op
+    assert result.delta == 0, (
+        f"After old values expire, average should reflect only recent low util, "
+        f"but got delta={result.delta}"
+    )
+
+
+def test_sliding_window_bypassed_for_inf_util(sliding_window_setup):
+    """When pool has no actors (util=inf), averaging is bypassed and
+    scale-up happens immediately."""
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    actor_pool.get_pool_util = MagicMock(return_value=float("inf"))
+    actor_pool.num_running_actors = MagicMock(return_value=0)
+    actor_pool.current_size = MagicMock(return_value=0)
+    actor_pool.min_size = MagicMock(return_value=0)
+
+    result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    assert result.delta == 1
+    assert result.reason == "no running actors, scale up immediately"
+
+    # Verify that inf was not reported to the calculator
+    pool_id = id(actor_pool)
+    if pool_id in autoscaler._pool_util_calculators:
+        calculator = autoscaler._pool_util_calculators[pool_id]
+        assert (
+            calculator.get_average() is None
+        ), "inf should not be reported to the rolling average calculator"
+
+
+def test_sliding_window_custom_window_config():
+    """The actor_pool_util_avg_window_s config should be respected.
+
+    With a 2s window, observations older than 2s should expire.
+    """
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
+            actor_pool_util_avg_window_s=2.0,
+        ),
+    )
+
+    actor_pool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=5),
+        max_size=MagicMock(return_value=15),
+        current_size=MagicMock(return_value=10),
+        num_active_actors=MagicMock(return_value=10),
+        num_running_actors=MagicMock(return_value=10),
+        num_pending_actors=MagicMock(return_value=0),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
+        max_actor_concurrency=MagicMock(return_value=1),
+    )
+
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        has_completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        input_dependencies=[MagicMock()],
+        internal_input_queue_num_blocks=MagicMock(return_value=1),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
+    )
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+
+    mock_time = MagicMock()
+    timestamps = []
+    # Observation at t=1.0: high util
+    timestamps.extend([1.0, 1.0])
+    # Observation at t=4.0: low util (t=1.0 is > 2s ago, should be expired)
+    timestamps.extend([4.0, 4.0])
+    mock_time.side_effect = timestamps
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        actor_pool.get_pool_util = MagicMock(return_value=1.5)
+        result1 = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+        assert result1.delta > 0, "First observation at 1.5 should trigger scale-up"
+
+        actor_pool.get_pool_util = MagicMock(return_value=0.7)
+        result2 = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # With 2s window, the 1.5 at t=1.0 expired by t=4.0, only 0.7 remains
+    assert result2.delta == 0, (
+        f"With 2s window, old observation should have expired, "
+        f"but got delta={result2.delta}"
+    )
+
+
+def test_sliding_window_gradual_ramp_up(sliding_window_setup):
+    """Gradually increasing utilization should eventually cross the threshold
+    and trigger scale-up, verifying the average tracks the trend.
+
+    Scenario (threshold=1.0, window=10s):
+      - Observations at util = 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5
+      - Average = mean(0.6..1.5) = 1.05 -> scale-up
+    """
+    autoscaler, actor_pool, op, op_state = sliding_window_setup
+
+    mock_time = MagicMock()
+    timestamps = []
+    for i in range(10):
+        t = float(i + 1)
+        timestamps.extend([t, t])
+    mock_time.side_effect = timestamps
+
+    util_values = [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
+
+    with patch("ray.data._internal.average_calculator.time.time", mock_time):
+        for util_val in util_values:
+            actor_pool.get_pool_util = MagicMock(return_value=util_val)
+            result = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+
+    # Average = (0.6+0.7+...+1.5)/10 = 10.5/10 = 1.05 >= 1.0 -> scale up
+    assert result.delta > 0, (
+        f"Gradual ramp to avg=1.05 should trigger scale-up, "
+        f"but got delta={result.delta}"
+    )
 
 
 if __name__ == "__main__":
