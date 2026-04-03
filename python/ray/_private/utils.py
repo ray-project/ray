@@ -196,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)

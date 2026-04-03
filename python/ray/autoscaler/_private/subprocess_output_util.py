@@ -403,7 +403,7 @@ def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
         cli_logger.warning(
             "This might mean that the SSH daemon is "
             "still setting up, or that "
-            "the host is inaccessable (e.g. due to "
+            "the host is inaccessible (e.g. due to "
             "a firewall)."
         )
 
