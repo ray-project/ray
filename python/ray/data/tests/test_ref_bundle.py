@@ -481,10 +481,12 @@ def test_ref_bundle_eq_and_hash():
     assert bundle != diff_meta_bundle
 
 
-def test_producer_op_ids_default_none():
-    """producer_op_ids defaults to (None,) * len(blocks)."""
+def test_producer_op_ids():
+    """producer_op_ids defaults to (None,) * len(blocks), or can be set explicitly."""
     ref = ObjectRef(b"1" * 28)
     meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
+
+    # Defaults to None per block.
     bundle = RefBundle(blocks=[(ref, meta)], owns_blocks=True, schema=_TEST_SCHEMA)
     assert bundle.producer_op_ids == (None,)
 
@@ -493,18 +495,14 @@ def test_producer_op_ids_default_none():
     )
     assert bundle2.producer_op_ids == (None, None)
 
-
-def test_producer_op_ids_explicit():
-    """producer_op_ids can be set explicitly."""
-    ref = ObjectRef(b"1" * 28)
-    meta = BlockMetadata(num_rows=5, size_bytes=50, exec_stats=None, input_files=None)
-    bundle = RefBundle(
+    # Can be set explicitly.
+    bundle3 = RefBundle(
         blocks=[(ref, meta)],
         owns_blocks=True,
         schema=_TEST_SCHEMA,
         producer_op_ids=("op1",),
     )
-    assert bundle.producer_op_ids == ("op1",)
+    assert bundle3.producer_op_ids == ("op1",)
 
 
 def test_producer_op_ids_length_mismatch():
