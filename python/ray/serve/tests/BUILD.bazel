@@ -106,6 +106,7 @@ py_test_module_list(
         "test_backpressure_grpc.py",
         "test_batching.py",
         "test_callback.py",
+        "test_capacity_queue_router.py",
         "test_cluster.py",
         "test_controller.py",
         "test_controller_benchmark.py",
@@ -310,24 +311,6 @@ py_test_module_list(
         "exclusive",
         "team:serve",
         "use_all_core_windows",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Capacity queue router example tests
-py_test_module_list(
-    size = "medium",
-    timeout = "long",
-    files = [
-        "test_capacity_queue_router.py",
-    ],
-    tags = [
-        "exclusive",
-        "team:serve",
     ],
     deps = [
         ":common",
