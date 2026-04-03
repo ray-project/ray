@@ -119,7 +119,7 @@ async def _get_prometheus_metrics(
             **kwargs,
         ),
         "unexpected_worker_failures": client.query_prometheus(
-            query="sum(ray_node_manager_unexpected_worker_failure_total) by (Type, Name)",
+            query=f"sum(ray_node_manager_unexpected_worker_failure_total{sf}) by (Type, Name)",
             **kwargs,
         ),
     }
