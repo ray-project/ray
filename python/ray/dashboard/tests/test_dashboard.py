@@ -1211,17 +1211,15 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         "--node-ip-address=127.0.0.1",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
-    dashboard_process = subprocess.Popen(dashboard_cmd)
-    dashboard_process.wait(5)
 
-    dashboard_cmd.append("--port-retries=10")
-    conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
+    try:
+        dashboard_process = subprocess.Popen(dashboard_cmd)
+        dashboard_process.wait(30)
 
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
+        dashboard_cmd.append("--port-retries=10")
+        conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
+
+        def _check():
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -1229,16 +1227,16 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
-                break
-        except AssertionError as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
-    dashboard_process.kill()
-    conflicting_dashboard_process.kill()
-    dashboard_process.wait()
-    conflicting_dashboard_process.wait()
+                return True
+
+            return False
+
+        wait_for_condition(_check)
+    finally:
+        dashboard_process.kill()
+        conflicting_dashboard_process.kill()
+        dashboard_process.wait()
+        conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
