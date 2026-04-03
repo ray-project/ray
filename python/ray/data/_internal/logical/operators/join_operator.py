@@ -1,5 +1,6 @@
+from dataclasses import InitVar, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -40,59 +41,71 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for join."""
 
-    def __init__(
+    left_input_op: InitVar[LogicalOperator]
+    right_input_op: InitVar[LogicalOperator]
+    join_type: JoinType | str
+    left_key_columns: Tuple[str]
+    right_key_columns: Tuple[str]
+    num_partitions: InitVar[int]
+    left_columns_suffix: Optional[str] = None
+    right_columns_suffix: Optional[str] = None
+    partition_size_hint: Optional[int] = None
+    aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, repr=False)
+
+    def __post_init__(
         self,
         left_input_op: LogicalOperator,
         right_input_op: LogicalOperator,
-        join_type: str,
-        left_key_columns: Tuple[str],
-        right_key_columns: Tuple[str],
-        *,
         num_partitions: int,
-        left_columns_suffix: Optional[str] = None,
-        right_columns_suffix: Optional[str] = None,
-        partition_size_hint: Optional[int] = None,
-        aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-            join_type: The kind of join that should be performed, one of ("inner",
-               "left_outer", "right_outer", "full_outer", "left_semi", "right_semi",
-               "left_anti", "right_anti").
-            left_key_columns: The columns from the left Dataset that should be used as
-              keys of the join operation.
-            right_key_columns: The columns from the right Dataset that should be used as
-              keys of the join operation.
-            partition_size_hint: Hint to joining operator about the estimated
-              avg expected size of the resulting partition (in bytes)
-            num_partitions: Total number of expected blocks outputted by this
-                operator.
-        """
-
         try:
-            join_type_enum = JoinType(join_type)
+            join_type_enum = JoinType(self.join_type)
         except ValueError:
             raise ValueError(
-                f"Invalid join type: '{join_type}'. "
+                f"Invalid join type: '{self.join_type}'. "
                 f"Supported join types are: {', '.join(jt.value for jt in JoinType)}."
             )
 
-        super().__init__(left_input_op, right_input_op, num_outputs=num_partitions)
+        object.__setattr__(self, "join_type", join_type_enum)
+        object.__setattr__(self, "_name", self.__class__.__name__)
+        object.__setattr__(
+            self,
+            "_input_dependencies",
+            [left_input_op, right_input_op],
+        )
+        object.__setattr__(self, "_num_outputs", num_partitions)
 
-        self.left_key_columns = left_key_columns
-        self.right_key_columns = right_key_columns
-        self.join_type = join_type_enum
-
-        self.left_columns_suffix = left_columns_suffix
-        self.right_columns_suffix = right_columns_suffix
-
-        self.partition_size_hint = partition_size_hint
-        self.aggregator_ray_remote_args = aggregator_ray_remote_args
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        left_input = self.input_dependencies[0]
+        right_input = self.input_dependencies[1]
+        transformed_left = left_input._apply_transform(transform)
+        transformed_right = right_input._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_left is left_input and transformed_right is right_input:
+            target = self
+        else:
+            target = Join(
+                transformed_left,
+                transformed_right,
+                self.join_type,
+                self.left_key_columns,
+                self.right_key_columns,
+                num_partitions=self.num_outputs,
+                left_columns_suffix=self.left_columns_suffix,
+                right_columns_suffix=self.right_columns_suffix,
+                partition_size_hint=self.partition_size_hint,
+                aggregator_ray_remote_args=self.aggregator_ray_remote_args,
+            )
+        return transform(target)
 
     @staticmethod
     def _validate_schemas(
