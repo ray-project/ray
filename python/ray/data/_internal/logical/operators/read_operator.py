@@ -74,7 +74,7 @@ class Read(
         return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:
-        return self.num_outputs or self._estimate_num_outputs()
+        return self._num_outputs or self._estimate_num_outputs()
 
     def infer_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
@@ -192,7 +192,7 @@ class Read(
             self,
             datasource=projected_datasource,
             datasource_or_legacy_reader=projected_datasource,
-            num_outputs=self.num_outputs,
+            num_outputs=self._num_outputs,
         )
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
@@ -211,5 +211,5 @@ class Read(
             self,
             datasource=predicated_datasource,
             datasource_or_legacy_reader=predicated_datasource,
-            num_outputs=self.num_outputs,
+            num_outputs=self._num_outputs,
         )
