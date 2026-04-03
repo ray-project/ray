@@ -46,7 +46,7 @@ def plan_read_op_with_checkpoint_filter(
     physical_read_op = plan_read_op(op, physical_children, data_context)
 
     # Return the read op directly if:
-    # 1. the checkpoint directory is not existed.
+    # 1. the checkpoint directory does not exist.
     # 2. no valid files under checkpoint_path(for example, it is an empty directory).
     checkpoint_config = data_context.checkpoint_config
     info = checkpoint_config.filesystem.get_file_info(

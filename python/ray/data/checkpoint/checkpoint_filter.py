@@ -14,7 +14,6 @@ from pyarrow.fs import FileSelector, FileType
 import ray
 from ray._common.retry import call_with_retry
 from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunks
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
@@ -48,7 +47,7 @@ def _numpy_size(array: np.ndarray) -> int:
             sample_total_size = 0
             for item in array[:sample_count].flat:
                 sample_total_size += sys.getsizeof(item)
-            total_size += sample_total_size / sample_count * len(array)
+            total_size += int(sample_total_size / sample_count * len(array))
     return total_size
 
 
@@ -152,13 +151,9 @@ def convert_checkpointed_ids(
 
     try:
         if checkpointed_ids_arrow.num_rows != 0:
-            combined = combine_chunks(checkpointed_ids_arrow)
-            ckpt_chunks = combined[id_column].chunks
-
-            arrays = []
-            for chunk in ckpt_chunks:
-                arrays.append(transform_pyarrow.to_numpy(chunk, zero_copy_only=False))
-            checkpointed_ids_ndarray = np.concatenate(arrays)
+            checkpointed_ids_ndarray = transform_pyarrow.to_numpy(
+                checkpointed_ids_arrow[id_column], zero_copy_only=False
+            )
     except Exception as e:
         raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
 
@@ -166,11 +161,11 @@ def convert_checkpointed_ids(
     return checkpointed_ids_ndarray, checkpoint_size
 
 
-class CheckpointManager:
+class CheckpointManager(abc.ABC):
     """Manage checkpoint data."""
 
     def __init__(self, checkpoint_config: CheckpointConfig):
-        """Initialize the CheckpointLoader.
+        """Initialize the CheckpointManager.
 
         Args:
             checkpoint_config: the checkpoint config.
@@ -208,6 +203,10 @@ class CheckpointManager:
             ObjectRef: The ref of checkpointed IDs array. None if no checkpoint was loaded.
             int: the size of the checkpointed IDs array.
         """
+        logger.info(
+            "Loading checkpoint from %s, this could take a while.", self.checkpoint_path
+        )
+
         start_t = time.time()
 
         # Clean up pending checkpoints before loading (runs as a Ray task)
@@ -321,7 +320,7 @@ class CheckpointManager:
 
 
 class IdColumnCheckpointManager(CheckpointManager):
-    """Loader for regular ID columns."""
+    """Manager for regular ID columns."""
 
     def _preprocess_data_pipeline(
         self, checkpoint_ds: ray.data.Dataset
@@ -393,9 +392,8 @@ class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
         # We'll use binary search to filter out processed rows.
 
         # Convert the block's ID column to a numpy array for fast processing.
-        combined = combine_chunks(block)
         block_ids = transform_pyarrow.to_numpy(
-            combined[self.id_column], zero_copy_only=False
+            block[self.id_column], zero_copy_only=False
         )
 
         # Start with a mask of all True (keep all rows).

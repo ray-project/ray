@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
-from ray.data._internal.execution.execution_callback import add_execution_callback
-from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -197,7 +195,6 @@ class Planner:
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
             )
-            add_execution_callback(checkpoint_callback, logical_plan.context)
 
             callbacks.append(checkpoint_callback)
 
