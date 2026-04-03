@@ -62,11 +62,12 @@ async def execute_single_turn(
         turn=turn_idx,
         ttft_ms=result.ttft_ms,
         fc_ms=result.fc_ms,
-        tpot_ms=result.tpot_ms,
+        itl_ms=result.itl_ms,
         latency_ms=result.latency_ms,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         start_time_ms=(req_start_ns - bench_start_ns) / 1e6,
+        itl_ms_list=result.itl_ms_list,
     )
 
     conv.inject_assistant_response(turn_idx, result.generated_text)

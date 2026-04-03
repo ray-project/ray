@@ -34,7 +34,7 @@ def report_results(
 
     all_ttft = [m.ttft_ms for m in metrics]
     all_fc = [m.fc_ms for m in metrics]
-    all_tpot = [m.tpot_ms for m in metrics if m.tpot_ms > 0]
+    all_itl = [v for m in metrics for v in m.itl_ms_list]
     all_latency = [m.latency_ms for m in metrics]
     all_input = [m.input_tokens for m in metrics]
     all_output = [m.output_tokens for m in metrics]
@@ -67,7 +67,7 @@ def report_results(
     for name, values in [
         ("TTFT", all_ttft),
         (fc_label, all_fc),
-        ("TPOT", all_tpot),
+        ("ITL", all_itl),
         ("Latency", all_latency),
     ]:
         if not values:
@@ -83,7 +83,7 @@ def report_results(
     print("  Per-Turn Breakdown:")
     print(
         f"    {'Turn':<6} {'Count':<7} {'Avg ISL':<9} {'Avg TTFT':<10} "
-        f"{'Avg FC':<10} {'Avg TPOT':<10} {'Avg Lat':<10}"
+        f"{'Avg FC':<10} {'Avg ITL':<10} {'Avg Lat':<10}"
     )
     for t in range(spec.num_turns):
         turn_metrics = [m for m in metrics if m.turn == t]
@@ -91,13 +91,13 @@ def report_results(
             continue
         t_ttft = mean([m.ttft_ms for m in turn_metrics])
         t_fc = mean([m.fc_ms for m in turn_metrics])
-        t_tpot_vals = [m.tpot_ms for m in turn_metrics if m.tpot_ms > 0]
-        t_tpot = mean(t_tpot_vals) if t_tpot_vals else 0.0
+        t_itl_all = [v for m in turn_metrics for v in m.itl_ms_list]
+        t_itl = mean(t_itl_all) if t_itl_all else 0.0
         t_lat = mean([m.latency_ms for m in turn_metrics])
         t_isl = mean([m.input_tokens for m in turn_metrics])
         print(
             f"    {t + 1:<6} {len(turn_metrics):<7} {t_isl:<9.0f} "
-            f"{t_ttft:<10.1f} {t_fc:<10.1f} {t_tpot:<10.1f} {t_lat:<10.1f}"
+            f"{t_ttft:<10.1f} {t_fc:<10.1f} {t_itl:<10.1f} {t_lat:<10.1f}"
         )
     print("=" * 70)
 
@@ -131,7 +131,7 @@ def report_results(
                 continue
             t_ttft = [m.ttft_ms for m in turn_metrics]
             t_fc = [m.fc_ms for m in turn_metrics]
-            t_tpot = [m.tpot_ms for m in turn_metrics if m.tpot_ms > 0]
+            t_itl = [v for m in turn_metrics for v in m.itl_ms_list]
             t_isl = [m.input_tokens for m in turn_metrics]
             result["per_turn"].append(
                 {
@@ -140,11 +140,11 @@ def report_results(
                     "avg_isl": round(mean(t_isl), 1),
                     "avg_ttft_ms": round(mean(t_ttft), 2),
                     "avg_fc_ms": round(mean(t_fc), 2),
-                    "avg_tpot_ms": round(mean(t_tpot), 2) if t_tpot else 0,
+                    "avg_itl_ms": round(mean(t_itl), 2) if t_itl else 0,
                     "p50_fc_ms": round(percentile(t_fc, 50), 2),
                     "p99_ttft_ms": round(percentile(t_ttft, 99), 2),
                     "p99_fc_ms": round(percentile(t_fc, 99), 2),
-                    "p99_tpot_ms": (round(percentile(t_tpot, 99), 2) if t_tpot else 0),
+                    "p99_itl_ms": (round(percentile(t_itl, 99), 2) if t_itl else 0),
                 }
             )
 

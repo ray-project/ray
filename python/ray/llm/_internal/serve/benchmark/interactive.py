@@ -23,9 +23,9 @@ from typing import Optional
 import aiohttp
 import numpy as np
 
-from ray.llm._internal.serve.benchmark.http_client import send_chat_completion
 from ray.llm._internal.serve.benchmark.metrics import summarize_metrics
 from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
+from ray.llm._internal.serve.benchmark.turn import execute_single_turn
 from ray.llm._internal.serve.benchmark.text_gen import (
     Conversation,
     TextGenerator,
@@ -133,7 +133,7 @@ def _save_window_result(
                 "turn": m.turn,
                 "ttft_ms": round(m.ttft_ms, 2),
                 "fc_ms": round(m.fc_ms, 2),
-                "tpot_ms": round(m.tpot_ms, 2),
+                "itl_ms": round(m.itl_ms, 2),
                 "latency_ms": round(m.latency_ms, 2),
                 "input_tokens": m.input_tokens,
                 "output_tokens": m.output_tokens,
@@ -533,29 +533,19 @@ async def run_interactive(args: argparse.Namespace) -> None:
     ) -> None:
         cur_spec = workload["spec"]
         runtime.inflight += 1
-        req_start_ns = time.perf_counter_ns()
         try:
-            result = await send_chat_completion(
-                session=http_session,
+            outcome = await execute_single_turn(
+                http_session=http_session,
+                conv=conv,
+                turn_idx=turn_idx,
                 base_url=args.base_url,
                 model=args.model,
-                messages=conv.get_turn_messages(turn_idx),
-                session_id=conv.session_id,
                 max_tokens=cur_spec.osl,
+                bench_start_ns=bench_start_ns,
                 first_chunk_threshold=args.first_chunk_threshold,
                 api_key=getattr(args, "api_key", None),
             )
-            metric = TurnMetric(
-                session_id=conv.session_id,
-                turn=turn_idx,
-                ttft_ms=result.ttft_ms,
-                fc_ms=result.fc_ms,
-                tpot_ms=result.tpot_ms,
-                latency_ms=result.latency_ms,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                start_time_ms=(req_start_ns - bench_start_ns) / 1e6,
-            )
+            metric = outcome.metric
             auto_complete_summary: Optional[str] = None
             runtime.total_completed += 1
             if runtime.measurement_active:
@@ -588,7 +578,6 @@ async def run_interactive(args: argparse.Namespace) -> None:
                 print("Measurement auto-complete:")
                 print(auto_complete_summary)
 
-            conv.inject_assistant_response(turn_idx, result.generated_text)
             next_turn = turn_idx + 1
             if not stop_event.is_set():
                 if next_turn < cur_spec.num_turns:

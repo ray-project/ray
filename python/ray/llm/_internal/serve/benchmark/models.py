@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,12 @@ class TurnResult:
 
     ttft_ms: float  # time to first token
     fc_ms: float  # first-chunk latency (time to N-th content chunk)
-    tpot_ms: float  # average time per output token (decode phase)
+    itl_ms: float  # mean inter-token latency across output tokens
     latency_ms: float  # total request latency
     input_tokens: int  # reported by server (usage.prompt_tokens)
     output_tokens: int  # reported by server (usage.completion_tokens)
     generated_text: str  # generated text
+    itl_ms_list: List[float] = field(default_factory=list)  # per-token ITL values
 
 
 @dataclass
@@ -30,11 +31,12 @@ class TurnMetric:
     turn: int  # 0-indexed
     ttft_ms: float
     fc_ms: float  # first-chunk latency
-    tpot_ms: float
+    itl_ms: float  # mean inter-token latency
     latency_ms: float
     input_tokens: int
     output_tokens: int
     start_time_ms: float  # relative to benchmark start
+    itl_ms_list: List[float] = field(default_factory=list)  # per-token ITL values
 
 
 @dataclass

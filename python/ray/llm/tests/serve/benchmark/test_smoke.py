@@ -31,7 +31,7 @@ async def test_send_chat_completion(mock_server: str) -> None:
     assert result.ttft_ms > 0
     assert result.latency_ms > 0
     assert result.fc_ms > 0
-    assert isinstance(result.tpot_ms, float)
+    assert isinstance(result.itl_ms, float)
 
 
 def test_run_smoke(mock_server: str) -> None:

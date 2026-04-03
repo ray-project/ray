@@ -17,13 +17,18 @@ def percentile(values: list[float], p: float) -> float:
 
 
 def summarize_metrics(metrics: list[TurnMetric], elapsed_s: float) -> dict:
-    """Compute aggregate statistics from a list of TurnMetrics."""
+    """Compute aggregate statistics from a list of TurnMetrics.
+
+    ITL (inter-token latency) statistics are computed from raw per-token values
+    flattened across all requests, capturing the full distribution including variance.
+    """
     if not metrics:
         return {"requests": 0, "elapsed_s": round(elapsed_s, 2)}
 
     ttft = [m.ttft_ms for m in metrics]
     fc = [m.fc_ms for m in metrics]
-    tpot = [m.tpot_ms for m in metrics if m.tpot_ms > 0]
+    # Flatten per-token ITL values across all requests for accurate distribution stats
+    itl_all = [v for m in metrics for v in m.itl_ms_list]
     latency = [m.latency_ms for m in metrics]
     out_tok = [m.output_tokens for m in metrics]
     in_tok = [m.input_tokens for m in metrics]
@@ -46,10 +51,11 @@ def summarize_metrics(metrics: list[TurnMetric], elapsed_s: float) -> dict:
         "p50_fc_ms": round(percentile(fc, 50), 2),
         "p90_fc_ms": round(percentile(fc, 90), 2),
         "p99_fc_ms": round(percentile(fc, 99), 2),
-        "avg_tpot_ms": round(mean(tpot), 2) if tpot else 0.0,
-        "p50_tpot_ms": round(percentile(tpot, 50), 2) if tpot else 0.0,
-        "p90_tpot_ms": round(percentile(tpot, 90), 2) if tpot else 0.0,
-        "p99_tpot_ms": round(percentile(tpot, 99), 2) if tpot else 0.0,
+        "avg_itl_ms": round(float(np.mean(itl_all)), 2) if itl_all else 0.0,
+        "std_itl_ms": round(float(np.std(itl_all)), 2) if itl_all else 0.0,
+        "p50_itl_ms": round(percentile(itl_all, 50), 2) if itl_all else 0.0,
+        "p90_itl_ms": round(percentile(itl_all, 90), 2) if itl_all else 0.0,
+        "p99_itl_ms": round(percentile(itl_all, 99), 2) if itl_all else 0.0,
         "avg_latency_ms": round(mean(latency), 2),
         "p50_latency_ms": round(percentile(latency, 50), 2),
         "p90_latency_ms": round(percentile(latency, 90), 2),
@@ -65,7 +71,7 @@ def serialize_raw_metrics(metrics: list[TurnMetric]) -> list[dict]:
             "turn": m.turn,
             "ttft_ms": round(m.ttft_ms, 2),
             "fc_ms": round(m.fc_ms, 2),
-            "tpot_ms": round(m.tpot_ms, 2),
+            "itl_ms": round(m.itl_ms, 2),
             "latency_ms": round(m.latency_ms, 2),
             "input_tokens": m.input_tokens,
             "output_tokens": m.output_tokens,

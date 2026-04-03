@@ -897,7 +897,7 @@ async def _run_smoke_async(args) -> dict:
     return {
         "ttft_ms": round(result.ttft_ms, 2),
         "fc_ms": round(result.fc_ms, 2),
-        "tpot_ms": round(result.tpot_ms, 2),
+        "itl_ms": round(result.itl_ms, 2),
         "latency_ms": round(result.latency_ms, 2),
         "input_tokens": result.input_tokens,
         "output_tokens": result.output_tokens,

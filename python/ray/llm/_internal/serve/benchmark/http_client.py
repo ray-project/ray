@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from statistics import mean
 from typing import Optional
 
 import aiohttp
@@ -108,14 +107,16 @@ async def send_chat_completion(
     if fc_ns is None:
         fc_ns = latency_ns
 
-    tpot_ns = mean(chunk_times) if chunk_times else 0.0
+    itl_ms_list = [t / 1e6 for t in chunk_times]
+    itl_ms = sum(itl_ms_list) / len(itl_ms_list) if itl_ms_list else 0.0
 
     return TurnResult(
         ttft_ms=ttft_ns / 1e6,
         fc_ms=fc_ns / 1e6,
-        tpot_ms=tpot_ns / 1e6,
+        itl_ms=itl_ms,
         latency_ms=latency_ns / 1e6,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         generated_text=generated_text,
+        itl_ms_list=itl_ms_list,
     )
