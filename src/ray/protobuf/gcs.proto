@@ -648,7 +648,9 @@ message PlacementGroupTableData {
   bytes placement_group_id = 1;
   // The name of the placement group.
   string name = 2;
-  // The array of the bundle in Placement Group.
+  // The currently active bundles for this placement group.
+  // If scheduled via a fallback strategy, this contains the fallback's bundles.
+  // This is empty for pending placement groups.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
@@ -688,6 +690,10 @@ message PlacementGroupTableData {
   // The node label key that identifies the label domain for this placement group
   // (e.g. "ray.io/gpu-domain"). Empty if the PG does not use label-domain scheduling.
   string label_domain_key = 18;
+  // The primary and fallback scheduling options for this placement group.
+  repeated PlacementGroupSchedulingOption scheduling_options = 19;
+  // The index in placement_group_scheduling_options that is currently being used.
+  optional int32 active_scheduling_option_index = 20;
 }
 
 message JobTableData {
