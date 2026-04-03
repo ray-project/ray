@@ -30,7 +30,7 @@ Currently, RDT supports the following tensor transports:
 
 1. `Gloo <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
 2. `NVIDIA NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__: A collective communication library for NVIDIA GPUs.
-3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs.
+3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__: A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs. Backed by `LIBFABRIC <https://ofiwg.github.io/libfabric/>`__ on AWS instances with `EFA <https://aws.amazon.com/hpc/efa/>`__, and `UCX <https://github.com/openucx/ucx>`__ everywhere else.
 
 For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
@@ -211,7 +211,17 @@ Usage with NIXL (CPUs or NVIDIA GPUs)
 Installation
 ^^^^^^^^^^^^
 
-For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` is not installed, things will still work with a plain ``pip install nixl``, just with lower performance. `nixl` and `ucx` are installed as dependencies via pip.
+For maximum performance, run the `install_gdrcopy.sh <https://github.com/ray-project/ray/blob/master/doc/tools/install_gdrcopy.sh>`__ script (e.g., ``install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "12.8" "x64"``). You can find available OS versions `here <https://developer.download.nvidia.com/compute/redist/gdrcopy/CUDA%2012.8/>`__. If `gdrcopy` isn't installed, things still work with a plain ``pip install nixl``, just with lower performance. ``nixl`` and ``ucx`` are installed as dependencies through pip.
+
+NIXL backend selection
+^^^^^^^^^^^^^^^^^^^^^^
+
+Ray automatically selects the NIXL transport backend based on the available hardware:
+
+- **AWS instances with EFA**: Ray detects EFA devices (through ``/sys/class/net/efa*``) and uses the ``LIBFABRIC`` backend if available.
+- **All other environments**: Ray uses the ``UCX`` backend.
+
+No configuration is required. On AWS EFA instances, make sure the `EFA installer <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html>`__ has been run, which installs both the EFA driver and libfabric.
 
 Walkthrough
 ^^^^^^^^^^^
