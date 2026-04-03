@@ -48,10 +48,8 @@ namespace core {
 /// OOM errors use exponential backoff with task_oom_retry_delay_base_ms.
 /// ACTOR_UNAVAILABLE errors use exponential backoff with a configurable base and cap.
 /// All other errors use the flat task_retry_delay_ms.
-inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number,
-                                    bool task_failed_due_to_oom,
-                                    rpc::ErrorType error_type) {
-  if (task_failed_due_to_oom) {
+inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number, rpc::ErrorType error_type) {
+  if (error_type == rpc::ErrorType::OUT_OF_MEMORY) {
     return ExponentialBackoff::GetBackoffMs(
         attempt_number, RayConfig::instance().task_oom_retry_delay_base_ms());
   } else if (error_type == rpc::ErrorType::ACTOR_UNAVAILABLE) {

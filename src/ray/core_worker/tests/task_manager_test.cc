@@ -611,25 +611,25 @@ TEST(GetTaskRetryDelayMsTest, TestRetryDelayByErrorType) {
           "task_actor_unavailable_retry_max_delay_ms": 5000})");
 
   // ACTOR_UNAVAILABLE: exponential backoff with base 100ms, cap 5000ms.
-  ASSERT_EQ(GetTaskRetryDelayMs(0, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 100);
-  ASSERT_EQ(GetTaskRetryDelayMs(1, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 200);
-  ASSERT_EQ(GetTaskRetryDelayMs(2, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 400);
-  ASSERT_EQ(GetTaskRetryDelayMs(3, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 800);
-  ASSERT_EQ(GetTaskRetryDelayMs(4, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 1600);
-  ASSERT_EQ(GetTaskRetryDelayMs(5, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 3200);
-  ASSERT_EQ(GetTaskRetryDelayMs(6, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
-  ASSERT_EQ(GetTaskRetryDelayMs(7, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
-  ASSERT_EQ(GetTaskRetryDelayMs(100, false, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::ACTOR_UNAVAILABLE), 100);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::ACTOR_UNAVAILABLE), 200);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::ACTOR_UNAVAILABLE), 400);
+  ASSERT_EQ(GetTaskRetryDelayMs(3, rpc::ErrorType::ACTOR_UNAVAILABLE), 800);
+  ASSERT_EQ(GetTaskRetryDelayMs(4, rpc::ErrorType::ACTOR_UNAVAILABLE), 1600);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::ACTOR_UNAVAILABLE), 3200);
+  ASSERT_EQ(GetTaskRetryDelayMs(6, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(7, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(100, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
 
   // OOM: exponential backoff with base 1000ms, default cap (60s).
-  ASSERT_EQ(GetTaskRetryDelayMs(0, true, rpc::ErrorType::OUT_OF_MEMORY), 1000);
-  ASSERT_EQ(GetTaskRetryDelayMs(1, true, rpc::ErrorType::OUT_OF_MEMORY), 2000);
-  ASSERT_EQ(GetTaskRetryDelayMs(2, true, rpc::ErrorType::OUT_OF_MEMORY), 4000);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::OUT_OF_MEMORY), 1000);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::OUT_OF_MEMORY), 2000);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::OUT_OF_MEMORY), 4000);
 
   // Other errors: flat delay.
-  ASSERT_EQ(GetTaskRetryDelayMs(0, false, rpc::ErrorType::WORKER_DIED), 0);
-  ASSERT_EQ(GetTaskRetryDelayMs(5, false, rpc::ErrorType::WORKER_DIED), 0);
-  ASSERT_EQ(GetTaskRetryDelayMs(0, false, rpc::ErrorType::NODE_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::NODE_DIED), 0);
 }
 
 TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {

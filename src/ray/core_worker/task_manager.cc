@@ -1243,8 +1243,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   if (will_retry) {
     RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
                   << " for attempt number: " << spec.AttemptNumber();
-    int32_t delay_ms = GetTaskRetryDelayMs(
-        spec.AttemptNumber(), task_failed_due_to_oom, error_info.error_type());
+    uint32_t delay_ms =
+        GetTaskRetryDelayMs(spec.AttemptNumber(), error_info.error_type());
     async_retry_task_callback_(spec, delay_ms);
     return true;
   } else {
