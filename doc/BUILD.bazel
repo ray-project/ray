@@ -2,7 +2,10 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_notebooks", "py_test_run_all_subdirectory")
 
-exports_files(["test_myst_doc.py"])
+exports_files([
+    "test_myst_doc.py",
+    "source/serve/doc_code/capacity_queue_request_router.py",
+])
 
 # --------------------------------------------------------------------
 # Tests from the doc directory.
@@ -302,6 +305,8 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
+        "source/serve/doc_code/capacity_queue_request_router.py",
+        "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
     tags = [

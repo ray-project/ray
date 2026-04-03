@@ -8,9 +8,28 @@ py_library(
 
 py_test_run_all_subdirectory(
     size = "small",
-    include = glob(["test_*.py"]),
+    include = glob(
+        ["test_*.py"],
+        exclude = ["test_capacity_queue.py"],
+    ),
     exclude = [],
     extra_srcs = [],
+    tags = ["team:serve"],
+    deps = [
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+        "//python/ray/serve/tests:common",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    data = [
+        "//doc:source/serve/doc_code/capacity_queue_request_router.py",
+    ],
+    files = [
+        "test_capacity_queue.py",
+    ],
     tags = ["team:serve"],
     deps = [
         ":conftest",

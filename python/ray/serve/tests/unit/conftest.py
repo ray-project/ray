@@ -1,3 +1,5 @@
+import os
+import sys
 from typing import Tuple
 from unittest.mock import Mock, patch
 
@@ -16,6 +18,24 @@ from ray.serve._private.test_utils import (
     dead_replicas_context,
     replica_rank_context,
 )
+
+# Add doc/source/serve/doc_code to sys.path so tests can import doc examples
+# (e.g. capacity_queue_request_router). The __file__-relative path covers pytest;
+# the cwd-relative path covers Bazel runfiles.
+_SERVE_DOC_CODE_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "..",
+    "..",
+    "doc",
+    "source",
+    "serve",
+    "doc_code",
+)
+sys.path.insert(0, os.path.abspath(_SERVE_DOC_CODE_DIR))
+sys.path.insert(0, os.path.join(os.getcwd(), "doc", "source", "serve", "doc_code"))
 
 
 @pytest.fixture(autouse=True)

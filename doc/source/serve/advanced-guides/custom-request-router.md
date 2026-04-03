@@ -20,6 +20,8 @@ cover the following:
 - Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
+- Define a centralized capacity queue request router
+- Deploy an app with the capacity queue router
 
 
 (simple-uniform-request-router)=
@@ -156,6 +158,107 @@ You can customize the emission of these statistics by overriding `record_routing
 in the definition of the deployment class. The custom request router can then get the
 updated routing stats by looking up the `routing_stats` attribute of the running
 replicas and use it in the routing policy.
+
+
+(capacity-queue-request-router)=
+## Define a centralized capacity queue request router
+
+The previous examples make routing decisions independently on each router using
+locally visible replica state. Under high concurrency with multiple routers, this
+can cause several routers to simultaneously pick the same replica, triggering
+rejections and retries. A **centralized** approach avoids this: a single actor
+tracks per-replica in-flight counts, and every router acquires a *capacity token*
+before forwarding a request. Each token guarantees the target replica has room,
+eliminating the rejection protocol entirely.
+
+The pattern has three pieces:
+
+1. A **`CapacityQueue`** actor that tracks per-replica capacity and hands out
+   tokens using a least-loaded selection strategy.
+2. A **`CapacityQueueRouter`** custom request router that acquires a token before
+   routing and releases it when the request completes.
+3. A **deployment** that ties them together using a
+   [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for
+   the queue and a
+   [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
+   for the router.
+
+### Define the CapacityQueue deployment actor
+
+Create a file `capacity_queue_request_router.py` with the `CapacityQueue` class.
+This `@ray.remote` class will be managed by the Serve controller as a
+[deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) — one
+instance shared across all replicas of the deployment:
+
+```{literalinclude} ../doc_code/capacity_queue_request_router.py
+:start-after: __begin_define_capacity_queue__
+:end-before: __end_define_capacity_queue__
+:language: python
+```
+
+The key methods are:
+
+- **`register_replica`** — called by each replica in its `__init__` to announce
+  its capacity.
+- **`acquire`** — returns the `replica_id` of the least-loaded replica with
+  available capacity (fast path), or waits until capacity frees up (slow path).
+  Returns `None` on timeout.
+- **`release`** — called when a request completes (or fails) to return the
+  capacity token.  The `in_flight` counter is clamped to zero so a double-release
+  cannot inflate capacity.
+
+### Define the CapacityQueueRouter
+
+In the same file, add the custom router.  It overrides
+[`_choose_replica_for_request`](../api/doc/ray.serve.request_router.RequestRouter._choose_replica_for_request.rst)
+to acquire a token instead of using the default power-of-two-choices algorithm,
+and uses [`on_request_completed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_completed.rst)
+to release the token when the request finishes:
+
+```{literalinclude} ../doc_code/capacity_queue_request_router.py
+:start-after: __begin_define_capacity_queue_router__
+:end-before: __end_define_capacity_queue_router__
+:language: python
+```
+
+Notable details:
+
+- **`supports_rejection_protocol`** returns `False` — a token already guarantees
+  capacity, so the rejection handshake is skipped.
+- **Discovery** — the router finds the deployment actor by listing named actors
+  in the Serve namespace and matching the deployment-actor naming prefix.  The
+  handle is cached after the first lookup.
+- **Cancellation safety** — if a request is cancelled after a token has been
+  acquired but before it is sent, the token is released back to the queue.
+
+(deploy-app-with-capacity-queue-router)=
+### Deploy an app with the capacity queue router
+
+The deployment wires the three pieces together: a `DeploymentActorConfig` for the
+queue, a `RequestRouterConfig` pointing at the custom router, and replica init
+code that registers each replica with the queue:
+
+```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
+:start-after: __begin_deploy_app_with_capacity_queue_router__
+:end-before: __end_deploy_app_with_capacity_queue_router__
+:language: python
+```
+
+When the app starts:
+
+1. The Serve controller creates the `CapacityQueue` deployment actor **before**
+   any replicas start.
+2. Each replica calls `serve.get_deployment_actor("capacity_queue")` and
+   registers itself with its `max_ongoing_requests` capacity.
+3. The `CapacityQueueRouter` running in each proxy discovers the deployment actor,
+   acquires a token for every incoming request, and routes to the replica
+   identified by the token.
+4. When the request completes, `on_request_completed` fires and the token is
+   released back to the queue.
+
+Because the queue is a deployment actor, the controller handles its lifecycle
+automatically — health checks, cleanup on app deletion, and versioning during
+rolling updates are all managed for you.
 
 
 :::{warning}

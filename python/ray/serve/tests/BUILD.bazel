@@ -317,6 +317,27 @@ py_test_module_list(
     ],
 )
 
+# Capacity queue router example tests
+py_test_module_list(
+    size = "medium",
+    timeout = "long",
+    data = [
+        "//doc:source/serve/doc_code/capacity_queue_request_router.py",
+    ],
+    files = [
+        "test_capacity_queue_router.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Minimal tests
 py_test_module_list(
     size = "large",
