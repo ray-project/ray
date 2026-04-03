@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_job_manager.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <string>
@@ -464,6 +465,21 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
+  const auto &err = request.job_error();
+  constexpr size_t kPreview = 280;
+  const std::string &raw = err.error_message();
+  const size_t n = std::min(raw.size(), kPreview);
+  std::string preview = raw.substr(0, n);
+  for (char &c : preview) {
+    if (c == '\n' || c == '\r' || c == '\t') {
+      c = ' ';
+    }
+  }
+  RAY_LOG(INFO)
+      << "[ReportJobError GCS HandleReportJobError] source_tag=gcs_server_received "
+      << "job_id=" << job_id.Hex() << " error_table_type=" << err.type()
+      << " msg_preview=" << preview
+      << (raw.size() > preview.size() ? " ...[truncated]" : "");
   gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }

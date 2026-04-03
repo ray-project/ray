@@ -371,27 +371,16 @@ class RouterMetricsManager:
                 )
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
-        return (
-            self.autoscaling_config is not None
-            and curr_num_replicas == 0
-            and self.num_queued_requests > 0
-        )
+        return True
 
     def push_autoscaling_metrics_to_controller(self):
         """Pushes queued and running request metrics to the controller.
 
         These metrics are used by the controller for autoscaling.
-        If a previous push is already in flight, skips this push (will try again next interval).
         """
-        with self._metrics_push_lock:
-            if self._pending_metrics_push_ref is not None:
-                if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
-                    return  # Previous push still in flight, skip and try again later
-            self._pending_metrics_push_ref = (
-                self._controller_handle.record_autoscaling_metrics_from_handle.remote(
-                    compress_metric_report(self._get_metrics_report())
-                )
-            )
+        self._controller_handle.record_autoscaling_metrics_from_handle.remote(
+            self._get_metrics_report()
+        )
 
     def _add_autoscaling_metrics_point(self):
         """Adds metrics point for queued and running requests at replicas.
