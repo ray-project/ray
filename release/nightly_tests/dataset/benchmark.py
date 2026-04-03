@@ -86,7 +86,7 @@ class OperatorStatsTracker(ExecutionCallback):
         return {"start_time": start_time, "op_stats": stats}
 
     def _make_readable_timestamp(self, ts: float) -> str:
-        datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class BenchmarkMetric(Enum):
