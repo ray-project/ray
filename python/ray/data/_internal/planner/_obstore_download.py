@@ -297,10 +297,26 @@ class StoreRegistry:
 
     def get(self, store_url: str) -> Any:
         if store_url not in self._cache:
+            kwargs = dict(self._filesystem_kwargs)
+            if store_url.startswith("http://"):
+                # obstore's reqwest client rejects http:// by default. Auto-enable it
+                # to maintain parity with PyArrow (which accepts http:// via fsspec),
+                # but warn about unencrypted traffic.
+                client_options = {
+                    **kwargs.get("client_options", {}),
+                    "allow_http": True,
+                }
+                kwargs["client_options"] = client_options
+                if not getattr(self, "_warned_http", False):
+                    self._warned_http = True
+                    logger.warning(
+                        "Downloading over unencrypted HTTP. "
+                        "Consider using https:// instead."
+                    )
             self._cache[store_url] = self._from_url(
                 store_url,
                 retry_config=self._retry_config,
-                **self._filesystem_kwargs,
+                **kwargs,
             )
         return self._cache[store_url]
 
@@ -496,15 +512,6 @@ async def _download_uris_with_obstore(
             )
             range_threshold = 0
     sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
-
-    # obstore's reqwest client rejects http:// by default. Auto-enable it
-    # to maintain parity with PyArrow (which accepts http:// via fsspec),
-    # but warn about unencrypted traffic.
-    if any(uri is not None and uri.startswith("http://") for uri in uris):
-        fs_kwargs["client_options"] = {"allow_http": True}
-        logger.warning(
-            "Downloading over unencrypted HTTP. Consider using https:// instead."
-        )
 
     registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
