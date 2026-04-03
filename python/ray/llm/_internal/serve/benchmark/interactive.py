@@ -23,7 +23,10 @@ from typing import Optional
 import aiohttp
 import numpy as np
 
-from ray.llm._internal.serve.benchmark.metrics import summarize_metrics
+from ray.llm._internal.serve.benchmark.metrics import (
+    serialize_raw_metrics,
+    summarize_metrics,
+)
 from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
 from ray.llm._internal.serve.benchmark.text_gen import (
     Conversation,
@@ -127,20 +130,7 @@ def _save_window_result(
         },
         "spec": spec.summary(),
         "window": summarize_metrics(metrics, elapsed_s),
-        "raw_metrics": [
-            {
-                "session_id": m.session_id,
-                "turn": m.turn,
-                "ttft_ms": round(m.ttft_ms, 2),
-                "fc_ms": round(m.fc_ms, 2),
-                "itl_ms": round(m.itl_ms, 2),
-                "latency_ms": round(m.latency_ms, 2),
-                "input_tokens": m.input_tokens,
-                "output_tokens": m.output_tokens,
-                "start_time_ms": round(m.start_time_ms, 2),
-            }
-            for m in metrics
-        ],
+        "raw_metrics": serialize_raw_metrics(metrics),
     }
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
