@@ -4,7 +4,7 @@ import time
 import traceback
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
 from ray.experimental.rdt.tensor_transport_manager import (
@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 UCCL_REMOTE_ENDPOINT_CACHE_MAXSIZE = int(
     os.environ.get("RAY_UCCL_REMOTE_ENDPOINT_CACHE_MAXSIZE", "1000")
 )
-UCCL_NUM_CPUS = int(os.environ.get("RAY_UCCL_NUM_CPUS", "4"))
 
 
 @dataclass
@@ -51,23 +50,20 @@ class UCCLTransportMetadata(TensorTransportMetadata):
     __hash__ = object.__hash__
 
 
-@dataclass
-class TensorDesc:
-    desc: Any
-    metadata_count: int
-
-
 class UCCLTensorTransport(TensorTransportManager):
     def __init__(self):
         self._uccl_endpoint = None
         self._endpoint_name = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
-        # Mapping from tensor data pointer to the UCCL descriptor and reference count.
-        self._tensor_desc_cache: Dict[int, TensorDesc] = {}
+        # Mapping from object ID to the registered UCCL descriptors for that object.
+        # UCCL handles deduplication of overlapping memory regions internally via
+        # uccl_regmr's MR cache (acquireCachedMr / containsRange), so we can just
+        # store the descriptors returned per object and deregister them on GC.
+        self._obj_descs: Dict[str, list] = {}
         # Mapping from object ID to the UCCL managed metadata.
         self._managed_meta: Dict[str, UCCLTransportMetadata] = {}
-        # Lock protecting _tensor_desc_cache and _managed_meta since they can be
+        # Lock protecting _obj_descs and _managed_meta since they can be
         # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
         # LRU cache of remote endpoint connections: endpoint_name -> (conn_id, version).
@@ -98,8 +94,21 @@ class UCCLTensorTransport(TensorTransportManager):
         import torch
         from uccl import p2p
 
-        gpu_idx = torch.cuda.current_device() if torch.cuda.is_available() else 0
-        self._uccl_endpoint = p2p.Endpoint(gpu_idx, UCCL_NUM_CPUS)
+        # CUDA-visible device index for GPU operations.
+        cuda_device = (
+            torch.cuda.current_device() if torch.cuda.is_available() else 0
+        )
+        # Physical GPU index for UCCL identity (shm ring naming, metadata).
+        # Ray remaps CUDA_VISIBLE_DEVICES per actor so each actor sees
+        # device 0, but UCCL needs node-unique physical indices.
+        gpu_ids = ray.get_gpu_ids()
+        if gpu_ids:
+            physical_gpu_idx = int(gpu_ids[cuda_device])
+        else:
+            physical_gpu_idx = cuda_device
+        # print(f"cuda_device, p_gpu_idx:{cuda_device, physical_gpu_idx}")
+        self._uccl_endpoint = p2p.Endpoint(physical_gpu_idx)
+        self._uccl_endpoint.start_passive_accept()
 
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
@@ -116,7 +125,7 @@ class UCCLTensorTransport(TensorTransportManager):
             self: "ray.actor.ActorHandle",
         ) -> bool:
             try:
-                from ray.experimental.gpu_object_manager.util import (
+                from ray.experimental.rdt.util import (
                     get_tensor_transport_manager,
                 )
 
@@ -161,15 +170,10 @@ class UCCLTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 ep = self._get_uccl_endpoint()
-                self._uccl_endpoint.start_passive_accept()
-                self._add_tensor_descs(gpu_object)
+                descs = ep.register_memory(gpu_object)
+                self._obj_descs[obj_id] = descs
 
-                all_descs = []
-                for t in gpu_object:
-                    key = t.data_ptr()
-                    all_descs.append(self._tensor_desc_cache[key].desc)
-
-                serialized_descs = ep.get_serialized_descs(all_descs)
+                serialized_descs = ep.get_serialized_descs(descs)
                 endpoint_meta = ep.get_metadata()
                 endpoint_name = self._endpoint_name
                 endpoint_meta_version = self._uccl_endpoint_meta_version
@@ -205,7 +209,7 @@ class UCCLTensorTransport(TensorTransportManager):
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
 
@@ -299,7 +303,6 @@ class UCCLTensorTransport(TensorTransportManager):
                     ep.deregister_memory(local_descs)
                     self._uccl_endpoint_meta_version += 1
 
-
         return tensors
 
     def send_multiple_tensors(
@@ -324,16 +327,11 @@ class UCCLTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta:
                 return
             self._managed_meta.pop(obj_id, None)
-            ep = self._get_uccl_endpoint()
-            for tensor in tensors:
-                key = tensor.data_ptr()
-                if key in self._tensor_desc_cache:
-                    tensor_desc = self._tensor_desc_cache[key]
-                    tensor_desc.metadata_count -= 1
-                    if tensor_desc.metadata_count == 0:
-                        self._tensor_desc_cache.pop(key)
-                        ep.deregister_memory([tensor_desc.desc])
-                        self._uccl_endpoint_meta_version += 1
+            descs = self._obj_descs.pop(obj_id, None)
+            if descs:
+                ep = self._get_uccl_endpoint()
+                ep.deregister_memory(descs)
+                self._uccl_endpoint_meta_version += 1
 
     def abort_transport(
         self,
@@ -354,27 +352,3 @@ class UCCLTensorTransport(TensorTransportManager):
 
     def _put_meta(self, object_id: str, meta: UCCLTransportMetadata):
         self._managed_meta[object_id] = meta
-
-    def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
-        """
-        Register tensors with the UCCL endpoint and cache their descriptors.
-        If a tensor is already registered (by data_ptr), its reference count is
-        incremented. New tensors are registered one at a time so that duplicates
-        within the same input list are detected immediately via the cache.
-
-        Unlike NIXL which registers at the storage level, UCCL registers each
-        tensor view individually — ep.register_memory([tensor]) returns a
-        descriptor for that specific view's data region. Using data_ptr() as
-        the key ensures each view gets its own descriptor, which is necessary
-        for correct transfer of overlapping views.
-        """
-        ep = self._get_uccl_endpoint()
-        for tensor in tensors:
-            key = tensor.data_ptr()
-            if key in self._tensor_desc_cache:
-                self._tensor_desc_cache[key].metadata_count += 1
-            else:
-                descs = ep.register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(
-                    desc=descs[0], metadata_count=1
-                )
