@@ -51,14 +51,14 @@ namespace core {
 inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number, rpc::ErrorType error_type) {
   if (error_type == rpc::ErrorType::OUT_OF_MEMORY) {
     return ExponentialBackoff::GetBackoffMs(
-        attempt_number, RayConfig::instance().task_oom_retry_delay_base_ms());
+        attempt_number, ::RayConfig::instance().task_oom_retry_delay_base_ms());
   } else if (error_type == rpc::ErrorType::ACTOR_UNAVAILABLE) {
     return ExponentialBackoff::GetBackoffMs(
         attempt_number,
-        RayConfig::instance().task_actor_unavailable_retry_delay_base_ms(),
-        RayConfig::instance().task_actor_unavailable_retry_max_delay_ms());
+        ::RayConfig::instance().task_actor_unavailable_retry_delay_base_ms(),
+        ::RayConfig::instance().task_actor_unavailable_retry_max_delay_ms());
   } else {
-    return RayConfig::instance().task_retry_delay_ms();
+    return ::RayConfig::instance().task_retry_delay_ms();
   }
 }
 
