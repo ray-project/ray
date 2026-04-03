@@ -7,12 +7,11 @@ import numpy as np
 import pytest
 from transformers import AutoTokenizer
 
-from ray.llm._internal.serve.benchmark.multiturn_bench import (
-    BenchmarkState,
+from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
+from ray.llm._internal.serve.benchmark.runners import BenchmarkState
+from ray.llm._internal.serve.benchmark.text_gen import (
     Conversation,
     TextGenerator,
-    TurnMetric,
-    WorkloadSpec,
     conversation_factory,
 )
 
@@ -271,8 +270,8 @@ class TestBenchmarkState:
             turn=0,
             ttft_ms=1.0,
             fc_ms=1.0,
-            tpot_ms=1.0,
-            latency_ms=10.0,
+            itl_ms=1.0,
+            e2e_latency_ms=10.0,
             input_tokens=100,
             output_tokens=50,
             start_time_ms=0.0,
@@ -291,8 +290,8 @@ class TestBenchmarkState:
             turn=0,
             ttft_ms=1.0,
             fc_ms=1.0,
-            tpot_ms=1.0,
-            latency_ms=10.0,
+            itl_ms=1.0,
+            e2e_latency_ms=10.0,
             input_tokens=100,
             output_tokens=50,
             start_time_ms=0.0,
