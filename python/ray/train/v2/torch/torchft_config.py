@@ -62,11 +62,11 @@ class _TorchftBackend(_TorchBackend):
     def __init__(self):
         super().__init__()
         self.lighthouse_actor = None
-        self.lighthouse_address = None
 
     def _maybe_create_lighthouse_actor(self, backend_config: TorchftConfig) -> str:
         """Create lighthouse actor if it doesn't exist and return its address."""
         if self.lighthouse_actor is not None:
+            # Intentionally read address from actor in case it was restarted.
             return ray.get(self.lighthouse_actor.address.remote())
 
         # Let the OS pick a free port by default
@@ -83,9 +83,9 @@ class _TorchftBackend(_TorchBackend):
                 soft=False,
             )
         ).remote(lighthouse_kwargs=lighthouse_kwargs)
-        self.lighthouse_address = ray.get(self.lighthouse_actor.address.remote())
-        logger.info(f"Created torchft lighthouse at {self.lighthouse_address}")
-        return self.lighthouse_address
+        lighthouse_address = ray.get(self.lighthouse_actor.address.remote())
+        logger.info(f"Created torchft lighthouse at {lighthouse_address}")
+        return lighthouse_address
 
     def on_start(self, worker_group, backend_config: TorchftConfig):
         lighthouse_address = self._maybe_create_lighthouse_actor(backend_config)

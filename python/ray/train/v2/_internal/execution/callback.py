@@ -64,7 +64,7 @@ class WorkerGroupCallback(ExecutionGroupCallback):
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
         All workers should be ready to execute tasks."""
-        return super().after_execution_group_start(worker_group)
+        return self.after_execution_group_start(worker_group)
 
     def after_worker_group_training_start(self, worker_group: "WorkerGroup"):
         pass
@@ -77,7 +77,7 @@ class WorkerGroupCallback(ExecutionGroupCallback):
         """Called before the worker group is shut down.
         Workers may be dead at this point due to actor failures, so this method
         should catch and handle exceptions if attempting to execute tasks."""
-        return super().before_execution_group_shutdown(worker_group)
+        return self.before_execution_group_shutdown(worker_group)
 
     def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is shut down."""
@@ -104,12 +104,12 @@ class ReplicaGroupCallback(ExecutionGroupCallback):
     def after_replica_group_start(self, replica_group: "ReplicaGroup"):
         """Called after a replica group is started or replaced.
         All workers in the replica group should be ready to execute tasks."""
-        return super().after_execution_group_start(replica_group)
+        return self.after_execution_group_start(replica_group)
 
     def before_replica_group_shutdown(self, replica_group: "ReplicaGroup"):
         """Called before a replica group is shut down.
         Workers may be dead at this point due to actor failures."""
-        return super().before_execution_group_shutdown(replica_group)
+        return self.before_execution_group_shutdown(replica_group)
 
 
 @DeveloperAPI
