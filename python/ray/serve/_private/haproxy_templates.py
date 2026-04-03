@@ -8,7 +8,7 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
 {%- elif backends %}
     # 200 if any backend has at least one server UP
 {%-   for backend in backends %}
-    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.healthcheck_backend_name or backend.name or 'unknown' }}) ge 1
+    acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
 {%-   endfor %}
     # Any backend with a server UP passes the health check (OR logic)
 {%-   for backend in backends %}
@@ -26,7 +26,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if has_ingress_bypass and lua_script_path %}
+    {%- if has_custom_request_routing and lua_script_path %}
     lua-load-per-thread {{ lua_script_path }}
     {%- endif %}
     {%- if config.enable_server_state_persistence %}
@@ -80,87 +80,30 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
-    {%- if has_ingress_bypass %}
+    {%- if has_custom_request_routing %}
     option http-buffer-request
-    # Lua picks sidecar target for streaming endpoints
     acl is_streaming_path path /v1/chat/completions /v1/completions
-    http-request lua.pick_sidecar if is_streaming_path METH_POST
+    http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
     {%- endif %}
-    {%- if backends and backends[0].route_once_direct_backend_jump %}
-    use_backend sidecar_direct if is_streaming_path { var(txn.is_streaming) -m found }
-    default_backend ingress
-    {%- else %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
-    {%- if has_ingress_bypass and backend.router_servers %}
-    {%- if backend.route_once_direct_backend_jump %}
-    # Ingress bypass: Lua chose a direct sidecar server; jump to dedicated direct backend
-    use_backend {{ backend.name or 'unknown' }}-direct if is_{{ backend.name or 'unknown' }} { var(txn.is_streaming) -m found }
-    {%- else %}
-    # Ingress bypass: if Lua set a target server, route to it
-    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.target_server) -m found }
-    {%- endif %}
+    {%- if backend.custom_request_routing %}
+    # Route custom-routed streaming requests to a dedicated backend so HAProxy
+    # resolves the selected replica with a direct use-server match from
+    # txn.direct_ingress_target. Sending these requests through the generic
+    # per-app backend changed the post-Lua request path and regressed TTFT.
+    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
-    {%- endif %}
-{%- if not (backends and backends[0].route_once_direct_backend_jump) %}
 backend default_backend
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
-{%- endif %}
 {%- for item in backends_with_health_config %}
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
-{%- if backend.route_once_direct_backend_jump %}
-backend sidecar_direct
-    log global
-    # Enable HTTP connection reuse for better performance
-    http-reuse always
-    # Set backend-specific timeouts, overriding defaults if specified
-    {%- if backend.timeout_connect_s is not none %}
-    timeout connect {{ backend.timeout_connect_s }}s
-    {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
-    timeout server {{ backend.timeout_server_s }}s
-    {%- endif %}
-    {%- if backend.timeout_client_s is not none %}
-    timeout client {{ backend.timeout_client_s }}s
-    {%- endif %}
-    {%- if backend.timeout_http_request_s is not none %}
-    timeout http-request {{ backend.timeout_http_request_s }}s
-    {%- endif %}
-    {%- if backend.timeout_queue_s is not none %}
-    timeout queue {{ backend.timeout_queue_s }}s
-    {%- endif %}
-    # Set timeouts to support keep-alive connections
-    {%- if backend.timeout_http_keep_alive_s is not none %}
-    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
-    {%- endif %}
-    {%- if backend.timeout_tunnel_s is not none %}
-    timeout tunnel {{ backend.timeout_tunnel_s }}s
-    {%- endif %}
-    # Health check configuration - use backend-specific or global defaults
-    {%- if hc.health_path %}
-    # HTTP health check with custom path
-    option httpchk GET {{ hc.health_path }}
-    http-check expect status 200
-    {%- endif %}
-    {{ hc.default_server_directive }}
-    {%- for server in backend.servers %}
-    use-server {{ server.route_name }} if { var(txn.sidecar_server) -m str "{{ server.route_name }}" }
-    {%- endfor %}
-    {%- for server in backend.servers %}
-    server {{ server.route_name }} {{ server.host }}:{{ server.port }} check
-    {%- endfor %}
-    {%- if backend.fallback_server %}
-    server serve_proxy_fallback {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
-    {%- endif %}
-backend ingress
-    server ingress0 {{ backend.route_once_ingress_server.host }}:{{ backend.route_once_ingress_server.port }}
-{%- else %}
 backend {{ backend.name or 'unknown' }}
     log global
     # Enable HTTP connection reuse for better performance
@@ -195,22 +138,50 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    {%- if backend.router_servers %}
-    # Ingress bypass: use-server rules to route Lua-selected target
-    {%- for server in backend.servers %}
-    {%- if backend.direct_server_routing %}
-    use-server {{ server.name }} if { var(txn.target_server) -m str "{{ server.name }}" }
-    {%- else %}
-    use-server {{ server.name }} if { var(txn.target_server) -m str sc_{{ server.host | replace('.', '_') }}_{{ server.port }} }
-    {%- endif %}
-    {%- endfor %}
-    {%- endif %}
-    # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    {%- endif %}
+{%- if backend.custom_request_routing %}
+backend {{ backend.name or 'unknown' }}-custom-routed
+    log global
+    http-reuse always
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_client_s is not none %}
+    timeout client {{ backend.timeout_client_s }}s
+    {%- endif %}
+    {%- if backend.timeout_http_request_s is not none %}
+    timeout http-request {{ backend.timeout_http_request_s }}s
+    {%- endif %}
+    {%- if backend.timeout_queue_s is not none %}
+    timeout queue {{ backend.timeout_queue_s }}s
+    {%- endif %}
+    {%- if backend.timeout_http_keep_alive_s is not none %}
+    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
+    {%- endif %}
+    {%- if backend.timeout_tunnel_s is not none %}
+    timeout tunnel {{ backend.timeout_tunnel_s }}s
+    {%- endif %}
+    {%- if hc.health_path %}
+    option httpchk GET {{ hc.health_path }}
+    http-check expect status 200
+    {%- endif %}
+    {{ hc.default_server_directive }}
+    {%- for server in backend.servers %}
+    use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
+    {%- endfor %}
+    {%- for server in backend.servers %}
+    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check
+    {%- endfor %}
+    {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
 {%- endif %}

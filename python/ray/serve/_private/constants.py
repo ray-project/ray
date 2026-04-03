@@ -681,7 +681,7 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
 
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
-    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "15140")
+    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
 )
 
 # HAProxy timeout configurations (in seconds, None = no timeout)
