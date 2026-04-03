@@ -29,30 +29,6 @@ os.environ.setdefault("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.5")
 import ray
 from ray.data.context import ShuffleStrategy
 
-# (data_size_gb, num_partitions) combinations to test.
-# Data sizes cover: in-core -> boundary -> mild spill -> heavy spill -> full obj store.
-# Partition counts: low (stress per-reducer memory), medium, high (many small shards).
-BENCHMARK_MATRIX = [
-    # (data_size_gb, num_partitions)
-    # --- In-core (50 GB, ~0.6x of limit) ---
-    (50, 100),
-    (50, 200),
-    (50, 500),
-    # --- Boundary (85 GB, ~1.0x of limit) ---
-    (85, 100),
-    (85, 200),
-    (85, 500),
-    # --- Mild spill (120 GB, ~1.4x of limit) ---
-    (120, 200),
-    (120, 500),
-    # --- Moderate spill (170 GB, ~2.0x of limit) ---
-    (170, 200),
-    (170, 500),
-    # --- Full object store (256 GB, ~3.0x of limit) ---
-    (256, 200),
-    (256, 500),
-]
-
 NUM_KEY_COLUMNS = 1
 NUM_VALUE_COLUMNS = 9
 KEY_COLUMNS = ["key_0"]
@@ -61,32 +37,38 @@ KEY_COLUMNS = ["key_0"]
 BYTES_PER_ROW = (NUM_KEY_COLUMNS + NUM_VALUE_COLUMNS) * 8
 
 
+def _make_block(task_idx, rows_per_task, num_key_cols, num_val_cols):
+    """Generate a single block of random data."""
+    import numpy as np
+    import pyarrow as pa
+
+    rng = np.random.default_rng(seed=task_idx)
+    columns = {}
+    for i in range(num_key_cols):
+        columns[f"key_{i}"] = rng.integers(
+            0, 2**31, size=rows_per_task, dtype=np.int64
+        )
+    for i in range(num_val_cols):
+        columns[f"val_{i}"] = rng.integers(
+            0, 2**63, size=rows_per_task, dtype=np.int64
+        )
+    return pa.table(columns)
+
+
 def generate_dataset(target_bytes, num_map_tasks=128):
     """Create a synthetic dataset of approximately target_bytes using Ray Data."""
     total_rows = target_bytes // BYTES_PER_ROW
     rows_per_task = total_rows // num_map_tasks
 
-    def make_block(task_idx):
-        import pyarrow as pa
-        import numpy as np
-
-        rng = np.random.default_rng(seed=int(task_idx))
-        columns = {}
-        for i in range(NUM_KEY_COLUMNS):
-            columns[f"key_{i}"] = rng.integers(
-                0, 2**31, size=rows_per_task, dtype=np.int64
-            )
-        for i in range(NUM_VALUE_COLUMNS):
-            columns[f"val_{i}"] = rng.integers(
-                0, 2**63, size=rows_per_task, dtype=np.int64
-            )
-        return pa.table(columns)
+    nk = NUM_KEY_COLUMNS
+    nv = NUM_VALUE_COLUMNS
+    rpt = rows_per_task
 
     ds = ray.data.from_items(
         list(range(num_map_tasks)), override_num_blocks=num_map_tasks
     )
     ds = ds.map_batches(
-        lambda batch: make_block(batch["item"][0]),
+        lambda batch: _make_block(batch["item"][0].as_py(), rpt, nk, nv),
         batch_size=1,
         batch_format="pyarrow",
     )
