@@ -1212,8 +1212,9 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
 
+    dashboard_process = subprocess.Popen(dashboard_cmd)
+    conflicting_dashboard_process = None
     try:
-        dashboard_process = subprocess.Popen(dashboard_cmd)
         dashboard_process.wait(30)
 
         dashboard_cmd.append("--port-retries=10")
@@ -1234,9 +1235,12 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         wait_for_condition(_check)
     finally:
         dashboard_process.kill()
-        conflicting_dashboard_process.kill()
+        if conflicting_dashboard_process is not None:
+            conflicting_dashboard_process.kill()
+
         dashboard_process.wait()
-        conflicting_dashboard_process.wait()
+        if conflicting_dashboard_process is not None:
+            conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
