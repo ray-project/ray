@@ -513,15 +513,19 @@
     script: >
       python benchmark_shuffle_matrix.py
 
-- name: "benchmark_ooc_shuffle_{{data_size_gb}}gb_p{{num_partitions}}"
+- name: "benchmark_ooc_shuffle_{{strategy}}_{{data_size_gb}}gb_p{{num_partitions}}"
   frequency: manual
   python: "3.10"
   matrix:
     setup:
       data_size_gb: [50, 85, 120, 170, 256]
-      num_partitions: [100, 200, 500]
+      num_partitions: [100, 200, 500, 1000]
+      strategy: [actorless, actor]
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION=0.5
     cluster_compute: fixed_size_ooc_shuffle_compute.yaml
 
   run:
@@ -530,6 +534,7 @@
       python benchmark_out_of_core_shuffle.py
       --data-size-gb {{data_size_gb}}
       --num-partitions {{num_partitions}}
+      --strategy {{strategy}}
 
 ########################
 # Sort and shuffle tests

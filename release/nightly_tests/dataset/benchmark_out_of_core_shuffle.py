@@ -1,33 +1,37 @@
-"""Benchmark: Out-of-core shuffle capacity for actorless hash shuffle.
+"""Benchmark: Out-of-core shuffle capacity.
 
-Determines how much data the actorless hash shuffle can handle before
-spilling degrades performance or causes failures.
+Determines how much data the hash shuffle can handle before spilling
+degrades performance or causes failures. Supports both the original
+actor-based hash shuffle and the actorless hash shuffle.
 
 Cluster assumption: 16 worker nodes, 8 CPU / 32 GB each.
   - Total memory: 512 GB
   - Object store (50%): 256 GB
   - In-core shuffle limit (x/3): ~85 GB
 
-Tests a single (data_size, num_partitions) combination using synthesized
-data (random int columns). Each combination runs as an independent release
-test so one OOM does not affect others.
+Tests a single (data_size, num_partitions, strategy) combination using
+synthesized data (random int columns). Each combination runs as an
+independent release test so one OOM does not affect others.
 
 Usage:
     python benchmark_out_of_core_shuffle.py --data-size-gb 50 --num-partitions 200
-    python benchmark_out_of_core_shuffle.py --data-size-gb 256 --num-partitions 500
+    python benchmark_out_of_core_shuffle.py --data-size-gb 50 --num-partitions 200 --strategy actor
+    python benchmark_out_of_core_shuffle.py --data-size-gb 256 --num-partitions 500 --strategy actorless
 """
 
 import argparse
 import gc
 import json
-import os
 import time
 from datetime import datetime
 
-os.environ.setdefault("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.5")
-
 import ray
 from ray.data.context import ShuffleStrategy
+
+STRATEGY_MAP = {
+    "actorless": ShuffleStrategy.ACTORLESS_HASH_SHUFFLE,
+    "actor": ShuffleStrategy.HASH_SHUFFLE,
+}
 
 NUM_KEY_COLUMNS = 1
 NUM_VALUE_COLUMNS = 9
@@ -92,17 +96,21 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
     print(f"    object store drain timed out after {timeout_s}s", flush=True)
 
 
-def run_one(data_size_gb, num_partitions, num_map_tasks=128):
+def run_one(data_size_gb, num_partitions, strategy_name="actorless", num_map_tasks=128):
     """Run a single shuffle and return timing + status info."""
     target_bytes = int(data_size_gb * 1024**3)
 
     print(f"  Generating ~{data_size_gb} GB synthetic data...", flush=True)
     ds = generate_dataset(target_bytes, num_map_tasks=num_map_tasks)
 
-    ds.context.shuffle_strategy = ShuffleStrategy.ACTORLESS_HASH_SHUFFLE
-    ds.context.override_object_store_memory_limit_fraction = 0.5
+    ds.context.shuffle_strategy = STRATEGY_MAP[strategy_name]
+    if strategy_name == "actorless":
+        ds.context.set_config("actorless_shuffle_compaction_strategy", "pre_map_merge")
+        ds.context.set_config(
+            "actorless_shuffle_pre_map_merge_threshold", 1024 * 1024 * 1024
+        )  # 1 GB
 
-    name = f"ooc_{data_size_gb}gb_p{num_partitions}"
+    name = f"ooc_{strategy_name}_{data_size_gb}gb_p{num_partitions}"
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
     repartitioned.set_name(name)
 
@@ -154,6 +162,13 @@ def main():
         required=True,
         help="Number of output partitions",
     )
+    parser.add_argument(
+        "--strategy",
+        type=str,
+        choices=["actorless", "actor"],
+        default="actorless",
+        help="Shuffle strategy: 'actorless' (default) or 'actor' (original)",
+    )
     args = parser.parse_args()
 
     ray.init()
@@ -166,23 +181,26 @@ def main():
 
     data_size_gb = args.data_size_gb
     num_partitions = args.num_partitions
+    strategy_name = args.strategy
 
     print(
         f"Cluster: {total_cpu:.0f} CPUs, {total_mem_gb:.0f} GB memory, "
         f"{total_obj_gb:.0f} GB object store"
     )
     print(f"Estimated in-core shuffle limit (obj_store/3): {in_core_limit_gb:.0f} GB")
-    print(f"Test: {data_size_gb} GB, {num_partitions} partitions")
+    print(
+        f"Test: {data_size_gb} GB, {num_partitions} partitions, strategy={strategy_name}"
+    )
     print()
 
     ratio = data_size_gb / in_core_limit_gb if in_core_limit_gb > 0 else float("inf")
     zone = "IN-CORE" if ratio <= 1.0 else "SPILL"
     print(
-        f"--- {data_size_gb} GB, {num_partitions} partitions "
+        f"--- {data_size_gb} GB, {num_partitions} partitions, {strategy_name} "
         f"({ratio:.1f}x of in-core limit, {zone}) ---"
     )
 
-    info = run_one(data_size_gb, num_partitions)
+    info = run_one(data_size_gb, num_partitions, strategy_name=strategy_name)
 
     result = {
         "timestamp": datetime.now().isoformat(),
@@ -195,6 +213,7 @@ def main():
         "config": {
             "data_size_gb": data_size_gb,
             "num_partitions": num_partitions,
+            "strategy": strategy_name,
             "ratio_to_in_core_limit": round(ratio, 2),
             "bytes_per_row": BYTES_PER_ROW,
         },
