@@ -143,6 +143,58 @@ class TestWorkloadSpec:
         assert expected_keys.issubset(s.keys())
         assert len(s["per_turn"]) == 2
 
+    def test_infeasible_user_tokens_suggests_lower_hit_rate_and_boundary_resolves(self):
+        """user_tokens < 0.5: error names user_tokens and suggests a feasible hit_rate cap."""
+        base = dict(
+            isl=1000,
+            hit_rate=1.0,
+            num_turns=5,
+            osl=100,
+            shared_system_prompt_ratio=1.0,
+            concurrency=1,
+            num_sessions=1,
+        )
+        with pytest.raises(ValueError) as exc_info:
+            WorkloadSpec(**base).resolve()
+        msg = str(exc_info.value)
+        assert "user_tokens" in msg
+        assert "hit_rate <=" in msg
+        # Suggested boundary (from _feasibility_suggestions) must resolve when applied.
+        WorkloadSpec(**{**base, "hit_rate": 0.74}).resolve()
+
+    def test_infeasible_sys_tokens_suggests_num_turns_and_boundary_resolves(self):
+        """sys_tokens < -0.5: error names sys_tokens; reducing num_turns can fix."""
+        base = dict(
+            isl=500,
+            hit_rate=0.99,
+            num_turns=8,
+            osl=200,
+            shared_system_prompt_ratio=0.9,
+            concurrency=1,
+            num_sessions=1,
+        )
+        with pytest.raises(ValueError) as exc_info:
+            WorkloadSpec(**base).resolve()
+        msg = str(exc_info.value)
+        assert "sys_tokens" in msg
+        assert "num_turns <=" in msg
+        WorkloadSpec(**{**base, "num_turns": 5}).resolve()
+
+    def test_infeasible_no_single_parameter_fix(self):
+        """Some parameter sets are infeasible with no one-dimensional remedy."""
+        kw = dict(
+            isl=442,
+            hit_rate=0.39,
+            num_turns=15,
+            osl=216,
+            shared_system_prompt_ratio=0.04,
+            concurrency=1,
+            num_sessions=1,
+        )
+        with pytest.raises(ValueError) as exc_info:
+            WorkloadSpec(**kw).resolve()
+        assert "no single-parameter fix found" in str(exc_info.value)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
