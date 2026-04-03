@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import pickle
 import queue
 import threading
@@ -874,12 +875,6 @@ def main():
         help="username for connecting to Redis",
     )
     parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        help="Password for connecting to Redis",
-    )
-    parser.add_argument(
         "--runtime-env-agent-address",
         required=False,
         type=str,
@@ -894,16 +889,15 @@ def main():
         help="The hex ID of this node.",
     )
     args, _ = parser.parse_known_args()
+    redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
     ray_connect_handler = create_ray_handler(
-        args.address, args.redis_password, args.redis_username
+        args.address, redis_password, args.redis_username
     )
 
     hostport = build_address(args.host, args.port)
     args_str = str(args)
-    if args.redis_password:
-        args_str = args_str.replace(args.redis_password, "****")
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
@@ -911,7 +905,7 @@ def main():
             args.port,
             args.address,
             redis_username=args.redis_username,
-            redis_password=args.redis_password,
+            redis_password=redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
             node_id=args.node_id,
         )

@@ -257,13 +257,6 @@ print("result:", get_entrypoint_name())
     outputs = execute_driver(["ipython"], input=get_entrypoint)
     assert line_exists(outputs, r".*result: \(interactive_shell\).*ipython")
 
-    # Test that password arguments are masked in the entrypoint.
-    outputs = execute_driver([sys.executable, str(fp), "--redis-password=secret123"])
-    assert line_exists(
-        outputs, f"result: {sys.executable} {fp} --redis-password=\\*\\*\\*\\*"
-    )
-    assert not any("secret123" in line for line in outputs)
-
 
 def test_removed_internal_flags(shutdown_only):
     ray.init(include_dashboard=True)
