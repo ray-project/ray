@@ -332,10 +332,12 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
                                           const TaskID &task_id,
                                           const ActorID &actor_id,
                                           const Status &status,
-                                          const rpc::RayErrorInfo *error_info) {
+                                          const rpc::RayErrorInfo *error_info,
+                                          bool is_streaming_generator) {
   RAY_LOG(DEBUG) << "Pool task complete: pool=" << pool_id
                  << ", work_item=" << work_item_id << ", task=" << task_id
-                 << ", actor=" << actor_id << ", status=" << status.ToString();
+                 << ", actor=" << actor_id << ", status=" << status.ToString()
+                 << ", streaming=" << is_streaming_generator;
 
   absl::MutexLock lock(&mu_);
 
@@ -346,8 +348,27 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
   }
 
   if (status.ok()) {
-    OnTaskSucceeded(pool_id, actor_id);
-    EraseTrackedWorkItem(work_item_id);
+    if (!is_streaming_generator) {
+      // Non-streaming tasks complete immediately.
+      OnTaskSucceeded(pool_id, actor_id);
+      EraseTrackedWorkItem(work_item_id);
+    } else {
+      // Streaming generators: the actor finished execution but the caller may
+      // still be consuming the stream. Hold the task slot until
+      // OnPoolTaskStreamDrained fires (stream fully consumed).
+      auto wi_it = work_items_.find(work_item_id);
+      if (wi_it != work_items_.end()) {
+        wi_it->second.execution_finished = true;
+        if (wi_it->second.stream_drained) {
+          // Stream already drained before execution completed.
+          OnTaskSucceeded(pool_id, actor_id);
+          EraseTrackedWorkItem(work_item_id);
+        }
+      } else {
+        // Work item already cleaned up. Just decrement.
+        OnTaskSucceeded(pool_id, actor_id);
+      }
+    }
   } else {
     if (error_info != nullptr) {
       OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
@@ -358,6 +379,29 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
                                       status.ToString());
       OnTaskFailed(pool_id, work_item_id, actor_id, generic_error);
     }
+  }
+}
+
+void ActorPoolManager::OnPoolTaskStreamDrained(const ActorPoolID &pool_id,
+                                               const TaskID &work_item_id,
+                                               const TaskID &task_id,
+                                               const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return;
+  }
+
+  auto wi_it = work_items_.find(work_item_id);
+  if (wi_it == work_items_.end()) {
+    return;
+  }
+
+  wi_it->second.stream_drained = true;
+  if (wi_it->second.execution_finished) {
+    OnTaskSucceeded(pool_id, actor_id);
+    EraseTrackedWorkItem(work_item_id);
   }
 }
 
@@ -388,6 +432,8 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
     auto wi_it = work_items_.find(work_item_id);
     if (wi_it != work_items_.end()) {
       wi_it->second.pushed_to_actor = true;
+      wi_it->second.execution_finished = false;
+      wi_it->second.stream_drained = false;
     }
   }
 }

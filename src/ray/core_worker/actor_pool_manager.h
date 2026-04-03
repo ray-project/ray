@@ -296,7 +296,17 @@ class ActorPoolManager {
                           const TaskID &task_id,
                           const ActorID &actor_id,
                           const Status &status,
-                          const rpc::RayErrorInfo *error_info);
+                          const rpc::RayErrorInfo *error_info,
+                          bool is_streaming_generator = false);
+
+  /// Notify that a streaming generator pool task's stream has been fully
+  /// consumed by the caller (EOF read or stream deleted). Together with
+  /// OnPoolTaskComplete(execution_finished), this completes the two-phase
+  /// lifecycle for streaming generator pool tasks.
+  void OnPoolTaskStreamDrained(const ActorPoolID &pool_id,
+                               const TaskID &work_item_id,
+                               const TaskID &task_id,
+                               const ActorID &actor_id);
 
   /// Notify that a task was pushed to an actor in a pool.
   /// Transitions the work item from pending-submission to in-flight.

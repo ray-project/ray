@@ -652,31 +652,36 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
-  if (!can_gc_lineage) {
-    RAY_LOG(DEBUG) << "Generator " << generator_id
-                   << " still has lineage in scope, try again later";
-    return false;
-  }
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
+    if (!can_gc_lineage) {
+      RAY_LOG(DEBUG) << "Generator " << generator_id
+                     << " still has lineage in scope, try again later";
+      return false;
+    }
 
-  RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
-  object_ref_streams_.erase(generator_id);
+    RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
+    object_ref_streams_.erase(generator_id);
+  }
+  // Lock released
+  MaybeNotifyPoolTaskStreamDrained(generator_id.TaskId());
   return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
+  const auto task_id = generator_id.TaskId();
   auto backpressure_threshold = 0;
   {
     absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(generator_id.TaskId());
+    auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
     }
   }
 
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -706,6 +711,11 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
+  if (status.IsObjectRefEndOfStream()) {
+    lock.Release();
+    MaybeNotifyPoolTaskStreamDrained(task_id);
+  }
+
   return status;
 }
 
@@ -717,6 +727,40 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
          "created "
          "and not removed.";
   return stream_it->second.IsFinished();
+}
+
+void TaskManager::MaybeNotifyPoolTaskStreamDrained(const TaskID &task_id) {
+  if (!pool_task_stream_drained_callback_) {
+    return;
+  }
+
+  // Extract pool task metadata under mu_, then release before calling callback.
+  // This ensures no TaskManager locks are held when entering ActorPoolManager.
+  ActorPoolID pool_id;
+  TaskID work_item_id;
+  ActorID actor_id;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return;
+    }
+    const auto &spec = it->second.spec_;
+    if (!spec.IsPoolTask()) {
+      return;
+    }
+    const auto &msg = spec.GetMessage();
+    if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
+      return;
+    }
+    pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
+    if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
+      work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
+    }
+    actor_id = spec.ActorId();
+  }
+  // mu_ released — safe to call into ActorPoolManager.
+  pool_task_stream_drained_callback_(pool_id, work_item_id, task_id, actor_id);
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {

@@ -66,8 +66,13 @@ void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
   RAY_LOG(DEBUG) << "Notifying pool " << pool_id << " of task completion for work item "
                  << work_item_id << ", status: " << status.ToString();
 
-  callback(
-      pool_id, work_item_id, task_spec.TaskId(), task_spec.ActorId(), status, error_info);
+  callback(pool_id,
+           work_item_id,
+           task_spec.TaskId(),
+           task_spec.ActorId(),
+           status,
+           error_info,
+           task_spec.IsStreamingGenerator());
 }
 
 }  // namespace

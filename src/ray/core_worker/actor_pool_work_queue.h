@@ -60,6 +60,15 @@ struct PoolWorkItem {
   /// counted in num_tasks_in_flight. GetOccupiedTaskSlots includes these as pending.
   bool pushed_to_actor = false;
 
+  /// For streaming generator tasks: true once the actor has finished execution
+  /// (HandlePushTaskReply received). The task slot is held until both
+  /// execution_finished AND stream_drained are true.
+  bool execution_finished = false;
+
+  /// For streaming generator tasks: true once the caller has consumed all
+  /// objects from the stream (TryReadObjectRefStream returned EOF).
+  bool stream_drained = false;
+
   PoolWorkItem() = default;
 
   /// Move constructor.
@@ -72,7 +81,9 @@ struct PoolWorkItem {
         options(std::move(other.options)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms),
-        pushed_to_actor(other.pushed_to_actor) {}
+        pushed_to_actor(other.pushed_to_actor),
+        execution_finished(other.execution_finished),
+        stream_drained(other.stream_drained) {}
 
   /// Move assignment.
   PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
@@ -86,6 +97,8 @@ struct PoolWorkItem {
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
       pushed_to_actor = other.pushed_to_actor;
+      execution_finished = other.execution_finished;
+      stream_drained = other.stream_drained;
     }
     return *this;
   }
