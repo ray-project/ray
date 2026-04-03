@@ -568,6 +568,14 @@ std::string TaskSpecification::DebugString() const {
     }
   }
 
+  stream << ", dependencies={";
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i)) {
+      stream << ArgObjectId(i) << ", ";
+    }
+  }
+  stream << "}";
+
   return stream.str();
 }
 
