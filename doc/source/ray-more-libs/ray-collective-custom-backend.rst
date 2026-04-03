@@ -22,30 +22,23 @@ Step 1: Define Your Backend Class
 
 Your backend class must inherit from :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` and implement required methods. See the :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` API reference for the complete list of required methods.
 
-.. code-block:: python
+Here's an example using the ``MockInternalKVGroup`` backend that uses Ray's internal KV store for communication:
 
-    from ray.util.collective.collective_group.base_collective_group import BaseGroup
+.. testcode::
+    :skipif: True
 
-    class MyCustomBackend(BaseGroup):
-        def __init__(self, world_size, rank, group_name):
-            super().__init__(world_size, rank, group_name)
+    from ray.util.collective.examples.mock_internal_kv_example import MockInternalKVGroup
 
-        @classmethod
-        def backend(cls):
-            return "MY_BACKEND"
+    # MockInternalKVGroup is a complete implementation that inherits from BaseGroup
+    # and implements all required collective operations using Ray's internal KV store
+    backend_cls = MockInternalKVGroup
 
-        @classmethod
-        def check_backend_availability(cls) -> bool:
-            return True
-
-        def allreduce(self, tensor, allreduce_options=None):
-            pass
-
-        def broadcast(self, tensor, broadcast_options=None):
-            pass
-
-        def barrier(self, barrier_options=None):
-            pass
+    # Check that it has the required methods
+    assert hasattr(backend_cls, 'backend')
+    assert hasattr(backend_cls, 'check_backend_availability')
+    assert hasattr(backend_cls, 'allreduce')
+    assert hasattr(backend_cls, 'broadcast')
+    assert hasattr(backend_cls, 'barrier')
 
 Step 2: Register Your Backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
