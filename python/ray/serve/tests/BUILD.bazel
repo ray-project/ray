@@ -84,7 +84,6 @@ py_test_module_list(
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_serve_with_tracing.py",
-        "test_util.py",
         "test_websockets.py",
     ],
     tags = [
@@ -141,6 +140,7 @@ py_test_module_list(
         "test_streaming_response.py",
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
+        "test_util.py",
     ],
     tags = [
         "exclusive",
