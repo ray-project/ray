@@ -1,6 +1,5 @@
 import copy
 import functools
-import itertools
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -70,7 +69,6 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     TaskExecWorkerStats,
-    _take_first_non_empty_schema,
     to_stats,
 )
 from ray.data.context import DataContext
@@ -889,7 +887,7 @@ class BlockRefBundler(BaseRefBundler):
             bundle.size_bytes() for bundle in remainder
         )
 
-        return list(output_buffer), _merge_ref_bundles(*output_buffer)
+        return list(output_buffer), RefBundle.merge_ref_bundles(output_buffer)
 
     def done_adding_bundles(self):
         """Indicate that no more RefBundles will be added to this bundler."""
@@ -898,27 +896,6 @@ class BlockRefBundler(BaseRefBundler):
     @staticmethod
     def _get_bundle_size(bundle: RefBundle):
         return bundle.num_rows() if bundle.num_rows() is not None else float("inf")
-
-
-def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
-    """Merge N ref bundles into a single bundle of multiple blocks."""
-    # Check that at least one bundle is non-null.
-    bundles = [bundle for bundle in bundles if bundle is not None]
-    assert len(bundles) > 0
-    blocks = list(
-        itertools.chain(block for bundle in bundles for block in bundle.blocks)
-    )
-    producer_op_ids = tuple(
-        itertools.chain.from_iterable(bundle.producer_op_ids for bundle in bundles)
-    )
-    owns_blocks = all(bundle.owns_blocks for bundle in bundles)
-    schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
-    return RefBundle(
-        blocks,
-        owns_blocks=owns_blocks,
-        schema=schema,
-        producer_op_ids=producer_op_ids,
-    )
 
 
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
