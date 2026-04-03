@@ -6,7 +6,7 @@ from ray import serve
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 
-from ray.serve._private.experimental.capacity_queue_request_router import (
+from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
 )
 
@@ -28,7 +28,7 @@ from ray.serve._private.experimental.capacity_queue_request_router import (
     ],
     request_router_config=RequestRouterConfig(
         request_router_class=(
-            "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+            "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
         ),
     ),
     num_replicas=3,

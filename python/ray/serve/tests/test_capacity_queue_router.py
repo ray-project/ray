@@ -8,11 +8,11 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
-from ray.serve._private.experimental.capacity_queue_request_router import (
-    CapacityQueue,
-)
 from ray.serve._private.test_utils import check_running
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
+from ray.serve.experimental.capacity_queue import (
+    CapacityQueue,
+)
 
 
 def _deploy_capacity_queue_app(
@@ -37,7 +37,7 @@ def _deploy_capacity_queue_app(
         ],
         request_router_config=RequestRouterConfig(
             request_router_class=(
-                "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+                "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
             ),
         ),
         num_replicas=num_replicas,
@@ -81,7 +81,7 @@ def _deploy_blocking_capacity_queue_app(
         ],
         request_router_config=RequestRouterConfig(
             request_router_class=(
-                "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+                "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
             ),
         ),
         num_replicas=num_replicas,
@@ -235,15 +235,50 @@ class TestCapacityQueueRouterWithSingleReplica:
 
 
 class TestCapacityQueueRouterFailures:
-    def test_unreleased_token_reduces_capacity(self, serve_instance):
-        """Tokens acquired but never released permanently reduce capacity.
+    def test_unreleased_token_recovered_by_ttl(self, serve_instance):
+        """Leaked tokens are automatically reclaimed after the TTL expires.
 
-        When a token is acquired from the queue but never released (e.g. a
-        router process dies between acquire() and release()), the queue's
-        in_flight count stays elevated, reducing effective capacity until the
-        replica is recycled.
+        When a token is acquired but never released (e.g. a router process
+        dies between acquire() and release()), the queue's in_flight count
+        stays elevated. With token_ttl_s configured, a background reaper
+        reclaims expired tokens and restores full capacity.
         """
-        handle = _deploy_capacity_queue_app(num_replicas=1, max_ongoing_requests=3)
+        token_ttl_s = 2.0
+
+        @serve.deployment(
+            deployment_actors=[
+                DeploymentActorConfig(
+                    name="capacity_queue",
+                    actor_class=CapacityQueue,
+                    init_kwargs={
+                        "acquire_timeout_s": 30.0,
+                        "token_ttl_s": token_ttl_s,
+                        "deployment_id_name": "TtlApp",
+                        "deployment_id_app": "default",
+                    },
+                    actor_options={"num_cpus": 0},
+                ),
+            ],
+            request_router_config=RequestRouterConfig(
+                request_router_class=(
+                    "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
+                ),
+            ),
+            num_replicas=1,
+            max_ongoing_requests=3,
+            ray_actor_options={"num_cpus": 0},
+        )
+        class TtlApp:
+            def __init__(self):
+                from ray.serve.context import _get_internal_replica_context
+
+                context = _get_internal_replica_context()
+                self.unique_id = context.replica_id.unique_id
+
+            async def __call__(self):
+                return self.unique_id
+
+        handle = serve.run(TtlApp.bind())
         wait_for_condition(check_running, timeout=30)
 
         queue = _find_capacity_queue_handle()
@@ -264,11 +299,13 @@ class TestCapacityQueueRouterFailures:
         resp = handle.remote().result(timeout_s=10)
         assert isinstance(resp, str)
 
-        # Leaked token still occupies capacity.
-        wait_for_condition(
-            lambda: ray.get(queue.get_stats.remote()).total_in_flight >= 1,
-            timeout=10,
-        )
+        # After the TTL expires, the reaper reclaims the leaked token and
+        # full capacity is restored.
+        def _capacity_restored():
+            s = ray.get(queue.get_stats.remote())
+            return s.total_in_flight == 0 and s.queue_size == 3
+
+        wait_for_condition(_capacity_restored, timeout=token_ttl_s + 5)
 
     def test_replica_death_releases_token_and_recovers(self, serve_instance):
         """When a replica dies mid-request, its token is released and
@@ -289,7 +326,7 @@ class TestCapacityQueueRouterFailures:
             ],
             request_router_config=RequestRouterConfig(
                 request_router_class=(
-                    "ray.serve._private.experimental.capacity_queue_request_router:CapacityQueueRouter"
+                    "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
             ),
             num_replicas=2,
@@ -327,11 +364,16 @@ class TestCapacityQueueRouterFailures:
 
         # The controller detects the death, removes the replica, and starts
         # a replacement. Long poll updates the queue. Eventually the queue
-        # should recover to 2 replicas (the survivor + the replacement).
-        wait_for_condition(
-            lambda: ray.get(queue.get_stats.remote()).num_replicas == 2,
-            timeout=30,
-        )
+        # should recover to 2 replicas (the survivor + the replacement)
+        # with full capacity and no leaked in-flight counts.
+        def _cluster_fully_recovered():
+            stats = ray.get(queue.get_stats.remote())
+            assert stats.num_replicas == 2
+            assert stats.total_capacity == 4  # 2 replicas * max_ongoing_requests=2
+            assert stats.total_in_flight == 0
+            return True
+
+        wait_for_condition(_cluster_fully_recovered, timeout=30)
 
         # Requests still succeed — routed to the surviving / replacement replica.
         resp = handle.remote().result(timeout_s=15)
@@ -339,7 +381,12 @@ class TestCapacityQueueRouterFailures:
 
     def test_capacity_queue_death_and_recovery(self, serve_instance):
         """When the CapacityQueue actor dies, the controller recreates it
-        and request routing recovers."""
+        and request routing recovers.
+
+        The router does NOT raise an exception to callers. Instead it enters a
+        backoff-retry loop: it catches RayActorError, clears its cached handle,
+        and rediscovers the new queue actor on the next attempt.
+        """
         handle = _deploy_capacity_queue_app(num_replicas=2)
         wait_for_condition(check_running, timeout=30)
 
@@ -379,9 +426,15 @@ class TestCapacityQueueRouterFailures:
         """After a queue restart, it bootstraps with full capacity even though
         replicas may have in-flight requests from before the crash.
 
-        This documents a known trade-off: the restarted queue does not know
-        about pre-crash in-flight counts, so it may temporarily over-provision
-        capacity beyond max_ongoing_requests.
+        The restarted queue does not know about pre-crash in-flight counts, so
+        it may temporarily over-provision capacity beyond max_ongoing_requests.
+        This is self-healing through two mechanisms:
+        1. Replicas enforce their own max_ongoing_requests limit and reject
+           excess requests, causing the router to retry via the queue.
+        2. When token_ttl_s is configured, the TTL reaper auto-reclaims
+           tokens that were never released, bounding the convergence window.
+        As pre-crash requests complete and call release(), the queue's view
+        converges back to reality.
         """
         signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
         signal = SignalActor.options(name=signal_name).remote()

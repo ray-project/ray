@@ -189,7 +189,7 @@ This `@ray.remote` class will be managed by the Serve controller as a
 [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) — one
 actor instance shared across all replicas of the deployment whose lifecycle is tied to the lifecycle of the deployment (not replicas):
 
-```{literalinclude} /../../python/ray/serve/_private/experimental/capacity_queue_request_router.py
+```{literalinclude} /../../python/ray/serve/experimental/capacity_queue.py
 :start-after: __begin_define_capacity_queue__
 :end-before: __end_define_capacity_queue__
 :language: python
@@ -210,13 +210,13 @@ The key methods are:
 
 ### Define the CapacityQueueRouter
 
-In the same file, add the custom router.  It overrides
+In a separate file, define the custom router.  It overrides
 `_choose_replica_for_request`
 to acquire a token instead of using the default power-of-two-choices algorithm,
 and uses [`on_request_completed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_completed.rst)
 to release the token when the request finishes:
 
-```{literalinclude} /../../python/ray/serve/_private/experimental/capacity_queue_request_router.py
+```{literalinclude} /../../python/ray/serve/experimental/capacity_queue_router.py
 :start-after: __begin_define_capacity_queue_router__
 :end-before: __end_define_capacity_queue_router__
 :language: python
@@ -248,7 +248,7 @@ a `RequestRouterConfig` pointing at the custom router:
 When the app starts:
 
 1. The Serve controller creates the `CapacityQueue` deployment actor **before**
-   any replicas start.  The queue subscribes to controller updates via long poll.
+   any replicas start.  The queue subscribes to replica updates via long poll.
 2. As the controller starts replicas, it sends deployment-target updates.  The
    queue's long-poll callback automatically registers each replica with its
    `max_ongoing_requests` capacity — and unregisters replicas that are removed

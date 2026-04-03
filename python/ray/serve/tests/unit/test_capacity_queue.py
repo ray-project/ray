@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 
-from ray.serve._private.experimental.capacity_queue_request_router import (
+from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
     CapacityQueueStats,
     ReplicaCapacityInfo,
@@ -542,6 +542,73 @@ class TestReplicaLifecycleOnDeploymentTargetUpdate:
         # Next acquire must go to r1 (no phantom r2)
         token = await queue.acquire(timeout_s=1.0)
         assert token == "r1"
+
+
+class TestTokenTTL:
+    """Tests for the token TTL auto-reclaim feature."""
+
+    @pytest.mark.asyncio
+    async def test_expired_token_reclaimed(self):
+        """Tokens exceeding the TTL are automatically reclaimed."""
+        queue = _get_raw_class()(
+            acquire_timeout_s=30.0,
+            token_ttl_s=0.2,
+            _enable_long_poll=False,
+        )
+        queue.register_replica("replica1", 2)
+
+        # Acquire a token (never release it).
+        r = await queue.acquire()
+        assert r == "replica1"
+        assert queue._replicas["replica1"].in_flight == 1
+        assert queue.get_queue_length() == 1
+
+        # Wait for the TTL reaper to reclaim it.
+        await asyncio.sleep(0.5)
+
+        assert queue._replicas["replica1"].in_flight == 0
+        assert queue.get_queue_length() == 2
+        assert queue._total_ttl_reclaims == 1
+
+    @pytest.mark.asyncio
+    async def test_ttl_does_not_reclaim_released_tokens(self):
+        """Properly released tokens are not double-reclaimed by the reaper."""
+        queue = _get_raw_class()(
+            acquire_timeout_s=30.0,
+            token_ttl_s=0.2,
+            _enable_long_poll=False,
+        )
+        queue.register_replica("replica1", 2)
+
+        r = await queue.acquire()
+        queue.release(r)
+
+        assert queue._replicas["replica1"].in_flight == 0
+
+        # Wait past TTL — reaper should find nothing to reclaim.
+        await asyncio.sleep(0.5)
+
+        assert queue._replicas["replica1"].in_flight == 0
+        assert queue.get_queue_length() == 2
+        assert queue._total_ttl_reclaims == 0
+
+    @pytest.mark.asyncio
+    async def test_ttl_reclaim_wakes_waiters(self):
+        """Reclaimed capacity from TTL should wake blocked waiters."""
+        queue = _get_raw_class()(
+            acquire_timeout_s=30.0,
+            token_ttl_s=0.2,
+            _enable_long_poll=False,
+        )
+        queue.register_replica("replica1", 1)
+
+        # Exhaust capacity.
+        await queue.acquire()
+        assert queue.get_queue_length() == 0
+
+        # This waiter should be woken once the TTL reaper reclaims.
+        result = await asyncio.wait_for(queue.acquire(), timeout=2.0)
+        assert result == "replica1"
 
 
 if __name__ == "__main__":
