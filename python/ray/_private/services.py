@@ -2412,6 +2412,8 @@ def start_ray_client_server(
         command.append(f"--redis-username={redis_username}")
     env_updates = {}
     if redis_password:
+        # Use an environment variable to pass the Redis password to the client server.
+        # This avoids leaking it via process arguments.
         env_updates[ray_constants.RAY_REDIS_PASSWORD_ENV] = redis_password
     if serialized_runtime_env_context:
         command.append(
