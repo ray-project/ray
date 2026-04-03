@@ -1,6 +1,6 @@
-import copy
 import functools
 import math
+from dataclasses import InitVar, dataclass, field, replace
 from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
@@ -23,6 +23,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Read(
     AbstractMap,
     SourceOperator,
@@ -31,38 +32,40 @@ class Read(
 ):
     """Logical operator for read."""
 
-    # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
-    def __init__(
-        self,
-        datasource: Datasource,
-        datasource_or_legacy_reader: Union[Datasource, Reader],
-        parallelism: int,
-        num_outputs: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        compute: Optional[ComputeStrategy] = None,
-    ):
-        super().__init__(
-            name=f"Read{datasource.get_name()}",
-            input_op=None,
-            can_modify_num_rows=True,
-            num_outputs=num_outputs,
-            ray_remote_args=ray_remote_args,
-            compute=compute,
-        )
-        self.datasource = datasource
-        self.datasource_or_legacy_reader = datasource_or_legacy_reader
-        self.parallelism = parallelism
-        self.detected_parallelism = None
+    datasource: Datasource
+    datasource_or_legacy_reader: Union[Datasource, Reader]
+    parallelism: int
+    num_outputs: InitVar[Optional[int]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    compute: Optional[ComputeStrategy] = None
+    detected_parallelism: Optional[int] = None
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args_fn: None = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: list = field(init=False, repr=False, default_factory=list)
+    _num_outputs: Optional[int] = field(init=False, repr=False)
+
+    def __post_init__(self, num_outputs: Optional[int]):
+        if self.compute is None:
+            from ray.data._internal.compute import TaskPoolStrategy
+
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
+        object.__setattr__(self, "_input_dependencies", [])
+        object.__setattr__(self, "_num_outputs", num_outputs)
 
     def output_data(self):
         return None
 
-    def set_detected_parallelism(self, parallelism: int):
+    def set_detected_parallelism(self, parallelism: int) -> "Read":
         """
         Set the true parallelism that should be used during execution. This
         should be specified by the user or detected by the optimizer.
         """
-        self.detected_parallelism = parallelism
+        object.__setattr__(self, "detected_parallelism", parallelism)
+        return self
 
     def get_detected_parallelism(self) -> int:
         """
@@ -184,13 +187,13 @@ class Read(
         self,
         projection_map: Optional[Dict[str, str]],
     ) -> "Read":
-        clone = copy.copy(self)
-
         projected_datasource = self.datasource.apply_projection(projection_map)
-        clone.datasource = projected_datasource
-        clone.datasource_or_legacy_reader = projected_datasource
-
-        return clone
+        return replace(
+            self,
+            datasource=projected_datasource,
+            datasource_or_legacy_reader=projected_datasource,
+            num_outputs=self.num_outputs,
+        )
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
         return self.datasource.get_column_renames()
@@ -204,8 +207,9 @@ class Read(
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
         predicated_datasource = self.datasource.apply_predicate(predicate_expr)
 
-        clone = copy.copy(self)
-        clone.datasource = predicated_datasource
-        clone.datasource_or_legacy_reader = predicated_datasource
-
-        return clone
+        return replace(
+            self,
+            datasource=predicated_datasource,
+            datasource_or_legacy_reader=predicated_datasource,
+            num_outputs=self.num_outputs,
+        )
