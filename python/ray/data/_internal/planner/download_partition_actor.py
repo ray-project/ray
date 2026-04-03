@@ -261,7 +261,16 @@ class AsyncPartitionActor(PartitionActor):
         return asyncio.run(_head_all())
 
     def _attach_file_sizes(self, block: pa.Table) -> pa.Table:
-        """Fetch file sizes for all URIs and attach as hidden columns."""
+        """Fetch file sizes for all URIs and attach as hidden columns.
+        Only called when obstore is available, range splitting is enabled
+        (RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0), and the URI scheme is
+        supported by obstore.  The hidden columns are consumed by
+        ``_download_uris_with_obstore`` and dropped before output.
+        The hidden columns are consumed by ``_download_uris_with_obstore`` and
+        dropped before output. For cloud URIs this uses cheap metadata lookups.
+        For HTTP URIs where sizes are unavailable, stores 0 so the downstream
+        download path falls back to HEAD via obstore.
+        """
         for uri_column_name in self._uri_column_names:
             size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
             uris = block.column(uri_column_name).to_pylist()
