@@ -1,7 +1,6 @@
 import os
 import random
 import subprocess
-import sys
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
@@ -30,23 +29,6 @@ from ray.tests.conftest import (  # noqa
     propagate_logs,
     pytest_runtest_makereport,
 )
-
-# Add doc/source/serve/doc_code to sys.path so tests can import doc examples
-# (e.g. capacity_queue_request_router). The __file__-relative path covers pytest;
-# the cwd-relative path covers Bazel runfiles.
-_SERVE_DOC_CODE_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "..",
-    "..",
-    "..",
-    "doc",
-    "source",
-    "serve",
-    "doc_code",
-)
-sys.path.insert(0, os.path.abspath(_SERVE_DOC_CODE_DIR))
-sys.path.insert(0, os.path.join(os.getcwd(), "doc", "source", "serve", "doc_code"))
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152

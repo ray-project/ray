@@ -3,7 +3,13 @@ import uuid
 from collections import Counter
 
 import pytest
+
+# isort: off
+# doc_fixture must be imported before capacity_queue_request_router
+import ray.serve.tests.fixtures.doc_fixture  # noqa: F401
 from capacity_queue_request_router import CapacityQueue
+
+# isort: on
 
 import ray
 from ray import serve

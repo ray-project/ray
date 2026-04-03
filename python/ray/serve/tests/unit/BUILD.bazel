@@ -35,6 +35,7 @@ py_test_module_list(
         ":conftest",
         "//python/ray/serve:serve_lib",
         "//python/ray/serve/tests:common",
+        "//python/ray/serve/tests:doc_fixture",
     ],
 )
 
