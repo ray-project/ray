@@ -80,6 +80,5 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parse_args()
     main(args)

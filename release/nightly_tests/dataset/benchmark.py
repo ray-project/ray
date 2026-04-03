@@ -45,10 +45,12 @@ class OperatorStatsTracker(ExecutionCallback):
 
     _op_start: Dict[str, float] = {}
     _op_end: Dict[str, Optional[float]] = {}
+    _start_time: float
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
-        OperatorStatsTracker._op_start.clear()
-        OperatorStatsTracker._op_end.clear()
+        self._start_time = time.time()
+        self._op_start.clear()
+        self._op_end.clear()
 
     def on_execution_step(self, executor: "StreamingExecutor"):
         if executor._topology is None:
@@ -65,21 +67,24 @@ class OperatorStatsTracker(ExecutionCallback):
             ):
                 self._op_end[op_key] = time.time()
 
-    @classmethod
-    def collect(cls) -> Dict[str, Any]:
+    def collect(self) -> Dict[str, Any]:
 
         stats: Dict[str, Dict[str, Any]] = {}
-        for key, start in cls._op_start.items():
-            end = cls._op_end.get(key)
-            start_dt = datetime.fromtimestamp(start, tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+
+        for key, start in self._op_start.items():
+            end = self._op_end.get(key)
+            start_dt = self._make_readable_timestamp(ts=start)
             duration_s = round(end - start, 2) if end is not None else None
             stats[key] = {
                 "start": start_dt,
                 "duration_s": duration_s,
             }
-        return {"op_stats": stats}
+
+        start_time = self._make_readable_timestamp(ts=self._start_time)
+        return {"start_time": start_time, "op_stats": stats}
+
+    def _make_readable_timestamp(self, ts: float) -> str:
+        datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class BenchmarkMetric(Enum):
