@@ -1,6 +1,5 @@
 import copy
 import logging
-import sys
 import uuid
 import warnings
 from abc import ABC, abstractmethod
@@ -226,7 +225,9 @@ class DeploymentSchedulingInfo:
     deployment_id: DeploymentID
     scheduling_policy: Any
     actor_resources: Optional[Resources] = None
+    label_selector: Optional[Dict[str, str]] = None
     placement_group_bundles: Optional[List[Resources]] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
 
@@ -283,7 +284,7 @@ class LaunchingReplicaInfo:
 
 
 def _flatten(
-    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]]
+    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]],
 ) -> Dict[ReplicaID, Any]:
     """Flattens a dict of {deployment_id: {replica_id: val}} to {replica_id: val}."""
 
@@ -355,6 +356,10 @@ class DeploymentScheduler(ABC):
 
         info = self._deployments[deployment_id]
         info.actor_resources = Resources(replica_config.resource_dict)
+        info.label_selector = replica_config.ray_actor_options.get("label_selector")
+        info.bundle_label_selector = (
+            replica_config.placement_group_bundle_label_selector
+        )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
@@ -828,8 +833,7 @@ class DeploymentScheduler(ABC):
             return GangReservationResult(
                 success=False,
                 error_message=(
-                    f"Failed to create any gang placement groups "
-                    f"for {deployment_id}."
+                    f"Failed to create any gang placement groups for {deployment_id}."
                 ),
             )
 
@@ -1078,13 +1082,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
         gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
-        """Prioritize replicas running on a node with fewest replicas of
-            all deployments.
-
-        This algorithm helps to scale down more intelligently because it can
-        relinquish nodes faster. Note that this algorithm doesn't consider
-        other non-serve actors on the same node. See more at
-        https://github.com/ray-project/ray/issues/20599.
+        """Select which replicas to stop for a downscale request in the following priority:
+        1. Prioritize replicas that are not in the RUNNING state.
+        2. Prioritize replicas not on the head node because we can't relinquish the head node.
+        3. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        4. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
+        5. Prioritize newer replicas over older replicas.
+        Note that this algorithm doesn't consider other non-serve actors on the same node.
+        See more at https://github.com/ray-project/ray/issues/20599.
 
         For gang deployments, the same priority order is applied, but entire
         gangs are selected atomically instead of individual replicas.
@@ -1100,7 +1105,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 self._recovering_replicas[deployment_id],
             )
         )
-
+        labels_to_check: List[Dict[str, str]] = []
+        if label_selector := self._deployments[deployment_id].label_selector:
+            labels_to_check.append(label_selector)
+        elif bundle_label_selector := self._deployments[
+            deployment_id
+        ].bundle_label_selector:
+            labels_to_check.extend(bundle_label_selector)
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
@@ -1117,18 +1128,24 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id
             )
 
-        # Replicas on the head node has the lowest priority for downscaling
-        # since we cannot relinquish the head node.
-        def key(node_and_num_running_replicas_of_all_deployments):
-            return (
-                len(node_and_num_running_replicas_of_all_deployments[1])
-                if node_and_num_running_replicas_of_all_deployments[0]
-                != self._head_node_id
-                else sys.maxsize
+        # Prioritize based on following priority:
+        # 1. Prioritize replicas not on the head node because we can't relinquish the head node.
+        # 2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        # 3. Prioritize replicas on nodes with fewer total replicas so we can relinquish them.
+        def scale_down_priority(
+            node_and_replicas: Tuple[str, Set[ReplicaID]],
+        ) -> Tuple[int, int, int]:
+            node_id, all_replicas = node_and_replicas
+            node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
+            match_labels = not labels_to_check or any(
+                node_labels_match_selector(node_labels, labels)
+                for labels in labels_to_check
             )
+            is_head_node = node_id == self._head_node_id
+            return int(is_head_node), int(match_labels), len(all_replicas)
 
         for node_id, _ in sorted(
-            node_to_running_replicas_of_all_deployments.items(), key=key
+            node_to_running_replicas_of_all_deployments.items(), key=scale_down_priority
         ):
             if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
