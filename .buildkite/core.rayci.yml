@@ -192,9 +192,9 @@ steps:
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
         --python-version 3.12
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
     depends_on:
-      - databuild-multipy
+      - datalbuild-multipy
       - forge
 
   - label: ":ray: core: modin tests"
@@ -204,7 +204,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/tests/modin/... core
-        --install-mask all-ray-libraries
         --python-version 3.10
         --build-name datalbuild-py3.10
     depends_on:

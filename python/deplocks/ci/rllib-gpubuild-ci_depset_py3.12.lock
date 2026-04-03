@@ -162,6 +162,7 @@ aiohttp==3.13.3 \
     #   ray
     #   s3fs
     #   taskiq
+    #   torch-geometric
 aiohttp-cors==0.7.0 \
     --hash=sha256:0451ba59fdf6909d0e2cd21e4c0a43752bc0703d33fc78ae94d9d9321710193e \
     --hash=sha256:4d39c6d7100fd9764ed1caf8cebf0eb01bf5e3f24e2e073fda6234bc48b19f5d
@@ -1019,6 +1020,7 @@ fsspec==2023.12.1 \
     #   ray
     #   s3fs
     #   torch
+    #   torch-geometric
 gast==0.6.0 \
     --hash=sha256:52b182313f7330389f72b069ba00f174cfe2a06411099547288839c6cbafbd54 \
     --hash=sha256:88fc5300d32c7ac6ca7b515310862f71e6fdf2c029bbec7c66c0f5dd47b6b1fb
@@ -1429,6 +1431,7 @@ jinja2==3.1.6 \
     #   memray
     #   mlflow
     #   torch
+    #   torch-geometric
 jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
@@ -2335,6 +2338,7 @@ numpy==2.2.6 \
     #   tensorflow
     #   tensorflow-probability
     #   tinyscaler
+    #   torch-geometric
     #   torchvision
     #   transformers
     #   xgboost
@@ -3060,6 +3064,7 @@ psutil==5.9.6 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
     #   comet-ml
+    #   torch-geometric
 py-spy==0.4.1 \
     --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
     --hash=sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a \
@@ -3409,6 +3414,7 @@ pyparsing==3.1.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   matplotlib
+    #   torch-geometric
 pytest==7.4.4 \
     --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
@@ -3653,6 +3659,7 @@ requests==2.32.5 \
     #   ray
     #   requests-toolbelt
     #   tensorflow
+    #   torch-geometric
     #   transformers
     #   wandb
 requests-toolbelt==1.0.0 \
@@ -3926,6 +3933,7 @@ scikit-learn==1.5.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
+    #   torch-geometric
 scipy==1.14.1 \
     --hash=sha256:0c2f95de3b04e26f5f3ad5bb05e74ba7f68b837133a4492414b3afd79dfe540e \
     --hash=sha256:1729560c906963fc8389f6aac023739ff3983e727b1a4d87696b7bf108316a79 \
@@ -3969,6 +3977,7 @@ scipy==1.14.1 \
     #   ray
     #   scikit-learn
     #   torch-cluster
+    #   torch-geometric
     #   torch-sparse
     #   xgboost
 semantic-version==2.10.0 \
@@ -4451,6 +4460,12 @@ torch-cluster==1.6.3+pt27cu128 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+torch-geometric==2.5.3 \
+    --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
+    --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-scatter==2.1.2+pt27cu128 \
     --hash=sha256:dfcc9b3d2d6e255944def5f4f0ed91c41e5267de7c56fd31c54547d475c5392c
     # via
@@ -4489,6 +4504,7 @@ tqdm==4.67.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   huggingface-hub
     #   moviepy
+    #   torch-geometric
     #   transformers
 transformers==4.36.2 \
     --hash=sha256:462066c4f74ee52516f12890dcc9ec71d1a5e97998db621668455117a54330f6 \

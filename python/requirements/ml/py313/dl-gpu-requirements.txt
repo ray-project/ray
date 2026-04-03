@@ -15,6 +15,7 @@ torch-scatter==2.1.2+pt27cu128
 torch-sparse==0.6.18+pt27cu128
 torch-cluster==1.6.3+pt27cu128
 torch-spline-conv==1.2.2+pt27cu128
+torch-geometric==2.5.3
 
 cupy-cuda12x==13.6.0; sys_platform != 'darwin'
 nixl==0.4.0; sys_platform != 'darwin'
