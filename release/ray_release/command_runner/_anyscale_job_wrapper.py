@@ -246,6 +246,14 @@ def run_oom_check():
                     "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
                 )
                 return_code = 1
+            unexpected_failures = metrics.get("unexpected_worker_failures") or []
+            if unexpected_failures:
+                logger.error(
+                    "Test failed: Unexpected worker failures detected "
+                    "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+                    f"Details: {unexpected_failures}"
+                )
+                return_code = 1
         else:
             logger.error(
                 f"RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
