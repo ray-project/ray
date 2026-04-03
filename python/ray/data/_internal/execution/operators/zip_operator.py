@@ -268,6 +268,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                     ],
                     owns_blocks=input_owned,
                     schema=meta_with_schema.schema,
+                    producer_op_ids=(self.id,),
                 )
             )
         stats = {self._name: to_stats(output_metadata_schema)}
