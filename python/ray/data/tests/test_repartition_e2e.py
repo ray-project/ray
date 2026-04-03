@@ -446,12 +446,13 @@ def test_streaming_repartition_with_partial_last_block(
 
     # Verify that all blocks have 20 rows except one block with 1 row
     # The smaller block may appear anywhere in the output order
-    remainder_blocks = [c for c in block_row_counts if c != 20]
+    target_num_rows_per_block = 20
+    remainder_blocks = [c for c in block_row_counts if c != target_num_rows_per_block]
     assert (
         len(remainder_blocks) == 1
     ), f"Expected exactly one remainder block, got {block_row_counts}"
-    assert remainder_blocks[0] == num_rows % 20, (
-        f"Expected remainder block to have {num_rows % 20} rows, "
+    assert remainder_blocks[0] == num_rows % target_num_rows_per_block, (
+        f"Expected remainder block to have {num_rows % target_num_rows_per_block} rows, "
         f"got {remainder_blocks[0]}. Block counts: {block_row_counts}"
     )
 
