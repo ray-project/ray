@@ -1,7 +1,7 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://download.pytorch.org/whl/cu128
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 --find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
