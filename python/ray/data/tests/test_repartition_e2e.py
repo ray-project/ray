@@ -422,7 +422,8 @@ def test_streaming_repartition_with_partial_last_block(
     """Test repartition with target_num_rows_per_block where last block has fewer rows.
     This test verifies:
     1. N-1 blocks have exactly target_num_rows_per_block rows
-    2. Only the last block can have fewer rows (remainder)
+    2. Exactly one block has fewer rows, and it can appear anywhere
+       in the output, StreamingRepartition does not guarantee ordering.
     """
     # Configure shuffle strategy
     ctx = DataContext.get_current()
