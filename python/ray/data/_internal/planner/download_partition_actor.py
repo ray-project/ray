@@ -2,10 +2,11 @@ import asyncio
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterator, List, Optional, cast, override
+from typing import Iterator, List, Optional, cast
 
 import pyarrow as pa
 import pyarrow.fs as pafs
+from typing_extensions import override
 
 from ray.data._internal.planner._obstore_download import (
     _FILE_SIZE_COLUMN_PREFIX,
@@ -252,12 +253,19 @@ class AsyncPartitionActor(PartitionActor):
                 async with sem:
                     meta = await obs.head_async(store, path)
                 return meta["size"] if isinstance(meta, dict) else meta.size
-            except Exception as e:
-                logger.debug("obstore HEAD failed for %r: %s", uri, e)
-                return 0
+            except Exception:
+                return -1
 
         async def _head_all() -> List[int]:
-            return await asyncio.gather(*[_head_one(u) for u in uris])
+            sizes = await asyncio.gather(*[_head_one(u) for u in uris])
+            failed = [uri for uri, size in zip(uris, sizes) if size == -1]
+            if failed:
+                logger.debug(
+                    "obstore HEAD failed for %d URIs: %s",
+                    len(failed),
+                    failed,
+                )
+            return sizes
 
         return asyncio.run(_head_all())
 
