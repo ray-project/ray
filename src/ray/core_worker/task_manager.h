@@ -37,11 +37,32 @@
 #include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
+
+/// Compute the retry delay for a failed task based on the error type and attempt number.
+/// OOM errors use exponential backoff with task_oom_retry_delay_base_ms.
+/// ACTOR_UNAVAILABLE errors use exponential backoff with a configurable base and cap.
+/// All other errors use the flat task_retry_delay_ms.
+inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number,
+                                    bool task_failed_due_to_oom,
+                                    rpc::ErrorType error_type) {
+  if (task_failed_due_to_oom) {
+    return ExponentialBackoff::GetBackoffMs(
+        attempt_number, RayConfig::instance().task_oom_retry_delay_base_ms());
+  } else if (error_type == rpc::ErrorType::ACTOR_UNAVAILABLE) {
+    return ExponentialBackoff::GetBackoffMs(
+        attempt_number,
+        RayConfig::instance().task_actor_unavailable_retry_delay_base_ms(),
+        RayConfig::instance().task_actor_unavailable_retry_max_delay_ms());
+  } else {
+    return RayConfig::instance().task_retry_delay_ms();
+  }
+}
 
 class ActorManager;
 
