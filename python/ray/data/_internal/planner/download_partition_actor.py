@@ -254,11 +254,11 @@ class AsyncPartitionActor(PartitionActor):
                     meta = await obs.head_async(store, path)
                 return meta["size"] if isinstance(meta, dict) else meta.size
             except Exception:
-                return -1
+                return 0
 
         async def _head_all() -> List[int]:
             sizes = await asyncio.gather(*[_head_one(u) for u in uris])
-            failed = [uri for uri, size in zip(uris, sizes) if size == -1]
+            failed = [uri for uri, size in zip(uris, sizes) if size == 0]
             if failed:
                 logger.debug(
                     "obstore HEAD failed for %d URIs: %s",
