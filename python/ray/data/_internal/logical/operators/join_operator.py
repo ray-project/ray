@@ -1,6 +1,6 @@
 from dataclasses import InitVar, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Sequence, Tuple, Union
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -47,7 +47,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
     left_input_op: InitVar[LogicalOperator]
     right_input_op: InitVar[LogicalOperator]
-    join_type: JoinType | str
+    join_type: Union[JoinType, str]
     left_key_columns: Tuple[str]
     right_key_columns: Tuple[str]
     num_partitions: InitVar[int]

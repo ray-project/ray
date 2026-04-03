@@ -96,7 +96,7 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         if transformed_input is input_op:
             target = self
         else:
-            target = replace(self, input_op=transformed_input, name=self.name)
+            target = replace(self, input_op=transformed_input)
         return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
@@ -155,7 +155,7 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         if transformed_input is input_op:
             target = self
         else:
-            target = replace(self, input_op=transformed_input)
+            target = replace(self, input_op=transformed_input, name=self.name)
         return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
