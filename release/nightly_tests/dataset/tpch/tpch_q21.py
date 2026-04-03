@@ -63,11 +63,13 @@ def main(args):
         # ── Pre-aggregate: distinct suppliers per order (EXISTS) ────────
         # If an order has > 1 distinct supplier, there exists "another"
         # supplier for any given supplier on that order.
+        # Filter early to reduce the right-side dataset size before join.
         suppliers_per_order = (
             lineitem.select_columns(["l_orderkey", "l_suppkey"])
             .groupby("l_orderkey")
             .aggregate(CountDistinct(on="l_suppkey", alias_name="num_suppliers"))
-        ).materialize()
+            .filter(expr=col("num_suppliers") > 1)
+        )
 
         # ── Pre-aggregate: distinct LATE suppliers per order (NOT EXISTS) ─
         # Late lineitem: l_receiptdate > l_commitdate.
@@ -81,10 +83,10 @@ def main(args):
         )
 
         late_suppliers_per_order = (
-            late_lineitem.groupby("l_orderkey").aggregate(
-                CountDistinct(on="l_suppkey", alias_name="num_late_suppliers")
-            )
-        ).materialize()
+            late_lineitem.groupby("l_orderkey")
+            .aggregate(CountDistinct(on="l_suppkey", alias_name="num_late_suppliers"))
+            .filter(expr=col("num_late_suppliers") == 1)
+        )
 
         # ── Build main pipeline ─────────────────────────────────────────
         # Saudi suppliers
@@ -121,22 +123,22 @@ def main(args):
         )
 
         # EXISTS: another supplier exists for this order (num_suppliers > 1)
+        # Filter already pushed down to suppliers_per_order.
         ds = ds.join(
             suppliers_per_order,
             join_type="inner",
             num_partitions=16,
             on=("l_orderkey",),
         )
-        ds = ds.filter(expr=col("num_suppliers") > 1)
 
         # NOT EXISTS: no other late supplier (num_late_suppliers == 1)
+        # Filter already pushed down to late_suppliers_per_order.
         ds = ds.join(
             late_suppliers_per_order,
             join_type="inner",
             num_partitions=16,
             on=("l_orderkey",),
         )
-        ds = ds.filter(expr=col("num_late_suppliers") == 1)
 
         # Group by supplier name, count, sort, and limit.
         _ = (
