@@ -65,8 +65,8 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   // If a target label domain value is specified (partial failure rescheduling),
   // prune to only nodes in that domain and use the node-level scheduling callback to
   // schedule the bundles.
-  if (!options.target_label_domain_.second.empty()) {
-    const std::string &target = options.target_label_domain_.second;
+  if (options.target_label_domain_.second.has_value()) {
+    const std::string &target = *options.target_label_domain_.second;
     for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
       const absl::flat_hash_map<std::string, std::string> &labels =
           it->second->GetLocalView().labels;

@@ -492,7 +492,7 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
-  std::optional<std::pair<std::string, std::string>> target_label_domain;
+  std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
   std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
   if (label_domain.has_value()) {
     const std::string &label_domain_key = label_domain.value();
@@ -500,7 +500,7 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
         placement_group.GetLabelDomainAssignment(label_domain_key);
     // If the label domain value is already selected for this pg, it means
     // the bundles are being rescheduled and must be on the same domain.
-    target_label_domain = {label_domain_key, label_value.value_or("")};
+    target_label_domain = {label_domain_key, label_value};
   }
 
   NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();

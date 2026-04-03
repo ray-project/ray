@@ -137,8 +137,9 @@ struct SchedulingOptions {
    */
 
   // construct option for soft pack scheduling policy.
-  static SchedulingOptions BundlePack(std::optional<std::pair<std::string, std::string>>
-                                          target_label_domain = std::nullopt) {
+  static SchedulingOptions BundlePack(
+      std::optional<std::pair<std::string, std::optional<std::string>>>
+          target_label_domain = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
@@ -148,8 +149,9 @@ struct SchedulingOptions {
   }
 
   // construct option for strict spread scheduling policy.
-  static SchedulingOptions BundleSpread(std::optional<std::pair<std::string, std::string>>
-                                            target_label_domain = std::nullopt) {
+  static SchedulingOptions BundleSpread(
+      std::optional<std::pair<std::string, std::optional<std::string>>>
+          target_label_domain = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
@@ -161,8 +163,8 @@ struct SchedulingOptions {
   // construct option for strict pack scheduling policy.
   static SchedulingOptions BundleStrictPack(
       scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil(),
-      std::optional<std::pair<std::string, std::string>> target_label_domain =
-          std::nullopt) {
+      std::optional<std::pair<std::string, std::optional<std::string>>>
+          target_label_domain = std::nullopt) {
     SchedulingOptions options(SchedulingType::BUNDLE_STRICT_PACK,
                               /*spread_threshold*/ 0,
                               /*avoid_local_node*/ false,
@@ -176,8 +178,8 @@ struct SchedulingOptions {
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleStrictSpread(
       std::unique_ptr<SchedulingContext> scheduling_context = nullptr,
-      std::optional<std::pair<std::string, std::string>> target_label_domain =
-          std::nullopt) {
+      std::optional<std::pair<std::string, std::optional<std::string>>>
+          target_label_domain = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
@@ -198,9 +200,9 @@ struct SchedulingOptions {
       LabelDomainSchedulingStrategy::NONE;
   // The label domain target for label-domain-aware scheduling.
   // first: the node label key used to partition nodes into groups.
-  // second: if non-empty, constrains scheduling to this domain value
-  //   (bundle rescheduling). If empty, a new group is selected.
-  std::pair<std::string, std::string> target_label_domain_;
+  // second: if set, constrains scheduling to this domain value
+  //   (bundle rescheduling). If nullopt, a new group is selected.
+  std::pair<std::string, std::optional<std::string>> target_label_domain_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
@@ -224,8 +226,8 @@ struct SchedulingOptions {
       bool avoid_local_node,
       bool require_node_available,
       bool avoid_gpu_nodes,
-      std::optional<std::pair<std::string, std::string>> target_label_domain =
-          std::nullopt,
+      std::optional<std::pair<std::string, std::optional<std::string>>>
+          target_label_domain = std::nullopt,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
       const std::string &preferred_node_id = std::string(),
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
@@ -240,7 +242,7 @@ struct SchedulingOptions {
                                               : LabelDomainSchedulingStrategy::NONE),
         target_label_domain_(target_label_domain.has_value()
                                  ? std::move(*target_label_domain)
-                                 : std::pair<std::string, std::string>{}),
+                                 : std::pair<std::string, std::optional<std::string>>{}),
         scheduling_context_(std::move(scheduling_context)),
         preferred_node_id_(preferred_node_id),
         schedule_top_k_absolute_(schedule_top_k_absolute),
