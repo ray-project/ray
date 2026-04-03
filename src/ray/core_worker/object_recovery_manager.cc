@@ -156,16 +156,14 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   const auto task_id = object_id.TaskId();
   std::vector<ObjectID> task_deps;
 
-  // Pool streaming-generator tasks are retried on a different actor via
-  // InternalHeartbeat, not via ResubmitTask.  Skip reconstruction here and
-  // restore the OBJECT_IN_PLASMA marker (deleted by the caller) so that
-  // ray.get can resolve once the retry produces the object.
+  // Pool streaming-generator tasks that are still in progress are retried
+  // on a different actor via InternalHeartbeat, not via ResubmitTask.
+  // Mark the object as pending so ray.get waits for the retry to produce
+  // it.For FINISHED/FAILED tasks, fall through to normal reconstruction.
   auto task_spec_opt = task_manager_.GetTaskSpec(task_id);
   if (task_spec_opt.has_value() && task_spec_opt->IsPoolTask() &&
-      task_spec_opt->IsStreamingGenerator()) {
-    in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                         object_id,
-                         reference_counter_.HasReference(object_id));
+      task_spec_opt->IsStreamingGenerator() && task_manager_.IsTaskPending(task_id)) {
+    reference_counter_.UpdateObjectPendingCreation(object_id, true);
     return;
   }
 

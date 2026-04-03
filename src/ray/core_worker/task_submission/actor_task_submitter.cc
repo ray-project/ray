@@ -39,7 +39,7 @@ void MaybeNotifyPoolTaskSubmitted(const PoolTaskSubmittedCallback &callback,
   if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
     work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
   }
-  callback(task_spec.ActorId(), work_item_id);
+  callback(task_spec.ActorId(), work_item_id, task_spec.TaskId());
 }
 
 // Helper to notify ActorPoolManager when a pool task completes.

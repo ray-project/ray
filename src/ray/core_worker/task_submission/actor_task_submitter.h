@@ -58,8 +58,8 @@ using PoolTaskCompletionCallback = std::function<void(const ActorPoolID &pool_id
 /// Callback type for notifying ActorPoolManager when a pool task is actually
 /// pushed to an actor. This keeps per-actor in-flight accounting aligned with
 /// the submitter path, including redirected retries.
-using PoolTaskSubmittedCallback =
-    std::function<void(const ActorID &actor_id, const TaskID &work_item_id)>;
+using PoolTaskSubmittedCallback = std::function<void(
+    const ActorID &actor_id, const TaskID &work_item_id, const TaskID &task_id)>;
 
 // Interface for testing.
 class ActorTaskSubmitterInterface {

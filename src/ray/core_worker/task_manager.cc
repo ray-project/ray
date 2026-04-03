@@ -664,7 +664,7 @@ bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
     RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
     object_ref_streams_.erase(generator_id);
   }
-  // Lock released
+  // Lock released — safe to fire callback.
   MaybeNotifyPoolTaskStreamDrained(generator_id.TaskId());
   return true;
 }
