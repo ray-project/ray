@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -9,16 +10,19 @@ import pyarrow.fs as pafs
 from ray.data._internal.planner._obstore_download import (
     _FILE_SIZE_COLUMN_PREFIX,
     RAY_DATA_OBSTORE_RANGE_THRESHOLD,
+    StoreRegistry,
+    _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
 )
 from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem, _split_uri
 
 logger = logging.getLogger(__name__)
 
 URI_DOWNLOAD_MAX_WORKERS = 16
+URI_HEAD_MAX_CONCURRENCY = 128
 
 
 class PartitionActor:
@@ -186,9 +190,23 @@ class PartitionActor:
 class AsyncPartitionActor(PartitionActor):
     """Partition actor for the obstore download path.
 
-    When range splitting is enabled, attaches per-URI size columns (from metadata
-    HEADs) so downstream obstore downloads can skip redundant HEAD requests.
+    Uses obstore's async HEAD API for all size-fetching operations, replacing
+    the base class's 16-thread PyArrow ThreadPoolExecutor with fully async
+    requests at up to URI_HEAD_MAX_CONCURRENCY (128) concurrency.
+
+    When range splitting is enabled, attaches per-URI size columns so
+    downstream obstore downloads can skip redundant HEAD requests.
     """
+
+    def __init__(
+        self,
+        uri_column_names: List[str],
+        data_context: DataContext,
+        filesystem: Optional[pafs.FileSystem] = None,
+    ):
+        super().__init__(uri_column_names, data_context, filesystem)
+        fs_kwargs = _extract_credentials_from_filesystem(filesystem)
+        self._registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
 
     def __call__(self, block: pa.Table) -> Iterator[pa.Table]:
         block = self._ensure_arrow_table(block)
@@ -212,19 +230,38 @@ class AsyncPartitionActor(PartitionActor):
             block, uri_column_name
         )
 
-    def _attach_file_sizes(self, block: pa.Table) -> pa.Table:
-        """Fetch file sizes for all URIs and attach as hidden columns.
+    def _sample_sizes(self, uris: List[str]) -> List[int]:
+        """Fetch file sizes concurrently using obstore's async HEAD API.
 
-        Only called when obstore is available, range splitting is enabled
-        (RAY_DATA_OBSTORE_RANGE_THRESHOLD > 0), and the URI scheme is
-        supported by obstore.  The hidden columns are consumed by
-        ``_download_uris_with_obstore`` and dropped before output.
-
-        The hidden columns are consumed by ``_download_uris_with_obstore`` and
-        dropped before output. For cloud URIs this uses cheap metadata lookups.
-        For HTTP URIs where sizes are unavailable, stores 0 so the downstream
-        download path falls back to HEAD via obstore.
+        Overrides the base class to use obstore instead of PyArrow's threaded
+        get_file_info.  This affects all callers: both the initial partition-
+        size estimation (25-file sample) and _attach_file_sizes (all files).
         """
+        import obstore as obs
+
+        if not uris:
+            return []
+
+        sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
+
+        async def _head_one(uri: str) -> int:
+            try:
+                store_url, path = _split_uri(uri)
+                store = self._registry.get(store_url)
+                async with sem:
+                    meta = await obs.head_async(store, path)
+                return meta["size"] if isinstance(meta, dict) else meta.size
+            except Exception as e:
+                logger.debug("obstore HEAD failed for %r: %s", uri, e)
+                return 0
+
+        async def _head_all() -> List[int]:
+            return list(await asyncio.gather(*[_head_one(u) for u in uris]))
+
+        return asyncio.run(_head_all())
+
+    def _attach_file_sizes(self, block: pa.Table) -> pa.Table:
+        """Fetch file sizes for all URIs and attach as hidden columns."""
         for uri_column_name in self._uri_column_names:
             size_col = f"{_FILE_SIZE_COLUMN_PREFIX}{uri_column_name}"
             uris = block.column(uri_column_name).to_pylist()
