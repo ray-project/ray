@@ -829,6 +829,22 @@ class DataContext:
         # This value increments only upon re-execution of the exact same pipeline.
         self._execution_idx = 0
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Exclude custom_execution_callback_classes from serialization because
+        # they are only used on the driver side (in the planner) and may
+        # reference modules that aren't available on workers.
+        state["custom_execution_callback_classes"] = []
+        return state
+
+    def __deepcopy__(self, memo: Dict[int, Any]) -> "DataContext":
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, copy.deepcopy(v, memo))
+        return result
+
     def __setattr__(self, name: str, value: Any) -> None:
         if (
             name == "write_file_retry_on_errors"
