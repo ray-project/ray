@@ -25,12 +25,12 @@ import numpy as np
 
 from ray.llm._internal.serve.benchmark.metrics import summarize_metrics
 from ray.llm._internal.serve.benchmark.models import TurnMetric, WorkloadSpec
-from ray.llm._internal.serve.benchmark.turn import execute_single_turn
 from ray.llm._internal.serve.benchmark.text_gen import (
     Conversation,
     TextGenerator,
     conversation_factory,
 )
+from ray.llm._internal.serve.benchmark.turn import execute_single_turn
 
 try:
     from prompt_toolkit import PromptSession
