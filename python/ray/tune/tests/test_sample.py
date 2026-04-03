@@ -473,7 +473,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -505,13 +505,15 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -539,12 +541,10 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax import Models
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.service.ax_client import AxClient
+        from ax.adapter.registry import Generators
+        from ax.generation_strategy.generation_node import GenerationStep
+        from ax.generation_strategy.generation_strategy import GenerationStrategy
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -564,16 +564,9 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        # Legacy Ax versions (compatbile with Python 3.6)
-        # use `num_arms` instead
-        try:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
-            )
-        except TypeError:
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
-            )
+        generation_strategy = GenerationStrategy(
+            steps=[GenerationStep(generator=Generators.UNIFORM, num_trials=-1)]
+        )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,
@@ -582,8 +575,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1.create_experiment(
             parameters=AxSearch.convert_search_space(config),
-            objective_name="a",
-            minimize=False,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
@@ -715,7 +707,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),
@@ -762,7 +754,13 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
+            "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
+            "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
 
         config = self.config.copy()

@@ -12,7 +12,7 @@ tf-keras==2.20.0
 # and to `install-dependencies.sh`!
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 
 torch==2.7.0
 torchmetrics==0.10.3

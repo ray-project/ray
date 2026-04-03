@@ -99,7 +99,7 @@ class TensorflowTrainer(DataParallelTrainer):
             tf_dataset = dataset_shard.to_tf(
                 feature_columns="x",
                 label_columns="y",
-                batch_size=1
+                batch_size=1,
             )
             for epoch in range(config["num_epochs"]):
                 model.fit(tf_dataset)
