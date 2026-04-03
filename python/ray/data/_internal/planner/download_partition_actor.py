@@ -257,7 +257,7 @@ class AsyncPartitionActor(PartitionActor):
                 return 0
 
         async def _head_all() -> List[int]:
-            return list(await asyncio.gather(*[_head_one(u) for u in uris]))
+            return await asyncio.gather(*[_head_one(u) for u in uris])
 
         return asyncio.run(_head_all())
 
