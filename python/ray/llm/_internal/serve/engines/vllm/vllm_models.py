@@ -3,7 +3,7 @@ import dataclasses
 import os
 from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
@@ -284,10 +284,9 @@ class VLLMEngineConfig(BaseModelExtended):
             if bundle_per_worker:
                 return bundle_per_worker.get("GPU", 0) > 0
 
-            # Check bundles list
-            bundles = self.placement_group_config.get("bundles", [])
-            if bundles:
-                # If any bundle has GPU > 0, we use GPU
+            # Check bundles list (empty list → no GPUs → CPU-only)
+            bundles = self.placement_group_config.get("bundles")
+            if bundles is not None:
                 return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
 
         # Default behavior based on accelerator_type

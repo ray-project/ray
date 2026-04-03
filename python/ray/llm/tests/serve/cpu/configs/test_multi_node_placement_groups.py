@@ -410,7 +410,7 @@ class TestAcceleratorTypeValidation:
     """Test accelerator_type validation with CPU-only configurations."""
 
     def test_vllm_engine_config_accelerator_type_with_use_cpu_raises_error(self):
-        """Test that VLLMEngineConfig raises error when accelerator_type is set with use_cpu=True."""
+        """VLLMEngineConfig raises error with accelerator_type and use_cpu=True."""
         with pytest.raises(
             ValueError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
@@ -424,7 +424,7 @@ class TestAcceleratorTypeValidation:
     def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(
         self,
     ):
-        """Test that VLLMEngineConfig raises error when accelerator_type is set with CPU-only bundles."""
+        """VLLMEngineConfig raises error with accelerator_type and CPU-only bundles."""
         with pytest.raises(
             ValueError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
@@ -433,6 +433,20 @@ class TestAcceleratorTypeValidation:
                 model_id="test_model",
                 accelerator_type="L4",
                 placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_empty_bundles_raises_error(
+        self,
+    ):
+        """VLLMEngineConfig raises error with accelerator_type and empty bundles."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
             )
 
     def test_vllm_engine_config_accelerator_type_with_gpu_bundles_succeeds(self):

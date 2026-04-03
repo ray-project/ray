@@ -488,15 +488,18 @@ class LLMConfig(BaseModelExtended):
 
         # Check if placement_group_config has bundles with no GPUs
         if self.placement_group_config:
-            bundles = self.placement_group_config.get("bundles", [])
-            if bundles:
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                has_gpu = bundle_per_worker.get("GPU", 0) > 0
+            else:
+                bundles = self.placement_group_config.get("bundles", [])
                 has_gpu = any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-                if not has_gpu:
-                    raise ValueError(
-                        f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                        "placement_group_config that contains no GPUs. Either remove "
-                        "accelerator_type or add GPUs to the placement group bundles."
-                    )
+            if not has_gpu:
+                raise ValueError(
+                    f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                    "placement_group_config that contains no GPUs. Either remove "
+                    "accelerator_type or add GPUs to the placement group bundles."
+                )
 
         return self
 

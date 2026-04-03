@@ -332,12 +332,26 @@ class TestUseCpuLogic:
         """Test that accelerator_type with CPU-only placement_group_config raises error."""
         with pytest.raises(
             pydantic.ValidationError,
-            match="accelerator_type='L4' cannot be used with placement_group_config that contains no GPUs",
+            match="accelerator_type='L4' cannot be used with "
+            "placement_group_config that contains no GPUs",
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
                 accelerator_type="L4",
                 placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_accelerator_type_with_empty_bundles_raises_error(self):
+        """Test that accelerator_type with empty bundles list raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with "
+            "placement_group_config that contains no GPUs",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
             )
 
     def test_accelerator_type_with_gpu_placement_group_succeeds(self):
