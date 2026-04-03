@@ -48,7 +48,7 @@ set -euo pipefail
 apt-get update -y
 apt-get upgrade -y
 
-#ca-certificates should prevent errors from wget 
+#ca-certificates should prevent errors from wget
 APT_PKGS=(
     sudo
     tzdata
