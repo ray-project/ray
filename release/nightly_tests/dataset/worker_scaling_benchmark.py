@@ -63,7 +63,6 @@ def main(args: argparse.Namespace):
             ds = ds.map_batches(
                 no_op_udf,
                 num_cpus=1,
-                compute=ray.data.TaskPoolStrategy(size=args.num_workers),
             )
 
         total_rows = 0
