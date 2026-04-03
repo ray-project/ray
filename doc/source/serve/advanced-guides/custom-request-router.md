@@ -198,8 +198,10 @@ instance shared across all replicas of the deployment:
 
 The key methods are:
 
-- **`register_replica`** — called by each replica in its `__init__` to announce
-  its capacity.
+- **`_update_deployment_targets`** — called automatically by the long-poll
+  subscription when the controller adds or removes replicas.  It diffs the current
+  set of registered replicas against the update and registers/unregisters as
+  needed, so the queue always reflects exactly the live replicas.
 - **`acquire`** — returns the `replica_id` of the least-loaded replica with
   available capacity (fast path), or waits until capacity frees up (slow path).
   Returns `None` on timeout.
@@ -234,9 +236,9 @@ Notable details:
 (deploy-app-with-capacity-queue-router)=
 ### Deploy an app with the capacity queue router
 
-The deployment wires the three pieces together: a `DeploymentActorConfig` for the
-queue, a `RequestRouterConfig` pointing at the custom router, and replica init
-code that registers each replica with the queue:
+The deployment wires the pieces together: a `DeploymentActorConfig` for the queue
+(including the deployment name so the queue can subscribe to replica updates) and
+a `RequestRouterConfig` pointing at the custom router:
 
 ```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
 :start-after: __begin_deploy_app_with_capacity_queue_router__
@@ -247,9 +249,11 @@ code that registers each replica with the queue:
 When the app starts:
 
 1. The Serve controller creates the `CapacityQueue` deployment actor **before**
-   any replicas start.
-2. Each replica calls `serve.get_deployment_actor("capacity_queue")` and
-   registers itself with its `max_ongoing_requests` capacity.
+   any replicas start.  The queue subscribes to controller updates via long poll.
+2. As the controller starts replicas, it sends deployment-target updates.  The
+   queue's long-poll callback automatically registers each replica with its
+   `max_ongoing_requests` capacity — and unregisters replicas that are removed
+   during scale-down or crash recovery.
 3. The `CapacityQueueRouter` running in each proxy discovers the deployment actor,
    acquires a token for every incoming request, and routes to the replica
    identified by the token.

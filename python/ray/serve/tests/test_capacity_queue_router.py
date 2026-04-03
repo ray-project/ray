@@ -23,7 +23,11 @@ def _deploy_capacity_queue_app(
             DeploymentActorConfig(
                 name="capacity_queue",
                 actor_class=CapacityQueue,
-                init_kwargs={"acquire_timeout_s": acquire_timeout_s},
+                init_kwargs={
+                    "acquire_timeout_s": acquire_timeout_s,
+                    "deployment_id_name": "App",
+                    "deployment_id_app": "default",
+                },
                 actor_options={"num_cpus": 0},
             ),
         ],
@@ -41,15 +45,6 @@ def _deploy_capacity_queue_app(
             context = _get_internal_replica_context()
             self.replica_id = context.replica_id
             self.unique_id = context.replica_id.unique_id
-
-            # Register with capacity queue
-            queue = serve.get_deployment_actor("capacity_queue")
-            ray.get(
-                queue.register_replica.remote(
-                    self.unique_id,
-                    context._deployment_config.max_ongoing_requests,
-                )
-            )
 
         async def __call__(self):
             return self.unique_id

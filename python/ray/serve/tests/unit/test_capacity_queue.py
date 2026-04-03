@@ -18,7 +18,7 @@ def _get_raw_class():
 def _create_queue(acquire_timeout_s=30.0):
     """Create a CapacityQueue instance for local testing (no Ray)."""
     raw_class = _get_raw_class()
-    return raw_class(acquire_timeout_s=acquire_timeout_s)
+    return raw_class(acquire_timeout_s=acquire_timeout_s, _enable_long_poll=False)
 
 
 class TestCapacityQueueStats:
@@ -433,6 +433,114 @@ class TestCapacityQueueEdgeCases:
         assert all(r is None for r in results)
         assert queue.get_num_waiters() == 0
         assert queue._total_timeouts == 3
+
+
+class TestReplicaLifecycleOnDeploymentTargetUpdate:
+    """Tests that the queue reflects replica changes from the controller.
+
+    The controller sends deployment target updates (via long poll) when replicas
+    are added or removed.  The queue must unregister removed replicas and
+    register new ones so that tokens are only issued for live replicas.
+    """
+
+    @staticmethod
+    def _make_target_info(replica_specs):
+        """Build a DeploymentTargetInfo from a list of (unique_id, capacity) tuples."""
+        from ray.serve._private.common import (
+            DeploymentID,
+            DeploymentTargetInfo,
+            ReplicaID,
+            RunningReplicaInfo,
+        )
+
+        dep_id = DeploymentID(name="test_deployment", app_name="test_app")
+        replicas = []
+        for uid, cap in replica_specs:
+            replicas.append(
+                RunningReplicaInfo(
+                    replica_id=ReplicaID(unique_id=uid, deployment_id=dep_id),
+                    node_id="node1",
+                    node_ip="127.0.0.1",
+                    availability_zone=None,
+                    actor_name=f"actor_{uid}",
+                    max_ongoing_requests=cap,
+                    is_cross_language=False,
+                )
+            )
+        return DeploymentTargetInfo(is_available=True, running_replicas=replicas)
+
+    def test_update_adds_new_replicas(self):
+        """New replicas in the update are registered in the queue."""
+        queue = _create_queue()
+        target = self._make_target_info([("r1", 5)])
+
+        queue._update_deployment_targets(target)
+
+        assert set(queue.get_registered_replicas()) == {"r1"}
+        assert queue.get_queue_length() == 5
+
+    def test_update_removes_old_replicas(self):
+        """Replicas absent from the update are unregistered."""
+        queue = _create_queue()
+        queue.register_replica("r1", 3)
+        queue.register_replica("r2", 2)
+        assert len(queue.get_registered_replicas()) == 2
+
+        # Update with only r1 — r2 should be removed
+        target = self._make_target_info([("r1", 3)])
+        queue._update_deployment_targets(target)
+
+        assert set(queue.get_registered_replicas()) == {"r1"}
+        assert queue.get_queue_length() == 3
+
+    def test_update_empty_removes_all(self):
+        """An update with no replicas clears the queue."""
+        queue = _create_queue()
+        queue.register_replica("r1", 3)
+
+        target = self._make_target_info([])
+        queue._update_deployment_targets(target)
+
+        assert queue.get_registered_replicas() == []
+        assert queue.get_queue_length() == 0
+
+    def test_update_is_idempotent(self):
+        """Calling update twice with the same replicas is a no-op."""
+        queue = _create_queue()
+        target = self._make_target_info([("r1", 5)])
+
+        queue._update_deployment_targets(target)
+        queue._update_deployment_targets(target)
+
+        assert set(queue.get_registered_replicas()) == {"r1"}
+        assert queue.get_queue_length() == 5
+
+    @pytest.mark.asyncio
+    async def test_scale_down_frees_dead_capacity(self):
+        """After scale-down, tokens for removed replicas are no longer issued."""
+        queue = _create_queue()
+        queue.register_replica("r1", 1)
+        queue.register_replica("r2", 1)
+
+        # Saturate both replicas
+        t1 = await queue.acquire()
+        t2 = await queue.acquire()
+        assert queue.get_queue_length() == 0
+
+        # Scale down: remove r2
+        target = self._make_target_info([("r1", 1)])
+        queue._update_deployment_targets(target)
+
+        # Release both tokens — only r1's should restore capacity
+        queue.release(t1)
+        queue.release(t2)  # r2 is gone, release is discarded
+
+        assert queue.get_queue_length() == 1
+        assert set(queue.get_registered_replicas()) == {"r1"}
+
+        # Next acquire must go to r1 (no phantom r2)
+        token = await queue.acquire(timeout_s=1.0)
+        assert token == "r1"
 
 
 if __name__ == "__main__":

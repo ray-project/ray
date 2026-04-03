@@ -14,7 +14,13 @@ from capacity_queue_request_router import CapacityQueue
         DeploymentActorConfig(
             name="capacity_queue",
             actor_class=CapacityQueue,
-            init_kwargs={"acquire_timeout_s": 30.0},
+            init_kwargs={
+                "acquire_timeout_s": 30.0,
+                # The queue subscribes to controller updates for this deployment
+                # so it automatically registers/unregisters replicas.
+                "deployment_id_name": "CapacityQueueApp",
+                "deployment_id_app": "default",
+            },
             actor_options={"num_cpus": 0},
         ),
     ],
@@ -31,15 +37,6 @@ class CapacityQueueApp:
     def __init__(self):
         context = _get_internal_replica_context()
         self.replica_id = context.replica_id
-
-        # Register this replica with the capacity queue deployment actor
-        queue = serve.get_deployment_actor("capacity_queue")
-        ray.get(
-            queue.register_replica.remote(
-                self.replica_id.unique_id,
-                context._deployment_config.max_ongoing_requests,
-            )
-        )
 
     async def __call__(self):
         return self.replica_id

@@ -7,9 +7,13 @@ import random
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray._common.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, DeploymentTargetInfo
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 
 logger = logging.getLogger("ray.serve")
 
@@ -52,7 +56,13 @@ class CapacityQueue:
     - Backpressure: If no capacity is available, routers wait
     """
 
-    def __init__(self, acquire_timeout_s: float = 30.0):
+    def __init__(
+        self,
+        acquire_timeout_s: float = 30.0,
+        deployment_id_name: str = "",
+        deployment_id_app: str = "",
+        _enable_long_poll: bool = True,
+    ):
         self._acquire_timeout_s = acquire_timeout_s
 
         # Waiters: (asyncio.Future, timestamp) for requests waiting for capacity
@@ -66,6 +76,27 @@ class CapacityQueue:
         self._total_releases: int = 0
         self._total_timeouts: int = 0
         self._max_waiters_seen: int = 0
+
+        # Subscribe to replica updates from the Serve controller so the queue
+        # automatically registers new replicas and unregisters dead ones.
+        self._long_poll_client: Optional[LongPollClient] = None
+        if _enable_long_poll and deployment_id_name:
+            deployment_id = DeploymentID(
+                name=deployment_id_name, app_name=deployment_id_app
+            )
+            controller_handle = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+            self._long_poll_client = LongPollClient(
+                controller_handle,
+                {
+                    (
+                        LongPollNamespace.DEPLOYMENT_TARGETS,
+                        deployment_id,
+                    ): self._update_deployment_targets,
+                },
+                call_in_event_loop=get_or_create_event_loop(),
+            )
 
     def register_replica(self, replica_id: str, capacity: int) -> None:
         """Register a replica with its capacity.
@@ -86,6 +117,25 @@ class CapacityQueue:
         if replica_id not in self._replicas:
             return
         self._replicas.pop(replica_id)
+
+    def _update_deployment_targets(
+        self, deployment_target_info: DeploymentTargetInfo
+    ) -> None:
+        """Handle deployment target updates from the controller (via long poll).
+
+        Automatically registers new replicas and unregisters removed ones so the
+        queue always reflects the set of live replicas.
+        """
+        running_replicas = deployment_target_info.running_replicas
+        current_ids: Set[str] = {r.replica_id.unique_id for r in running_replicas}
+        registered_ids: Set[str] = set(self._replicas.keys())
+
+        for rid in registered_ids - current_ids:
+            self.unregister_replica(rid)
+
+        replica_by_uid = {r.replica_id.unique_id: r for r in running_replicas}
+        for uid in current_ids - registered_ids:
+            self.register_replica(uid, replica_by_uid[uid].max_ongoing_requests)
 
     def _get_least_loaded_replica(self) -> Optional[str]:
         """Find the replica with fewest in-flight requests that has capacity.
@@ -222,6 +272,7 @@ class CapacityQueue:
 
 
 # __begin_define_capacity_queue_router__
+from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
@@ -304,8 +355,13 @@ class CapacityQueueRouter(RequestRouter):
                     if acquire_ref is not None:
                         ray.cancel(acquire_ref)
                     raise
-                except Exception:
+                except RayActorError:
+                    # Queue actor died or is unavailable — reconnect
                     self._capacity_queue = None
+                    await self._backoff(attempt)
+                    attempt += 1
+                    continue
+                except Exception:
                     await self._backoff(attempt)
                     attempt += 1
                     continue
@@ -340,8 +396,14 @@ class CapacityQueueRouter(RequestRouter):
             return
         try:
             self._capacity_queue.release.remote(replica_id)
-        except Exception:
+        except RayActorError:
             self._capacity_queue = None
+
+    def _release_token(self, internal_request_id: str) -> None:
+        """Release a capacity token back to the queue."""
+        replica_id = self._acquired_tokens.pop(internal_request_id, None)
+        if replica_id is not None:
+            self._safe_release(replica_id)
 
     async def _choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
@@ -374,9 +436,14 @@ class CapacityQueueRouter(RequestRouter):
         internal_request_id: str,
     ):
         """Release the capacity token when a request completes."""
-        token_replica_id = self._acquired_tokens.pop(internal_request_id, None)
-        if token_replica_id is not None:
-            self._safe_release(token_replica_id)
+        self._release_token(internal_request_id)
+
+    def on_request_cancelled(
+        self,
+        internal_request_id: str,
+    ):
+        """Release the capacity token when a request is cancelled."""
+        self._release_token(internal_request_id)
 
 
 # __end_define_capacity_queue_router__
