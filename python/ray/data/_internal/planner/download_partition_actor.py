@@ -238,11 +238,17 @@ class AsyncPartitionActor(PartitionActor):
         Overrides the base class to use obstore instead of PyArrow's threaded
         get_file_info.  This affects all callers: both the initial partition-
         size estimation (25-file sample) and _attach_file_sizes (all files).
+
+        For URI schemes not supported by obstore (e.g. hdfs://), falls back
+        to the base class's PyArrow-threaded implementation.
         """
         import obstore as obs
 
         if not uris:
             return []
+
+        if not _is_obstore_supported_url(uris[0]):
+            return super()._sample_sizes(uris)
 
         sem = asyncio.Semaphore(URI_HEAD_MAX_CONCURRENCY)
 
