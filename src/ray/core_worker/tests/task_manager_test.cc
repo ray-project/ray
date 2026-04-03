@@ -649,8 +649,10 @@ TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {
   rpc::RayErrorInfo error_info;
   error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
   error_info.set_error_message("The actor is temporarily unavailable");
-  manager_.FailOrRetryPendingTask(spec.TaskId(), error_info.error_type(),
-                                  /*status=*/nullptr, &error_info,
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  error_info.error_type(),
+                                  /*status=*/nullptr,
+                                  &error_info,
                                   /*mark_task_object_failed=*/false,
                                   /*fail_immediately=*/false);
   ASSERT_EQ(num_retries_, 1);
@@ -661,8 +663,10 @@ TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {
   rpc::RayErrorInfo worker_died_error;
   worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
   worker_died_error.set_error_message("Worker died");
-  manager_.FailOrRetryPendingTask(spec.TaskId(), worker_died_error.error_type(),
-                                  /*status=*/nullptr, &worker_died_error,
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  worker_died_error.error_type(),
+                                  /*status=*/nullptr,
+                                  &worker_died_error,
                                   /*mark_task_object_failed=*/false,
                                   /*fail_immediately=*/false);
   ASSERT_EQ(num_retries_, 2);

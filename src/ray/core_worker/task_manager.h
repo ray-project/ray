@@ -36,8 +36,8 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
-#include "src/ray/protobuf/common.pb.h"
 #include "ray/util/exponential_backoff.h"
+#include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
