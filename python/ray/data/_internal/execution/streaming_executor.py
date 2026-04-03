@@ -32,6 +32,7 @@ from ray.data._internal.execution.resource_manager import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
+    build_streaming_topology,
     format_op_state_summary,
     process_completed_tasks,
     select_operator_to_run,
