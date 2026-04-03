@@ -1201,11 +1201,11 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         dashboard.__file__,
         f"--host={host}",
         f"--port={port}",
-        f"--temp-dir=/tmp/ray",
-        f"--log-dir=/tmp/ray/session_latest/logs",
+        "--temp-dir=/tmp/ray",
+        "--log-dir=/tmp/ray/session_latest/logs",
         f"--gcs-address={address_info['gcs_address']}",
         f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
-        f"--session-dir=/tmp/ray/session_latest",
+        "--session-dir=/tmp/ray/session_latest",
         "--node-ip-address=127.0.0.1",
     ]
 
