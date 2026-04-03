@@ -240,14 +240,22 @@ def run_oom_check():
         if metrics_path and Path(metrics_path).exists():
             with open(metrics_path, "r") as f:
                 metrics = json.load(f)
-            oom_kills = metrics.get("worker_oom_kills") or []
-            if oom_kills:
+            oom_kills = metrics.get("worker_oom_kills")
+            if oom_kills is None:
+                logger.error("Could not retrieve 'worker_oom_kills' from metrics file")
+                return_code = 1
+            elif oom_kills:
                 logger.error(
                     "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
                 )
                 return_code = 1
-            unexpected_failures = metrics.get("unexpected_worker_failures") or []
-            if unexpected_failures:
+            unexpected_failures = metrics.get("unexpected_worker_failures")
+            if unexpected_failures is None:
+                logger.error(
+                    "Could not retrieve 'unexpected_worker_failures' from metrics file"
+                )
+                return_code = 1
+            elif unexpected_failures:
                 logger.error(
                     "Test failed: Unexpected worker failures detected "
                     "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
