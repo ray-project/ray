@@ -24,7 +24,10 @@ from ray.train.v2._internal.execution.callback import (
     ReplicaGroupCallback,
     WorkerGroupCallback,
 )
-from ray.train.v2._internal.execution.context import get_train_context
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    get_train_context,
+)
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -930,6 +933,240 @@ def test_check_cluster_resources_and_raise_if_insufficient(monkeypatch):
         num_workers=4,  # Exactly matches 4.0 CPU available
         should_raise=False,
     )
+
+
+def _make_worker(node_id, node_ip, gpu_ids=None):
+    """Helper to create a Worker with minimal metadata for rank assignment tests."""
+    return Worker(
+        actor=None,
+        metadata=ActorMetadata(
+            node_id=node_id,
+            node_ip=node_ip,
+            hostname="dummy",
+            accelerator_ids={"GPU": gpu_ids} if gpu_ids else {},
+            pid=0,
+        ),
+        resources={"GPU": 1} if gpu_ids else {"CPU": 1},
+    )
+
+
+@pytest.mark.parametrize(
+    "workers, starting_world_rank, world_size, replica_group_size, "
+    "expected_contexts",
+    [
+        pytest.param(
+            # 4 workers on 2 nodes, 2 GPUs each
+            [
+                _make_worker("node0", "10.0.0.1", ["1"]),
+                _make_worker("node1", "10.0.0.2", ["1"]),
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+            ],
+            0,
+            None,
+            None,
+            # After sorting: node0/gpu0, node0/gpu1, node1/gpu0, node1/gpu1
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=0,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=1,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=1,
+                ),
+            ],
+            id="no_replica_groups",
+        ),
+        pytest.param(
+            # 4 workers on 2 nodes — each worker is its own replica group
+            [
+                _make_worker("node0", "10.0.0.1", ["1"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["1"]),
+            ],
+            0,
+            None,
+            1,
+            # After sorting: node0/gpu0, node0/gpu1, node1/gpu0, node1/gpu1
+            # Each worker is its own replica group, so local_rank=0,
+            # local_world_size=1, node_rank=0 for all.
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=0,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=1,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=0,
+                ),
+            ],
+            id="replica_group_size_1",
+        ),
+        pytest.param(
+            # 8 workers across 3 nodes (2-4-2 GPUs), replica_group_size=4
+            [
+                _make_worker("nodeA", "10.0.0.1", ["1"]),
+                _make_worker("nodeB", "10.0.0.2", ["3"]),
+                _make_worker("nodeA", "10.0.0.1", ["0"]),
+                _make_worker("nodeB", "10.0.0.2", ["0"]),
+                _make_worker("nodeC", "10.0.0.3", ["1"]),
+                _make_worker("nodeB", "10.0.0.2", ["2"]),
+                _make_worker("nodeB", "10.0.0.2", ["1"]),
+                _make_worker("nodeC", "10.0.0.3", ["0"]),
+            ],
+            0,
+            None,
+            4,
+            [
+                # RG0: A/gpu0, A/gpu1, B/gpu0, B/gpu1
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=0,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=1,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=2,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                # RG1: B/gpu2, B/gpu3, C/gpu0, C/gpu1
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=4,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=5,
+                    world_size=8,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=6,
+                    world_size=8,
+                    node_rank=1,
+                ),
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=7,
+                    world_size=8,
+                    node_rank=1,
+                ),
+            ],
+            id="replica_group_size_4_node_straddling",
+        ),
+        pytest.param(
+            # Simulates replacing replica group 1 in a 4-worker setup with replica_group_size=2.
+            [
+                _make_worker("node0", "10.0.0.1", ["0"]),
+                _make_worker("node1", "10.0.0.2", ["0"]),
+            ],
+            2,
+            4,
+            2,
+            [
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=2,
+                    world_size=4,
+                    node_rank=0,
+                ),
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=1,
+                    world_rank=3,
+                    world_size=4,
+                    node_rank=1,
+                ),
+            ],
+            id="replica_group_size_2_replace",
+        ),
+    ],
+)
+def test_assign_worker_ranks(
+    workers,
+    starting_world_rank,
+    world_size,
+    replica_group_size,
+    expected_contexts,
+):
+    result = WorkerGroup._assign_worker_ranks(
+        workers,
+        starting_world_rank=starting_world_rank,
+        world_size=world_size,
+        replica_group_size=replica_group_size,
+    )
+    assert len(result) == len(expected_contexts)
+    for i, (worker, expected) in enumerate(zip(result, expected_contexts)):
+        ctx = worker.distributed_context
+        assert ctx == expected, f"Worker {i}: expected {expected}, got {ctx}"
 
 
 if __name__ == "__main__":
