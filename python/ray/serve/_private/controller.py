@@ -66,6 +66,11 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import ExternalScalerDisabledError
 from ray.serve._private.grpc_util import set_proxy_default_grpc_options
+from ray.serve._private.haproxy_integration_ablation import (
+    L1_CONTROLLER_TARGET_GROUP_BROADCAST,
+    L3_CONTROLLER_FALLBACK_BROADCAST,
+    read_haproxy_integration_cut_set,
+)
 from ray.serve._private.http_util import (
     configure_http_options_with_defaults,
 )
@@ -115,6 +120,45 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _summarize_target(target: "Target") -> Dict[str, Any]:
+    return {
+        "name": target.name,
+        "ip": target.ip,
+        "port": target.port,
+        "instance_id": target.instance_id,
+    }
+
+
+def _summarize_target_groups(
+    target_groups: List["TargetGroup"],
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "app_name": target_group.app_name,
+            "route_prefix": target_group.route_prefix,
+            "protocol": str(target_group.protocol),
+            "targets": [_summarize_target(target) for target in target_group.targets],
+            "router_targets": [
+                _summarize_target(target) for target in target_group.router_targets
+            ],
+        }
+        for target_group in target_groups
+    ]
+
+
+def _summarize_fallback_targets(
+    fallback_targets: Optional[Dict["RequestProtocol", "Target"]],
+) -> Dict[str, Dict[str, Any]]:
+    if not fallback_targets:
+        return {}
+
+    return {
+        str(protocol): _summarize_target(target)
+        for protocol, target in fallback_targets.items()
+    }
+
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -293,6 +337,14 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+        self._haproxy_integration_cut_set: Set[str] = read_haproxy_integration_cut_set()
+        self._haproxy_runtime_cuts_active = False
+        self._target_group_broadcast_attempt_count = 0
+        self._target_group_broadcast_sent_count = 0
+        self._target_group_broadcast_blocked_count = 0
+        self._fallback_broadcast_attempt_count = 0
+        self._fallback_broadcast_sent_count = 0
+        self._fallback_broadcast_blocked_count = 0
 
     def _log_throughput_opt_message(self) -> None:
         msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
@@ -664,6 +716,7 @@ class ServeController:
         Keeps an in-memory record of the last target groups that were broadcast
         to determine if they have changed.
         """
+        self._target_group_broadcast_attempt_count += 1
         target_groups: List[TargetGroup] = self.get_target_groups(
             from_proxy_manager=True,
         )
@@ -672,22 +725,79 @@ class ServeController:
         if self._last_broadcasted_target_groups == target_groups:
             return
 
+        if (
+            self._haproxy_runtime_cuts_active
+            and L1_CONTROLLER_TARGET_GROUP_BROADCAST
+            in self._haproxy_integration_cut_set
+        ):
+            self._target_group_broadcast_blocked_count += 1
+            return
+
         self.long_poll_host.notify_changed(
             {LongPollNamespace.TARGET_GROUPS: target_groups}
         )
         self._last_broadcasted_target_groups = target_groups
+        self._target_group_broadcast_sent_count += 1
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
+        self._fallback_broadcast_attempt_count += 1
         fallback_targets = self.proxy_state_manager.get_fallback_proxy_targets()
 
         if self._last_broadcasted_fallback_targets == fallback_targets:
+            return
+
+        if (
+            self._haproxy_runtime_cuts_active
+            and L3_CONTROLLER_FALLBACK_BROADCAST in self._haproxy_integration_cut_set
+        ):
+            self._fallback_broadcast_blocked_count += 1
             return
 
         self.long_poll_host.notify_changed(
             {LongPollNamespace.FALLBACK_TARGETS: fallback_targets}
         )
         self._last_broadcasted_fallback_targets = fallback_targets
+        self._fallback_broadcast_sent_count += 1
+
+    def get_fallback_targets_for_proxy_manager(self) -> Dict[RequestProtocol, Target]:
+        if self.proxy_state_manager is None:
+            return {}
+        return self.proxy_state_manager.get_fallback_proxy_targets()
+
+    def activate_haproxy_integration_runtime_cuts(self) -> Dict[str, Any]:
+        self._haproxy_runtime_cuts_active = True
+        return self.get_haproxy_integration_ablation_debug()
+
+    def get_haproxy_integration_ablation_debug(self) -> Dict[str, Any]:
+        return {
+            "cut_set": sorted(self._haproxy_integration_cut_set),
+            "runtime_cuts_active": self._haproxy_runtime_cuts_active,
+            "controller_target_group_broadcast_enabled": not (
+                self._haproxy_runtime_cuts_active
+                and L1_CONTROLLER_TARGET_GROUP_BROADCAST
+                in self._haproxy_integration_cut_set
+            ),
+            "controller_fallback_broadcast_enabled": not (
+                self._haproxy_runtime_cuts_active
+                and L3_CONTROLLER_FALLBACK_BROADCAST
+                in self._haproxy_integration_cut_set
+            ),
+            "target_group_broadcast_attempt_count": (
+                self._target_group_broadcast_attempt_count
+            ),
+            "target_group_broadcast_sent_count": (
+                self._target_group_broadcast_sent_count
+            ),
+            "target_group_broadcast_blocked_count": (
+                self._target_group_broadcast_blocked_count
+            ),
+            "fallback_broadcast_attempt_count": self._fallback_broadcast_attempt_count,
+            "fallback_broadcast_sent_count": self._fallback_broadcast_sent_count,
+            "fallback_broadcast_blocked_count": (
+                self._fallback_broadcast_blocked_count
+            ),
+        }
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(

@@ -50,6 +50,19 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.haproxy_integration_ablation import (
+    L2_MANAGER_TARGET_GROUP_SUBSCRIPTION,
+    L3_CONTROLLER_FALLBACK_BROADCAST,
+    L4_MANAGER_FALLBACK_SUBSCRIPTION,
+    L5_MANAGER_POST_READY_UPDATE_APPLY,
+    L6_GRACEFUL_RELOAD_HANDOFF,
+    L7A_RELOAD_SOCKET_TRANSFER,
+    L7B_SERVER_STATE_PERSISTENCE,
+    L8_DRAIN_UNDRAIN_INTEGRATION,
+    read_direct_server_routing_enabled,
+    read_haproxy_integration_cut_set,
+    read_route_once_direct_backend_jump_enabled,
+)
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
     HAPROXY_HEALTHZ_RULES_TEMPLATE,
@@ -66,6 +79,46 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _summarize_target(target: Target) -> Dict[str, Any]:
+    return {
+        "name": target.name,
+        "ip": target.ip,
+        "port": target.port,
+        "instance_id": target.instance_id,
+    }
+
+
+def _summarize_target_group(target_group: TargetGroup) -> Dict[str, Any]:
+    return {
+        "app_name": target_group.app_name,
+        "route_prefix": target_group.route_prefix,
+        "protocol": str(target_group.protocol),
+        "targets": [_summarize_target(target) for target in target_group.targets],
+        "router_targets": [
+            _summarize_target(target) for target in target_group.router_targets
+        ],
+    }
+
+
+def _summarize_backend_config(backend_config: "BackendConfig") -> Dict[str, Any]:
+    return {
+        "name": backend_config.name,
+        "app_name": backend_config.app_name,
+        "path_prefix": backend_config.path_prefix,
+        "server_count": len(backend_config.servers),
+        "router_server_count": len(backend_config.router_servers),
+        "fallback_server": (
+            None
+            if backend_config.fallback_server is None
+            else {
+                "name": backend_config.fallback_server.name,
+                "host": backend_config.fallback_server.host,
+                "port": backend_config.fallback_server.port,
+            }
+        ),
+    }
 
 
 @dataclass
@@ -187,6 +240,7 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
+    route_name: Optional[str] = None  # Alternate route-once symbolic server name
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -254,6 +308,20 @@ class BackendConfig:
     # Router servers for ingress bypass Lua routing.
     # When populated, HAProxy Lua calls these to get routing decisions.
     router_servers: List[ServerConfig] = field(default_factory=list)
+
+    # When enabled, Lua sets txn.target_server to the concrete backend server
+    # name directly instead of the symbolic sc_<host>_<port> token.
+    direct_server_routing: bool = False
+
+    # When enabled, streaming requests jump into a dedicated direct backend
+    # after Lua chooses a replica, matching the route-once control model.
+    route_once_direct_backend_jump: bool = False
+
+    # Route-once-style default ingress backend target.
+    route_once_ingress_server: Optional[ServerConfig] = None
+
+    # Backend name used for healthz checks when different from `name`.
+    healthcheck_backend_name: Optional[str] = None
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -344,6 +412,10 @@ class HAProxyConfig:
     # Enable HAProxy optimizations (server state persistence, etc.)
     # Disabled by default to prevent test suite interference
     enable_hap_optimization: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    use_graceful_reload_handoff: bool = True
+    enable_reload_socket_transfer: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    enable_server_state_persistence: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    enable_idle_close_on_response: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
     maxconn: int = RAY_SERVE_HAPROXY_MAXCONN
     nbthread: int = RAY_SERVE_HAPROXY_NBTHREAD
     stats_port: int = 8404
@@ -507,6 +579,12 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        self._reload_count = 0
+        self._last_reload_mode: Dict[str, Any] = {
+            "mode": "none",
+            "used_sf": False,
+            "used_x": False,
+        }
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -524,8 +602,8 @@ class HAProxyApi(ProxyApi):
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
 
-        # Create a server state directory only if optimization is enabled
-        if self.cfg.enable_hap_optimization:
+        # Create a server state directory only if persistence is enabled
+        if self.cfg.enable_server_state_persistence:
             server_state_dir = os.path.dirname(self.cfg.server_state_file)
             os.makedirs(server_state_dir, exist_ok=True)
 
@@ -586,19 +664,37 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
+            if old_proc is None:
+                self._proc = await self._start_and_wait_for_haproxy()
+                self._reload_count += 1
+                self._last_reload_mode = {
+                    "mode": "startup",
+                    "used_sf": False,
+                    "used_x": False,
+                }
+                return
+
             await self._wait_for_hap_availability(old_proc)
 
-            # Save server state if optimization is enabled
-            if self.cfg.enable_hap_optimization:
+            # Save server state if persistence is enabled.
+            if self.cfg.enable_server_state_persistence:
                 await self._save_server_state()
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
-            # Use -x socket transfer for seamless reloads if optimization is enabled
+            # Use -x socket transfer for seamless reloads if enabled.
             reload_args = ["-sf", str(old_proc.pid)]
-            if self.cfg.enable_hap_optimization:
+            used_x = False
+            if self.cfg.enable_reload_socket_transfer:
                 reload_args.extend(["-x", self.cfg.socket_path])
+                used_x = True
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
+            self._reload_count += 1
+            self._last_reload_mode = {
+                "mode": "graceful",
+                "used_sf": True,
+                "used_x": used_x,
+            }
 
             # Track old process so we can ensure it's cleaned up during shutdown
             if old_proc is not None:
@@ -610,6 +706,30 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
+
+    async def _hard_reload(self) -> None:
+        """Perform a hard restart without graceful handoff."""
+        try:
+            old_proc = self._proc
+            if old_proc is not None and old_proc.returncode is None:
+                old_proc.kill()
+                await old_proc.wait()
+            self._proc = await self._start_and_wait_for_haproxy()
+            self._reload_count += 1
+            self._last_reload_mode = {
+                "mode": "hard",
+                "used_sf": False,
+                "used_x": False,
+            }
+        except Exception as e:
+            logger.error(f"HAProxy hard reload failed: {e}")
+            raise
+
+    async def _reload_with_config(self) -> None:
+        if self.cfg.use_graceful_reload_handoff:
+            await self._graceful_reload()
+        else:
+            await self._hard_reload()
 
     async def _wait_for_hap_availability(
         self, proc: asyncio.subprocess.Process, timeout_s: int = 5
@@ -639,7 +759,12 @@ class HAProxyApi(ProxyApi):
             f"HAProxy did not enter running state within {timeout_s} seconds."
         )
 
-    def _write_lua_script(self, router_servers: List[ServerConfig]) -> str:
+    def _write_lua_script(
+        self,
+        router_servers: List[ServerConfig],
+        direct_server_name_map: Optional[Dict[str, str]] = None,
+        route_once_direct_backend_jump: bool = False,
+    ) -> str:
         """Write the Lua routing script for ingress bypass.
 
         Per-request routing: Lua calls /internal/route on an ingress router
@@ -651,115 +776,162 @@ class HAProxyApi(ProxyApi):
         config_dir = os.path.dirname(self.config_file_path)
         lua_path = os.path.join(config_dir, "sidecar_route.lua")
 
-        router_entries = []
-        for i, srv in enumerate(router_servers):
-            router_entries.append(f'    {{ host = "{srv.host}", port = {srv.port} }}')
-        routers_lua = ",\n".join(router_entries)
-
-        lua_content = f"""-- Auto-generated Lua routing script for ingress bypass.
--- Per-request routing with HTTP/1.1 keepalive (per-thread connection pool).
--- Requires lua-load-per-thread for thread-safe connection reuse.
-
-local routers = {{
-{routers_lua}
+        router = sorted(router_servers, key=lambda server: (server.port, server.host))[
+            0
+        ]
+        direct_server_name_map = direct_server_name_map or {}
+        direct_server_map_entries = ",\n".join(
+            f'    ["{key}"] = "{value}"'
+            for key, value in sorted(direct_server_name_map.items())
+        )
+        direct_server_map_lua = (
+            "{\n" + direct_server_map_entries + "\n}"
+            if direct_server_map_entries
+            else "{}"
+        )
+        if route_once_direct_backend_jump:
+            lua_content = f"""local ROUTE_PATHS = {{
+    ["/v1/chat/completions"] = true,
+    ["/v1/completions"] = true,
 }}
-local rr_idx = 0
-local pool = {{}}
 
-local function get_or_connect(router)
-    local key = router.host .. ":" .. router.port
-    local sock = pool[key]
-    if sock then
-        return sock, true  -- reused
-    end
-    sock = core.tcp()
+local router = {{
+    host = "{router.host}",
+    port = {router.port}
+}}
+
+local function do_request(body)
+    local sock = core.tcp()
     sock:settimeout(5)
+
     local ok, err = sock:connect(router.host, tonumber(router.port))
     if not ok then
-        return nil, false
-    end
-    pool[key] = sock
-    return sock, false  -- new connection
-end
-
-local function release(router, sock)
-    local key = router.host .. ":" .. router.port
-    pool[key] = sock
-end
-
-local function drop(router)
-    local key = router.host .. ":" .. router.port
-    local sock = pool[key]
-    if sock then
-        sock:close()
-    end
-    pool[key] = nil
-end
-
-local function do_request(router, model)
-    local sock, reused = get_or_connect(router)
-    if not sock then
         return nil
     end
 
-    local req = "GET /internal/route?model=" .. model .. " HTTP/1.1\\r\\n"
-        .. "Host: " .. router.host .. "\\r\\n"
+    local req = "POST /internal/route HTTP/1.0\\r\\n"
+        .. "Content-Type: application/json\\r\\n"
+        .. "Content-Length: " .. #body .. "\\r\\n"
         .. "\\r\\n"
+        .. body
 
     local ok, err = sock:send(req)
     if not ok then
-        drop(router)
-        sock, reused = get_or_connect(router)
-        if not sock then return nil end
-        ok, err = sock:send(req)
-        if not ok then drop(router); return nil end
-    end
-
-    -- Read status line
-    local status_line, err = sock:receive("*l")
-    if not status_line then
-        drop(router)
+        sock:close()
         return nil
     end
 
-    -- Read headers to get Content-Length
-    local content_length = 0
-    while true do
-        local line = sock:receive("*l")
-        if not line or line == "" then break end
-        local cl = line:lower():match("content%-length:%s*(%d+)")
-        if cl then content_length = tonumber(cl) end
+    local response = sock:receive("*a")
+    sock:close()
+
+    if not response then
+        return nil
     end
 
-    -- Read body
-    local body = ""
-    if content_length > 0 then
-        body, err = sock:receive(content_length)
-        if not body then drop(router); return nil end
-    end
-
-    release(router, sock)
-    return body
+    return response
 end
 
 core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
-    local model = ""
+    local path = txn.sf:path()
+    if not ROUTE_PATHS[path] then
+        return
+    end
 
-    rr_idx = rr_idx + 1
-    local router = routers[((rr_idx - 1) % #routers) + 1]
-
-    local body = do_request(router, model)
-
+    local body = txn.sf:req_body()
     if not body or body == "" then
         return
     end
 
-    local host = body:match('"host"%s*:%s*"([^"]+)"')
-    local port = body:match('"port"%s*:%s*(%d+)')
+    if not string.find(body, '"stream"') or not string.find(body, "true") then
+        return
+    end
+
+    local response = do_request(body)
+    if not response then
+        return
+    end
+
+    local host = response:match('"host"%s*:%s*"([^"]+)"')
+    local port = response:match('"port"%s*:%s*(%d+)')
 
     if host and port then
         local server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        txn:set_var("txn.target_server", server_name)
+        txn:set_var("txn.sidecar_server", server_name)
+        txn:set_var("txn.is_streaming", true)
+    end
+end, 0)
+"""
+        else:
+            route_target_assignment = (
+                'local server_key = host .. ":" .. port\n'
+                "        local server_name = direct_server_name_map[server_key]\n"
+                "        if not server_name then\n"
+                "            server_name = symbolic_server_name\n"
+                "        end\n"
+                '        txn:set_var("txn.target_server", server_name)'
+            )
+            lua_content = f"""-- Auto-generated Lua routing script for ingress bypass.
+-- Per-request routing with HTTP/1.1 keepalive (per-thread connection pool).
+-- Uses a single ingress router and forwards the real client body.
+
+local router = {{
+    host = "{router.host}",
+    port = {router.port}
+}}
+
+local direct_server_name_map = {direct_server_map_lua}
+
+local function do_request(body)
+    local sock = core.tcp()
+    sock:settimeout(5)
+    local ok, err = sock:connect(router.host, tonumber(router.port))
+    if not ok then
+        return nil
+    end
+
+    local req = "POST /internal/route HTTP/1.0\\r\\n"
+        .. "Content-Type: application/json\\r\\n"
+        .. "Content-Length: " .. string.len(body) .. "\\r\\n"
+        .. "\\r\\n"
+        .. body
+
+    local ok, err = sock:send(req)
+    if not ok then
+        sock:close()
+        return nil
+    end
+
+    local body = sock:receive("*a")
+    sock:close()
+    if not body then
+        return nil
+    end
+
+    return body
+end
+
+core.register_action("pick_sidecar", {{"http-req"}}, function(txn)
+    local body = txn.sf:req_body()
+    if not body or body == "" then
+        return
+    end
+
+    if not string.find(body, '"stream"') or not string.find(body, "true") then
+        return
+    end
+
+    local response = do_request(body)
+
+    if not response then
+        return
+    end
+
+    local host = response:match('"host"%s*:%s*"([^"]+)"')
+    local port = response:match('"port"%s*:%s*(%d+)')
+
+    if host and port then
+        local symbolic_server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
+        {route_target_assignment}
     end
 end, 0)
 """
@@ -792,7 +964,22 @@ end, 0)
                 for be in backends:
                     all_router_servers.extend(be.router_servers)
                 if all_router_servers:
-                    lua_script_path = self._write_lua_script(all_router_servers)
+                    direct_server_name_map = {}
+                    for backend in backends:
+                        if not backend.direct_server_routing:
+                            continue
+                        for server in backend.servers:
+                            direct_server_name_map[
+                                f"{server.host}:{server.port}"
+                            ] = server.name
+                    route_once_direct_backend_jump = any(
+                        backend.route_once_direct_backend_jump for backend in backends
+                    )
+                    lua_script_path = self._write_lua_script(
+                        all_router_servers,
+                        direct_server_name_map=direct_server_name_map,
+                        route_once_direct_backend_jump=route_once_direct_backend_jump,
+                    )
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -1019,7 +1206,7 @@ end, 0)
     async def reload(self) -> None:
         try:
             self._generate_config_file_internal()
-            await self._graceful_reload()
+            await self._reload_with_config()
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
@@ -1032,8 +1219,7 @@ end, 0)
             # Regenerate the config file with the deny rule
             self._generate_config_file_internal()
 
-            # Perform a graceful reload to apply changes
-            await self._graceful_reload()
+            await self._reload_with_config()
             logger.info("Successfully disabled health checks.")
         except Exception as e:
             logger.error(f"Failed to disable health checks: {e}")
@@ -1045,8 +1231,7 @@ end, 0)
             self.cfg.pass_health_checks = True
 
             self._generate_config_file_internal()
-            # Perform a graceful reload to apply changes
-            await self._graceful_reload()
+            await self._reload_with_config()
             logger.info("Successfully enabled health checks.")
         except Exception as e:
             logger.error(f"Failed to disable health checks: {e}")
@@ -1073,6 +1258,17 @@ end, 0)
             # During reload or shutdown, socket can be temporarily unavailable.
             # Treat as unhealthy instead of raising.
             return False
+
+    def get_reload_debug_summary(self) -> Dict[str, Any]:
+        return {
+            "reload_count": self._reload_count,
+            "last_reload_mode": dict(self._last_reload_mode),
+            "use_graceful_reload_handoff": self.cfg.use_graceful_reload_handoff,
+            "enable_reload_socket_transfer": (self.cfg.enable_reload_socket_transfer),
+            "enable_server_state_persistence": (
+                self.cfg.enable_server_state_persistence
+            ),
+        }
 
 
 @ray.remote(num_cpus=0)
@@ -1104,8 +1300,25 @@ class HAProxyManager(ProxyActorInterface):
         self._draining_start_time: Optional[float] = None
 
         self.event_loop = get_or_create_event_loop()
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
 
         self._target_groups: List[TargetGroup] = []
+        self._haproxy_integration_cut_set = read_haproxy_integration_cut_set()
+        self._direct_server_routing_enabled = read_direct_server_routing_enabled()
+        self._route_once_direct_backend_jump_enabled = (
+            read_route_once_direct_backend_jump_enabled()
+        )
+        self._haproxy_runtime_cuts_active = False
+        self._target_group_updates_received_count = 0
+        self._target_group_updates_applied_count = 0
+        self._target_group_updates_ignored_count = 0
+        self._fallback_updates_received_count = 0
+        self._fallback_updates_applied_count = 0
+        self._fallback_updates_ignored_count = 0
+        self._drain_update_noop_count = 0
+        self._drain_update_applied_count = 0
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1116,7 +1329,7 @@ class HAProxyManager(ProxyActorInterface):
         self._reload_lock = asyncio.Lock()
 
         self.long_poll_client = long_poll_client or LongPollClient(
-            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
+            self._controller_handle,
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.TARGET_GROUPS: self.update_target_groups,
@@ -1135,7 +1348,20 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         self._haproxy = HAProxyApi(
-            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+            cfg=HAProxyConfig(
+                http_options=http_options,
+                is_head=is_head,
+                use_graceful_reload_handoff=(
+                    L6_GRACEFUL_RELOAD_HANDOFF not in self._haproxy_integration_cut_set
+                ),
+                enable_reload_socket_transfer=(
+                    L7A_RELOAD_SOCKET_TRANSFER not in self._haproxy_integration_cut_set
+                ),
+                enable_server_state_persistence=(
+                    L7B_SERVER_STATE_PERSISTENCE
+                    not in self._haproxy_integration_cut_set
+                ),
+            )
         )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1221,6 +1447,15 @@ class HAProxyManager(ProxyActorInterface):
         to drain or un-drain the haproxy.
         """
 
+        if L8_DRAIN_UNDRAIN_INTEGRATION in self._haproxy_integration_cut_set:
+            self._drain_update_noop_count += 1
+            logger.info(
+                f"Ignoring drain update for HAProxy on node {self._node_id} due to "
+                "integration ablation cut.",
+                extra={"log_to_stderr": False},
+            )
+            return
+
         if draining and (not self._is_draining()):
             logger.info(
                 f"Start to drain the HAProxy on node {self._node_id}.",
@@ -1230,6 +1465,7 @@ class HAProxyManager(ProxyActorInterface):
             async with self._reload_lock:
                 await self._haproxy.disable()
             self._draining_start_time = time.time()
+            self._drain_update_applied_count += 1
         if (not draining) and self._is_draining():
             logger.info(
                 f"Stop draining the HAProxy on node {self._node_id}.",
@@ -1239,6 +1475,7 @@ class HAProxyManager(ProxyActorInterface):
             async with self._reload_lock:
                 await self._haproxy.enable()
             self._draining_start_time = None
+            self._drain_update_applied_count += 1
 
     async def is_drained(self, _after: Optional[Any] = None) -> bool:
         """Check whether the haproxy is drained or not.
@@ -1286,7 +1523,9 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
-    def _target_to_server(self, target: Target) -> ServerConfig:
+    def _target_to_server(
+        self, target: Target, *, preserve_route_name: bool = False
+    ) -> ServerConfig:
         """Convert a target to a server."""
         return ServerConfig(
             # The server name is derived from the replica's actor name, with the
@@ -1298,6 +1537,11 @@ class HAProxyManager(ProxyActorInterface):
             # Use localhost if target is on the same node as HAProxy
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
+            route_name=(
+                f"sc_{target.ip.replace('.', '_')}_{target.port}"
+                if preserve_route_name
+                else None
+            ),
         )
 
     def _create_backend_config(
@@ -1306,15 +1550,35 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        servers = [self._target_to_server(target) for target in target_group.targets]
+        route_once_direct_backend_jump = (
+            self._route_once_direct_backend_jump_enabled
+            and bool(target_group.router_targets)
+        )
+        servers = [
+            self._target_to_server(
+                target, preserve_route_name=route_once_direct_backend_jump
+            )
+            for target in target_group.targets
+        ]
 
         router_servers = [
             self._target_to_server(target) for target in target_group.router_targets
         ]
+        router_servers = sorted(
+            router_servers, key=lambda server: (server.port, server.host)
+        )
 
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
+
+        route_once_ingress_server = None
+        if route_once_direct_backend_jump and router_servers:
+            route_once_ingress_server = ServerConfig(
+                name="ingress0",
+                host=router_servers[0].host,
+                port=router_servers[0].port,
+            )
 
         # When ingress bypass is active, the main targets are LLMServer replicas
         # serving vLLM's native app which uses /health not /-/healthz.
@@ -1332,6 +1596,14 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             router_servers=router_servers,
+            direct_server_routing=(
+                self._direct_server_routing_enabled and bool(router_servers)
+            ),
+            route_once_direct_backend_jump=route_once_direct_backend_jump,
+            route_once_ingress_server=route_once_ingress_server,
+            healthcheck_backend_name=(
+                "sidecar_direct" if route_once_direct_backend_jump else None
+            ),
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,
@@ -1370,13 +1642,38 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop.create_task(self._reload_haproxy())
 
     def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
+        self._target_group_updates_received_count += 1
+        if (
+            self._haproxy_runtime_cuts_active
+            and L2_MANAGER_TARGET_GROUP_SUBSCRIPTION
+            in self._haproxy_integration_cut_set
+        ):
+            self._target_group_updates_ignored_count += 1
+            return
+
         self._target_groups = target_groups
+        if (
+            self._haproxy_runtime_cuts_active
+            and L5_MANAGER_POST_READY_UPDATE_APPLY in self._haproxy_integration_cut_set
+        ):
+            self._target_group_updates_ignored_count += 1
+            return
+
+        self._target_group_updates_applied_count += 1
         self._update_haproxy_backends()
 
     def update_fallback_targets(
         self,
         fallback_targets: Dict[RequestProtocol, Target],
     ) -> None:
+        self._fallback_updates_received_count += 1
+        if (
+            self._haproxy_runtime_cuts_active
+            and L4_MANAGER_FALLBACK_SUBSCRIPTION in self._haproxy_integration_cut_set
+        ):
+            self._fallback_updates_ignored_count += 1
+            return
+
         # Reset so that fallbacks are repopulated from LongPoll.
         self._http_fallback_target = None
         self._grpc_fallback_target = None
@@ -1387,7 +1684,79 @@ class HAProxyManager(ProxyActorInterface):
             elif protocol == RequestProtocol.GRPC:
                 self._grpc_fallback_target = target
 
+        if (
+            self._haproxy_runtime_cuts_active
+            and L5_MANAGER_POST_READY_UPDATE_APPLY in self._haproxy_integration_cut_set
+        ):
+            self._fallback_updates_ignored_count += 1
+            return
+
+        self._fallback_updates_applied_count += 1
         self._update_haproxy_backends()
+
+    def activate_haproxy_integration_runtime_cuts(self) -> Dict[str, Any]:
+        self._haproxy_runtime_cuts_active = True
+        return self.get_haproxy_integration_ablation_debug()
+
+    def get_haproxy_integration_ablation_debug(self) -> Dict[str, Any]:
+        reload_debug = self._haproxy.get_reload_debug_summary()
+        return {
+            "cut_set": sorted(self._haproxy_integration_cut_set),
+            "bootstrap_source": "normal_startup_before_runtime_cuts",
+            "runtime_cuts_active": self._haproxy_runtime_cuts_active,
+            "manager_target_group_subscription_enabled": not (
+                self._haproxy_runtime_cuts_active
+                and L2_MANAGER_TARGET_GROUP_SUBSCRIPTION
+                in self._haproxy_integration_cut_set
+            ),
+            "manager_fallback_subscription_enabled": not (
+                self._haproxy_runtime_cuts_active
+                and L4_MANAGER_FALLBACK_SUBSCRIPTION
+                in self._haproxy_integration_cut_set
+            ),
+            "post_ready_update_apply_enabled": not (
+                self._haproxy_runtime_cuts_active
+                and L5_MANAGER_POST_READY_UPDATE_APPLY
+                in self._haproxy_integration_cut_set
+            ),
+            "target_group_updates_received_count": (
+                self._target_group_updates_received_count
+            ),
+            "target_group_updates_applied_count": (
+                self._target_group_updates_applied_count
+            ),
+            "target_group_updates_ignored_count": (
+                self._target_group_updates_ignored_count
+            ),
+            "fallback_updates_received_count": self._fallback_updates_received_count,
+            "fallback_updates_applied_count": self._fallback_updates_applied_count,
+            "fallback_updates_ignored_count": self._fallback_updates_ignored_count,
+            "drain_integration_enabled": (
+                L8_DRAIN_UNDRAIN_INTEGRATION not in self._haproxy_integration_cut_set
+            ),
+            "drain_update_noop_count": self._drain_update_noop_count,
+            "drain_update_applied_count": self._drain_update_applied_count,
+            "fallback_target_present": any(
+                target is not None
+                for target in [self._http_fallback_target, self._grpc_fallback_target]
+            ),
+            "fallback_target_frozen_at_bootstrap": (
+                self._haproxy_runtime_cuts_active
+                and (
+                    L3_CONTROLLER_FALLBACK_BROADCAST
+                    in self._haproxy_integration_cut_set
+                    or L4_MANAGER_FALLBACK_SUBSCRIPTION
+                    in self._haproxy_integration_cut_set
+                    or L5_MANAGER_POST_READY_UPDATE_APPLY
+                    in self._haproxy_integration_cut_set
+                )
+            ),
+            "direct_server_routing_enabled": self._direct_server_routing_enabled,
+            "route_once_direct_backend_jump_enabled": (
+                self._route_once_direct_backend_jump_enabled
+            ),
+            **reload_debug,
+        }
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""

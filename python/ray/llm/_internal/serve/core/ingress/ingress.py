@@ -410,11 +410,8 @@ class OpenAiIngress(DeploymentProtocol):
 
         async def direct_ingress_asgi_wrapper(scope, receive, send):
             if scope["type"] == "http" and scope["path"] == "/internal/route":
-                if scope["method"] == "GET":
-                    await ingress._handle_route_get_endpoint(scope, receive, send)
-                    return
                 if scope["method"] == "POST":
-                    await ingress._handle_route_endpoint(receive, send)
+                    await ingress._handle_route_endpoint(scope, receive, send)
                     return
 
             await original_app(scope, receive, send)
@@ -422,70 +419,7 @@ class OpenAiIngress(DeploymentProtocol):
         self._asgi_app = direct_ingress_asgi_wrapper
         logger.info("Direct-ingress route middleware installed.")
 
-    async def _handle_route_get_endpoint(self, scope, receive, send):
-        from urllib.parse import parse_qs
-
-        import orjson
-
-        message = await receive()
-        while message.get("more_body", False):
-            message = await receive()
-
-        query_string = scope.get("query_string", b"").decode("utf-8", errors="replace")
-        params = parse_qs(query_string)
-        model = params.get("model", [""])[0]
-
-        default_model_id = (
-            next(iter(self._llm_configs.keys())) if self._llm_configs else None
-        )
-        if not model:
-            model = default_model_id
-        if model and model not in self._llm_configs:
-            base = get_base_model_id(model)
-            if base not in self._llm_configs:
-                model = None
-        model_id = model or default_model_id
-
-        if model_id is None:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 404,
-                    "headers": [[b"content-type", b"application/json"]],
-                }
-            )
-            await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
-            return
-
-        try:
-            host, port = await self._pick_routed_ingress_bypass_endpoint(model_id)
-        except Exception:
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 503,
-                    "headers": [[b"content-type", b"application/json"]],
-                }
-            )
-            await send(
-                {
-                    "type": "http.response.body",
-                    "body": b'{"error":"no endpoint available"}',
-                }
-            )
-            return
-
-        resp = orjson.dumps({"host": host, "port": port})
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [[b"content-type", b"application/json"]],
-            }
-        )
-        await send({"type": "http.response.body", "body": resp})
-
-    async def _handle_route_endpoint(self, receive, send):
+    async def _handle_route_endpoint(self, scope, receive, send):
         import orjson
 
         message = await receive()
@@ -681,35 +615,6 @@ class OpenAiIngress(DeploymentProtocol):
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
         self._direct_ingress_rr_counter += 1
         return direct_ingress_replicas[idx].direct_ingress_endpoint
-
-    def _get_replica_endpoint(self, replica) -> Optional[Tuple[str, int]]:
-        return getattr(replica, "direct_ingress_endpoint", None)
-
-    async def _pick_routed_ingress_bypass_endpoint(
-        self, model_id: str
-    ) -> Tuple[str, int]:
-        """Pick a replica for built-in ingress bypass routing."""
-        base_model_id = get_base_model_id(model_id)
-        handle = self._default_serve_handles.get(base_model_id)
-        if handle is None:
-            raise RuntimeError(f"No handle for model {model_id}")
-
-        request_router = handle.get_request_router()
-        if request_router is None:
-            raise RuntimeError(f"Request router not initialized for {model_id}")
-
-        replicas = list(request_router.curr_replicas.values())
-        eligible_replicas = [
-            replica
-            for replica in replicas
-            if self._get_replica_endpoint(replica) is not None
-        ]
-        if not eligible_replicas:
-            raise RuntimeError(f"No endpoint-enabled replicas for {model_id}")
-
-        idx = self._ingress_bypass_rr_counter % len(eligible_replicas)
-        self._ingress_bypass_rr_counter += 1
-        return self._get_replica_endpoint(eligible_replicas[idx])
 
     async def _get_response(
         self,

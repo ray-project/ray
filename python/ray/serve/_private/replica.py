@@ -2684,6 +2684,7 @@ class Replica:
         response_started = False
         response_finished = False
         first_message_peeked = False
+        first_body_chunk_logged = False
 
         with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
@@ -2692,11 +2693,19 @@ class Replica:
                 nonlocal response_started
                 nonlocal response_finished
                 nonlocal first_message_peeked
+                nonlocal first_body_chunk_logged
 
                 if not first_message_peeked:
                     first_message_peeked = True
                     if msg["type"] == "http.response.start":
                         status_code_callback(str(msg["status"]))
+
+                if (
+                    msg["type"] == "http.response.body"
+                    and not first_body_chunk_logged
+                    and msg.get("body", b"")
+                ):
+                    first_body_chunk_logged = True
 
                 await send(msg)
                 response_started = True
