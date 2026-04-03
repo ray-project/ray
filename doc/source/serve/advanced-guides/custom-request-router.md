@@ -212,7 +212,7 @@ The key methods are:
 ### Define the CapacityQueueRouter
 
 In the same file, add the custom router.  It overrides
-[`_choose_replica_for_request`](../api/doc/ray.serve.request_router.RequestRouter._choose_replica_for_request.rst)
+`_choose_replica_for_request`
 to acquire a token instead of using the default power-of-two-choices algorithm,
 and uses [`on_request_completed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_completed.rst)
 to release the token when the request finishes:
