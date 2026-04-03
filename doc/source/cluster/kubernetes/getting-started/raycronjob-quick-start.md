@@ -25,7 +25,7 @@ The `RayCronJob` CRD acts as an automated scheduler specifically designed to cre
   * `rayClusterSpec` - Defines the RayCluster custom resource to run the Ray job on.
   * `entrypoint` - The command to execute for the job.
   * `shutdownAfterJobFinishes` - Determines whether to recycle the RayCluster after the scheduled Ray job finishes.
-  * *Note: See the standard [RayJob Configuration](#rayjob-quick-start) documentation for the complete list of supported fields within the `jobTemplate`.*
+  * *Note: See the standard {ref}`RayJob Configuration <kuberay-rayjob-quickstart>` documentation for the complete list of supported fields within the `jobTemplate`.*
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
 
 ## How to Configure a RayCronJob
@@ -47,23 +47,34 @@ spec:
     # ... (RayCluster spec, runtimeEnv, etc.)
 ```
 
-## How to Run an Easy RayCronJob
+## How to Run an Simple RayCronJob
 
 Let's deploy a simple `RayCronJob` that executes a short Python script every minute.
 
-## Step 1: Create a Kubernetes cluster with Kind
+### Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
 kind create cluster --image=kindest/node:v1.26.0
 ```
 
-## Step 2: Install the KubeRay operator
+### Step 2: Install the KubeRay operator
+You must install KubeRay operator version 1.6.0 (or newer) and enable the feature gate. We recommend using Helm for this:
 
-Follow the [KubeRay Operator Installation](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
+```sh
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+
+# Install KubeRay operator v1.6.0 with the RayCronJob feature gate enabled
+helm install kuberay-operator kuberay/kuberay-operator \
+  --version 1.6.0 \
+  --set "featureGates[0].name=RayCronJob" \
+  --set "featureGates[0].enabled=true"
+```
+For alternative installation methods, refer to {ref}`KubeRay Operator Installation <kuberay-operator-deploy>`, but ensure you append the feature gate configuration.
 
 ### Step 3: Install a RayCronJob
 
-```bash
+```sh
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
 ```
 
@@ -71,33 +82,105 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ra
 
 Check the status of your `RayCronJob`. You should see the schedule and the last time it successfully scheduled a job.
 
-```bash
+```sh
 kubectl get raycronjob raycronjob-sample
-```
 
-You should see output listing the RayCronJob created, for example:
+#You should see output listing the RayCronJob created
+# [Example output]
 
-```
-NAME                SCHEDULE    LAST SCHEDULE   AGE   SUSPEND
-raycronjob-sample   * * * * *                   10s   
+# NAME                SCHEDULE    LAST SCHEDULE   AGE   SUSPEND
+# raycronjob-sample   * * * * *                   10s   
 ```
 
 Because our schedule is `* * * * *`, a new `RayJob` will be generated at the start of the next minute. You can watch the `RayJob` instances being created:
 
-```bash
+```shell
 kubectl get rayjob -w
+# [Example output]
+# NAME                      JOB STATUS   DEPLOYMENT STATUS   RAY CLUSTER NAME   START TIME   END TIME   AGE
+# raycronjob-sample-l76h8                                                                               0s
+# raycronjob-sample-l76h8                                                                               0s
+# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              0s
+# raycronjob-sample-gmsnw                                                                                                      0s
+# raycronjob-sample-gmsnw                                                                                                      0s
+# raycronjob-sample-gmsnw                Initializing        raycronjob-sample-gmsnw-d6n2r   2026-04-03T05:57:00Z              0s
+# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              0s
+# raycronjob-sample-gmsnw                Initializing        raycronjob-sample-gmsnw-d6n2r   2026-04-03T05:57:00Z              0s
+# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              2s
+# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              17s
+# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              21s
+# raycronjob-sample-l76h8                Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              31s
+# raycronjob-sample-l76h8   PENDING      Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              39s
+# raycronjob-sample-l76h8   RUNNING      Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              48s
+# raycronjob-sample-l76h8   SUCCEEDED    Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              57s
+# raycronjob-sample-pct47                                                                                                      0s
+# raycronjob-sample-pct47                                                                                                      0s
+# raycronjob-sample-pct47                Initializing        raycronjob-sample-pct47-bdspj   2026-04-03T05:58:00Z              0s
+# raycronjob-sample-pct47                Initializing        raycronjob-sample-pct47-bdspj   2026-04-03T05:58:00Z              0s
+# raycronjob-sample-l76h8   SUCCEEDED    Complete            raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z   2026-04-03T05:58:02Z   62s
+# (Press Ctrl+C to stop watching once the job completes)
 ```
 
 ### Step 5: Verify the Output
 
-Once a generated `RayJob` completes, you can check the logs of the Ray job submitter or the head node to verify our Python script ran successfully:
+Once a generated `RayJob` completes, you can inspect the logs of the job submitter pod to verify that the Python script ran successfully:
 
-```bash
-# Find the specific pod running the job (usually named after the RayJob with a suffix)
-kubectl get pods -l ray.io/is-job-worker=true
+```shell
+# Step 5.1: Find the specific pod running the job (usually named after the RayJob with a suffix)
+kubectl get pods
+# [Example output]
+# NAME                                                     READY   STATUS      RESTARTS      AGE
+# kuberay-operator-7fc88c69f5-n2g5k                        1/1     Running     1 (12m ago)   45h
+# raycronjob-sample-gmsnw-d6n2r-head-hdtmt                 0/1     Pending     0             61s
+# raycronjob-sample-gmsnw-d6n2r-small-group-worker-nd56f   0/1     Init:0/1    0             61s
+# raycronjob-sample-l76h8-hjtrs-head-9b568                 1/1     Running     0             61s
+# raycronjob-sample-l76h8-hjtrs-small-group-worker-zgx89   1/1     Running     0             61s
+# raycronjob-sample-l76h8-w9flp                            0/1     Completed   0             30s
+# raycronjob-sample-pct47-bdspj-head-cdwwc                 0/1     Pending     0             1s
+# raycronjob-sample-pct47-bdspj-small-group-worker-9r7cm   0/1     Init:0/1    0             1s
 
-# Fetch the logs of the job pod
+# (Optional) Quickly filter completed pods
+# kubectl get pods | grep Completed
+
+# Step 5.2: Identify the job pod
+# Look for the pod with STATUS=Completed that corresponds to your RayJob
+# (This is the Ray job submitter pod)
+# In this example:
+# job-pod-name = raycronjob-sample-l76h8-w9flp
+
+# Step 5.3: Fetch the logs of the job pod
 kubectl logs <job-pod-name>
+# Example:
+# kubectl logs raycronjob-sample-l76h8-w9flp
+
+# [Example output]
+# 2026-04-02 22:57:35,742 INFO cli.py:41 -- Job submission server address: http://raycronjob-sample-l76h8-hjtrs-head-svc.default.svc.cluster.local:8265
+# 2026-04-02 22:57:36,709 SUCC cli.py:65 -- ----------------------------------------------------------
+# 2026-04-02 22:57:36,710 SUCC cli.py:66 -- Job 'raycronjob-sample-l76h8-hmjz2' submitted successfully
+# 2026-04-02 22:57:36,710 SUCC cli.py:67 -- ----------------------------------------------------------
+# 2026-04-02 22:57:36,710 INFO cli.py:291 -- Next steps
+# 2026-04-02 22:57:36,710 INFO cli.py:292 -- Query the logs of the job:
+# 2026-04-02 22:57:36,710 INFO cli.py:294 -- ray job logs raycronjob-sample-l76h8-hmjz2
+# 2026-04-02 22:57:36,710 INFO cli.py:296 -- Query the status of the job:
+# 2026-04-02 22:57:36,710 INFO cli.py:298 -- ray job status raycronjob-sample-l76h8-hmjz2
+# 2026-04-02 22:57:36,710 INFO cli.py:300 -- Request the job to be stopped:
+# 2026-04-02 22:57:36,710 INFO cli.py:302 -- ray job stop raycronjob-sample-l76h8-hmjz2
+# 2026-04-02 22:57:38,771 INFO cli.py:41 -- Job submission server address: http://raycronjob-sample-l76h8-hjtrs-head-svc.default.svc.cluster.local:8265
+# 2026-04-02 22:57:36,400 INFO job_manager.py:568 -- Runtime env is setting up.
+# Running entrypoint for job raycronjob-sample-l76h8-hmjz2: python /home/ray/samples/sample_code.py
+# 2026-04-02 22:57:46,654 INFO worker.py:1696 -- Using address 10.244.0.39:6379 set in the environment variable RAY_ADDRESS
+# 2026-04-02 22:57:46,659 INFO worker.py:1837 -- Connecting to existing Ray cluster at address: 10.244.0.39:6379...
+# 2026-04-02 22:57:46,681 INFO worker.py:2014 -- Connected to Ray cluster. View the dashboard at 10.244.0.39:8265 
+# /home/ray/anaconda3/lib/python3.10/site-packages/ray/_private/worker.py:2062: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+#   warnings.warn(
+# test_counter got 1
+# test_counter got 2
+# test_counter got 3
+# test_counter got 4
+# test_counter got 5
+# 2026-04-02 22:57:58,968 SUCC cli.py:65 -- ---------------------------------------------
+# 2026-04-02 22:57:58,968 SUCC cli.py:66 -- Job 'raycronjob-sample-l76h8-hmjz2' succeeded
+# 2026-04-02 22:57:58,968 SUCC cli.py:67 -- ---------------------------------------------
 ```
 
 ### Step 6: Clean Up
