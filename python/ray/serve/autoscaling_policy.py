@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
-    CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
     SERVE_LOGGER_NAME,
@@ -15,6 +14,12 @@ from ray.serve.config import AutoscalingConfig, AutoscalingContext
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Tolerance for delay elapsed-time comparisons.  Subtracting two large
+# time.time() values (or test fake clocks derived from tick counters) can
+# drift slightly below the true elapsed interval in IEEE 754 (e.g. 400.0s
+# configured delay may compare as 399.9999999999999 >= 400.0).
+_DELAY_ELAPSED_EPS_S = 1e-6
 
 
 def _apply_scaling_factors(
@@ -90,7 +95,7 @@ def _apply_delay_logic(
 
         # Only actually scale the replicas if enough wall-clock time has
         # elapsed since the first consecutive scale-up decision.
-        if now - decision_timestamp >= config.upscale_delay_s:
+        if now - decision_timestamp + _DELAY_ELAPSED_EPS_S >= config.upscale_delay_s:
             decision_counter = 0
             decision_timestamp = None
             decision_num_replicas = desired_num_replicas
@@ -122,7 +127,7 @@ def _apply_delay_logic(
 
         # Only actually scale the replicas if enough wall-clock time has
         # elapsed since the first consecutive scale-down decision.
-        if now - decision_timestamp >= delay_s:
+        if now - decision_timestamp + _DELAY_ELAPSED_EPS_S >= delay_s:
             decision_counter = 0
             decision_timestamp = None
             decision_num_replicas = desired_num_replicas
