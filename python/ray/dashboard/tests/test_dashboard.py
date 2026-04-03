@@ -1224,6 +1224,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     print("Starting dashboard process *with* port retries:", dashboard_cmd)
     conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
     try:
+
         def _new_dashboard_url_populated():
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
