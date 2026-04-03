@@ -518,7 +518,7 @@
   python: "3.10"
   matrix:
     setup:
-      data_size_gb: [50, 85, 120, 170, 256]
+      data_size_gb: [25, 50, 85, 120, 170, 256]
       num_partitions: [100, 200, 500, 1000]
       strategy: [actorless, actor]
 
