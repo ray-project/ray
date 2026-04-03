@@ -243,7 +243,7 @@
   team: ml
 
   cluster:
-    anyscale_sdk_2026: true
+    anyscale_sdk_2026: false
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -275,7 +275,7 @@
       env: gce
       frequency: manual
       cluster:
-        anyscale_sdk_2026: true
+        anyscale_sdk_2026: false
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -325,7 +325,7 @@
   team: ml
 
   cluster:
-    anyscale_sdk_2026: true
+    anyscale_sdk_2026: false
     byod:
       type: gpu
     cluster_compute: compute_gpu_4x4_aws.yaml
@@ -356,7 +356,7 @@
       env: gce
       frequency: manual
       cluster:
-        anyscale_sdk_2026: true
+        anyscale_sdk_2026: false
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual

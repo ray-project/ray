@@ -1,17 +1,22 @@
-cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
-zones:
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
     - us-west1-b
 
-head_node:
+max_workers: 3
+
+head_node_type:
+    name: head_node
     instance_type: n1-standard-64-nvidia-tesla-t4-4
 
-worker_nodes:
-    - instance_type: n1-standard-64-nvidia-tesla-t4-4
-      min_nodes: 3
-      max_nodes: 3
-      market_type: ON_DEMAND
+worker_node_types:
+    - name: worker_node
+      instance_type: n1-standard-64-nvidia-tesla-t4-4
+      max_workers: 3
+      min_workers: 3
+      use_spot: false
 
-advanced_instance_config:
+gcp_advanced_configurations_json:
   instance_properties:
     disks:
       - boot: true
