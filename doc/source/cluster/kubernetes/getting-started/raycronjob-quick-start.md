@@ -25,7 +25,7 @@ The `RayCronJob` CRD acts as an automated scheduler specifically designed to cre
   * `rayClusterSpec` - Defines the RayCluster custom resource to run the Ray job on.
   * `entrypoint` - The command to execute for the job.
   * `shutdownAfterJobFinishes` - Determines whether to recycle the RayCluster after the scheduled Ray job finishes.
-  * *Note: See the standard {ref}`RayJob Configuration <kuberay-rayjob-quickstart>` documentation for the complete list of supported fields within the `jobTemplate`.*
+  * *Note: See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.*
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
 
 ## How to Configure a RayCronJob
@@ -70,7 +70,7 @@ helm install kuberay-operator kuberay/kuberay-operator \
   --set "featureGates[0].name=RayCronJob" \
   --set "featureGates[0].enabled=true"
 ```
-For alternative installation methods, refer to {ref}`KubeRay Operator Installation <kuberay-operator-deploy>`, but ensure you append the feature gate configuration.
+For alternative installation methods, refer to [KubeRay Operator Installation](kuberay-operator-deploy), but ensure you append the feature gate configuration.
 
 ### Step 3: Install a RayCronJob
 
