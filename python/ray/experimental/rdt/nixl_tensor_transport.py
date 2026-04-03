@@ -1,3 +1,5 @@
+import functools
+import glob
 import logging
 import threading
 import time
@@ -22,6 +24,12 @@ if TYPE_CHECKING:
     import torch
 
 logger = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=1)
+def _is_efa_available() -> bool:
+    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present."""
+    return bool(glob.glob("/sys/class/net/efa*"))
 
 
 @dataclass
@@ -155,16 +163,22 @@ class NixlTensorTransport(TensorTransportManager):
         """
         self._remove_tensor_descs([tensor])
 
+    def select_backend(self) -> str:
+        """Uses LIBFABRIC backend on AWS instances with EFA, UCX otherwise."""
+        return "LIBFABRIC" if _is_efa_available() else "UCX"
+
     def get_nixl_agent(self):
         """
-        Creates a NIXL agent with UCX backend if not already created.
+        Creates a NIXL agent if not already created.
         """
         if self._nixl_agent is not None:
             return self._nixl_agent
 
         from nixl._api import nixl_agent, nixl_agent_config
 
-        agent_config = nixl_agent_config(backends=["UCX"])
+        backend = self.select_backend()
+        logger.info("Using NIXL backend: %s", backend)
+        agent_config = nixl_agent_config(backends=[backend])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         if actor_id is None:
@@ -596,6 +610,14 @@ class NixlTensorTransport(TensorTransportManager):
                         mem_type=mem_type,
                     )
                 except Exception as e:
+                    if "LIBFABRIC" in self._nixl_agent.backends:
+                        backend_hint = (
+                            "Set FI_LOG_LEVEL=Debug for detailed libfabric diagnostics."
+                        )
+                    else:
+                        backend_hint = (
+                            "Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        )
                     raise RuntimeError(
                         f"Failed to register {mem_type} memory with NIXL "
                         f"(size={tensor.untyped_storage().nbytes()} bytes, "
@@ -606,7 +628,7 @@ class NixlTensorTransport(TensorTransportManager):
                         f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
                         f"  - IOMMU enabled without passthrough mode\n"
                         f"  - Container cgroup memory restrictions\n"
-                        f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                        f"{backend_hint}"
                     ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
 

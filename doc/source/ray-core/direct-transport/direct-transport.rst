@@ -30,7 +30,7 @@ Currently, RDT supports the following tensor transports:
 
 1. `Gloo <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
 2. `NVIDIA NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__: A collective communication library for NVIDIA GPUs.
-3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs.
+3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__: A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs. Backed by `LIBFABRIC <https://ofiwg.github.io/libfabric/>`__ on AWS instances with `EFA <https://aws.amazon.com/hpc/efa/>`__, and `UCX <https://github.com/openucx/ucx>`__ everywhere else.
 
 For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
@@ -222,6 +222,15 @@ Note that you should also set these UCX environment variables to either let UCX 
    $ export UCX_TLS=all  # or specify specific transports like "rc,ud,sm,^cuda_ipc" ..etc
    $ export UCX_NET_DEVICES=all  # or specify network devices like "mlx5_0:1,mlx5_1:1"
 
+NIXL backend selection
+^^^^^^^^^^^^^^^^^^^^^^
+
+Ray automatically selects the NIXL transport backend based on the available hardware:
+
+- **AWS instances with EFA**: Ray detects EFA devices (through ``/sys/class/net/efa*``) and uses the ``LIBFABRIC`` backend if available.
+- **All other environments**: Ray uses the ``UCX`` backend.
+
+No configuration is required. On AWS EFA instances, make sure the `EFA installer <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html>`__ has been run, which installs both the EFA driver and libfabric.
 
 Walkthrough
 ^^^^^^^^^^^
