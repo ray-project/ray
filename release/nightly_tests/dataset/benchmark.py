@@ -43,9 +43,10 @@ class OperatorStatsTracker(ExecutionCallback):
         metrics = OperatorStatsTracker.collect()
     """
 
-    _op_start: Dict[str, float] = {}
-    _op_end: Dict[str, Optional[float]] = {}
-    _start_time: float
+    def __init__(self):
+        self._op_start: Dict[str, float] = {}
+        self._op_end: Dict[str, Optional[float]] = {}
+        self._start_time: float = 0
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
         self._start_time = time.time()
