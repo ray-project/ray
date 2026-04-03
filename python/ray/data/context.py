@@ -801,6 +801,14 @@ class DataContext:
         default_factory=list
     )
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Execution callbacks are only used on the driver (instantiated in the
+        # planner), never on workers. Exclude them from serialization to avoid
+        # requiring the defining module to be importable on workers.
+        state["custom_execution_callback_classes"] = []
+        return state
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
