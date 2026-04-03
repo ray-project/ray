@@ -198,14 +198,10 @@ class CapacityQueue:
             return replica_id
         except asyncio.TimeoutError:
             self._total_timeouts += 1
-            self._waiters = deque(
-                (f, t) for f, t in self._waiters if f is not future
-            )
+            self._waiters = deque((f, t) for f, t in self._waiters if f is not future)
             return None
         except asyncio.CancelledError:
-            self._waiters = deque(
-                (f, t) for f, t in self._waiters if f is not future
-            )
+            self._waiters = deque((f, t) for f, t in self._waiters if f is not future)
             raise
 
     def release(self, replica_id: str) -> None:
