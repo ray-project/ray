@@ -2402,38 +2402,6 @@
         cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
 
 
-- name: dask_on_ray_large_scale_test_spilling
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-    wait_for_nodes:
-      num_nodes: 21
-
-
-  smoke_test:
-    frequency: manual # was nightly
-    cluster:
-      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-
-    run:
-      timeout: 7200
-      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
-        70 --error_rate 0  --data_save_path /tmp/ray
-
-      wait_for_nodes:
-        num_nodes: 5
-
 - name: stress_test_state_api_scale
   python: "3.10"
   group: core-daily-test
@@ -3546,67 +3514,6 @@
       frequency: manual
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
-
-- name: chaos_dask_on_ray_large_scale_test_no_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
-      20 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
-- name: chaos_dask_on_ray_large_scale_test_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 #####################
 # Observability tests
