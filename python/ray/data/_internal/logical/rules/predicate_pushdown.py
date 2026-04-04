@@ -229,6 +229,19 @@ class PredicatePushdown(Rule):
                     f"got {len(input_op.input_dependencies)}"
                 )
 
+                # Block pushdown if the predicate references columns produced
+                # by this operator (e.g., Download's output_bytes_column_names).
+                if isinstance(input_op, Download):
+                    from ray.data._internal.planner.plan_expression.expression_visitors import (
+                        _ColumnReferenceCollector,
+                    )
+
+                    collector = _ColumnReferenceCollector()
+                    collector.visit(predicate_expr)
+                    pred_cols = set(collector.get_column_refs() or [])
+                    if pred_cols & set(input_op.output_bytes_column_names):
+                        return filter_op
+
                 # Apply column substitution if needed
                 if (
                     behavior

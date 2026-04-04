@@ -493,6 +493,24 @@ class TestPassthroughBehavior:
             optimized_plan, Filter, Download
         ), "Filter should be pushed before Download"
 
+    def test_filter_on_download_output_column_not_pushed(
+        self, ray_start_regular_shared
+    ):
+        """Filter on columns produced by Download should not push through."""
+        table = pa.Table.from_arrays(
+            [pa.array(["uri_0"]), pa.array([0])],
+            names=["uri", "id"],
+        )
+        base_ds = ray.data.from_arrow(table)
+        ds = base_ds.with_column("bytes", download("uri")).filter(
+            expr=col("bytes").is_not_null()
+        )
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_operator_comes_before(
+            optimized_plan, Download, Filter
+        ), "Filter on Download output columns must stay after Download"
+
 
 class TestPassthroughWithSubstitutionBehavior:
     """Tests for PASSTHROUGH_WITH_SUBSTITUTION behavior operators.
