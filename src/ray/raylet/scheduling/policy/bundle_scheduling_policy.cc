@@ -333,9 +333,9 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   }
 
   // Try each candidate node by allocating bundles one by one (per-bundle
-  // SubtractNodeAvailableResources). 
+  // SubtractNodeAvailableResources).
   // TODO: This avoids the aggregated-request problem and prepares for
-  // upcoming per-instance availability tracking, where a summed demand 
+  // upcoming per-instance availability tracking, where a summed demand
   // would be falsely rejected by strict per-instance capacity checks.
   auto try_allocate_all_bundles = [&](scheduling::NodeID node_id) -> bool {
     std::vector<const ResourceRequest *> allocated_requests;
@@ -352,10 +352,10 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     }
 
     for (const auto *request : allocated_requests) {
-      cluster_resource_manager_.AddNodeAvailableResources(
-          node_id, request->GetResourceSet());
+      cluster_resource_manager_.AddNodeAvailableResources(node_id,
+                                                          request->GetResourceSet());
     }
-    
+
     return true;
   };
 
