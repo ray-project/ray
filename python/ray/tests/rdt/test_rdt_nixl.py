@@ -605,10 +605,6 @@ def test_register_deregister_nixl_memory(ray_start_regular):
     transport.deregister_nixl_memory(tensor)
     assert key not in transport._tensor_desc_cache
 
-    # Calling deregister on an unregistered tensor should raise ValueError
-    with pytest.raises(ValueError, match="not registered with NIXL"):
-        transport.deregister_nixl_memory(tensor)
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
