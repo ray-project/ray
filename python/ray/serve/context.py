@@ -149,9 +149,6 @@ def _set_ongoing_requests_callbacks(inc_callback, dec_callback):
     _DEC_NUM_ONGOING_REQUESTS_CALLBACK = dec_callback
 
 
-_ongoing_debug_counter = 0
-
-
 def inc_num_ongoing_requests():
     """Increment the ongoing request count for this replica.
 
@@ -159,17 +156,8 @@ def inc_num_ongoing_requests():
     The count is visible to the request router's `get_num_ongoing_requests()`
     probe, enabling load-aware routing decisions for bypassed requests.
     """
-    global _ongoing_debug_counter
-    _ongoing_debug_counter += 1
     if _INC_NUM_ONGOING_REQUESTS_CALLBACK is not None:
         _INC_NUM_ONGOING_REQUESTS_CALLBACK()
-    if _ongoing_debug_counter <= 3:
-        import logging
-
-        logging.getLogger("ray.serve").info(
-            f"inc_num_ongoing_requests called (total={_ongoing_debug_counter}, "
-            f"callback={'SET' if _INC_NUM_ONGOING_REQUESTS_CALLBACK else 'NONE'})"
-        )
 
 
 def dec_num_ongoing_requests():
