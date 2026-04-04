@@ -11,6 +11,7 @@ from packaging.version import parse as version_parse
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.operators import (
+    Download,
     Filter,
     Limit,
     Project,
@@ -19,7 +20,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
-from ray.data.expressions import col
+from ray.data.expressions import col, download
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -468,6 +469,29 @@ class TestPassthroughBehavior:
         assert plan_operator_comes_before(
             optimized_plan, Filter, Sort
         ), "Fused filter should come before Sort"
+
+    def test_filter_pushes_through_download(self, ray_start_regular_shared):
+        """Filter should push through Download operator."""
+        table = pa.Table.from_arrays(
+            [
+                pa.array(["uri_0", "uri_1", "uri_2"]),
+                pa.array(range(3)),
+            ],
+            names=["uri", "id"],
+        )
+        base_ds = ray.data.from_arrow(table)
+        ds = base_ds.with_column("bytes", download("uri")).filter(expr=col("id") < 2)
+
+        # Verify plan optimization only (skip execution — Download creates an
+        # actor pool pipeline that deadlocks with limited test resources).
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert plan_has_operator(optimized_plan, Filter), "Filter should exist"
+        assert plan_has_operator(
+            optimized_plan, Download
+        ), "Download should remain in plan"
+        assert plan_operator_comes_before(
+            optimized_plan, Filter, Download
+        ), "Filter should be pushed before Download"
 
 
 class TestPassthroughWithSubstitutionBehavior:

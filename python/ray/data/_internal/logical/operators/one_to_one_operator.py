@@ -124,7 +124,7 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Download(AbstractOneToOne):
+class Download(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for download operation.
 
     Supports downloading from multiple URI columns in a single operation.
@@ -167,3 +167,9 @@ class Download(AbstractOneToOne):
                 filesystem=self.filesystem,
             )
         return transform(target)
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Download only adds new columns (output_bytes_column_names) from URI columns.
+        # It doesn't modify or remove existing columns, so filters on existing
+        # columns can safely pass through.
+        return PredicatePassThroughBehavior.PASSTHROUGH

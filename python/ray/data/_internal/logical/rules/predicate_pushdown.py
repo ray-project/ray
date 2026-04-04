@@ -10,7 +10,13 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import AbstractMap, Filter, Limit, Project
+from ray.data._internal.logical.operators import (
+    AbstractMap,
+    Download,
+    Filter,
+    Limit,
+    Project,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -321,6 +327,15 @@ class PredicatePushdown(Rule):
         if isinstance(op, Limit):
             assert len(new_inputs) == 1, len(new_inputs)
             return Limit(new_inputs[0], op.limit)
+        if isinstance(op, Download):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return Download(
+                new_inputs[0],
+                uri_column_names=op.uri_column_names,
+                output_bytes_column_names=op.output_bytes_column_names,
+                ray_remote_args=op.ray_remote_args,
+                filesystem=op.filesystem,
+            )
         if isinstance(op, AbstractMap) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
             return replace(op, input_op=new_inputs[0])
