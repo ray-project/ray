@@ -164,6 +164,7 @@ message ActorTableData {
   uint64 num_restarts_due_to_node_preemption = 36;
   // The key-value labels for actor.
   map<string, string> labels = 37;
+  optional FallbackStrategy fallback_strategy = 38;
 }
 
 message ErrorTableData {
@@ -537,13 +538,6 @@ message ResourcesData {
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
   bool object_pulls_queued = 10;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 11;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 12;
-  // The timestamp that normal task resources are measured.
-  int64 resources_normal_task_timestamp = 13;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
@@ -687,6 +681,13 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // Tracks the selected label domain values for label-domain-aware scheduling.
+  // Key is the node label key (e.g. "ray.io/gpu-domain"), value is the selected
+  // domain value (e.g. "rack-1").
+  map<string, string> label_domain_assignments = 17;
+  // The node label key that identifies the label domain for this placement group
+  // (e.g. "ray.io/gpu-domain"). Empty if the PG does not use label-domain scheduling.
+  string label_domain_key = 18;
 }
 
 message JobTableData {

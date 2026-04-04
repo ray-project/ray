@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -8,10 +8,11 @@ from ray._private.accelerators.tpu import (
     VALID_TPU_TYPES,
     get_chips_per_host,
     get_num_chips_from_topology,
+    infer_tpu_pod_type_from_topology,
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -222,6 +223,187 @@ def get_tpu_coordinator_env_vars(
 
 
 @PublicAPI(stability="alpha")
+def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
+    """Returns the TPU slice name for a given Ray node dictionary.
+
+    Args:
+        node: A dictionary representing a Ray node (returned by ray.nodes()).
+
+    Returns:
+        The TPU slice name if the node belongs to a slice, otherwise None.
+    """
+    return node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+
+
+@PublicAPI(stability="alpha")
+def get_tpu_nodes_for_slice(
+    slice_name: str, nodes: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """Returns all alive Ray nodes belonging to the specified TPU slice.
+
+    Args:
+        slice_name: The TPU slice name to filter by.
+        nodes: Optional list of Ray node dictionaries. If not provided,
+            it will be fetched via `ray.nodes()` from GCS.
+
+    Returns:
+        A list of node dictionaries that are alive and belong to the specified TPU slice.
+    """
+    if nodes is None:
+        if not ray.is_initialized():
+            return []
+        nodes = ray.nodes()
+
+    return [
+        node
+        for node in nodes
+        if node.get("Alive") and get_tpu_slice_name_from_node(node) == slice_name
+    ]
+
+
+@PublicAPI(stability="alpha")
+def get_num_ready_tpu_slices(
+    topology: str,
+    accelerator_type: str,
+) -> int:
+    """
+    Checks the cluster state to determine how many full TPU slices of the
+    specified topology are currently intact and available.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_type: The accelerator type string (e.g. "TPU-V6E").
+
+    Returns:
+        The integer count of fully ready and available TPU slices.
+    """
+    if not ray.is_initialized():
+        return 0
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        if not pod_type:
+            return 0
+
+        total_chips_expected = get_num_chips_from_topology(topology)
+        if total_chips_expected <= 0:
+            return 0
+
+    except Exception as e:
+        logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
+        return 0
+
+    # Fetch live resource usage via the State API to ensure slices are idle.
+    from ray._private.state import available_resources_per_node
+
+    node_avail_resources = available_resources_per_node()
+
+    slice_to_nodes = {}
+    for node in ray.nodes():
+        # Build a mapping of currently alive Ray nodes and the TPU slice they belong to.
+        if node.get("Alive"):
+            labels = node.get("Labels", {})
+            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
+                slice_name = get_tpu_slice_name_from_node(node)
+                if slice_name:
+                    slice_to_nodes.setdefault(slice_name, []).append(node)
+
+    ready_and_available_slices = 0
+    for slice_name, nodes in slice_to_nodes.items():
+        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
+
+        # Validate the slice has all its physical chips.
+        if slice_tpu_chips != total_chips_expected:
+            continue
+
+        # TPU slices must have a head worker (rank 0).
+        has_head = any(
+            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if not has_head:
+            continue
+
+        # Validate all nodes in this slice are completely idle to avoid
+        # scheduling on multi-tenant slices currently in use.
+        slice_is_idle = True
+        for n in nodes:
+            node_id = n.get("NodeID")
+            total_tpus = n.get("Resources", {}).get("TPU", 0)
+
+            # If the node is in ray.nodes() but hasn't heartbeated its State to GCS
+            # yet, we default to assuming it's available since this means it was
+            # just provisioned.
+            avail_tpus = node_avail_resources.get(node_id, {}).get("TPU", total_tpus)
+
+            # If available TPUs < total TPUs on this specific node, it is in use
+            if avail_tpus < total_tpus:
+                slice_is_idle = False
+                break
+
+        if slice_is_idle:
+            ready_and_available_slices += 1
+
+    return ready_and_available_slices
+
+
+@DeveloperAPI
+def get_num_tpu_slices(
+    topology: str,
+    accelerator_type: str,
+) -> int:
+    """
+    Checks the cluster state to determine how many full TPU slices of the
+    specified topology are physically intact (all hosts alive with the
+    expected chip count).
+
+    Unlike :func:`get_num_ready_tpu_slices`, this does NOT check whether the
+    slices are idle. A slice is counted as long as every host in it is alive
+    and the total chip count matches the topology.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_type: The accelerator type string (e.g. "TPU-V6E").
+
+    Returns:
+        The integer count of physically intact TPU slices.
+    """
+    if not ray.is_initialized():
+        return 0
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        total_chips_expected = get_num_chips_from_topology(topology)
+    except Exception as e:
+        logger.warning(f"Failed to parse TPU topology for integrity check: {e}")
+        return 0
+
+    if not pod_type or total_chips_expected <= 0:
+        return 0
+
+    slice_to_nodes = {}
+    for node in ray.nodes():
+        if node.get("Alive"):
+            labels = node.get("Labels", {})
+            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
+                slice_name = get_tpu_slice_name_from_node(node)
+                if slice_name:
+                    slice_to_nodes.setdefault(slice_name, []).append(node)
+
+    intact_slices = 0
+    for slice_name, nodes in slice_to_nodes.items():
+        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
+        has_head = any(
+            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if slice_tpu_chips == total_chips_expected and has_head:
+            intact_slices += 1
+
+    return intact_slices
+
+
+@PublicAPI(stability="alpha")
 class SlicePlacementGroup:
     """
     A handle to a placement group reservation for a TPU slice.
@@ -293,7 +475,9 @@ class SlicePlacementGroup:
         num_slices: int = 1,
     ):
         self._topology = topology.strip().lower()
-        self._accelerator_version = accelerator_version.strip().lower()
+        self._accelerator_version = get_tpu_version_from_type(
+            accelerator_version.strip()
+        )
         self._resources_per_bundle = resources_per_bundle or {}
         self._num_slices = num_slices
 
@@ -325,16 +509,9 @@ class SlicePlacementGroup:
             lifetime,
         )
 
-    def _accelerator_version_check(self, accelerator_version: str):
-        if accelerator_version not in VALID_TPU_TYPES:
-            raise ValueError(
-                f"Invalid accelerator version: {accelerator_version}. Must be one of: {VALID_TPU_TYPES}"
-            )
-
     def _validate_tpu_config(self):
         # Should validate topology and generation values and return a
         # ValueError if invalid.
-        self._accelerator_version_check(self.accelerator_version)
         if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
             tpu_accelerator_version=self.accelerator_version,
             tpu_topology=self._topology,

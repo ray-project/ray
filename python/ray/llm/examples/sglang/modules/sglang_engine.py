@@ -1,3 +1,11 @@
+"""SGLang engine integration for Ray Serve LLM.
+
+This module is a demonstration and reference implementation only.
+It is not actively maintained and is not part of Ray's officially supported
+feature set. For community SGLang support status, see:
+https://github.com/ray-project/ray/issues/61114
+"""
+
 import copy
 import json
 import signal
@@ -11,17 +19,26 @@ from typing import (
     Union,
 )
 
+from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingCompletionRequest,
     EmbeddingRequest,
     EmbeddingResponse,
+    TokenizeCompletionRequest,
+    TokenizeRequest,
+    TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.core.server.llm_server import (
+    _merge_replica_actor_and_child_actor_bundles,
+)
 
 
 class SGLangServer:
@@ -109,11 +126,14 @@ class SGLangServer:
         return converted_messages
 
     @staticmethod
-    def _build_chat_template_kwargs(request: ChatCompletionRequest) -> dict[str, Any]:
+    def _build_chat_template_kwargs(request: Any) -> dict[str, Any]:
         """
         Build optional chat-template kwargs using request fields when present.
         This mirrors SGLang's chat-serving pipeline semantics without directly
         coupling to its internal server classes.
+
+        Works with both ChatCompletionRequest and TokenizeChatRequest since
+        both expose tools and chat_template_kwargs fields.
         """
         kwargs: dict[str, Any] = {}
 
@@ -133,25 +153,30 @@ class SGLangServer:
 
     def _render_chat_prompt(
         self,
-        request: ChatCompletionRequest,
         messages: List[dict[str, Any]],
+        add_generation_prompt: bool = True,
+        template_kwargs: Optional[dict[str, Any]] = None,
     ) -> str:
         tokenizer = self.engine.tokenizer_manager.tokenizer
         # SGLang supports --skip-tokenizer-init, where tokenizer is intentionally
         # None and text prompt rendering is not available.
         if tokenizer is None:
-            return self._render_fallback_prompt(messages)
+            return self._render_fallback_prompt(
+                messages, add_generation_prompt=add_generation_prompt
+            )
 
-        template_kwargs = self._build_chat_template_kwargs(request)
         return tokenizer.apply_chat_template(
             messages,
             tokenize=False,
-            add_generation_prompt=True,
-            **template_kwargs,
+            add_generation_prompt=add_generation_prompt,
+            **(template_kwargs or {}),
         )
 
     @staticmethod
-    def _render_fallback_prompt(messages: List[dict[str, Any]]) -> str:
+    def _render_fallback_prompt(
+        messages: List[dict[str, Any]],
+        add_generation_prompt: bool = True,
+    ) -> str:
         # Fallback prompt format for tokenizers without chat-template support.
         prompt_lines: List[str] = []
         for message in messages:
@@ -160,7 +185,8 @@ class SGLangServer:
             if content is None:
                 content = ""
             prompt_lines.append(f"{role}: {content}")
-        prompt_lines.append("assistant:")
+        if add_generation_prompt:
+            prompt_lines.append("assistant:")
         return "\n".join(prompt_lines)
 
     async def start(self) -> None:
@@ -221,13 +247,27 @@ class SGLangServer:
     async def _generate_and_extract_metadata(
         self,
         request: Any,
-        prompt: Any,
-    ) -> dict[str, Any]:
+        prompt: Union[str, List[str]],
+    ) -> Union[dict[str, Any], List[dict[str, Any]]]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
+
+        Accepts either a single prompt string or a list of prompts. When a list
+        is provided, all prompts are sent to SGLang in one batched call, letting
+        SGLang's scheduler handle concurrency natively via async_generate.
         """
         raw = await self._generate_raw(request, prompt)
+
+        # Batch case — SGLang returns a list of results, one per prompt
+        if isinstance(prompt, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            return [self._extract_generation_metadata(r) for r in raw]
+
+        # Single prompt case
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
@@ -289,7 +329,10 @@ class SGLangServer:
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         chat_messages = self._build_chat_messages(request.messages)
-        prompt = self._render_chat_prompt(request, chat_messages)
+        template_kwargs = self._build_chat_template_kwargs(request)
+        prompt = self._render_chat_prompt(
+            chat_messages, template_kwargs=template_kwargs
+        )
 
         if request.stream:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
@@ -374,18 +417,15 @@ class SGLangServer:
                     )
             return
 
+        results = await self._generate_and_extract_metadata(request, prompts_to_process)
+
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        last_metadata = {}
 
-        for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata
-
+        for index, metadata in enumerate(results):
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
-
             choice_data = {
                 "index": index,
                 "text": metadata["text"],
@@ -399,6 +439,8 @@ class SGLangServer:
             "completion_tokens": total_completion_tokens,
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
+
+        last_metadata = results[-1]
 
         resp = CompletionResponse(
             id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
@@ -467,6 +509,61 @@ class SGLangServer:
 
         yield resp
 
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[TokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The tokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+
+        if isinstance(request, TokenizeCompletionRequest):
+            prompt = request.prompt
+        else:
+            # Chat tokenize request - render messages to prompt string
+            chat_messages = self._build_chat_messages(request.messages)
+            add_generation_prompt = getattr(request, "add_generation_prompt", True)
+            template_kwargs = self._build_chat_template_kwargs(request)
+            prompt = self._render_chat_prompt(
+                chat_messages,
+                add_generation_prompt=add_generation_prompt,
+                template_kwargs=template_kwargs,
+            )
+
+        add_special_tokens = getattr(request, "add_special_tokens", True)
+        tokens = tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
+
+        max_model_len = (
+            getattr(self.engine.tokenizer_manager, "context_len", None)
+            or getattr(self.engine.server_args, "context_length", None)
+            or 0
+        )
+
+        yield TokenizeResponse(
+            tokens=tokens,
+            count=len(tokens),
+            max_model_len=max_model_len,
+        )
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[DetokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The detokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+        prompt = tokenizer.decode(request.tokens)
+
+        yield DetokenizeResponse(text=prompt)
+
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
 
@@ -475,12 +572,37 @@ class SGLangServer:
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+        num_devices = tp_size * pp_size
+
+        if tp_size < 1 or pp_size < 1:
+            raise ValueError(
+                f"Invalid configuration: tp_size={tp_size} and pp_size={pp_size}. "
+                f"Both must be >= 1."
+            )
 
         if "placement_group_bundles" not in pg_config:
-            pg_bundles = [{"CPU": 1, "GPU": 1}]
-            if tp_size > 1:  # TO DO: to support tp_size > 1 cases
-                pg_bundles.extend([{"GPU": 1} for _ in range(tp_size - 1)])
+            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
+
+            replica_bundle = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+            }
+
+            if ray_actor_options.get("num_gpus"):
+                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+
+            replica_bundle.update(ray_actor_options.get("resources", {}))
+
+            if "memory" in ray_actor_options:
+                replica_bundle["memory"] = ray_actor_options["memory"]
+
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                child_actor_bundles=child_bundles,
+                replica_actor_bundle=replica_bundle,
+            )
             pg_strategy = "PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
@@ -493,15 +615,13 @@ class SGLangServer:
             }
         )
 
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
 
-        # set as default without checking ENABLE_WORKER_PROCESS_SETUP_HOOK
-        runtime_env.setdefault(
-            "worker_process_setup_hook",
-            "ray.llm._internal.serve._worker_process_setup_hook",
-        )
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            runtime_env.setdefault(
+                "worker_process_setup_hook",
+                "ray.llm._internal.serve._worker_process_setup_hook",
+            )
 
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)

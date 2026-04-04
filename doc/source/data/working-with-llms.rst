@@ -399,6 +399,21 @@ Then reference the remote path in your config:
     :start-after: __s3_config_example_start__
     :end-before: __s3_config_example_end__
 
+
+C/C++ runtime dependencies incompatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. admonition:: Known issue
+
+   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
+   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
+
+   In such cases, configure ``LD_LIBRARY_PATH`` to prefer the conda environment's libraries over system libraries.
+
+   .. code-block:: shell
+
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
 .. _resiliency:
 
 Resiliency
@@ -470,7 +485,10 @@ Ray Data LLM supports cross-node parallelism, including tensor parallelism and p
     :start-after: __cross_node_parallelism_config_example_start__
     :end-before: __cross_node_parallelism_config_example_end__
 
-You can customize the placement group strategy to control how Ray places vLLM engine workers across nodes. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
+You can customize the placement group configuration to control how Ray places vLLM engine workers across nodes. Use ``bundle_per_worker`` for basic per-worker resource specification (auto-replicated based on TP*PP), or ``bundles`` for full control over individual bundles. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
+
+.. note::
+   In each bundle dict, omitted ``CPU`` or ``GPU`` keys are treated as **0**. Specify the resources each worker needs explicitly.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python

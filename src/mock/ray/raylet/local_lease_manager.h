@@ -74,7 +74,6 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               ReturnCpuResourcesToUnblockedWorker,
               (std::shared_ptr<WorkerInterface> worker),
               (override));
-  MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
   MOCK_METHOD(void, RecordMetrics, (), (const, override));
   MOCK_METHOD(SchedulerMetrics &, GetSchedulerMetrics, (), (const, override));
   MOCK_METHOD(void, DebugStr, (std::stringstream & buffer), (const, override));

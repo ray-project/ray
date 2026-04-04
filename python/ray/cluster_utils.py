@@ -125,10 +125,12 @@ class AutoscalingCluster:
         if override_env:
             env.update(override_env)
         subprocess.check_call(cmd, env=env)
+        ray._private.services.find_gcs_addresses.cache_clear()
 
     def shutdown(self):
         """Terminate the cluster."""
         subprocess.check_call(["ray", "stop", "--force"])
+        ray._private.services.find_gcs_addresses.cache_clear()
 
 
 @DeveloperAPI
@@ -413,3 +415,4 @@ class Cluster:
         ray.experimental.internal_kv._internal_kv_reset()
         # Delete the cluster address.
         ray._common.utils.reset_ray_address()
+        ray._private.services.find_gcs_addresses.cache_clear()

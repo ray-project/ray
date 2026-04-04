@@ -238,23 +238,25 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
-        # _map_transformer_ref is lazily initialized on first access.
-        # This ensures on_start callback (if registered) can modify the transformer
-        # before serialization (e.g., for Iceberg schema evolution).
-        self.__map_transformer_ref = None
 
-    @property
-    def _map_transformer_ref(self):
+    @functools.cached_property
+    def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
         """Lazily serialize _map_transformer to object store on first access.
 
         Deferred until first task submission so that on_start callbacks
         (e.g., on_write_start for Iceberg) can modify the transformer state
         before serialization.
         """
-        if self.__map_transformer_ref is None:
-            self.__map_transformer_ref = ray.put(self._map_transformer)
-            self._warn_large_udf()
-        return self.__map_transformer_ref
+        # _map_transformer_ref is lazily initialized on first access.
+        # This ensures on_start callback (if registered) can modify the transformer
+        # before serialization (e.g., for Iceberg schema evolution).
+        ref = ray.put(self._map_transformer)
+        self._warn_large_udf(ref)
+        return ref
+
+    @functools.cached_property
+    def _data_context_ref(self) -> ObjectRef[DataContext]:
+        return ray.put(self.data_context)
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -468,11 +470,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Store the potentially modified map_transformer for later use
         self._map_transformer = map_transformer
 
-    def _warn_large_udf(self):
+    def _warn_large_udf(self, udf: ObjectRef[MapTransformer]):
         """Print a warning if the UDF is too large."""
-        udf_size = ray.experimental.get_local_object_locations(
-            [self.__map_transformer_ref]
-        )[self.__map_transformer_ref]["object_size"]
+        udf_size = ray.experimental.get_local_object_locations([udf])[udf][
+            "object_size"
+        ]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "
@@ -760,26 +762,30 @@ def _map_task(
                 block_meta = BlockAccessor.for_block(block).get_metadata()
                 block_schema = BlockAccessor.for_block(block).schema()
 
-                # Derive block execution stats
-                blk_exec_stats = blk_exec_stats_builder.build()
+                # Finish processing before yielding the block!
+                blk_exec_stats_builder.finish()
+
                 # Yield block and retrieve its Ray object serialization timing
                 gen_stats: StreamingGeneratorStats = yield block
-                if gen_stats:
-                    blk_exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
 
-                blk_exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
-                blk_exec_stats.task_idx = ctx.task_idx
-                blk_exec_stats.max_uss_bytes = profiler.estimate_max_uss()
+                exec_stats = blk_exec_stats_builder.build(
+                    block_ser_time_s=(
+                        gen_stats.object_creation_dur_s if gen_stats else None
+                    ),
+                    udf_time_s=map_transformer.udf_time_s(reset=True),
+                    task_idx=ctx.task_idx,
+                    max_uss_bytes=profiler.estimate_max_uss(),
+                )
 
                 # NOTE: This tracks task duration up to this point, though we're primarily
                 #       interested in task total duration
                 # TODO figure out a better way to track task total duration
                 task_dur_s = time.perf_counter() - task_start_s
 
-                yield BlockMetadataWithSchema(
-                    metadata=replace(
+                yield BlockMetadataWithSchema.from_metadata(
+                    replace(
                         block_meta,
-                        exec_stats=blk_exec_stats,
+                        exec_stats=exec_stats,
                         task_exec_stats=TaskExecWorkerStats(
                             task_wall_time_s=task_dur_s
                         ),
