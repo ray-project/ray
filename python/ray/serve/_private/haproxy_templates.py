@@ -84,18 +84,16 @@ frontend http_frontend
     option http-buffer-request
     acl is_streaming_path path /v1/chat/completions /v1/completions
     http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
+    # Override TCP destination to the Lua-selected server. HAProxy's native
+    # balance algorithm still runs (assign_server is NOT bypassed), preserving
+    # connection-aware scheduling. set-dst only changes the actual TCP address.
+    http-request set-dst var(txn.dst_ip) if { var(txn.custom_request_routed) -m found }
+    http-request set-dst-port var(txn.dst_port) if { var(txn.custom_request_routed) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
-    {%- if backend.custom_request_routing %}
-    # Route custom-routed streaming requests to a dedicated backend so HAProxy
-    # resolves the selected replica with a direct use-server match from
-    # txn.direct_ingress_target. Sending these requests through the generic
-    # per-app backend changed the post-Lua request path and regressed TTFT.
-    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
-    {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
@@ -145,46 +143,6 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
-{%- if backend.custom_request_routing %}
-backend {{ backend.name or 'unknown' }}-custom-routed
-    log global
-    http-reuse always
-    {%- if backend.timeout_connect_s is not none %}
-    timeout connect {{ backend.timeout_connect_s }}s
-    {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
-    timeout server {{ backend.timeout_server_s }}s
-    {%- endif %}
-    {%- if backend.timeout_client_s is not none %}
-    timeout client {{ backend.timeout_client_s }}s
-    {%- endif %}
-    {%- if backend.timeout_http_request_s is not none %}
-    timeout http-request {{ backend.timeout_http_request_s }}s
-    {%- endif %}
-    {%- if backend.timeout_queue_s is not none %}
-    timeout queue {{ backend.timeout_queue_s }}s
-    {%- endif %}
-    {%- if backend.timeout_http_keep_alive_s is not none %}
-    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
-    {%- endif %}
-    {%- if backend.timeout_tunnel_s is not none %}
-    timeout tunnel {{ backend.timeout_tunnel_s }}s
-    {%- endif %}
-    {%- if hc.health_path %}
-    option httpchk GET {{ hc.health_path }}
-    http-check expect status 200
-    {%- endif %}
-    {{ hc.default_server_directive }}
-    {%- for server in backend.servers %}
-    use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
-    {%- endfor %}
-    {%- for server in backend.servers %}
-    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check
-    {%- endfor %}
-    {%- if backend.fallback_server %}
-    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
-    {%- endif %}
-{%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}

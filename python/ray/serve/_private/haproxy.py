@@ -309,6 +309,10 @@ class BackendConfig:
     # Whether this backend should use the direct ingress custom request routing path.
     custom_request_routing: bool = False
 
+    # Per-server connection limit for the custom-routed backend.
+    # When set, HAProxy queues excess requests instead of forwarding them all.
+    max_server_conns: Optional[int] = None
+
     # Router replica used for /internal/route requests for this backend.
     router_server: Optional[ServerConfig] = None
 
@@ -842,7 +846,11 @@ local function do_request(router, body)
     return response
 end
 
+local DISABLE_ROUTING_PATH = "/tmp/ray-serve-disable-ingress-bypass-routing"
+
 core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
+    local f = io.open(DISABLE_ROUTING_PATH, "r")
+    if f then f:close() return end
     local path = txn.sf:path()
     local router = find_router(path)
     if not router then
@@ -872,8 +880,13 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
     local port = response:match('"port"%s*:%s*(%d+)')
 
     if host and port then
-        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        txn:set_var("txn.direct_ingress_target", routing_key)
+        -- Use set-dst approach: set destination address variables.
+        -- HAProxy's assign_server() still runs (native balance algorithm),
+        -- but set-dst/set-dst-port override the actual TCP destination.
+        -- This preserves HAProxy's connection scheduling intelligence
+        -- while routing to the custom-selected server.
+        txn:set_var("txn.dst_ip", host)
+        txn:set_var("txn.dst_port", port)
         txn:set_var("txn.custom_request_routed", true)
     end
 end, 0)
@@ -1467,6 +1480,7 @@ class HAProxyManager(ProxyActorInterface):
             servers=servers,
             router_servers=router_servers,
             custom_request_routing=custom_request_routing,
+            max_server_conns=None,
             router_server=router_server,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
