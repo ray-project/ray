@@ -140,9 +140,18 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
     const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
   result.reserve(task_locators.size());
+  absl::flat_hash_set<const rpc::TaskEvents *> selected_task_events;
+  selected_task_events.reserve(task_locators.size());
   for (const auto &task_attempt_loc : task_locators) {
-    // Copy the task event to the output.
-    result.push_back(task_attempt_loc->GetTaskEventsMutable());
+    selected_task_events.insert(&task_attempt_loc->GetTaskEventsMutable());
+  }
+  for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
+    for (auto itr = task_events_list_[i].rbegin(); itr != task_events_list_[i].rend();
+         ++itr) {
+      if (selected_task_events.contains(&*itr)) {
+        result.push_back(*itr);
+      }
+    }
   }
 
   return result;
@@ -541,14 +550,14 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 
   absl::flat_hash_set<ActorID> equal_actor_ids;
   for (const auto &actor_filter_obj : filters.actor_filters()) {
+    const auto &actor_id_binary = actor_filter_obj.actor_id();
+    if (actor_id_binary.size() != ActorID::Size()) {
+      status = Status::InvalidArgument("Invalid actor id size");
+      reply->Clear();
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      return;
+    }
     if (actor_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-      const auto &actor_id_binary = actor_filter_obj.actor_id();
-      if (!actor_id_binary.empty() && actor_id_binary.size() != ActorID::Size()) {
-        status = Status::InvalidArgument("Invalid actor id size");
-        reply->Clear();
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-        return;
-      }
       equal_actor_ids.insert(ActorID::FromBinary(actor_id_binary));
     }
   }
@@ -758,24 +767,25 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (filters.actor_filters_size() > 0) {
-      if (!std::all_of(filters.actor_filters().begin(),
-                       filters.actor_filters().end(),
-                       [&task_event](const auto &actor_filter) {
-                         const auto &task_actor_binary =
-                             task_event.task_info().actor_id();
-                         if (!task_actor_binary.empty() &&
-                             task_actor_binary.size() != ActorID::Size()) {
-                           return false;
-                         }
-                         const auto &filter_actor_binary = actor_filter.actor_id();
-                         if (!filter_actor_binary.empty() &&
-                             filter_actor_binary.size() != ActorID::Size()) {
-                           throw std::invalid_argument("Invalid actor id size");
-                         }
-                         return apply_predicate(ActorID::FromBinary(task_actor_binary),
-                                                actor_filter.predicate(),
-                                                ActorID::FromBinary(filter_actor_binary));
-                       })) {
+      if (!std::all_of(
+              filters.actor_filters().begin(),
+              filters.actor_filters().end(),
+              [&task_event](const auto &actor_filter) {
+                const auto &task_actor_binary = task_event.task_info().actor_id();
+                if (!task_actor_binary.empty() &&
+                    task_actor_binary.size() != ActorID::Size()) {
+                  return false;
+                }
+                const auto &filter_actor_binary = actor_filter.actor_id();
+                if (filter_actor_binary.size() != ActorID::Size()) {
+                  throw std::invalid_argument("Invalid actor id size");
+                }
+                return apply_predicate(task_actor_binary.empty()
+                                           ? ActorID::Nil()
+                                           : ActorID::FromBinary(task_actor_binary),
+                                       actor_filter.predicate(),
+                                       ActorID::FromBinary(filter_actor_binary));
+              })) {
         return false;
       }
     }

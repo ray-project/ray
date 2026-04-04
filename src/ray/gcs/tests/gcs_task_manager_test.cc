@@ -1264,6 +1264,79 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                         StatusCode::InvalidArgument);
 }
 
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsInvalidEmptyActorFilter) {
+  rpc::GetTaskEventsRequest request;
+  rpc::GetTaskEventsReply reply;
+  std::promise<bool> promise;
+
+  auto actor_filter = request.mutable_filters()->add_actor_filters();
+  actor_filter->set_predicate(rpc::FilterPredicate::EQUAL);
+
+  io_context_->GetIoService().dispatch(
+      [this, &promise, &request, &reply]() {
+        task_manager->HandleGetTaskEvents(
+            request,
+            &reply,
+            [&promise](Status, std::function<void()>, std::function<void()>) {
+              promise.set_value(true);
+            });
+      },
+      "TestGetTaskEventsInvalidEmptyActorFilter");
+
+  promise.get_future().get();
+
+  EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::InvalidArgument);
+}
+
+TEST_F(GcsTaskManagerTest, TestGetTaskEventsIndexedFiltersPreserveRecencyWithLimit) {
+  const auto actor_id = ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1);
+  const auto task_info = GenTaskInfo(JobID::FromInt(1),
+                                     TaskID::Nil(),
+                                     rpc::TaskType::ACTOR_TASK,
+                                     actor_id,
+                                     "indexed_task");
+  const auto task_ids = GenTaskIDs(3);
+
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({task_ids[0]},
+                                      0,
+                                      1,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 1}}),
+                                      task_info)));
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({task_ids[1]},
+                                      0,
+                                      1,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::RUNNING, 2}}),
+                                      task_info)));
+  SyncAddTaskEventData(
+      GenTaskEventsData(GenTaskEvents({task_ids[2]},
+                                      0,
+                                      1,
+                                      absl::nullopt,
+                                      GenStateUpdate({{rpc::TaskStatus::FINISHED, 3}}),
+                                      task_info)));
+
+  auto reply = SyncGetTaskEvents({},
+                                 {},
+                                 {},
+                                 {},
+                                 1,
+                                 false,
+                                 {},
+                                 {},
+                                 {actor_id},
+                                 {rpc::FilterPredicate::EQUAL},
+                                 {"RUNNING"},
+                                 {rpc::FilterPredicate::EQUAL});
+
+  ASSERT_EQ(reply.events_by_task_size(), 1);
+  EXPECT_EQ(reply.events_by_task(0).task_id(), task_ids[1].Binary());
+  EXPECT_EQ(reply.num_truncated(), 1);
+}
+
 TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
   auto tasks = GenTaskIDs(3);
   auto tasks_running = tasks[0];
