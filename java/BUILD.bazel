@@ -54,8 +54,8 @@ java_import(
         "libio_ray_ray_" + module + "-src.jar"
         for module in all_modules_with_test
     ] + [
-        "all_tests_deploy.jar",
-        "all_tests_deploy-src.jar",
+        "all_tests_bin_deploy.jar",
+        "all_tests_bin_deploy-src.jar",
     ],
     deps = [
         ":io_ray_ray_" + module
@@ -242,6 +242,19 @@ java_test(
     runtime_deps = [
         ":all_tests_lib",
     ],
+)
+
+# java_test does not produce a _deploy.jar in Bazel 7+. Use a java_binary
+# companion so that all_tests_bin_deploy.jar is available in both Bazel 6 and 7.
+java_binary(
+    name = "all_tests_bin",
+    testonly = True,
+    main_class = "org.testng.TestNG",
+    resources = [
+        "//cpp:counter.so",
+        "//cpp:plus.so",
+    ],
+    runtime_deps = [":all_tests_lib"],
 )
 
 # 0. `cp testng_custom_template.xml testng_custom.xml`
@@ -471,7 +484,7 @@ jar_jar(
 # Shade dependencies in tests fat jar.
 jar_jar(
     name = "all_tests_shaded",
-    input_jar = "//java:all_tests_deploy.jar",
+    input_jar = "//java:all_tests_bin_deploy.jar",
     rules = "//java:shade_rule",
 )
 

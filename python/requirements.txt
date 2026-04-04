@@ -21,8 +21,6 @@ watchfiles
 # Python version-specific requirements
 grpcio>=1.42.0
 
-numpy>=1.20
-
 pyarrow >= 9.0.0
 
 # ray[all]
@@ -52,7 +50,7 @@ aiohttp>=3.13.3
 starlette
 typer
 fsspec
-pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3  # Serve users can use pydantic<2
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3  # Serve users can use pydantic<2
 py-spy>=0.2.0; python_version < '3.12'
 py-spy>=0.4.0; python_version >= '3.12'
 memray; sys_platform != "win32" # memray is not supported on Windows

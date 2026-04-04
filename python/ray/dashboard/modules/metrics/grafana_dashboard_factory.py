@@ -14,14 +14,17 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
     data_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.data_llm_dashboard_panels import (
+    data_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
 )
-from ray.dashboard.modules.metrics.dashboards.llm_dashboard_panels import (
-    llm_dashboard_config,
-)
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
+)
+from ray.dashboard.modules.metrics.dashboards.serve_llm_dashboard_panels import (
+    serve_llm_dashboard_config,
 )
 from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
     train_dashboard_config,
@@ -119,15 +122,15 @@ def generate_serve_deployment_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(serve_deployment_dashboard_config)
 
 
-def generate_llm_grafana_dashboard() -> Tuple[str, str]:
+def generate_serve_llm_grafana_dashboard() -> Tuple[str, str]:
     """
-    Generates the unified LLM dashboard (vLLM engine metrics +
-    Serve orchestrator metrics) and returns both the content and the uid.
+    Generates the dashboard output for the serve dashboard and returns
+    both the content and the uid.
 
     Returns:
       Tuple with format content, uid
     """
-    return _generate_grafana_dashboard(llm_dashboard_config)
+    return _generate_grafana_dashboard(serve_llm_dashboard_config)
 
 
 def generate_data_grafana_dashboard() -> Tuple[str, str]:
@@ -139,6 +142,21 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(data_dashboard_config)
+
+
+def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the Data LLM dashboard and returns
+    both the content and the uid.
+
+    This dashboard provides vLLM metrics visibility for Ray Data LLM workloads,
+    including latency (TTFT, TPOT), throughput, cache utilization, and
+    prefix cache hit rate.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(data_llm_dashboard_config)
 
 
 def generate_train_grafana_dashboard() -> Tuple[str, str]:
@@ -458,8 +476,16 @@ def _generate_grafana_panels(
             else:
                 panels.append(panel_template)
 
-        # Update y position for next row
-        current_y_position += _calculate_panel_heights(len(row.panels))
+        # Update y position for next row based on actual panel positions
+        # when explicit grid_pos is used, or fallback to calculated height.
+        if any(p.grid_pos for p in row.panels):
+            max_y_bottom = max(
+                (p.grid_pos.y + p.grid_pos.h for p in row.panels if p.grid_pos),
+                default=current_y_position,
+            )
+            current_y_position = max_y_bottom
+        else:
+            current_y_position += _calculate_panel_heights(len(row.panels))
 
     return panels
 

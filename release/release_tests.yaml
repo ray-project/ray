@@ -2260,6 +2260,42 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
+- name: compiled_graphs_GPU_cu130
+  python: "3.12"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    byod:
+      type: gpu-cu130
+      post_build_script: byod_compiled_graph_gpu_cu130.sh
+      python_depset: compiled_graph_gpu_cu130_py3.12.lock
+    cluster_compute: experimental/compute_l4_gpu.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/compiled_graph_gpu_microbenchmark.py
+
+- name: compiled_graphs_GPU_multinode_cu130
+  python: "3.12"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    byod:
+      type: gpu-cu130
+      post_build_script: byod_compiled_graph_gpu_cu130.sh
+      python_depset: compiled_graph_gpu_cu130_py3.12.lock
+    cluster_compute: experimental/compute_l4_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
+
 - name: rdt_single_node_T4_microbenchmark
   python: "3.10"
   group: core-daily-test
@@ -2287,6 +2323,7 @@
   cluster:
     byod:
       type: llm-cu128 # llm image already has nixl
+      post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
@@ -2297,7 +2334,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
 
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
-# - name: gpu_object_GPU_multinode
+# - name: rdt_GPU_multinode
 #   python: "3.10"
 #   group: core-daily-test
 #   team: core
@@ -2311,7 +2348,7 @@
 
 #   run:
 #     timeout: 1800
-#     script: python experimental/gpu_object_microbenchmark.py --distributed
+#     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   python: "3.10"
@@ -2364,38 +2401,6 @@
       cluster:
         cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
 
-
-- name: dask_on_ray_large_scale_test_spilling
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-    wait_for_nodes:
-      num_nodes: 21
-
-
-  smoke_test:
-    frequency: manual # was nightly
-    cluster:
-      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-
-    run:
-      timeout: 7200
-      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
-        70 --error_rate 0  --data_save_path /tmp/ray
-
-      wait_for_nodes:
-        num_nodes: 5
 
 - name: stress_test_state_api_scale
   python: "3.10"
@@ -3510,67 +3515,6 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: chaos_dask_on_ray_large_scale_test_no_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
-      20 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
-- name: chaos_dask_on_ray_large_scale_test_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
 #####################
 # Observability tests
 #####################
@@ -3993,6 +3937,23 @@
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
 
+- name: llm_serve_dp_engine_fault
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_2x_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      pytest -sv test_llm_serve_dp_engine_fault.py
+
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
   python: "3.11"
@@ -4370,8 +4331,7 @@
 
 
 - name: e2e_xgboost  # do not use dashes (regex sensitive)
-  # TODO: https://github.com/anyscale/ray/issues/573
-  frequency: manual
+  frequency: weekly
   python: "3.11"
   group: ray-examples
   team: ml
@@ -4497,32 +4457,6 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: deployment_serve_llm  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
-      post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
 
 - name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
   frequency: weekly
@@ -4727,7 +4661,7 @@
 
 
 - name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4735,7 +4669,8 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_tensor_parallel_autotp.sh
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4761,6 +4696,31 @@
   cluster:
     byod:
       type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
+  python: "3.10"
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:

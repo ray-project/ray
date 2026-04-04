@@ -63,6 +63,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -313,6 +314,53 @@ class GenericProxy(ABC):
         self._ongoing_requests -= 1
         self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
+    def _setup_proxy_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: ProxyRequest,
+        additional_attributes: Optional[Dict[str, Any]] = None,
+    ):
+        """Set up tracing attributes for proxy requests.
+
+        Args:
+            request_id: The unique request ID.
+            handle: The deployment handle.
+            proxy_request: The proxy request object.
+            additional_attributes: Optional additional tracing attributes to set.
+        """
+        trace_attributes = {
+            "request_id": request_id,
+            "deployment": handle.deployment_name,
+            "app": handle.app_name,
+            "request_type": proxy_request.request_type,
+        }
+        if additional_attributes:
+            trace_attributes.update(additional_attributes)
+        set_span_attributes(trace_attributes)
+
+    def _finalize_proxy_tracing(
+        self,
+        status: Optional[ResponseStatus],
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for proxy requests.
+
+        Set exception and trace status. This is a common helper used by
+        both HTTP and gRPC proxies. Protocol-specific attributes should be
+        set separately (e.g., via set_http_span_attributes or set_rpc_span_attributes).
+
+        Args:
+            status: The response status, if available.
+            exc: The exception that occurred, if any.
+        """
+        if exc:
+            set_span_exception(exc, escaped=True)
+            if status is not None:
+                set_trace_status(status.is_error, str(exc))
+        elif status is not None:
+            set_trace_status(status.is_error)
+
     def _get_health_or_routes_reponse(
         self, proxy_request: ProxyRequest
     ) -> ResponseHandlerInfo:
@@ -472,6 +520,7 @@ class GenericProxy(ABC):
                     route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
@@ -793,6 +842,7 @@ class gRPCProxy(GenericProxy):
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
+            "_client": proxy_request.client,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -852,6 +902,47 @@ class gRPCProxy(GenericProxy):
             _, cancel_event = session
             cancel_event.set()
 
+    def _setup_grpc_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: "gRPCProxyRequest",
+    ):
+        """Set up tracing for gRPC requests.
+
+        This helper function sets up span attributes and span name for gRPC requests,
+        used by both standard and streaming request paths.
+        """
+        self._setup_proxy_tracing(
+            request_id=request_id,
+            handle=handle,
+            proxy_request=proxy_request,
+        )
+        set_span_name(
+            f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method}"
+        )
+
+    def _finalize_grpc_tracing(
+        self,
+        proxy_request: "gRPCProxyRequest",
+        status: Optional[ResponseStatus],
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for gRPC requests.
+
+        This helper function sets RPC span attributes, exception tracking, and trace status
+        in the finally block, used by both standard and streaming request paths.
+        """
+        if status is not None:
+            set_rpc_span_attributes(
+                system=proxy_request.request_type,
+                method=proxy_request.method,
+                status_code=status.code.name
+                if isinstance(status.code, grpc.StatusCode)
+                else grpc.StatusCode.UNKNOWN.name,
+            )
+        self._finalize_proxy_tracing(status=status, exc=exc)
+
     @tracing_decorator_factory(
         trace_name="proxy_grpc_request",
     )
@@ -878,16 +969,7 @@ class gRPCProxy(GenericProxy):
             return
 
         # Standard server-unary/server-streaming path
-        trace_attributes = {
-            "request_id": request_id,
-            "deployment": handle.deployment_name,
-            "app": handle.app_name,
-            "request_type": proxy_request.request_type,
-        }
-        set_span_attributes(trace_attributes)
-        set_span_name(
-            f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method}"
-        )
+        self._setup_grpc_tracing(request_id, handle, proxy_request)
 
         response_generator = ProxyResponseGenerator(
             handle.remote(proxy_request.serialized_replica_arg()),
@@ -905,18 +987,7 @@ class gRPCProxy(GenericProxy):
             status = get_grpc_response_status(e, self.request_timeout_s, request_id)
             exc = e
         finally:
-            set_rpc_span_attributes(
-                system=proxy_request.request_type,
-                method=proxy_request.method,
-                status_code=status.code.name
-                if isinstance(status.code, grpc.StatusCode)
-                else grpc.StatusCode.UNKNOWN.name,
-            )
-            if exc:
-                set_span_exception(exc, escaped=True)
-                set_trace_status(status.is_error, str(exc))
-            else:
-                set_trace_status(status.is_error)
+            self._finalize_grpc_tracing(proxy_request, status, exc)
 
         # The status code should always be set.
         assert status is not None
@@ -937,6 +1008,9 @@ class gRPCProxy(GenericProxy):
         For bidirectional streaming (stream_stream), we do the same but the
         response is also a stream.
         """
+        # Set up tracing attributes for streaming
+        self._setup_grpc_tracing(request_id, handle, proxy_request)
+
         # Create a streaming session
         session_id = internal_request_id
         cancel_event = asyncio.Event()
@@ -945,6 +1019,8 @@ class gRPCProxy(GenericProxy):
             cancel_event,
         )
 
+        status = None
+        exc = None
         try:
             # Get the proxy actor name for callback
             proxy_actor_name = ray.get_runtime_context().get_actor_name()
@@ -971,14 +1047,32 @@ class gRPCProxy(GenericProxy):
                 status = ResponseStatus(code=grpc.StatusCode.OK)
             except BaseException as e:
                 status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+                exc = e
+                # Yield the error status and return immediately to avoid falling through
+                # to the outer except block, which would produce a duplicate ResponseStatus.
+                yield status
+                return
 
             # The status code should always be set.
             assert status is not None
             yield status
-
+        except Exception as e:
+            # Handle exceptions that occur before response_generator is created
+            # (e.g., in get_actor_name, pickle.dumps, ProxyResponseGenerator)
+            status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+            exc = e
+            yield status
         finally:
-            # Clean up the streaming session
+            # Clean up the streaming session first to ensure no resource leaks
             self._cleanup_streaming_session(session_id)
+
+            # Finalize tracing for streaming requests (best-effort)
+            try:
+                self._finalize_grpc_tracing(proxy_request, status, exc)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to finalize tracing for session {session_id}: {e}"
+                )
 
 
 class HTTPProxy(GenericProxy):
@@ -1132,6 +1226,7 @@ class HTTPProxy(GenericProxy):
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -1144,6 +1239,51 @@ class HTTPProxy(GenericProxy):
             ray.serve.context._RequestContext(**request_context_info)
         )
         return handle, request_context_info["request_id"]
+
+    def _setup_http_tracing(
+        self,
+        request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: ProxyRequest,
+    ):
+        """Set up tracing for HTTP requests.
+
+        This helper function sets up span attributes and span name for HTTP requests.
+        """
+        self._setup_proxy_tracing(
+            request_id=request_id,
+            handle=handle,
+            proxy_request=proxy_request,
+            additional_attributes={
+                "request_method": proxy_request.method,
+                "request_route_path": proxy_request.route_path,
+            },
+        )
+        set_span_name(
+            f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method} {proxy_request.route_path}"
+        )
+
+    def _finalize_http_tracing(
+        self,
+        proxy_request: ProxyRequest,
+        status_code: str,
+        is_error: bool,
+        exc: Optional[BaseException],
+    ):
+        """Finalize tracing for HTTP requests.
+
+        This helper function sets HTTP span attributes, exception tracking, and trace status
+        in finally block.
+        """
+        set_http_span_attributes(
+            method=proxy_request.method,
+            status_code=int(status_code),
+            route=proxy_request.route_path,
+        )
+        self._finalize_proxy_tracing(
+            status=ResponseStatus(code=status_code, is_error=is_error),
+            exc=exc,
+        )
 
     async def _format_handle_arg_for_java(
         self,
@@ -1178,18 +1318,7 @@ class HTTPProxy(GenericProxy):
         the status code.
         """
         if is_span_recording():
-            trace_attributes = {
-                "request_id": request_id,
-                "deployment": handle.deployment_name,
-                "app": handle.app_name,
-                "request_type": proxy_request.request_type,
-                "request_method": proxy_request.method,
-                "request_route_path": proxy_request.route_path,
-            }
-            set_span_attributes(trace_attributes)
-            set_span_name(
-                f"proxy_{proxy_request.request_type}_request {handle.deployment_name} {proxy_request.method} {proxy_request.route_path}"
-            )
+            self._setup_http_tracing(request_id, handle, proxy_request)
 
         if app_is_cross_language:
             handle_arg_bytes = await self._format_handle_arg_for_java(proxy_request)
@@ -1314,17 +1443,9 @@ class HTTPProxy(GenericProxy):
             del self.asgi_receive_queues[internal_request_id]
 
             if is_span_recording():
-                set_http_span_attributes(
-                    method=proxy_request.method,
-                    status_code=int(status_code),
-                    route=proxy_request.route_path,
+                self._finalize_http_tracing(
+                    proxy_request, status_code, status.is_error, exc
                 )
-
-                if exc:
-                    set_span_exception(exc, escaped=True)
-                    set_trace_status(status.is_error, str(exc))
-                else:
-                    set_trace_status(status.is_error)
 
         # The status code should always be set.
         assert status is not None
