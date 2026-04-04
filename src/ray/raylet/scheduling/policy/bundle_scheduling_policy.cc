@@ -339,21 +339,23 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   // would be falsely rejected by strict per-instance capacity checks.
   auto try_allocate_all_bundles = [&](scheduling::NodeID node_id) -> bool {
     std::vector<const ResourceRequest *> allocated_requests;
+    allocated_requests.reserve(resource_request_list.size());
+
     for (const auto *request : resource_request_list) {
       if (cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request)) {
         allocated_requests.push_back(request);
       } else {
         for (const auto *prev_request : allocated_requests) {
-          cluster_resource_manager_.AddNodeAvailableResources(
-              node_id, prev_request->GetResourceSet());
+          RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+              node_id, prev_request->GetResourceSet()));
         }
         return false;
       }
     }
 
     for (const auto *request : allocated_requests) {
-      cluster_resource_manager_.AddNodeAvailableResources(node_id,
-                                                          request->GetResourceSet());
+      RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+          node_id, request->GetResourceSet()));
     }
 
     return true;
