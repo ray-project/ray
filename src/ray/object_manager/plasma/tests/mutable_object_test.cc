@@ -621,6 +621,87 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
   }
 }
 
+// Tests that semaphore names are POSIX-compliant (start with '/').
+// POSIX requires sem_open() names to start with '/'. Linux enforces this strictly
+// (sem_open returns EINVAL without it); macOS is lenient. Without the '/' prefix in
+// GetSemaphoreObjectName/GetSemaphoreHeaderName, this crashes on Linux with strict
+// glibc (e.g., DGX Spark) via RAY_CHECK_NE(semaphores.object_sem, SEM_FAILED).
+TEST(MutableObjectTest, TestSemaphoreNameHasLeadingSlash) {
+  MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  PlasmaObjectHeader *header;
+  std::string unique_name;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    unique_name = std::string(header->unique_name);
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
+  }
+
+  // If OpenSemaphores used the correct '/obj<name>' format, we can open the same
+  // semaphore by its POSIX-correct name. This would fail with ENOENT if a non-'/'
+  // name was used (the semaphore would have been created under a different path).
+  std::string obj_sem_name = "/obj" + unique_name;
+  std::string hdr_sem_name = "/hdr" + unique_name;
+  sem_t *obj_sem = sem_open(obj_sem_name.c_str(), /*oflag=*/0);
+  sem_t *hdr_sem = sem_open(hdr_sem_name.c_str(), /*oflag=*/0);
+  ASSERT_NE(SEM_FAILED, obj_sem)
+      << "Semaphore '" << obj_sem_name
+      << "' not found. Missing '/' prefix in semaphore name?";
+  ASSERT_NE(SEM_FAILED, hdr_sem)
+      << "Semaphore '" << hdr_sem_name
+      << "' not found. Missing '/' prefix in semaphore name?";
+  ASSERT_EQ(0, sem_close(obj_sem));
+  ASSERT_EQ(0, sem_close(hdr_sem));
+
+  manager.DestroySemaphores(object_id);
+  free(header);
+}
+
+// Tests that a reader can register a channel when semaphores_created=kDone is already
+// set in the header but the named semaphores don't exist on this machine.
+// This is the cross-node scenario (ray-project/ray#62328): the writer on Node A sets
+// semaphores_created=kDone in shared memory. A reader on Node B sees kDone and
+// previously called sem_open(name, 0) without O_CREAT, which failed with ENOENT
+// because the semaphores were never created on Node B. The fix uses O_CREAT (without
+// O_EXCL) so that the reader creates the semaphores locally when absent.
+TEST(MutableObjectTest, TestCrossNodeSemaphoreCreation) {
+  MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+
+    // Simulate the cross-node state: kDone is set (as if the writer on another node
+    // already finished initialization) but no named semaphores exist on this machine.
+    header->semaphores_created.store(PlasmaObjectHeader::SemaphoresCreationLevel::kDone,
+                                     std::memory_order_release);
+
+    // With the fix, this must succeed: the reader path uses O_CREAT and creates the
+    // semaphores locally. Without the fix, sem_open returned ENOENT -> SEM_FAILED ->
+    // RAY_CHECK_NE(SEM_FAILED, SEM_FAILED) crash.
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
+  }
+
+  // Verify the semaphores are usable and were initialized to value=1 (the correct
+  // initial state for a freshly created mutable object channel).
+  PlasmaObjectHeader::Semaphores sem{};
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
+  int obj_val = -1, hdr_val = -1;
+  ASSERT_EQ(0, sem_getvalue(sem.object_sem, &obj_val));
+  ASSERT_EQ(0, sem_getvalue(sem.header_sem, &hdr_val));
+  ASSERT_EQ(1, obj_val) << "object_sem should be initialized to 1";
+  ASSERT_EQ(1, hdr_val) << "header_sem should be initialized to 1";
+
+  manager.DestroySemaphores(object_id);
+  free(header);
+}
+
 // Tests that MutableObjectManager instances destruct properly when there are multiple
 // instances.
 // The core worker and the raylet each have their own MutableObjectManager instance, and
