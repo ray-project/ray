@@ -795,8 +795,9 @@ class VLLMEngine(LLMEngine):
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMPauseConfig(**kwargs)
+        mode = "wait" if config.wait_for_inflight_requests else "abort"
         await self._engine_client.pause_generation(
-            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            mode=mode,
             clear_cache=config.clear_cache,
         )
 
