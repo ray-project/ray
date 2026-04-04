@@ -1008,7 +1008,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_name.mutable_events_by_task());
   EXPECT_EQ(reply_name.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_name.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_name.num_total_stored(), 1);
+  EXPECT_EQ(reply_name.num_total_stored(), 3);
   EXPECT_EQ(reply_name.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_name.num_truncated(), 0);
 
@@ -1041,7 +1041,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_names.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_names.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_names.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_names.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_names.num_total_stored(), 3);
   EXPECT_EQ(reply_multiple_names.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_names.num_truncated(), 0);
 
@@ -1056,7 +1056,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_actor_id.mutable_events_by_task());
   EXPECT_EQ(reply_actor_id.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_actor_id.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_actor_id.num_total_stored(), 1);
+  EXPECT_EQ(reply_actor_id.num_total_stored(), 3);
   EXPECT_EQ(reply_actor_id.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_actor_id.num_truncated(), 0);
 
@@ -1093,9 +1093,28 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_actor_ids.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_actor_ids.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_actor_ids.num_total_stored(), 3);
   EXPECT_EQ(reply_multiple_actor_ids.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_actor_ids.num_truncated(), 0);
+
+  auto reply_nil_actor_id = SyncGetTaskEvents({},
+                                              {},
+                                              /* job_ids */ {},
+                                              /*job_id_predicates */ {},
+                                              /* limit */ -1,
+                                              /* exclude_driver */ false,
+                                              /* task_names */ {},
+                                              /* task_name_predicates */ {},
+                                              {ActorID::Nil()},
+                                              {rpc::FilterPredicate::EQUAL});
+  ExpectTaskEventsEq({event_data_task_name_job1.mutable_events_by_task(),
+                      event_data_task_state_job2.mutable_events_by_task()},
+                     reply_nil_actor_id.mutable_events_by_task());
+  EXPECT_EQ(reply_nil_actor_id.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_nil_actor_id.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_nil_actor_id.num_total_stored(), 3);
+  EXPECT_EQ(reply_nil_actor_id.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_nil_actor_id.num_truncated(), 0);
 
   // Test filter by latest state
   auto reply_state = SyncGetTaskEvents({},
@@ -1109,7 +1128,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_state.mutable_events_by_task());
   EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_state.num_total_stored(), 1);
+  EXPECT_EQ(reply_state.num_total_stored(), 3);
   EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_state.num_truncated(), 0);
 
@@ -1147,7 +1166,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                      reply_state.mutable_events_by_task());
   EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_state.num_total_stored(), 2);
+  EXPECT_EQ(reply_state.num_total_stored(), 3);
   EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_state.num_truncated(), 0);
 
@@ -1182,7 +1201,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_state.events_by_task_size(), 0);
   EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_state.num_total_stored(), 0);
+  EXPECT_EQ(reply_state.num_total_stored(), 3);
   EXPECT_EQ(reply_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_state.num_truncated(), 0);
 
@@ -1225,7 +1244,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   EXPECT_EQ(reply_multiple_state.events_by_task_size(), 0);
   EXPECT_EQ(reply_multiple_state.num_profile_task_events_dropped(), 0);
   EXPECT_EQ(reply_multiple_state.num_status_task_events_dropped(), 0);
-  EXPECT_EQ(reply_multiple_state.num_total_stored(), 0);
+  EXPECT_EQ(reply_multiple_state.num_total_stored(), 3);
   EXPECT_EQ(reply_multiple_state.num_filtered_on_gcs(), 0);
   EXPECT_EQ(reply_multiple_state.num_truncated(), 0);
 
@@ -1237,6 +1256,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                                    "task_name",
                                                    actor_id);
   EXPECT_EQ(reply_name_and_actor_id.events_by_task_size(), 0);
+  EXPECT_EQ(reply_name_and_actor_id.num_total_stored(), 3);
 
   auto reply_actor_id_and_state = SyncGetTaskEvents({},
                                                     /* job_id */ absl::nullopt,
@@ -1246,6 +1266,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                                     actor_id,
                                                     "Running");
   EXPECT_EQ(reply_name_and_actor_id.events_by_task_size(), 0);
+  EXPECT_EQ(reply_actor_id_and_state.num_total_stored(), 3);
 
   // Test invalid predicate
   auto reply_invalid_predicate =
@@ -1334,6 +1355,7 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsIndexedFiltersPreserveRecencyWithLim
 
   ASSERT_EQ(reply.events_by_task_size(), 1);
   EXPECT_EQ(reply.events_by_task(0).task_id(), task_ids[1].Binary());
+  EXPECT_EQ(reply.num_total_stored(), 3);
   EXPECT_EQ(reply.num_truncated(), 1);
 }
 

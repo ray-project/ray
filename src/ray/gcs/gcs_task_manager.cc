@@ -67,7 +67,7 @@ std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event) {
   }
   const auto &actor_id_binary = task_event.task_info().actor_id();
   if (actor_id_binary.empty()) {
-    return std::nullopt;
+    return ActorID::Nil();
   }
   if (actor_id_binary.size() != ActorID::Size()) {
     return std::nullopt;
@@ -668,6 +668,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
   }
 
+  const size_t num_total_stored = candidate_task_locators.has_value()
+                                      ? candidate_task_locators->size()
+                                      : task_event_storage_->primary_index_.size();
+
   if (filters.actor_filters_size() > 0) {
     if (equal_actor_ids.size() > 1) {
       set_candidate_to_empty();
@@ -847,7 +851,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
                                               num_status_event_limit);
 
-    reply->set_num_total_stored(task_events.size());
+    reply->set_num_total_stored(num_total_stored);
     reply->set_num_truncated(num_limit_truncated);
     reply->set_num_filtered_on_gcs(num_filtered);
   } catch (std::invalid_argument &e) {
