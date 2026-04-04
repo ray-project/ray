@@ -1317,14 +1317,8 @@ class Reconciler:
         autoscaling_state: AutoscalingState,
         autoscaling_config: AutoscalingConfig,
     ) -> None:
-        provider_instance_type_map: Dict[str, str] = {}
-
         def get_provider_instance_type(instance_type: str) -> str:
-            if instance_type not in provider_instance_type_map:
-                provider_instance_type_map[
-                    instance_type
-                ] = autoscaling_config.get_provider_instance_type(instance_type)
-            return provider_instance_type_map[instance_type]
+            return autoscaling_config.get_provider_instance_type(instance_type)
 
         # Use the IM instance version for the autoscaler_state_version
         instances, version = Reconciler._get_im_instances(instance_manager)
