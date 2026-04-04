@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as version_parse
+from packaging.version import Version, parse as version_parse
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
@@ -167,6 +167,11 @@ def test_chained_filter_with_expressions(parquet_ds):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
     ],
+)
+# Same pylance version gate as tests/datasource/test_lance.py
+@pytest.mark.skipif(
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
 )
 def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
     """Test that Lance predicate pushdown absorbs expression filters into Read."""
