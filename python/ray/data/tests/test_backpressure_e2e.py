@@ -25,19 +25,23 @@ def test_large_e2e_backpressure_no_spilling(
 ):
     """Test backpressure can prevent object spilling on a synthetic large-scale
     workload."""
-    # The cluster has 10 CPUs and 200MB object store memory.
+    # The cluster has 10 CPUs and a constrained object store (300 MiB).
     #
-    # Each produce task generates 10 blocks, each of which has 10MB data.
-    # In total, there will be 10 * 10 * 10MB = 1000MB intermediate data.
+    # Each produce task generates NUM_ROWS_PER_TASK blocks, each of BLOCK_SIZE.
+    # In total, there will be NUM_TASKS * NUM_ROWS_PER_TASK * BLOCK_SIZE = 2 GiB
+    # of intermediate data, far exceeding the object store.
     #
-    # `ReservationOpResourceAllocator` should dynamically allocate resources to each
-    # operator and prevent object spilling.
+    # `ReservationOpResourceAllocator` uses 50% of object_store_memory
+    # (DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION) as allocatable budget, split
+    # across eligible operators. Generator backpressure
+    # (_max_num_blocks_in_streaming_gen_buffer=2) caps each running task to 2
+    # in-flight blocks.
     NUM_CPUS = 10
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 20
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 10 * MiB
-    object_store_memory = 200 * MiB
+    object_store_memory = 300 * MiB
 
     print(f">>> Setting Object Store to {memory_string(object_store_memory)}")
 

@@ -3144,14 +3144,17 @@ class Dataset:
             One common use case is to convert the class labels
             into integers for training and inference:
 
+            Sort first so the first row is deterministic.
+
+            >>> import numpy as np
             >>> classes = {0: 'Setosa', 1: 'Versicolor', 2: 'Virginica'}
             >>> def preprocessor(df, classes):
             ...     df["variety"] = df["target"].map(classes)
             ...     return df
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
-            >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
-            [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
+            >>> train_ds.sort("sepal length (cm)").take(1)  # doctest: +ELLIPSIS
+            [{'sepal length (cm)': np.float64(4.3), ..., 'variety': 'Setosa'}]
 
         Time complexity: O(dataset size / parallelism)
 
