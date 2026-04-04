@@ -91,6 +91,32 @@ toolchain(
     toolchain_type = "@bazel_tools//tools/python:toolchain_type",
 )
 
+# Standalone-binary Python runtime: includes the shared libraries needed by
+# the hermetic interpreter so that --build_python_zip artifacts are fully
+# self-contained.  Only used for targets that opt in via
+# exec_compatible_with = ["//bazel:py3_standalone"].
+py_runtime(
+    name = "py310_standalone_runtime",
+    files = ["@python3_10_x86_64-unknown-linux-gnu//:files"],
+    interpreter = python310,
+    python_version = "PY3",
+    visibility = ["//visibility:private"],
+)
+
+py_runtime_pair(
+    name = "py310_standalone_runtime_pair",
+    py2_runtime = None,
+    py3_runtime = ":py310_standalone_runtime",
+    visibility = ["//visibility:private"],
+)
+
+toolchain(
+    name = "py310_standalone_toolchain",
+    exec_compatible_with = [":py310_standalone"],
+    toolchain = ":py310_standalone_runtime_pair",
+    toolchain_type = "@bazel_tools//tools/python:toolchain_type",
+)
+
 constraint_setting(name = "python_version")
 
 constraint_value(
@@ -109,5 +135,18 @@ platform(
 alias(
     name = "py3",
     actual = ":py310",
+    visibility = ["//visibility:public"],
+)
+
+constraint_value(
+    name = "py310_standalone",
+    constraint_setting = ":python_version",
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "py310_standalone_platform",
+    constraint_values = [":py310_standalone"],
+    parents = ["@local_config_platform//:host"],
     visibility = ["//visibility:public"],
 )

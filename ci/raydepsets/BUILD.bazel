@@ -28,7 +28,7 @@ py_library(
 py_binary(
     name = "raydepsets",
     srcs = ["raydepsets.py"],
-    exec_compatible_with = ["//bazel:py3"],
+    exec_compatible_with = ["//bazel:py310_standalone"],
     deps = [":raydepsets_lib"],
 )
 
