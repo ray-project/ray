@@ -1,5 +1,4 @@
 import base64
-import dataclasses
 import functools
 import gc
 import inspect
@@ -134,10 +133,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 if "logging_config" in extra_kwargs and isinstance(
                     extra_kwargs["logging_config"], dict
                 ):
-                    lc_dict = extra_kwargs["logging_config"]
-                    field_names = {f.name for f in dataclasses.fields(LoggingConfig)}
-                    extra_kwargs["logging_config"] = LoggingConfig(
-                        **{k: v for k, v in lc_dict.items() if k in field_names}
+                    extra_kwargs["logging_config"] = LoggingConfig.from_dict(
+                        extra_kwargs["logging_config"]
                     )
                 try:
                     self.ray_connect_handler(job_config, **extra_kwargs)

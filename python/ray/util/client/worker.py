@@ -4,7 +4,6 @@ to the server.
 """
 
 import base64
-import dataclasses
 import json
 import logging
 import os
@@ -84,6 +83,73 @@ def backoff(timeout: int) -> int:
     if timeout > MAX_TIMEOUT_SEC:
         timeout = MAX_TIMEOUT_SEC
     return timeout
+
+
+def prepare_init_request_args(
+    job_config: Optional[JobConfig],
+    ray_init_kwargs: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[bytes], Dict[str, Any]]:
+    """Normalize *ray_init_kwargs* and serialize ``job_config`` for an ``InitRequest``.
+
+    This handles:
+    * Converting a :class:`LoggingConfig` in ``ray_init_kwargs`` to a plain dict
+      so it can be JSON-encoded for transport.
+    * Propagating the logging config onto ``job_config`` when it has not already
+      been set.
+    * Uploading ``py_modules`` / ``working_dir`` runtime-env artifacts and
+      pickling the resulting ``job_config``.
+
+    Args:
+        job_config: Job settings to pickle for the server, or ``None`` if the
+            request has no serialized job config.
+        ray_init_kwargs: Keyword arguments for ``ray.init`` on the client
+            server. A shallow copy is returned, with values normalized for JSON
+            (e.g. ``logging_config`` as a plain dict). ``None`` is treated as
+            ``{}``.
+
+    Returns:
+        A ``(serialized_job_config, ray_init_kwargs)`` tuple whose values can
+        be placed directly into a ``ray_client_pb2.InitRequest``.
+    """
+    if ray_init_kwargs is None:
+        ray_init_kwargs = {}
+    else:
+        ray_init_kwargs = dict(ray_init_kwargs)
+
+    if "logging_config" in ray_init_kwargs and isinstance(
+        ray_init_kwargs["logging_config"], LoggingConfig
+    ):
+        ray_init_kwargs["logging_config"] = ray_init_kwargs["logging_config"].to_dict()
+
+    if job_config is None:
+        serialized_job_config = None
+    else:
+        job_config.ensure_logging_config(ray_init_kwargs.get("logging_config"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            from ray._private.ray_constants import RAY_RUNTIME_ENV_IGNORE_GITIGNORE
+
+            runtime_env = job_config.runtime_env or {}
+            include_gitignore = (
+                os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+            )
+            runtime_env = upload_py_modules_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env = upload_working_dir_if_needed(
+                runtime_env,
+                scratch_dir=tmp_dir,
+                include_gitignore=include_gitignore,
+                logger=logger,
+            )
+            runtime_env.pop("excludes", None)
+            job_config.set_runtime_env(runtime_env, validate=True)
+
+        serialized_job_config = pickle.dumps(job_config)
+
+    return serialized_job_config, ray_init_kwargs
 
 
 class Worker:
@@ -876,62 +942,10 @@ class Worker:
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None
     ):
         """Initialize the server"""
-        if ray_init_kwargs is None:
-            ray_init_kwargs = {}
-        else:
-            ray_init_kwargs = dict(ray_init_kwargs)
-        if "logging_config" in ray_init_kwargs and isinstance(
-            ray_init_kwargs["logging_config"], LoggingConfig
-        ):
-            lc = ray_init_kwargs["logging_config"]
-            # Convert LoggingConfig to dict before client sends it over JSON in InitRequest
-            ray_init_kwargs["logging_config"] = dataclasses.asdict(lc)
-        # If JobConfig has no py_logging_config, copy logging_config onto JobConfig for the pickled job.
-        if job_config is not None:
-            lc_raw = ray_init_kwargs.get("logging_config")
-            if lc_raw is not None and job_config.py_logging_config is None:
-                if isinstance(lc_raw, dict):
-                    field_names = {f.name for f in dataclasses.fields(LoggingConfig)}
-                    job_config.set_py_logging_config(
-                        LoggingConfig(
-                            **{k: v for k, v in lc_raw.items() if k in field_names}
-                        )
-                    )
-                elif isinstance(lc_raw, LoggingConfig):
-                    job_config.set_py_logging_config(lc_raw)
         try:
-            if job_config is None:
-                serialized_job_config = None
-            else:
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    from ray._private.ray_constants import (
-                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
-                    )
-
-                    runtime_env = job_config.runtime_env or {}
-                    # Determine whether to respect .gitignore files based on environment variable
-                    # Default is True (respect .gitignore). Set to False if env var is "1".
-                    include_gitignore = (
-                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
-                    )
-                    runtime_env = upload_py_modules_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    runtime_env = upload_working_dir_if_needed(
-                        runtime_env,
-                        scratch_dir=tmp_dir,
-                        include_gitignore=include_gitignore,
-                        logger=logger,
-                    )
-                    # Remove excludes, it isn't relevant after the upload step.
-                    runtime_env.pop("excludes", None)
-                    job_config.set_runtime_env(runtime_env, validate=True)
-
-                serialized_job_config = pickle.dumps(job_config)
-
+            serialized_job_config, ray_init_kwargs = prepare_init_request_args(
+                job_config, ray_init_kwargs
+            )
             response = self.data_client.Init(
                 ray_client_pb2.InitRequest(
                     job_config=serialized_job_config,

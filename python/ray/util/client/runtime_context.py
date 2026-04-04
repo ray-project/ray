@@ -50,14 +50,7 @@ class _ClientWorkerPropertyAPI:
         """Binary worker id for the Ray Client server process (cluster driver worker)."""
         from ray import WorkerID
 
-        raw = self._fetch_runtime_context().worker_id
-        if len(raw) != WorkerID.size():
-            # Older servers don't set worker_id (proto field 8 on RuntimeContext); match
-            # previous AttributeError shape.
-            raise AttributeError(
-                "'_ClientWorkerPropertyAPI' object has no attribute 'worker_id'"
-            )
-        return WorkerID(raw)
+        return WorkerID(self._fetch_runtime_context().worker_id)
 
     @property
     def namespace(self) -> str:

@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import warnings
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import ray.util.client_connect
@@ -222,10 +222,7 @@ class ClientBuilder:
         if kwargs.get("logging_config") is not None:
             lc_raw = kwargs.pop("logging_config")
             if isinstance(lc_raw, dict):
-                field_names = {f.name for f in fields(LoggingConfig)}
-                lc = LoggingConfig(
-                    **{k: v for k, v in lc_raw.items() if k in field_names}
-                )
+                lc = LoggingConfig.from_dict(lc_raw)
             elif isinstance(lc_raw, LoggingConfig):
                 lc = lc_raw
             else:
