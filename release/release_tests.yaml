@@ -85,6 +85,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -97,10 +98,12 @@
     - __suffix__: gce
       env: gce
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
       cluster:
@@ -114,6 +117,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
@@ -128,9 +132,11 @@
     - __suffix__: gce
       env: gce
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: released
       cluster:
+        anyscale_sdk_2026: true
         ray_version: 2.50.0
 
 - name: hello_world_custom_runtime_env
@@ -141,6 +147,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - HELLO_WORLD_TEST=1
@@ -161,6 +168,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       python_depset: emoji.lock
@@ -181,6 +189,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
 
