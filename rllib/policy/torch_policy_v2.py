@@ -949,6 +949,14 @@ class TorchPolicyV2(Policy):
                     s["state"], device=self.device
                 )
                 o.load_state_dict(optim_state_dict)
+            # Re-apply the current learning rate from this policy's config
+            # so that PBT-perturbed lr values are not overwritten by the
+            # cloned checkpoint's optimizer state.
+            current_lr = self.config.get("lr")
+            if current_lr is not None:
+                for o in self._optimizers:
+                    for pg in o.param_groups:
+                        pg["lr"] = current_lr
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])

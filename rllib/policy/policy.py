@@ -1027,8 +1027,14 @@ class Policy(metaclass=ABCMeta):
                     f"action space ({self.action_space})."
                 )
             # Override config, if part of the spec.
+            # Merge rather than replace: current self.config may contain
+            # hyperparameters perturbed by PBT that should survive a
+            # checkpoint restore (the checkpoint carries the *cloned*
+            # trial's config, not the perturbed one).
             if policy_spec.config:
-                self.config = policy_spec.config
+                restored = policy_spec.config
+                restored.update(self.config)
+                self.config = restored
 
         # Override NN weights.
         self.set_weights(state["weights"])
