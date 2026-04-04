@@ -211,7 +211,7 @@ class VLLMWakeupConfig(BaseModel):
 class VLLMPauseConfig(BaseModel):
     """vLLM-specific configuration for pause operation."""
 
-    mode: str = "abort"
+    mode: Literal["abort", "wait", "keep"] = "abort"
     """Pause mode:
     - "abort" (default): Abort all in-flight requests immediately.
     - "wait": Wait for in-flight requests to complete before pausing.
