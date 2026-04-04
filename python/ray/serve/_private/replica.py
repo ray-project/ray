@@ -1168,6 +1168,27 @@ class Replica:
 
         ray.serve.context._set_asgi_app_callback(_on_set_asgi_app)
 
+        # Register ongoing request count callbacks so custom ASGI apps
+        # (e.g. direct-ingress vLLM) can update the replica's request
+        # counter. This makes the counter visible to the request router's
+        # get_num_ongoing_requests() probe for load-aware routing.
+        from ray.serve._private.common import RequestMetadata, RequestProtocol
+
+        _direct_ingress_metadata = RequestMetadata(
+            request_id="",
+            internal_request_id="",
+            _request_protocol=RequestProtocol.HTTP,
+            is_direct_ingress=True,
+        )
+
+        def _inc():
+            self._metrics_manager.inc_num_ongoing_requests(_direct_ingress_metadata)
+
+        def _dec():
+            self._metrics_manager.dec_num_ongoing_requests(_direct_ingress_metadata)
+
+        ray.serve.context._set_ongoing_requests_callbacks(_inc, _dec)
+
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
@@ -2059,6 +2080,29 @@ class Replica:
         )
         if has_custom_app:
             logger.info("Starting direct ingress HTTP server with custom ASGI app")
+            # Wrap with request counting middleware so the replica's
+            # num_ongoing_requests counter reflects direct-ingress traffic.
+            # This makes the request router's choose_replicas() load-aware.
+            inner_app = asgi_app_to_serve
+            metrics_mgr = self._metrics_manager
+            _di_metadata = RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+
+            async def _counting_mw(scope, receive, send):
+                if scope["type"] == "http":
+                    metrics_mgr.inc_num_ongoing_requests(_di_metadata)
+                    try:
+                        await inner_app(scope, receive, send)
+                    finally:
+                        metrics_mgr.dec_num_ongoing_requests(_di_metadata)
+                else:
+                    await inner_app(scope, receive, send)
+
+            asgi_app_to_serve = _counting_mw
 
         async def allocate_and_start_server(start_server_fn, protocol):
             """Attempt to allocate a port and start the server with retries."""
