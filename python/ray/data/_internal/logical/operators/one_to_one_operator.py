@@ -7,6 +7,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
 
 if TYPE_CHECKING:
     import pyarrow
@@ -169,7 +170,21 @@ class Download(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         return transform(target)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
-        # Download only adds new columns (output_bytes_column_names) from URI columns.
-        # It doesn't modify or remove existing columns, so filters on existing
-        # columns can safely pass through.
-        return PredicatePassThroughBehavior.PASSTHROUGH
+        # Download adds new columns, so pushdown depends on whether the
+        # predicate references those new columns or only pre-existing ones.
+        return PredicatePassThroughBehavior.CONDITIONAL
+
+    def can_push_predicate_through(self, predicate_expr: "Expr") -> bool:
+        """Return True if the predicate can safely pass through Download.
+
+        Filters on pre-existing columns can be pushed before Download.
+        Filters referencing columns produced by Download must stay after it.
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _ColumnReferenceCollector,
+        )
+
+        collector = _ColumnReferenceCollector()
+        collector.visit(predicate_expr)
+        pred_cols = set(collector.get_column_refs() or [])
+        return not (pred_cols & set(self.output_bytes_column_names))
