@@ -166,6 +166,9 @@ depsets:
       - --index https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
+      - py311
+      - py312
+      - py313
     include_setuptools: true
 
     # Second layer of the ray release images. Contains anyscale cli deps (and others)
