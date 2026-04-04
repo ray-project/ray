@@ -161,13 +161,14 @@ def test_chained_filter_with_expressions(parquet_ds):
 
 
 @pytest.mark.parametrize(
-    "data_path",
+    "fs,data_path",
     [
-        (lazy_fixture("local_path")),
-        (lazy_fixture("s3_path")),
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
     ],
 )
-def test_pushdown_filter_lance(ray_start_regular_shared, data_path):
+def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
     """Test that Lance predicate pushdown absorbs expression filters into Read."""
 
     df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
