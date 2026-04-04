@@ -131,6 +131,17 @@ def _shuffle_map(
 
     assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
 
+    # Always defragment before hash-partitioning. When pre-map merge
+    # concatenates multiple blocks, the result is a chunked table backed by
+    # mmap'd shared memory. The downstream table.take() calls (one per
+    # partition) are ~8x slower on chunked mmap'd data due to page faults.
+    # Without this, tasks whose block count falls below the
+    # MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS threshold (default 10) in
+    # hash_partition's try_combine_chunked_columns become stragglers that
+    # block the entire reduce phase.
+    if len(blocks) > 1:
+        block = block.combine_chunks()
+
     block_partitions = hash_partition(
         block, hash_cols=key_columns, num_partitions=num_partitions
     )
