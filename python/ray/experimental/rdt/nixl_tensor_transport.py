@@ -84,6 +84,24 @@ class NixlTensorTransport(TensorTransportManager):
         """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
         self._add_tensor_descs([tensor])
 
+    def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Decrements the reference count for the tensor's NIXL memory registration.
+        If the count reaches 0, the memory is deregistered from NIXL.
+        """
+        with self._cache_lock:
+            key = tensor.untyped_storage().data_ptr()
+            if key not in self._tensor_desc_cache:
+                raise ValueError(
+                    "Cannot deregister tensor memory that is not registered with NIXL. "
+                    "Ensure register_nixl_memory was called first."
+                )
+            tensor_desc = self._tensor_desc_cache[key]
+            tensor_desc.metadata_count -= 1
+            if tensor_desc.metadata_count == 0:
+                self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                self._tensor_desc_cache.pop(key)
+                self._nixl_agent_meta_version += 1
+
     def get_nixl_agent(self):
         """
         Creates a NIXL agent with UCX backend if not already created.
