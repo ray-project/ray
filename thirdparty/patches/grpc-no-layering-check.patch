@@ -1,0 +1,13 @@
+diff --git bazel/grpc_build_system.bzl bazel/grpc_build_system.bzl
+--- bazel/grpc_build_system.bzl
++++ bazel/grpc_build_system.bzl
+@@ -203,7 +203,8 @@ def grpc_cc_library(
+             "src/core/ext/upb-generated",  # Once upb code-gen issue is resolved, remove this.
+             "src/core/ext/upbdefs-generated",  # Once upb code-gen issue is resolved, remove this.
+         ],
+-        alwayslink = alwayslink,
++        alwayslink = alwayslink,
++        features = ["-layering_check"],
+         data = data,
+         tags = tags,
+         linkstatic = linkstatic,
