@@ -2094,6 +2094,13 @@ class Replica:
 
             async def _counting_mw(scope, receive, send):
                 if scope["type"] == "http":
+                    import sys
+
+                    print(
+                        f"[COUNTING_MW] inc path={scope.get('path', '')}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                     metrics_mgr.inc_num_ongoing_requests(_di_metadata)
                     try:
                         await inner_app(scope, receive, send)
