@@ -211,9 +211,11 @@ class VLLMWakeupConfig(BaseModel):
 class VLLMPauseConfig(BaseModel):
     """vLLM-specific configuration for pause operation."""
 
-    wait_for_inflight_requests: bool = False
-    """When True, waits for in-flight requests to finish before pausing.
-    When False (default), aborts in-flight requests immediately.
+    mode: str = "abort"
+    """Pause mode:
+    - "abort" (default): Abort all in-flight requests immediately.
+    - "wait": Wait for in-flight requests to complete before pausing.
+    - "keep": Freeze requests in queue; they resume on resume_generation().
     """
 
     clear_cache: bool = True
@@ -789,15 +791,13 @@ class VLLMEngine(LLMEngine):
 
         Args:
             **kwargs: Options parsed into VLLMPauseConfig.
-                - wait_for_inflight_requests (bool): Wait for in-flight requests
-                  to finish. Default False.
+                - mode (str): "abort" (default), "wait", or "keep".
                 - clear_cache (bool): Clear KV cache after draining. Default True.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMPauseConfig(**kwargs)
-        mode = "wait" if config.wait_for_inflight_requests else "abort"
         await self._engine_client.pause_generation(
-            mode=mode,
+            mode=config.mode,
             clear_cache=config.clear_cache,
         )
 
