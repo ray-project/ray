@@ -49,7 +49,7 @@ class OperatorStatsTracker(ExecutionCallback):
         self._start_time: float = 0
 
     def before_execution_starts(self, executor: "StreamingExecutor"):
-        self._start_time = self._start_time
+        self._start_time = executor._start_time
         self._op_start.clear()
         self._op_end.clear()
 
@@ -69,24 +69,26 @@ class OperatorStatsTracker(ExecutionCallback):
                 self._op_end[op_key] = time.perf_counter()
 
     def collect(self) -> Dict[str, Any]:
-
         stats: Dict[str, Dict[str, Any]] = {}
-        now = time.time()
-        seconds_since_start = time.perf_counter() - self._start_time
+        now_wall = time.time()
+        now_perf = time.perf_counter()
         for key, start in self._op_start.items():
             end = self._op_end.get(key)
             duration_s = round(end - start, 2) if end is not None else None
-            start_dt = self._make_readable_timestamp(ts=now - duration_s)
+            start_dt = self._make_readable_timestamp(ts=now_wall - (now_perf - start))
             stats[key] = {
                 "start": start_dt,
                 "duration_s": duration_s,
             }
 
-        start_time = self._make_readable_timestamp(ts=now - seconds_since_start)
+        seconds_since_start = now_perf - self._start_time
+        start_time = self._make_readable_timestamp(ts=now_wall - seconds_since_start)
         return {"start_time": start_time, "op_stats": stats}
 
     def _make_readable_timestamp(self, ts: float) -> str:
-        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
 
 class BenchmarkMetric(Enum):
