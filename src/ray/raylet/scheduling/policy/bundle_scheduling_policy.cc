@@ -341,8 +341,12 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     std::vector<const ResourceRequest *> allocated_requests;
     allocated_requests.reserve(resource_request_list.size());
 
+    const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
+
     for (const auto *request : resource_request_list) {
-      if (cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request)) {
+      if (node_resources.IsAvailable(*request)) {
+        RAY_CHECK(
+            cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request));
         allocated_requests.push_back(request);
       } else {
         for (const auto *prev_request : allocated_requests) {
