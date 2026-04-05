@@ -630,6 +630,11 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
+        # Enable the queue length cache so on_send_request increments
+        # are visible to subsequent choose_replicas() calls.
+        if not request_router._use_replica_queue_len_cache:
+            request_router._use_replica_queue_len_cache = True
+
         # Cache the filtered replica list.
         cache_key = "_di_replicas_" + base_model_id
         cached = getattr(self, cache_key, None)
@@ -696,20 +701,32 @@ class OpenAiIngress(DeploymentProtocol):
                 # All at/above threshold — wait 10ms and retry.
                 await asyncio.sleep(0.01)
 
-        # Default path: use choose_replicas (round-robin or token-aware).
+        # Default path: use choose_replicas (round-robin or P2C).
+        # P2C returns 2 replicas in one tier — pick the one with the
+        # lower cached queue length for load-aware routing.
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
             pending_request=None,
         )
         for tier in replica_tiers:
-            for replica in tier:
-                endpoint = replica.direct_ingress_endpoint
-                if endpoint is not None:
-                    request_router.on_send_request(replica.replica_id)
-                    rid = replica.replica_id.unique_id
-                    if tracker is not None:
-                        tracker.add.remote(rid, 1)
-                    return (*endpoint, rid)
+            eligible = [r for r in tier if r.direct_ingress_endpoint is not None]
+            if not eligible:
+                continue
+            if len(eligible) == 1:
+                best = eligible[0]
+            else:
+                # Pick the replica with the lower cached queue length.
+                best = min(
+                    eligible,
+                    key=lambda r: (
+                        request_router.replica_queue_len_cache.get(r.replica_id) or 0
+                    ),
+                )
+            request_router.on_send_request(best.replica_id)
+            rid = best.replica_id.unique_id
+            if tracker is not None:
+                tracker.add.remote(rid, 1)
+            return (*best.direct_ingress_endpoint, rid)
 
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
         self._direct_ingress_rr_counter += 1
