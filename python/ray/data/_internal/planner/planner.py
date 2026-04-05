@@ -30,6 +30,7 @@ from ray.data._internal.logical.operators import (
     AbstractUDFMap,
     Count,
     Download,
+    Explode,
     Filter,
     InputData,
     Join,
@@ -50,6 +51,7 @@ from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
+    plan_explode_op,
     plan_filter_op,
     plan_project_op,
     plan_streaming_repartition_op,
@@ -159,6 +161,7 @@ class Planner:
         InputData: plan_input_data_op,
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
+        Explode: plan_explode_op,
         Filter: plan_filter_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,

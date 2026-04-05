@@ -60,6 +60,7 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Count,
+    Explode,
     Filter,
     FlatMap,
     InputData,
@@ -1464,6 +1465,51 @@ class Dataset:
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
+        )
+        logical_plan = LogicalPlan(op, self.context)
+        return Dataset(plan, logical_plan)
+
+    @PublicAPI(api_group=BT_API_GROUP)
+    def explode(self, column: str) -> "Dataset":
+        """Expand a list-typed column into multiple rows.
+
+        Each element in the list becomes its own row, with all other columns
+        duplicated. Rows with empty or null lists produce zero output rows.
+
+        Examples:
+
+            .. testcode::
+
+                import ray
+
+                ds = ray.data.from_items([
+                    {"id": 1, "items": [10, 20]},
+                    {"id": 2, "items": [30]},
+                    {"id": 3, "items": []},
+                ])
+                print(ds.explode("items").take_all())
+
+            .. testoutput::
+
+                [{'id': 1, 'items': 10}, {'id': 1, 'items': 20}, {'id': 2, 'items': 30}]
+
+        Args:
+            column: The name of the list-typed column to explode.
+
+        Returns:
+            A new :class:`Dataset` with the list column expanded into rows.
+
+        Raises:
+            ValueError: If the column doesn't exist or is not a list type.
+
+        See Also:
+            :meth:`Dataset.flat_map`: Apply a function that returns multiple
+                rows per input row.
+        """
+        plan = self._plan.copy()
+        op = Explode(
+            input_op=self._logical_plan.dag,
+            column=column,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)

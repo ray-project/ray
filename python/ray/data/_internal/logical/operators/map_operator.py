@@ -18,6 +18,7 @@ from ray.data.preprocessor import Preprocessor
 __all__ = [
     "AbstractMap",
     "AbstractUDFMap",
+    "Explode",
     "Filter",
     "FlatMap",
     "MapBatches",
@@ -470,6 +471,46 @@ class FlatMap(AbstractUDFMap):
             "_name",
             self._get_operator_name(self.__class__.__name__, self.fn),
         )
+        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class Explode(AbstractMap):
+    """Logical operator for exploding a list-typed column into multiple rows.
+
+    Each element in the list column becomes its own row, with all other columns
+    duplicated. Empty and null lists produce zero output rows.
+    """
+
+    input_op: InitVar[LogicalOperator]
+    column: str
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self, input_op: LogicalOperator):
+        assert isinstance(input_op, LogicalOperator), input_op
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(self, "_name", f"Explode({self.column})")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 

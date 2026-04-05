@@ -308,6 +308,172 @@ def test_flat_map(
     ]
 
 
+def test_explode_basic(ray_start_regular_shared):
+    """Test basic explode functionality with list column."""
+    ds = ray.data.from_items(
+        [
+            {"id": 1, "items": [10, 20]},
+            {"id": 2, "items": [30]},
+        ]
+    )
+    result = ds.explode("items").take_all()
+    assert result == [
+        {"id": 1, "items": 10},
+        {"id": 1, "items": 20},
+        {"id": 2, "items": 30},
+    ]
+
+
+def test_explode_empty_list(ray_start_regular_shared):
+    """Test that empty lists produce zero output rows."""
+    ds = ray.data.from_items(
+        [
+            {"id": 1, "items": [10]},
+            {"id": 2, "items": []},
+            {"id": 3, "items": [20]},
+        ]
+    )
+    result = ds.explode("items").take_all()
+    assert result == [
+        {"id": 1, "items": 10},
+        {"id": 3, "items": 20},
+    ]
+
+
+def test_explode_null_list(ray_start_regular_shared):
+    """Test that null list values produce zero output rows."""
+    table = pa.table(
+        {
+            "id": [1, 2, 3],
+            "items": pa.array([[10], None, [20]], type=pa.list_(pa.int64())),
+        }
+    )
+    ds = ray.data.from_arrow(table)
+    result = ds.explode("items").take_all()
+    assert result == [
+        {"id": 1, "items": 10},
+        {"id": 3, "items": 20},
+    ]
+
+
+def test_explode_null_elements_in_list(ray_start_regular_shared):
+    """Test that null elements within lists are preserved."""
+    table = pa.table(
+        {
+            "id": [1],
+            "items": pa.array([[10, None, 30]], type=pa.list_(pa.int64())),
+        }
+    )
+    ds = ray.data.from_arrow(table)
+    result = ds.explode("items").take_all()
+    assert len(result) == 3
+    assert result[0] == {"id": 1, "items": 10}
+    assert result[1]["id"] == 1
+    assert result[1]["items"] is None
+    assert result[2] == {"id": 1, "items": 30}
+
+
+def test_explode_mixed_empty_null_populated(ray_start_regular_shared):
+    """Test a mix of empty, null, and populated lists."""
+    table = pa.table(
+        {
+            "id": [1, 2, 3, 4],
+            "items": pa.array(
+                [[10, 20], [], None, [30]], type=pa.list_(pa.int64())
+            ),
+        }
+    )
+    ds = ray.data.from_arrow(table)
+    result = ds.explode("items").take_all()
+    assert result == [
+        {"id": 1, "items": 10},
+        {"id": 1, "items": 20},
+        {"id": 4, "items": 30},
+    ]
+
+
+def test_explode_nonexistent_column(ray_start_regular_shared):
+    """Test that exploding a non-existent column raises ValueError."""
+    ds = ray.data.from_items([{"id": 1, "items": [10]}])
+    with pytest.raises(ValueError, match="not found"):
+        ds.explode("nonexistent").take_all()
+
+
+def test_explode_non_list_column(ray_start_regular_shared):
+    """Test that exploding a non-list column raises ValueError."""
+    ds = ray.data.from_items([{"id": 1, "value": 42}])
+    with pytest.raises(ValueError, match="not a list type"):
+        ds.explode("value").take_all()
+
+
+def test_explode_nested_list(ray_start_regular_shared):
+    """Test exploding nested lists removes one level of nesting."""
+    table = pa.table(
+        {
+            "id": [1],
+            "nested": pa.array(
+                [[[1, 2], [3]]],
+                type=pa.list_(pa.list_(pa.int64())),
+            ),
+        }
+    )
+    ds = ray.data.from_arrow(table)
+    result = ds.explode("nested").take_all()
+    assert result == [
+        {"id": 1, "nested": [1, 2]},
+        {"id": 1, "nested": [3]},
+    ]
+
+
+def test_explode_string_list(ray_start_regular_shared):
+    """Test exploding a list of strings."""
+    table = pa.table(
+        {
+            "id": [1, 2],
+            "words": pa.array(
+                [["hello", "world"], ["foo"]],
+                type=pa.list_(pa.string()),
+            ),
+        }
+    )
+    ds = ray.data.from_arrow(table)
+    result = ds.explode("words").take_all()
+    assert result == [
+        {"id": 1, "words": "hello"},
+        {"id": 1, "words": "world"},
+        {"id": 2, "words": "foo"},
+    ]
+
+
+def test_explode_chaining(ray_start_regular_shared):
+    """Test that explode chains with other operations."""
+    ds = ray.data.from_items(
+        [
+            {"id": 1, "items": [10, 20, 30]},
+            {"id": 2, "items": [40, 50]},
+        ]
+    )
+    result = (
+        ds.explode("items")
+        .filter(lambda row: row["items"] > 20)
+        .select_columns(["items"])
+        .take_all()
+    )
+    assert result == [{"items": 30}, {"items": 40}, {"items": 50}]
+
+
+def test_explode_all_empty(ray_start_regular_shared):
+    """Test that exploding when all lists are empty returns empty dataset."""
+    ds = ray.data.from_items(
+        [
+            {"id": 1, "items": []},
+            {"id": 2, "items": []},
+        ]
+    )
+    result = ds.explode("items").take_all()
+    assert result == []
+
+
 # Helper function to process timestamp data in nanoseconds
 def process_timestamp_data(row):
     # Convert numpy.datetime64 to pd.Timestamp if needed

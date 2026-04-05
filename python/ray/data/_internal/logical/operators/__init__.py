@@ -22,6 +22,7 @@ from ray.data._internal.logical.operators.join_operator import Join, JoinSide, J
 from ray.data._internal.logical.operators.map_operator import (
     AbstractMap,
     AbstractUDFMap,
+    Explode,
     Filter,
     FlatMap,
     MapBatches,
@@ -48,6 +49,7 @@ __all__ = [
     "Aggregate",
     "Count",
     "Download",
+    "Explode",
     "Filter",
     "FlatMap",
     "FromArrow",

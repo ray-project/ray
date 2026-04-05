@@ -43,6 +43,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators import (
     AbstractUDFMap,
+    Explode,
     Filter,
     FlatMap,
     MapBatches,
@@ -125,6 +126,74 @@ class _MapActorContext:
         thread.start()
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
+
+
+def plan_explode_op(
+    op: Explode,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    # Extract column name before defining closure to avoid serializing the whole op.
+    column = op.column
+    compute = get_compute(op.compute)
+
+    def _explode_block(block: Block) -> Block:
+        import pyarrow.compute as pc
+
+        table = BlockAccessor.for_block(block).to_arrow()
+
+        col_idx = table.schema.get_field_index(column)
+        if col_idx == -1:
+            raise ValueError(
+                f"Column '{column}' not found in schema: {table.schema}"
+            )
+
+        col_arr = table.column(col_idx)
+        col_type = col_arr.type
+        if not (
+            pa.types.is_list(col_type)
+            or pa.types.is_large_list(col_type)
+            or pa.types.is_fixed_size_list(col_type)
+        ):
+            raise ValueError(
+                f"Column '{column}' is not a list type (got {col_type}). "
+                "explode() requires a list-typed column."
+            )
+
+        parent_indices = pc.list_parent_indices(col_arr)
+        flattened = pc.list_flatten(col_arr)
+
+        # Single gather for all columns at once.
+        new_table = table.take(parent_indices)
+
+        # Replace the list column with flattened values.
+        # Use value_field to preserve element nullability and metadata.
+        new_field = col_type.value_field.with_name(
+            table.schema.field(col_idx).name
+        )
+        new_table = new_table.set_column(col_idx, new_field, flattened)
+        return new_table
+
+    output_block_size_option = OutputBlockSizeOption.of(
+        target_max_block_size=data_context.target_max_block_size,
+    )
+    transform_fn = BlockMapTransformFn(
+        _generate_transform_fn_for_map_block(_explode_block),
+        output_block_size_option=output_block_size_option,
+    )
+    map_transformer = MapTransformer([transform_fn], init_fn=None)
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+    )
 
 
 def plan_project_op(
