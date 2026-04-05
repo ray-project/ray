@@ -176,7 +176,9 @@ class GPUShuffleActor:
                 object.__setattr__(
                     exec_stats, "block_ser_time_s", stats.object_creation_dur_s
                 )
-            yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
+            yield BlockMetadataWithSchema.from_block(
+                tagged_block, block_exec_stats=exec_stats
+            )
 
 
 def _wait_for_refs_with_timeout(
