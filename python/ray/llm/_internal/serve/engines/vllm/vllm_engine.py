@@ -3,7 +3,16 @@ import dataclasses
 import inspect
 import json
 import typing
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from pydantic import BaseModel, field_validator
 from starlette.datastructures import State
