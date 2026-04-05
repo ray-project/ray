@@ -1499,5 +1499,79 @@ def test_replica_utilization_metric(metrics_start_shutdown):
         sender.join(timeout=10)
 
 
+def test_objref_resolution_latency_metric(metrics_start_shutdown):
+    """Test that objref resolution latency metric is emitted when a
+    DeploymentResponse is passed as an argument to another handle call.
+    """
+
+    @serve.deployment
+    class Upstream:
+        def __call__(self):
+            time.sleep(0.1)
+            return "upstream_result"
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self, val: str):
+            return f"got_{val}"
+
+    @serve.deployment
+    class Router:
+        def __init__(self, upstream, downstream):
+            self._upstream = upstream
+            self._downstream = downstream
+
+        async def __call__(self):
+            upstream_resp = self._upstream.remote()
+            downstream_resp = self._downstream.remote(upstream_resp)
+            return await downstream_resp
+
+    serve.run(
+        Router.bind(Upstream.bind(), Downstream.bind()),
+        name="app1",
+        route_prefix="/chain",
+    )
+
+    url = get_application_url("HTTP", "app1") + "/chain"
+    resp = httpx.get(url, timeout=10)
+    assert resp.status_code == 200
+    assert resp.text == "got_upstream_result"
+
+    timeseries = PrometheusTimeseries()
+
+    def check_objref_resolution_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_objref_resolution_latency_ms_count",
+            timeseries=timeseries,
+            wait=False,
+        )
+        if not metrics:
+            return False
+
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "Downstream"
+                and metric.get("application") == "app1"
+            ):
+                return True
+        return False
+
+    wait_for_condition(check_objref_resolution_metric, timeout=30)
+
+    def check_objref_resolution_metric_value():
+        value = get_metric_float(
+            "ray_serve_objref_resolution_latency_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "Downstream", "application": "app1"},
+        )
+        assert value >= 100, (
+            f"Resolution latency should be >= 100ms (Upstream sleeps 100ms), "
+            f"got {value}"
+        )
+        return True
+
+    wait_for_condition(check_objref_resolution_metric_value, timeout=30)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
