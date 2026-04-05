@@ -1172,8 +1172,9 @@ def make_async_gen(
         #
         # NOTE: `queue.get` is blocking!
         input_queue_iter = iter(input_queue.get, SENTINEL)
-        fn_gen = fn(input_queue_iter)
+        fn_gen = None
         try:
+            fn_gen = fn(input_queue_iter)
             for result in fn_gen:
                 # Enqueue result of the transformation
                 output_queue.put(result)
@@ -1191,7 +1192,7 @@ def make_async_gen(
             output_queue.put(e)
 
         finally:
-            if hasattr(fn_gen, "close"):
+            if fn_gen is not None and hasattr(fn_gen, "close"):
                 fn_gen.close()
 
     # Start workers threads
