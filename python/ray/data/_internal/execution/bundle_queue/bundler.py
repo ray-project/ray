@@ -60,10 +60,10 @@ class EstimateSize(RebundlingStrategy):
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
     @override
-    def can_build_ready_bundle(self, total_pending_rows: int) -> bool:
-        return total_pending_rows > 0 and (
+    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
+        return num_pending_rows > 0 and (
             self._min_rows_per_bundle is None
-            or total_pending_rows >= self._min_rows_per_bundle
+            or num_pending_rows >= self._min_rows_per_bundle
         )
 
     @override
@@ -181,7 +181,8 @@ class RebundleQueue(BaseBundleQueue):
                 "This is a bug in the Ray Data code."
             )
             remaining_bundle: Optional[RefBundle] = None
-            if rows_needed < last_pending_bundle.num_rows():
+            last_num_rows = last_pending_bundle.num_rows() or 0
+            if rows_needed < last_num_rows:
                 sliced_bundle, remaining_bundle = last_pending_bundle.slice(rows_needed)
                 # The original bundle was enqueued in add(). We need to dequeue it
                 # and enqueue the sliced portion, since _merge_bundles will dequeue
@@ -190,7 +191,7 @@ class RebundleQueue(BaseBundleQueue):
                 self._on_enqueue_bundle(sliced_bundle)
                 self._pending_bundles.append(sliced_bundle)
             else:
-                assert rows_needed == last_pending_bundle.num_rows()
+                assert rows_needed == last_num_rows
                 self._pending_bundles.append(last_pending_bundle)
 
             self._merge_bundles()
