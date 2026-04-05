@@ -336,10 +336,14 @@ class ResourceManager:
             object_store_memory=total_resources.object_store_memory
             * default_mem_fraction
         )
-        self._global_limits = default_limits.min(total_resources).subtract(exclude)
-        assert (
-            self._global_limits.is_non_negative()
-        ), f"Global limits should be non-negative, got {self._global_limits}"
+        # Clamp to non-negative because exclude_resources (e.g., training worker
+        # CPUs) can exceed the total resources reported by the cluster autoscaler,
+        # such as when Ray Train reserves more CPUs than are visible to Ray Data.
+        self._global_limits = (
+            default_limits.min(total_resources)
+            .subtract(exclude)
+            .max(ExecutionResources.zero())
+        )
         return self._global_limits
 
     def get_op_usage(
