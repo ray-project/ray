@@ -163,7 +163,7 @@ backend {{ backend.name or 'unknown' }}-custom-routed
     use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
     {%- endfor %}
     {%- for server in backend.servers %}
-    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check maxconn 128
+    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check{% if backend.max_server_conns %} maxconn {{ backend.max_server_conns }}{% endif %}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup

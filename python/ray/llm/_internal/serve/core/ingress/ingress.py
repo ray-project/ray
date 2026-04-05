@@ -470,7 +470,9 @@ class OpenAiIngress(DeploymentProtocol):
             return
 
         try:
-            host, port = await self._pick_routed_direct_ingress_endpoint(model_id)
+            host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
+                model_id
+            )
         except Exception as e:
             await send(
                 {
@@ -483,6 +485,28 @@ class OpenAiIngress(DeploymentProtocol):
                 {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
             )
             return
+
+        # Notify the token tracker of the new request's token load.
+        tracker = getattr(self, "_token_tracker", None)
+        if tracker is None:
+            try:
+                from token_tracker import get_or_create_token_tracker
+
+                tracker = get_or_create_token_tracker()
+                self._token_tracker = tracker
+            except Exception:
+                pass
+        if tracker is not None:
+            # Estimate input tokens from the prompt field.
+            prompt = parsed.get("prompt", "")
+            if isinstance(prompt, str):
+                # Rough estimate: 1 token per 4 chars
+                est_tokens = max(1, len(prompt) // 4)
+            elif isinstance(prompt, list):
+                est_tokens = len(prompt)  # token IDs
+            else:
+                est_tokens = 128  # fallback
+            tracker.add.remote(replica_id, est_tokens)
 
         resp = orjson.dumps({"host": host, "port": port})
         await send(
@@ -584,8 +608,8 @@ class OpenAiIngress(DeploymentProtocol):
 
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
-    ) -> Tuple[str, int]:
-        """Pick a replica via the request router and return its direct-ingress endpoint."""
+    ) -> Tuple[str, int, str]:
+        """Pick a replica via the request router and return (host, port, replica_id)."""
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -595,10 +619,18 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        replicas = list(request_router.curr_replicas.values())
-        direct_ingress_replicas = [
-            r for r in replicas if r.direct_ingress_endpoint is not None
-        ]
+        # Cache the filtered replica list to avoid per-request list allocation.
+        cache_key = "_di_replicas_" + base_model_id
+        cached = getattr(self, cache_key, None)
+        curr = request_router.curr_replicas
+        if cached is None or cached[0] != len(curr):
+            replicas = [
+                r for r in curr.values() if r.direct_ingress_endpoint is not None
+            ]
+            cached = (len(curr), replicas)
+            setattr(self, cache_key, cached)
+        direct_ingress_replicas = cached[1]
+
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
@@ -610,11 +642,13 @@ class OpenAiIngress(DeploymentProtocol):
             for replica in tier:
                 endpoint = replica.direct_ingress_endpoint
                 if endpoint is not None:
-                    return endpoint
+                    request_router.on_send_request(replica.replica_id)
+                    return (*endpoint, replica.replica_id.unique_id)
 
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
         self._direct_ingress_rr_counter += 1
-        return direct_ingress_replicas[idx].direct_ingress_endpoint
+        r = direct_ingress_replicas[idx]
+        return (*r.direct_ingress_endpoint, r.replica_id.unique_id)
 
     async def _get_response(
         self,
