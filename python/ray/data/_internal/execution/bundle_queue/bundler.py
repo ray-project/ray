@@ -155,7 +155,7 @@ class RebundleQueue(BaseBundleQueue):
         self._pending_bundles.clear()
         self._total_pending_rows = 0
 
-    def _try_build_ready_bundle(self, flush_remaining: bool = False) -> bool:
+    def _try_build_ready_bundle(self, flush_remaining: bool) -> int:
         """Attempts to build a ready bundle from a list of pending bundles by:
 
         - Checking the threshold to build a ready bundle defined by `RebundlingStrategy`
@@ -164,7 +164,7 @@ class RebundleQueue(BaseBundleQueue):
         Returns `True` if ready bundle built, otherwise `False`
         """
 
-        built_ready_bundle: bool = False
+        ready_bundles_built: int = 0
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
             self._total_pending_rows
         ):
@@ -195,7 +195,7 @@ class RebundleQueue(BaseBundleQueue):
                 self._pending_bundles.append(last_pending_bundle)
 
             self._merge_bundles()
-            built_ready_bundle = True
+            ready_bundles_built += 1
 
             if remaining_bundle is not None:
                 # Add back remaining sliced bundle that was not included to build
@@ -210,9 +210,9 @@ class RebundleQueue(BaseBundleQueue):
         # means at most one ready bundle is built per call (only the flush path fires).
         if flush_remaining and self._pending_bundles:
             self._merge_bundles()
-            built_ready_bundle = True
+            ready_bundles_built += 1
 
-        return built_ready_bundle
+        return ready_bundles_built
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
@@ -234,7 +234,9 @@ class RebundleQueue(BaseBundleQueue):
         self._pending_bundles.append(bundle)
         self._on_enqueue_bundle(bundle)
         self._curr_consumed_bundles.append(bundle)
-        if self._try_build_ready_bundle():
+        ready_bundles_built = self._try_build_ready_bundle(flush_remaining=False)
+        if ready_bundles_built > 0:
+            assert ready_bundles_built == 1
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
 
@@ -268,8 +270,8 @@ class RebundleQueue(BaseBundleQueue):
     @override
     def finalize(self, **kwargs: Any):
         if len(self._pending_bundles) > 0:
-            built_ready_bundle = self._try_build_ready_bundle(flush_remaining=True)
-            assert built_ready_bundle
+            ready_bundles_built = self._try_build_ready_bundle(flush_remaining=True)
+            assert ready_bundles_built == 1
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
 
