@@ -107,6 +107,34 @@ dictionaries that have the same type as the input, for example:
         # return list of output rows
         return output
 
+Exploding list columns
+~~~~~~~~~~~~~~~~~~~~~~
+
+If your dataset has a column containing lists and you want to expand each list element
+into its own row, call :meth:`~ray.data.Dataset.explode`. All other columns are
+duplicated for each element. Rows with empty or null lists produce zero output rows.
+
+.. testcode::
+
+    import pyarrow as pa
+    import ray
+
+    ds = ray.data.from_arrow(pa.table({
+        "id": [1, 2, 3],
+        "items": [[10, 20], [30], []],
+    }))
+    print(ds.explode("items").take_all())
+
+.. testoutput::
+
+    [{'id': 1, 'items': 10}, {'id': 1, 'items': 20}, {'id': 2, 'items': 30}]
+
+.. tip::
+
+    Use :meth:`~ray.data.Dataset.explode` instead of :meth:`~ray.data.Dataset.flat_map`
+    when you just need to expand a list column — it's more concise and uses optimized
+    columnar operations instead of row-by-row Python iteration.
+
 .. _transforming_batches:
 
 Transforming batches

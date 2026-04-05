@@ -60,6 +60,8 @@ For Pandas Users
      - :meth:`ds.mean() <ray.data.Dataset.mean>`
    * - df.std()
      - :meth:`ds.std() <ray.data.Dataset.std>`
+   * - df.explode()
+     - :meth:`ds.explode() <ray.data.Dataset.explode>`
 
 .. _api-guide-for-pyarrow-users:
 
