@@ -39,7 +39,7 @@ void MaybeNotifyPoolTaskSubmitted(const PoolTaskSubmittedCallback &callback,
   if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
     work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
   }
-  callback(task_spec.ActorId(), work_item_id, task_spec.TaskId());
+  callback(task_spec.ActorId(), work_item_id);
 }
 
 // Helper to notify ActorPoolManager when a pool task completes.
@@ -66,13 +66,8 @@ void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
   RAY_LOG(DEBUG) << "Notifying pool " << pool_id << " of task completion for work item "
                  << work_item_id << ", status: " << status.ToString();
 
-  callback(pool_id,
-           work_item_id,
-           task_spec.TaskId(),
-           task_spec.ActorId(),
-           status,
-           error_info,
-           task_spec.IsStreamingGenerator());
+  callback(
+      pool_id, work_item_id, task_spec.TaskId(), task_spec.ActorId(), status, error_info);
 }
 
 }  // namespace

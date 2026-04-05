@@ -431,45 +431,17 @@ CoreWorker::CoreWorker(
              const TaskID &task_id,
              const ActorID &actor_id,
              const Status &status,
-             const rpc::RayErrorInfo *error_info,
-             bool is_streaming_generator) {
+             const rpc::RayErrorInfo *error_info) {
         // Route completion to ActorPoolManager if the pool exists
         if (actor_pool_manager_->HasPool(pool_id)) {
-          actor_pool_manager_->OnPoolTaskComplete(pool_id,
-                                                  work_item_id,
-                                                  task_id,
-                                                  actor_id,
-                                                  status,
-                                                  error_info,
-                                                  is_streaming_generator);
+          actor_pool_manager_->OnPoolTaskComplete(
+              pool_id, work_item_id, task_id, actor_id, status, error_info);
         }
       });
   actor_task_submitter_->SetPoolTaskSubmittedCallback(
-      [this](const ActorID &actor_id, const TaskID &work_item_id, const TaskID &task_id) {
-        actor_pool_manager_->OnTaskSubmitted(actor_id, work_item_id, task_id);
+      [this](const ActorID &actor_id, const TaskID &work_item_id) {
+        actor_pool_manager_->OnTaskSubmitted(actor_id, work_item_id);
       });
-  task_manager_->SetPoolTaskStreamDrainedCallback([this](const ActorPoolID &pool_id,
-                                                         const TaskID &work_item_id,
-                                                         const TaskID &task_id,
-                                                         const ActorID &actor_id) {
-    if (actor_pool_manager_->HasPool(pool_id)) {
-      actor_pool_manager_->OnPoolTaskStreamDrained(
-          pool_id, work_item_id, task_id, actor_id);
-    }
-  });
-
-  // Wire stream-drained callback from TaskManager to ActorPoolManager.
-  // For streaming generator pool tasks, the task slot is held until
-  // the stream is fully consumed (EOF read or stream deleted).
-  task_manager_->SetPoolTaskStreamDrainedCallback([this](const ActorPoolID &pool_id,
-                                                         const TaskID &work_item_id,
-                                                         const TaskID &task_id,
-                                                         const ActorID &actor_id) {
-    if (actor_pool_manager_->HasPool(pool_id)) {
-      actor_pool_manager_->OnPoolTaskStreamDrained(
-          pool_id, work_item_id, task_id, actor_id);
-    }
-  });
 
   // Wire actor state notifications from GCS to ActorPoolManager.
   // When a pool actor restarts (ALIVE), this triggers DrainWorkQueue to

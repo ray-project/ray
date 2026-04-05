@@ -652,36 +652,31 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  {
-    absl::MutexLock lock(&object_ref_stream_ops_mu_);
-    bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
-    if (!can_gc_lineage) {
-      RAY_LOG(DEBUG) << "Generator " << generator_id
-                     << " still has lineage in scope, try again later";
-      return false;
-    }
-
-    RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
-    object_ref_streams_.erase(generator_id);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
+  if (!can_gc_lineage) {
+    RAY_LOG(DEBUG) << "Generator " << generator_id
+                   << " still has lineage in scope, try again later";
+    return false;
   }
-  // Lock released — safe to fire callback.
-  MaybeNotifyPoolTaskStreamDrained(generator_id.TaskId());
+
+  RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
+  object_ref_streams_.erase(generator_id);
   return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
-  const auto task_id = generator_id.TaskId();
   auto backpressure_threshold = 0;
   {
     absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
+    auto it = submissible_tasks_.find(generator_id.TaskId());
     if (it != submissible_tasks_.end()) {
       backpressure_threshold = it->second.spec_.GeneratorBackpressureNumObjects();
     }
   }
 
-  absl::ReleasableMutexLock lock(&object_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -711,11 +706,6 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  if (status.IsObjectRefEndOfStream()) {
-    lock.Release();
-    MaybeNotifyPoolTaskStreamDrained(task_id);
-  }
-
   return status;
 }
 
@@ -727,42 +717,6 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
          "created "
          "and not removed.";
   return stream_it->second.IsFinished();
-}
-
-void TaskManager::MaybeNotifyPoolTaskStreamDrained(const TaskID &task_id) {
-  if (!pool_task_stream_drained_callback_) {
-    return;
-  }
-
-  // Extract pool task metadata under mu_, then release before calling callback.
-  // This ensures no TaskManager locks are held when entering ActorPoolManager.
-  ActorPoolID pool_id;
-  TaskID work_item_id;
-  ActorID actor_id;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    if (it == submissible_tasks_.end()) {
-      RAY_LOG(DEBUG) << "MaybeNotifyPoolTaskStreamDrained: task " << task_id
-                     << " not found in submissible_tasks (already erased)";
-      return;
-    }
-    const auto &spec = it->second.spec_;
-    if (!spec.IsPoolTask()) {
-      return;
-    }
-    const auto &msg = spec.GetMessage();
-    if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
-      return;
-    }
-    pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
-    if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
-      work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
-    }
-    actor_id = spec.ActorId();
-  }
-  // mu_ released — safe to call into ActorPoolManager.
-  pool_task_stream_drained_callback_(pool_id, work_item_id, task_id, actor_id);
 }
 
 bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
@@ -1135,15 +1089,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // stored in plasma. Pool tasks are always retryable via pool-bound
     // reconstruction regardless of num_retries_left_.
     bool is_pool_task = it->second.spec_.IsPoolTask();
-    // Pool streaming generator tasks must stay pinned in submissible_tasks_
-    // until the stream is fully drained, so MaybeNotifyPoolTaskStreamDrained
-    // can find them. Without this, the task is erased here but the stream
-    // drain callback can't fire, leaking num_tasks_in_flight.
-    bool is_pool_streaming_generator =
-        is_pool_task && it->second.spec_.IsStreamingGenerator();
     bool task_retryable = (it->second.num_retries_left_ != 0 || is_pool_task) &&
                           !it->second.reconstructable_return_ids_.empty();
-    if (task_retryable || is_pool_streaming_generator) {
+    if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
       it->second.lineage_footprint_bytes_ = it->second.spec_.GetMessage().ByteSizeLong();

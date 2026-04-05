@@ -221,18 +221,6 @@ class TaskManager : public TaskManagerInterface {
         });
   }
 
-  /// Callback type for notifying ActorPoolManager when a streaming generator's
-  /// stream has been fully consumed (EOF read or stream deleted).
-  using PoolTaskStreamDrainedCallback = std::function<void(const ActorPoolID &pool_id,
-                                                           const TaskID &work_item_id,
-                                                           const TaskID &task_id,
-                                                           const ActorID &actor_id)>;
-
-  /// Set the callback for pool task stream drain notifications.
-  void SetPoolTaskStreamDrainedCallback(PoolTaskStreamDrainedCallback callback) {
-    pool_task_stream_drained_callback_ = std::move(callback);
-  }
-
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
@@ -750,15 +738,6 @@ class TaskManager : public TaskManagerInterface {
   void UpdateReferencesForResubmit(const TaskSpecification &spec,
                                    std::vector<ObjectID> *task_deps)
       ABSL_LOCKS_EXCLUDED(mu_);
-
-  /// Notify ActorPoolManager that a streaming generator's stream has been fully
-  /// consumed. Extracts pool task metadata under mu_, releases all locks, then
-  /// fires the callback. Safe to call from any context.
-  void MaybeNotifyPoolTaskStreamDrained(const TaskID &task_id);
-
-  /// Callback for notifying ActorPoolManager when a streaming generator's
-  /// stream has been fully consumed.
-  PoolTaskStreamDrainedCallback pool_task_stream_drained_callback_;
 
   /// Used to store task results.
   CoreWorkerMemoryStore &in_memory_store_;

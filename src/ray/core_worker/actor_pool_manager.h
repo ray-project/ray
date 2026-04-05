@@ -296,27 +296,15 @@ class ActorPoolManager {
                           const TaskID &task_id,
                           const ActorID &actor_id,
                           const Status &status,
-                          const rpc::RayErrorInfo *error_info,
-                          bool is_streaming_generator = false);
-
-  /// Notify that a streaming generator pool task's stream has been fully
-  /// consumed by the caller (EOF read or stream deleted). Together with
-  /// OnPoolTaskComplete(execution_finished), this completes the two-phase
-  /// lifecycle for streaming generator pool tasks.
-  void OnPoolTaskStreamDrained(const ActorPoolID &pool_id,
-                               const TaskID &work_item_id,
-                               const TaskID &task_id,
-                               const ActorID &actor_id);
+                          const rpc::RayErrorInfo *error_info);
 
   /// Notify that a task was pushed to an actor in a pool.
   /// Transitions the work item from pending-submission to in-flight.
   ///
   /// \param actor_id The actor that received the task.
   /// \param work_item_id The work item that was pushed.
-  /// \param task_id The actual TaskID for this submission attempt.
   void OnTaskSubmitted(const ActorID &actor_id,
-                       const TaskID &work_item_id = TaskID::Nil(),
-                       const TaskID &task_id = TaskID::Nil());
+                       const TaskID &work_item_id = TaskID::Nil());
 
   /// Notify that an actor has come alive (e.g. after restart).
   /// Called from ActorManager::HandleActorStateNotification when state = ALIVE.
@@ -353,8 +341,6 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerTest, OnTaskFailedMarksActorDead);
   FRIEND_TEST(ActorPoolManagerTest, OnActorAliveDrainsQueue);
   FRIEND_TEST(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive);
-  FRIEND_TEST(ActorPoolManagerTest, StreamingTaskHoldsSlotUntilStreamDrained);
-  FRIEND_TEST(ActorPoolManagerTest, StreamingTaskDrainBeforeCompletionWaitsForSuccess);
 
   /// Select the best actor from a pool based on load and locality.
   ///
