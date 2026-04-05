@@ -2109,60 +2109,13 @@ class Replica:
             async def _counting_mw(scope, receive, send):
                 if scope["type"] == "http":
                     metrics_mgr.inc_num_ongoing_requests(_di_metadata)
-
-                    # Estimate tokens for tracker decrement (mirrors ingress
-                    # estimate: ISL from prompt + OSL from max_tokens).
-                    est_tokens = 1
-                    if scope.get("method") == "POST":
-                        try:
-                            first_msg = await receive()
-                            body = first_msg.get("body", b"")
-                            if body:
-                                import orjson
-
-                                parsed = orjson.loads(body)
-                                prompt = parsed.get("prompt", "")
-                                if isinstance(prompt, list):
-                                    est_isl = len(prompt)
-                                elif isinstance(prompt, str):
-                                    est_isl = max(1, len(prompt) // 4)
-                                else:
-                                    messages = parsed.get("messages", [])
-                                    est_isl = (
-                                        sum(
-                                            max(
-                                                1,
-                                                len(str(m.get("content", ""))) // 4,
-                                            )
-                                            for m in messages
-                                        )
-                                        if messages
-                                        else 128
-                                    )
-                                est_osl = parsed.get("max_tokens", 128) or 128
-                                est_tokens = est_isl + est_osl
-
-                            # Replay the first message for the inner app.
-                            _replayed = [False]
-                            _orig_receive = receive
-
-                            async def _replay_receive():
-                                if not _replayed[0]:
-                                    _replayed[0] = True
-                                    return first_msg
-                                return await _orig_receive()
-
-                            receive = _replay_receive
-                        except Exception:
-                            pass
-
                     try:
                         await inner_app(scope, receive, send)
                     finally:
                         metrics_mgr.dec_num_ongoing_requests(_di_metadata)
                         tracker = _get_tracker()
                         if tracker is not None:
-                            tracker.remove.remote(_replica_uid, est_tokens)
+                            tracker.remove.remote(_replica_uid, 1)
                 else:
                     await inner_app(scope, receive, send)
 

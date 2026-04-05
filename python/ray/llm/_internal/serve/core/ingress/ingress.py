@@ -469,27 +469,9 @@ class OpenAiIngress(DeploymentProtocol):
             await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
             return
 
-        # Estimate total tokens for this request (like Dynamo's default mode:
-        # exact ISL from prompt, estimated OSL from max_tokens).
-        prompt = parsed.get("prompt", "")
-        if isinstance(prompt, list):
-            est_isl = len(prompt)  # token IDs
-        elif isinstance(prompt, str):
-            est_isl = max(1, len(prompt) // 4)  # rough char-to-token
-        else:
-            # Chat completions: estimate from messages
-            messages = parsed.get("messages", [])
-            est_isl = (
-                sum(max(1, len(str(m.get("content", ""))) // 4) for m in messages)
-                if messages
-                else 128
-            )
-        est_osl = parsed.get("max_tokens", 128) or 128
-        est_tokens = est_isl + est_osl
-
         try:
             host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
-                model_id, est_tokens=est_tokens
+                model_id
             )
         except Exception as e:
             await send(
@@ -616,24 +598,26 @@ class OpenAiIngress(DeploymentProtocol):
         return tracker
 
     async def _pick_routed_direct_ingress_endpoint(
-        self, model_id: str, *, est_tokens: int = 1
+        self, model_id: str
     ) -> Tuple[str, int, str]:
         """Pick a replica and return (host, port, replica_id).
 
-        Implements token-aware router queue threshold: when all replicas
-        exceed ROUTER_QUEUE_THRESHOLD estimated tokens, the handler holds
-        the response until one drops below. The Lua coroutine yields while
-        waiting, HAProxy naturally holds the request.
+        Args:
+            model_id: The model to route to.
 
-        Like Dynamo's router_queue_threshold but using estimated tokens
-        (ISL + max_tokens) per request from the request body.
+        Implements router queue threshold: when all replicas exceed
+        ``ROUTER_QUEUE_THRESHOLD_FRACTION × max_num_seqs`` ongoing
+        requests, the handler holds the response until one drops below.
+        The Lua coroutine yields while waiting, HAProxy naturally holds
+        the request.
+
+        Like Dynamo's ``router_queue_threshold`` (a fraction of
+        ``max_num_batched_tokens``), but using ongoing request count as a
+        proxy for engine load — correct because each decode request costs
+        ~1 token per step regardless of ISL.
 
         Returns:
             Tuple of (host, port, replica_unique_id).
-
-        Args:
-            model_id: The model to route to.
-            est_tokens: Estimated total tokens (ISL + OSL) for this request.
         """
         import os
 
@@ -661,11 +645,25 @@ class OpenAiIngress(DeploymentProtocol):
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
-        # Router queue threshold: max estimated tokens per replica before
-        # the router queues. 0 = disabled (use choose_replicas only).
+        # Router queue threshold as a fraction of max_num_seqs.
+        # e.g. 0.5 with max_num_seqs=256 → threshold=128 requests/replica.
+        # 0 = disabled (use choose_replicas only).
         queue_threshold = getattr(self, "_queue_threshold", None)
         if queue_threshold is None:
-            queue_threshold = int(os.environ.get("ROUTER_QUEUE_THRESHOLD", "0"))
+            frac = float(os.environ.get("ROUTER_QUEUE_THRESHOLD_FRACTION", "0"))
+            if frac > 0:
+                llm_config = self._llm_configs.get(base_model_id)
+                max_num_seqs = 256
+                if llm_config and llm_config.engine_kwargs:
+                    max_num_seqs = llm_config.engine_kwargs.get("max_num_seqs", 256)
+                queue_threshold = int(frac * max_num_seqs)
+                logger.info(
+                    f"Router queue threshold: {queue_threshold} "
+                    f"requests/replica (fraction={frac}, "
+                    f"max_num_seqs={max_num_seqs})"
+                )
+            else:
+                queue_threshold = 0
             self._queue_threshold = queue_threshold
 
         tracker = self._get_token_tracker() if queue_threshold > 0 else None
@@ -678,7 +676,7 @@ class OpenAiIngress(DeploymentProtocol):
                 except Exception:
                     break  # tracker unavailable, fall through
 
-                # Find least-loaded replica (by token count).
+                # Find least-loaded replica.
                 best_load = float("inf")
                 best_replica = None
                 for r in direct_ingress_replicas:
@@ -688,13 +686,10 @@ class OpenAiIngress(DeploymentProtocol):
                         best_load = load
                         best_replica = r
 
-                if (
-                    best_replica is not None
-                    and best_load + est_tokens <= queue_threshold
-                ):
+                if best_replica is not None and best_load < queue_threshold:
                     endpoint = best_replica.direct_ingress_endpoint
                     rid = best_replica.replica_id.unique_id
-                    tracker.add.remote(rid, est_tokens)
+                    tracker.add.remote(rid, 1)
                     request_router.on_send_request(best_replica.replica_id)
                     return (*endpoint, rid)
 
@@ -713,7 +708,7 @@ class OpenAiIngress(DeploymentProtocol):
                     request_router.on_send_request(replica.replica_id)
                     rid = replica.replica_id.unique_id
                     if tracker is not None:
-                        tracker.add.remote(rid, est_tokens)
+                        tracker.add.remote(rid, 1)
                     return (*endpoint, rid)
 
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
