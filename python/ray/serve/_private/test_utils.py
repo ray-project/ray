@@ -979,6 +979,28 @@ class FakeGrpcContext:
         return self._invocation_metadata
 
 
+class FakeHistogram:
+    """Fake Histogram for unit tests without Ray."""
+
+    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+        self.name = name
+        self.observations = []
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
+
+    def set_default_tags(self, tags: Dict[str, str]):
+        for key, tag in tags.items():
+            assert key in self.tags
+            self.default_tags[key] = tag
+
+    def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
+        self.observations.append((value, merged_tags))
+
+
 class FakeGauge:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name

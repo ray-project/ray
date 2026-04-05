@@ -1,4 +1,7 @@
-from ray.serve._private.request_router.common import PendingRequest  # noqa: F401
+from ray.serve._private.request_router.common import (  # noqa: F401
+    PendingRequest,
+    ReplicaSelection,
+)
 from ray.serve._private.request_router.pow_2_router import (  # noqa: F401
     PowerOfTwoChoicesRequestRouter,
 )

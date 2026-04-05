@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -52,7 +52,11 @@ from ray.serve._private.metrics_utils import (
     TimeStampedValue,
 )
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.request_router import PendingRequest, RequestRouter
+from ray.serve._private.request_router import (
+    PendingRequest,
+    ReplicaSelection,
+    RequestRouter,
+)
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
@@ -631,6 +635,36 @@ class AsyncioRouter:
             event_loop,
         )
 
+        # Phase 2 decoupled routing metrics (issue #62163)
+        self._selection_dispatch_gap_ms = metrics.Histogram(
+            "serve_selection_dispatch_gap_ms",
+            description=(
+                "Time in milliseconds between replica selection (choose_replica "
+                "context entry) and request dispatch (dispatch() call). High values "
+                "may indicate PD proxy coordination latency or stalled clients "
+                "holding reserved slots."
+            ),
+            boundaries=[1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+            tag_keys=("deployment", "application"),
+        )
+        self._selection_dispatch_gap_ms.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app_name}
+        )
+
+        self._selections_released_without_dispatch = metrics.Counter(
+            "serve_selections_released_without_dispatch",
+            description=(
+                "Number of choose_replica() selections that exited without a "
+                "dispatch() call. Each count represents a wasted slot reservation "
+                "(slot reserved then released). Spikes may indicate errors in PD "
+                "proxy logic or client-side aborts."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self._selections_released_without_dispatch.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app_name}
+        )
+
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
         # However, for efficiency, we don't want to create a LongPollClient for every
@@ -1156,6 +1190,58 @@ class AsyncioRouter:
                         )
                     if exc:
                         set_span_exception(exc, escaped=True)
+
+    @asynccontextmanager
+    async def choose_replica(self, pending_request: PendingRequest):
+        """Async context manager to select a replica for the given request.
+
+        This acquires a slot for the request and yields a ReplicaSelection object.
+        On exit, if dispatch() was NOT called, the counter metric is incremented
+        and the slot is released.
+
+        Usage:
+            async with router.choose_replica(pr) as selection:
+                router.dispatch(selection, pr)
+        """
+        await self._request_router_initialized.wait()
+
+        # Select a replica using the request router
+        replica = await self.request_router._choose_replica_for_request(pending_request)
+
+        selection = ReplicaSelection(replica=replica)
+
+        try:
+            yield selection
+        finally:
+            if not selection._dispatched:
+                # Request was NOT dispatched - increment "released without dispatch"
+                self._selections_released_without_dispatch.inc()
+                selection._release_slot()
+
+    def dispatch(
+        self,
+        selection: ReplicaSelection,
+        pending_request: PendingRequest,
+    ) -> None:
+        """Dispatch a request to the selected replica.
+
+        Records the selection-to-dispatch gap metric and marks the selection
+        as dispatched.
+        """
+        # Send the request first so that any exception here still triggers
+        # the "released without dispatch" counter and _release_slot() in
+        # choose_replica's finally block.
+        result = selection.replica.try_send_request(
+            pending_request, with_rejection=False
+        )
+        pending_request.future.set_result(result)
+
+        # Record metrics and mark dispatched only after both calls succeed,
+        # so the gap histogram and the "released without dispatch" counter
+        # can never both fire for the same request.
+        gap_ms = (time.monotonic() - selection.selection_start_time) * 1000
+        self._selection_dispatch_gap_ms.observe(gap_ms)
+        selection._mark_dispatched()
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
