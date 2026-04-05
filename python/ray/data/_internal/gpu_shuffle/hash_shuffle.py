@@ -166,8 +166,9 @@ class GPUShuffleActor:
             ).copy(deep=True)
             # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
             block = cdf.to_arrow(preserve_index=False)
+            existing_metadata = block.schema.metadata or {}
             block = block.replace_schema_metadata(
-                {"_gpu_partition_id": str(partition_id)}
+                {**existing_metadata, "_gpu_partition_id": str(partition_id)}
             )
             exec_stats = exec_stats_builder.build()
             stats = yield block
