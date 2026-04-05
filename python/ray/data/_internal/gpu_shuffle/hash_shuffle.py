@@ -167,11 +167,11 @@ class GPUShuffleActor:
             # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
             block = cdf.to_arrow(preserve_index=False)
             existing_metadata = block.schema.metadata or {}
-            block = block.replace_schema_metadata(
-                {**existing_metadata, "_gpu_partition_id": str(partition_id)}
+            tagged_block = block.replace_schema_metadata(
+                {**existing_metadata, b"_gpu_partition_id": str(partition_id).encode()}
             )
             exec_stats = exec_stats_builder.build()
-            stats = yield block
+            stats = yield tagged_block
             if stats:
                 object.__setattr__(
                     exec_stats, "block_ser_time_s", stats.object_creation_dur_s
@@ -495,6 +495,16 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         def _on_bundle_ready(bundle: RefBundle) -> None:
             partition_id = int(bundle.schema.metadata[b"_gpu_partition_id"])
+            clean_meta = {
+                k: v
+                for k, v in bundle.schema.metadata.items()
+                if k != b"_gpu_partition_id"
+            }
+            bundle = RefBundle(
+                bundle.blocks,
+                schema=bundle.schema.with_metadata(clean_meta),
+                owns_blocks=bundle.owns_blocks,
+            )
             self._num_partitions_reduced += 1
 
             # Register a logical reduce "task" for this partition, mirroring
