@@ -1168,13 +1168,13 @@ def make_async_gen(
 
     # Transforming worker
     def _run_transforming_worker(input_queue, output_queue):
+        # Create iterator draining the queue, until it receives sentinel
+        #
+        # NOTE: `queue.get` is blocking!
+        input_queue_iter = iter(input_queue.get, SENTINEL)
+        fn_gen = fn(input_queue_iter)
         try:
-            # Create iterator draining the queue, until it receives sentinel
-            #
-            # NOTE: `queue.get` is blocking!
-            input_queue_iter = iter(input_queue.get, SENTINEL)
-
-            for result in fn(input_queue_iter):
+            for result in fn_gen:
                 # Enqueue result of the transformation
                 output_queue.put(result)
 
@@ -1189,6 +1189,9 @@ def make_async_gen(
             # NOTE: In this case we simply enqueue the exception rather than
             #       interrupting
             output_queue.put(e)
+
+        finally:
+            fn_gen.close()
 
     # Start workers threads
     filling_worker_thread = threading.Thread(
