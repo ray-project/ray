@@ -743,8 +743,8 @@ void TaskManager::MaybeNotifyPoolTaskStreamDrained(const TaskID &task_id) {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
-      RAY_LOG(INFO) << "MaybeNotifyPoolTaskStreamDrained: task " << task_id
-                    << " not found in submissible_tasks (already erased)";
+      RAY_LOG(DEBUG) << "MaybeNotifyPoolTaskStreamDrained: task " << task_id
+                     << " not found in submissible_tasks (already erased)";
       return;
     }
     const auto &spec = it->second.spec_;
@@ -1135,9 +1135,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // stored in plasma. Pool tasks are always retryable via pool-bound
     // reconstruction regardless of num_retries_left_.
     bool is_pool_task = it->second.spec_.IsPoolTask();
+    // Pool streaming generator tasks must stay pinned in submissible_tasks_
+    // until the stream is fully drained, so MaybeNotifyPoolTaskStreamDrained
+    // can find them. Without this, the task is erased here but the stream
+    // drain callback can't fire, leaking num_tasks_in_flight.
+    bool is_pool_streaming_generator =
+        is_pool_task && it->second.spec_.IsStreamingGenerator();
     bool task_retryable = (it->second.num_retries_left_ != 0 || is_pool_task) &&
                           !it->second.reconstructable_return_ids_.empty();
-    if (task_retryable) {
+    if (task_retryable || is_pool_streaming_generator) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
       it->second.lineage_footprint_bytes_ = it->second.spec_.GetMessage().ByteSizeLong();
