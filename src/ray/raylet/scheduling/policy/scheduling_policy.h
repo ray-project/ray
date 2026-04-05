@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
 #include <vector>
 
 #include "ray/common/scheduling/cluster_resource_data.h"
@@ -79,7 +81,20 @@ struct SchedulingResult {
   SchedulingResultStatus status;
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
+  // The label domain selected during placement group scheduling.
+  // The key is the label domain key (e.g. "ray.io/gpu-domain"),
+  // the value is the label domain value (e.g. "rack-1").
+  // We have one pair per placement group for now because we only support
+  // STRICT_PACK scheduling strategy. To support other strategies, this data
+  // structure will need to be extended.
+  // TODO(#61777): Extend to support multiple tiers of label-domain scheduling.
+  std::optional<std::pair<std::string, std::string>> selected_label_domain;
 };
+
+using NodeScheduleFn = std::function<SchedulingResult(
+    const std::vector<const ResourceRequest *> &,
+    SchedulingOptions,
+    absl::flat_hash_map<scheduling::NodeID, const Node *>)>;
 
 /// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
 /// resource requirement list as well as the scheduling options.
@@ -91,14 +106,14 @@ class IBundleSchedulingPolicy {
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
   /// \param options: scheduling options.
-  /// \param context: The context of current scheduling. Each policy can
-  /// correspond to a different type of context.
+  /// \param candidate_nodes: The set of candidate nodes available for scheduling.
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
   virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options) = 0;
+      SchedulingOptions options,
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) = 0;
 };
 
 /// ISchedulingPolicy picks a node to from the cluster, according to the resource

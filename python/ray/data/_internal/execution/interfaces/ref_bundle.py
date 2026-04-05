@@ -17,7 +17,7 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-@dataclass
+@dataclass(frozen=True)
 class BlockSlice:
     """A slice of a block."""
 
@@ -31,7 +31,7 @@ class BlockSlice:
         return self.end_offset - self.start_offset
 
 
-@dataclass
+@dataclass(frozen=True)
 class RefBundle:
     """A group of data block references and their metadata.
 
@@ -63,7 +63,7 @@ class RefBundle:
     # a list with length equal to len(blocks). Individual entries can be None to
     # represent a full block (equivalent to BlockSlice(0, num_rows)).
     # Pass None during construction to initialize all slices as None (full blocks).
-    slices: Optional[List[Optional[BlockSlice]]] = None
+    slices: Optional[Tuple[Optional[BlockSlice], ...]] = None
 
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
@@ -78,12 +78,24 @@ class RefBundle:
     _cached_preferred_locations: Optional[Dict[NodeIdStr, int]] = None
 
     def __post_init__(self):
+        if self.schema is not None:
+            import pyarrow as pa
+
+            from ray.data._internal.pandas_block import PandasBlockSchema
+
+            assert isinstance(
+                self.schema, (pa.lib.Schema, PandasBlockSchema)
+            ), f"Schema must be a pyarrow or PandasBlockSchema, got {type(self.schema)}"
+
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
         if self.slices is None:
-            self.slices = [None] * len(self.blocks)
+            object.__setattr__(self, "slices", (None,) * len(self.blocks))
         else:
+            if not isinstance(self.slices, tuple):
+                object.__setattr__(self, "slices", tuple(self.slices))
+
             assert len(self.blocks) == len(
                 self.slices
             ), "Number of blocks and slices must match"
@@ -110,11 +122,6 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
-            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
-        object.__setattr__(self, key, value)
 
     @property
     def block_refs(self) -> List[ObjectRef[Block]]:
@@ -202,7 +209,9 @@ class RefBundle:
                 for loc in obj_meta.locs:
                     preferred_locs[loc] += obj_meta.size
 
-            self._cached_preferred_locations = preferred_locs
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_preferred_locations", preferred_locs)
 
         return self._cached_preferred_locations
 
@@ -221,7 +230,9 @@ class RefBundle:
                 for ref in self.block_refs
             }
 
-            self._cached_object_meta = object_metas
+            # NOTE: We're working around object being immutable to update cached
+            #       values (safe)
+            object.__setattr__(self, "_cached_object_meta", object_metas)
 
         return self._cached_object_meta
 
@@ -295,14 +306,14 @@ class RefBundle:
             blocks=tuple(consumed_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=consumed_slices if consumed_slices else None,
+            slices=tuple(consumed_slices) if consumed_slices else None,
         )
 
         remaining_bundle = RefBundle(
             blocks=tuple(remaining_blocks),
             schema=self.schema,
             owns_blocks=False,
-            slices=remaining_slices if remaining_slices else None,
+            slices=tuple(remaining_slices) if remaining_slices else None,
         )
 
         return sliced_bundle, remaining_bundle
@@ -343,11 +354,37 @@ class RefBundle:
             slices=merged_slices,
         )
 
-    def __eq__(self, other) -> bool:
-        return self is other
+    def __eq__(self, other: "RefBundle"):
+        if self is other:
+            return True
+        elif not isinstance(other, RefBundle):
+            return False
+
+        return (
+            self.blocks == other.blocks
+            and self.slices == other.slices
+            # NOTE: We're establishing a requirement of schemas for `RefBundle`
+            #       to be exactly the same object for it to be considered equal.
+            #
+            #       This is necessary to avoid a full schema equality check that
+            #       is computationally intensive.
+            and self.schema is other.schema
+            and self.owns_blocks == other.owns_blocks
+            and self.output_split_idx == other.output_split_idx
+        )
 
     def __hash__(self) -> int:
-        return id(self)
+        return hash(
+            (
+                # Only hash block refs
+                *[b for b, _ in self.blocks],
+                *self.slices,
+                # Check out comment in ``__eq__``
+                id(self.schema),
+                self.owns_blocks,
+                self.output_split_idx,
+            )
+        )
 
     def __len__(self) -> int:
         return len(self.blocks)

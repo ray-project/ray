@@ -4,6 +4,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from typing import Optional, Union
+from unittest.mock import MagicMock
 
 import fsspec
 import numpy as np
@@ -19,7 +20,10 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray.data import FileShuffleConfig, Schema
 from ray.data._internal.datasource.parquet_datasource import (
+    _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
     ParquetDatasource,
+    _coerce_pyarrow_fragment_batch_size,
+    _read_batches_from,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -347,7 +351,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -357,7 +361,7 @@ def test_parquet_read_partitioned_with_filter(
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -866,7 +870,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
             self.filename_template = filename_template
             self.should_include_uuid = should_include_uuid
 
-        def get_filename_for_block(self, block, write_uuid, task_index, block_index):
+        def get_filename_for_task(self, write_uuid, task_index):
             if self.should_include_uuid:
                 # Replace {write_uuid} placeholder with actual write_uuid
                 return self.filename_template.format(write_uuid=write_uuid, i="{i}")
@@ -2256,7 +2260,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     def call_helper(paths, fs, kwargs):
         from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
 
-        return get_parquet_dataset(paths, fs, kwargs)
+        return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
     ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
     assert ds is not None
@@ -2668,6 +2672,85 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
     expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
     assert actual_data == expected_data, (actual_data, expected_data)
+
+
+class TestParquetFragmentBatchSizeCoercion:
+    """Regression: PyArrow ``Fragment.to_batches`` uses a C int for ``batch_size``.
+
+    ``_coerce_pyarrow_fragment_batch_size`` raises for non-positive values and clamps
+    values above ``_MAX_PYARROW_TO_BATCHES_BATCH_SIZE`` to that maximum.
+    """
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (2**31, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (10**12, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (_MAX_PYARROW_TO_BATCHES_BATCH_SIZE, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (0, ValueError),
+            (-3, ValueError),
+            (10_000, 10_000),
+        ],
+    )
+    def test_coerce_pyarrow_fragment_batch_size(self, raw, expected):
+        if expected is ValueError:
+            with pytest.raises(ValueError, match="Batch size must be > 0"):
+                _coerce_pyarrow_fragment_batch_size(raw)
+        else:
+            assert _coerce_pyarrow_fragment_batch_size(raw) == expected
+
+    @pytest.mark.parametrize(
+        "batch_size,to_batches_kwargs,expected_batch_size_passed_to_to_batches",
+        [
+            (10**12, None, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (None, {"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            (10_000, None, 10_000),
+            (None, {"batch_size": np.int64(10_000)}, 10_000),
+            (0, None, ValueError),
+            (-3, None, ValueError),
+            (None, {"batch_size": 0}, ValueError),
+            (None, {"batch_size": -1}, ValueError),
+        ],
+    )
+    def test_read_batches_from_coerces_fragment_batch_size_to_c_int_range(
+        self, batch_size, to_batches_kwargs, expected_batch_size_passed_to_to_batches
+    ):
+        """``batch_size`` passed to ``fragment.to_batches`` is coerced for PyArrow's C int."""
+
+        captured: dict = {}
+
+        def fake_to_batches(
+            *, columns=None, filter=None, schema=None, use_threads=False, **kwargs
+        ):
+            captured["batch_size"] = kwargs.get("batch_size")
+            return iter([])
+
+        fragment = MagicMock()
+        fragment.path = "/tmp/test.parquet"
+        fragment.to_batches = fake_to_batches
+
+        schema = pa.schema([("x", pa.int64())])
+
+        def run_read():
+            return list(
+                _read_batches_from(
+                    fragment,
+                    schema=schema,
+                    data_columns=["x"],
+                    data_columns_rename_map=None,
+                    partition_columns=None,
+                    partitioning=Partitioning("hive"),
+                    batch_size=batch_size,
+                    to_batches_kwargs=to_batches_kwargs,
+                )
+            )
+
+        if expected_batch_size_passed_to_to_batches is ValueError:
+            with pytest.raises(ValueError, match="Batch size must be > 0"):
+                run_read()
+        else:
+            assert run_read() == []
+            assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
 
 
 if __name__ == "__main__":

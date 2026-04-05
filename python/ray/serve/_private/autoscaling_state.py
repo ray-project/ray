@@ -23,6 +23,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -144,6 +147,11 @@ class DeploymentAutoscalingState:
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
+        gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
+        if gang_size is not None and gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -489,11 +497,27 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
+
+            # Exclude early "partial" period: when series have misaligned start times,
+            # late-starting series are implicitly 0 before their first data point, which
+            # undercounts the total and biases aggregations. Start the window at the
+            # timestamp when all series have contributed at least one point.
+            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+            # to 10ms; if aligned_start is before the first merged point, the gap would
+            # be treated as 0 and bias the average downward.
+            window_start = None
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start <= merged_timeseries[-1].timestamp:
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
+                window_start=window_start,
             )
             return value if value is not None else 0.0
 
@@ -919,8 +943,8 @@ class ApplicationAutoscalingState:
             self._policy_state = returned_policy_state
 
             # Validate returned decisions
-            assert (
-                type(decisions) is dict
+            assert isinstance(
+                decisions, dict
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
 
             # assert that deployment_id is in decisions is valid
