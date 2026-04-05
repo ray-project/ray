@@ -469,9 +469,27 @@ class OpenAiIngress(DeploymentProtocol):
             await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
             return
 
+        # Estimate total tokens for this request (like Dynamo's default mode:
+        # exact ISL from prompt, estimated OSL from max_tokens).
+        prompt = parsed.get("prompt", "")
+        if isinstance(prompt, list):
+            est_isl = len(prompt)  # token IDs
+        elif isinstance(prompt, str):
+            est_isl = max(1, len(prompt) // 4)  # rough char-to-token
+        else:
+            # Chat completions: estimate from messages
+            messages = parsed.get("messages", [])
+            est_isl = (
+                sum(max(1, len(str(m.get("content", ""))) // 4) for m in messages)
+                if messages
+                else 128
+            )
+        est_osl = parsed.get("max_tokens", 128) or 128
+        est_tokens = est_isl + est_osl
+
         try:
             host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
-                model_id
+                model_id, est_tokens=est_tokens
             )
         except Exception as e:
             await send(
@@ -598,15 +616,24 @@ class OpenAiIngress(DeploymentProtocol):
         return tracker
 
     async def _pick_routed_direct_ingress_endpoint(
-        self, model_id: str
+        self, model_id: str, *, est_tokens: int = 1
     ) -> Tuple[str, int, str]:
         """Pick a replica and return (host, port, replica_id).
 
-        Implements router queue threshold: when all replicas exceed
-        ROUTER_QUEUE_THRESHOLD requests, the handler holds the response
-        until one drops below. The Lua coroutine yields while waiting,
-        HAProxy naturally holds the request. Like Dynamo's
-        router_queue_threshold but at the request level.
+        Implements token-aware router queue threshold: when all replicas
+        exceed ROUTER_QUEUE_THRESHOLD estimated tokens, the handler holds
+        the response until one drops below. The Lua coroutine yields while
+        waiting, HAProxy naturally holds the request.
+
+        Like Dynamo's router_queue_threshold but using estimated tokens
+        (ISL + max_tokens) per request from the request body.
+
+        Returns:
+            Tuple of (host, port, replica_unique_id).
+
+        Args:
+            model_id: The model to route to.
+            est_tokens: Estimated total tokens (ISL + OSL) for this request.
         """
         import os
 
@@ -634,7 +661,7 @@ class OpenAiIngress(DeploymentProtocol):
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
-        # Router queue threshold: max ongoing requests per replica before
+        # Router queue threshold: max estimated tokens per replica before
         # the router queues. 0 = disabled (use choose_replicas only).
         queue_threshold = getattr(self, "_queue_threshold", None)
         if queue_threshold is None:
@@ -651,7 +678,7 @@ class OpenAiIngress(DeploymentProtocol):
                 except Exception:
                     break  # tracker unavailable, fall through
 
-                # Find least-loaded replica.
+                # Find least-loaded replica (by token count).
                 best_load = float("inf")
                 best_replica = None
                 for r in direct_ingress_replicas:
@@ -661,14 +688,17 @@ class OpenAiIngress(DeploymentProtocol):
                         best_load = load
                         best_replica = r
 
-                if best_replica is not None and best_load < queue_threshold:
+                if (
+                    best_replica is not None
+                    and best_load + est_tokens <= queue_threshold
+                ):
                     endpoint = best_replica.direct_ingress_endpoint
                     rid = best_replica.replica_id.unique_id
-                    tracker.add.remote(rid, 1)
+                    tracker.add.remote(rid, est_tokens)
                     request_router.on_send_request(best_replica.replica_id)
                     return (*endpoint, rid)
 
-                # All at threshold — wait 10ms and retry.
+                # All at/above threshold — wait 10ms and retry.
                 await asyncio.sleep(0.01)
 
         # Default path: use choose_replicas (round-robin or token-aware).
@@ -683,7 +713,7 @@ class OpenAiIngress(DeploymentProtocol):
                     request_router.on_send_request(replica.replica_id)
                     rid = replica.replica_id.unique_id
                     if tracker is not None:
-                        tracker.add.remote(rid, 1)
+                        tracker.add.remote(rid, est_tokens)
                     return (*endpoint, rid)
 
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
