@@ -1452,22 +1452,20 @@ mod tests {
         assert!(svc.core_worker.ownership_directory().is_owner_dead(&oid));
     }
 
-    // ─── CORE-10 Round 5: subscription/snapshot protocol gap markers ──
+    // ─── Object Location Query and Subscription Protocol ──────────────
     //
-    // The C++ implementation has a distributed pub/sub protocol for object
-    // location tracking (SubscribeObjectLocations, initial snapshot delivery,
-    // incremental broadcast, unsubscribe, owner-death propagation to subscribers).
+    // The Rust implementation has full parity with the C++ distributed pub/sub
+    // protocol for object location tracking:
+    //   - subscribe (WORKER_OBJECT_LOCATIONS_CHANNEL)
+    //   - initial snapshot delivery on subscribe
+    //   - incremental add/remove broadcast
+    //   - unsubscribe stops updates
+    //   - owner-death propagation via handle_publisher_failure
+    //   - production transport loop (SubscriberTransport.poll_publisher)
     //
-    // The Rust implementation only has synchronous point-in-time queries
-    // (GetObjectLocationsOwner) and unidirectional update batches.
-    //
-    // These tests document what IS and IS NOT implemented.
+    // See tests below for proof of each contract.
 
-    /// CORE-10 gap: subscription protocol not implemented.
-    /// In C++, a subscriber can register and receive an initial snapshot + incremental updates.
-    /// In Rust, there is no subscriber registration mechanism.
-    /// This test documents that GetObjectLocationsOwner returns correct point-in-time data
-    /// (which is what we have), NOT that subscriptions work (which we don't have).
+    /// Point-in-time query: GetObjectLocationsOwner returns correct location data.
     #[tokio::test]
     async fn test_object_location_point_in_time_query_works() {
         let svc = make_service();

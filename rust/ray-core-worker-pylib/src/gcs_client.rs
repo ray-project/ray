@@ -250,7 +250,9 @@ impl PyGcsClient {
     }
 
     /// Request nodes to drain and return one acceptance bit per requested node.
-    pub fn drain_nodes(&self, node_ids: &[Vec<u8>]) -> Vec<bool> {
+    /// Drain nodes. Returns the list of node IDs that were successfully drained.
+    /// C++ parity: Cython `drain_nodes` returns `List[bytes]` of drained node IDs.
+    pub fn drain_nodes(&self, node_ids: &[Vec<u8>]) -> Vec<Vec<u8>> {
         let req = rpc::DrainNodeRequest {
             drain_node_data: node_ids
                 .iter()
@@ -259,17 +261,11 @@ impl PyGcsClient {
                 .collect(),
         };
         match self.runtime.block_on(self.client.drain_node(req)) {
-            Ok(reply) => {
-                let accepted: std::collections::HashSet<Vec<u8>> = reply
-                    .drain_node_status
-                    .into_iter()
-                    .map(|status| status.node_id)
-                    .collect();
-                node_ids
-                    .iter()
-                    .map(|node_id| accepted.contains(node_id))
-                    .collect()
-            }
+            Ok(reply) => reply
+                .drain_node_status
+                .into_iter()
+                .map(|status| status.node_id)
+                .collect(),
             Err(e) => {
                 tracing::warn!(error = %e, "drain_nodes failed");
                 Vec::new()
@@ -398,7 +394,7 @@ impl PyGcsClient {
 
     /// Drain nodes.
     #[pyo3(name = "drain_nodes")]
-    fn py_drain_nodes(&self, node_ids: Vec<Vec<u8>>) -> Vec<bool> {
+    fn py_drain_nodes(&self, node_ids: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
         self.drain_nodes(&node_ids)
     }
 
@@ -1100,19 +1096,20 @@ mod tests {
     }
 
     #[test]
-    fn test_drain_nodes_shape_matches_requests() {
+    fn test_drain_nodes_returns_drained_node_ids() {
+        // C++ parity: drain_nodes returns the list of successfully drained node IDs
+        // (matching Cython `drain_nodes` which returns `List[bytes]`).
         let client = make_client();
         let result = client.drain_nodes(&[vec![1]]);
-        assert_eq!(result, vec![true]);
+        assert_eq!(result, vec![vec![1u8]]);
     }
 
     #[test]
-    #[ignore = "Parity gap vs Cython/C++ GcsClient: drain_nodes should return drained node IDs, not boolean acceptance bits"]
-    fn test_parity_drain_nodes_returns_successful_node_ids() {
+    fn test_drain_nodes_returns_all_successful_node_ids() {
         let client = make_client();
         let requested = vec![vec![1u8], vec![2u8]];
         let result = client.drain_nodes(&requested);
-        assert_eq!(result, vec![true, true]);
+        assert_eq!(result, vec![vec![1u8], vec![2u8]]);
     }
 
     #[test]

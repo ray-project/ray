@@ -307,7 +307,6 @@ async fn test_push_multi_chunk_object_via_grpc() {
 /// object can be read back exactly. The current Rust receive path only counts
 /// chunks and marks the object as local.
 #[tokio::test]
-#[ignore = "Parity gap vs C++: pushed bytes are not fully written/sealed into storage on receive"]
 async fn test_parity_push_preserves_exact_data_and_metadata_bytes() {
     use ray_object_manager::plasma::allocator::PlasmaAllocator;
 
@@ -344,8 +343,6 @@ async fn test_parity_push_preserves_exact_data_and_metadata_bytes() {
     let oid = make_oid(77);
     let data = b"abcdefgh1234".to_vec();
     let metadata = b"meta".to_vec();
-    let total_size = (data.len() + metadata.len()) as u64;
-
     // Send the payload in 8-byte chunks the same way the transport loop would.
     let combined = [data.clone(), metadata.clone()].concat();
     for (idx, chunk) in combined.chunks(8).enumerate() {

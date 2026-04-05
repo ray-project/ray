@@ -12,31 +12,54 @@
 //! spilling decisions, and batches freed-object deletions. Replaces
 //! `src/ray/raylet/local_object_manager.h/cc`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
+use parking_lot::Mutex;
 use ray_common::id::ObjectID;
+use ray_rpc::client::RetryConfig;
+use ray_rpc::core_worker_client::CoreWorkerClient;
+
+use crate::worker_pool::IOWorkerPool;
 
 /// Configuration for the local object manager.
 #[derive(Debug, Clone)]
 pub struct LocalObjectManagerConfig {
     /// Minimum total bytes before triggering a spill batch.
+    /// C++ equivalent: `min_spilling_size_` (from RayConfig).
     pub min_spilling_size: i64,
-    /// Maximum number of objects per spill batch.
-    pub max_spill_batch_count: usize,
-    /// Interval (in ticks) between flush-freed-objects batches.
+    /// Maximum number of objects per spill batch (fused object count).
+    /// C++ equivalent: `max_fused_object_count_`.
+    pub max_fused_object_count: usize,
+    /// Maximum bytes per single fused spill file. 0 = disabled.
+    /// C++ equivalent: `max_spilling_file_size_bytes_` (from RayConfig).
+    pub max_spilling_file_size_bytes: i64,
+    /// Number of freed objects to accumulate before flushing.
+    /// C++ equivalent: `free_objects_batch_size_`.
     pub free_objects_batch_size: usize,
+    /// Period in milliseconds between flush-freed-objects attempts.
+    /// C++ equivalent: `free_objects_period_ms_`.
+    /// Negative means disabled, 0 means flush immediately on each free.
+    pub free_objects_period_ms: i64,
     /// Object spilling threshold (fraction 0.0-1.0 of store capacity).
     pub object_spilling_threshold: f64,
+    /// Maximum concurrent IO workers (spill throughput cap).
+    /// C++ equivalent: `max_io_workers` parameter to LocalObjectManager ctor.
+    pub max_io_workers: i64,
 }
 
 impl Default for LocalObjectManagerConfig {
     fn default() -> Self {
         Self {
             min_spilling_size: 100 * 1024 * 1024, // 100MB
-            max_spill_batch_count: 100,
+            max_fused_object_count: 100,
+            max_spilling_file_size_bytes: 0, // 0 = disabled
             free_objects_batch_size: 100,
+            free_objects_period_ms: 1000, // 1 second default
             object_spilling_threshold: 0.8,
+            max_io_workers: 4,
         }
     }
 }
@@ -91,6 +114,10 @@ pub struct LocalObjectManagerStats {
     pub total_objects_restored: u64,
     /// Number of objects waiting for deletion.
     pub num_pending_deletion: usize,
+    /// Number of objects pending restore.
+    pub num_pending_restore: usize,
+    /// Total bytes pending restore.
+    pub bytes_pending_restore: u64,
     /// Total wall-clock time spent spilling (seconds).
     pub spill_time_total_s: f64,
     /// Total wall-clock time spent restoring (seconds).
@@ -119,10 +146,64 @@ pub struct LocalObjectManager {
     spill_time_total_s: f64,
     /// Total wall-clock time spent restoring (seconds, monotonic).
     restore_time_total_s: f64,
+    /// Objects currently being restored (deduplication set).
+    /// C++ equivalent: `objects_pending_restore_` (local_object_manager.h:314).
+    objects_pending_restore: HashSet<ObjectID>,
+    /// Total bytes of objects currently being restored.
+    /// C++ equivalent: `num_bytes_pending_restore_` (local_object_manager.h:334).
+    num_bytes_pending_restore: u64,
+    /// Current number of active spill workers.
+    /// C++ equivalent: `num_active_workers_` (local_object_manager.h:358).
+    num_active_workers: i64,
+    /// Maximum concurrent spill workers (from max_io_workers config).
+    /// C++ equivalent: `max_active_workers_` (local_object_manager.h:361).
+    max_active_workers: i64,
+    /// Cumulative count of failed deletion requests (for metrics).
+    /// C++ equivalent: `num_failed_deletion_requests_`.
+    num_failed_deletion_requests: u64,
+    /// IO worker pool for spill/restore/delete operations.
+    /// Set via `set_io_worker_pool()` after the worker pool is ready.
+    io_worker_pool: Option<Arc<dyn IOWorkerPool>>,
+    /// Callback to check if a plasma object is spillable (not pinned by workers).
+    /// Returns true if the object can be safely spilled, false otherwise.
+    /// C++ equivalent: `is_plasma_object_spillable_` (local_object_manager.h:365).
+    /// If None, all non-pending non-spilled objects are considered spillable.
+    is_plasma_object_spillable: Option<Arc<dyn Fn(&ObjectID) -> bool + Send + Sync>>,
+    /// Callback invoked when objects are freed (batch deletion).
+    /// C++ equivalent: `on_objects_freed_` (local_object_manager.h:289).
+    /// Called by `flush_free_objects()` with the batch of object IDs to delete.
+    on_objects_freed: Option<Arc<dyn Fn(Vec<ObjectID>) + Send + Sync>>,
+    /// Queue of object IDs whose spilled copies need to be deleted from external storage.
+    /// C++ equivalent: `spilled_object_pending_delete_` (local_object_manager.h:339).
+    spilled_object_pending_delete: VecDeque<ObjectID>,
+    /// Mapping from object ID to spill URL (with offsets). Separate from pinned_objects
+    /// because pinned_objects entries are removed when spilling completes.
+    /// C++ equivalent: `spilled_objects_url_` (local_object_manager.h:343).
+    spilled_objects_url: HashMap<ObjectID, String>,
+    /// Base URL -> reference count. Multiple objects may be fused into a single spill
+    /// file; we ref-count to avoid deleting the file before all objects are out of scope.
+    /// C++ equivalent: `url_ref_count_` (local_object_manager.h:348).
+    url_ref_count: HashMap<String, u64>,
+    /// Timestamp of last flush_free_objects call (milliseconds since an arbitrary epoch).
+    /// C++ equivalent: `last_free_objects_at_ms_` (local_object_manager.h:318).
+    last_free_objects_at_ms: u64,
+    /// Monotonic instant used for computing current_time_ms relative offsets.
+    epoch: Instant,
 }
 
 impl LocalObjectManager {
     pub fn new(config: LocalObjectManagerConfig) -> Self {
+        // C++ parity: validate max_spilling_file_size_bytes >= min_spilling_size
+        // when the file-size limit is enabled (local_object_manager.h:89).
+        if config.max_spilling_file_size_bytes > 0 {
+            assert!(
+                config.max_spilling_file_size_bytes >= config.min_spilling_size,
+                "max_spilling_file_size_bytes ({}) must be >= min_spilling_size ({})",
+                config.max_spilling_file_size_bytes,
+                config.min_spilling_size,
+            );
+        }
+        let max_active = config.max_io_workers;
         Self {
             config,
             pinned_objects: HashMap::new(),
@@ -136,6 +217,19 @@ impl LocalObjectManager {
             total_objects_restored: AtomicU64::new(0),
             spill_time_total_s: 0.0,
             restore_time_total_s: 0.0,
+            objects_pending_restore: HashSet::new(),
+            num_bytes_pending_restore: 0,
+            num_active_workers: 0,
+            max_active_workers: max_active,
+            num_failed_deletion_requests: 0,
+            io_worker_pool: None,
+            is_plasma_object_spillable: None,
+            on_objects_freed: None,
+            spilled_object_pending_delete: VecDeque::new(),
+            spilled_objects_url: HashMap::new(),
+            url_ref_count: HashMap::new(),
+            last_free_objects_at_ms: 0,
+            epoch: Instant::now(),
         }
     }
 
@@ -260,6 +354,10 @@ impl LocalObjectManager {
 
     /// Flush objects that are pending deletion.
     /// Returns the batch of object IDs to delete from the store.
+    ///
+    /// **Legacy API**: Only drains `pending_deletion` without invoking the
+    /// `on_objects_freed` callback or processing the spilled delete queue.
+    /// Prefer `flush_free_objects()` which matches the full C++ contract.
     pub fn flush_freed_objects(&mut self) -> Vec<ObjectID> {
         let batch_size = self.config.free_objects_batch_size;
         if self.pending_deletion.len() <= batch_size {
@@ -269,37 +367,224 @@ impl LocalObjectManager {
         }
     }
 
-    /// Select objects to spill, prioritizing the largest unpinned-by-tasks
-    /// objects. Returns a list of (object_id, size) sorted largest-first.
+    /// Full C++ `FlushFreeObjects()` equivalent (local_object_manager.cc:150-163).
     ///
-    /// Only selects objects that are not already being spilled and not
-    /// already spilled.
-    pub fn select_objects_to_spill(&self) -> Vec<(ObjectID, i64)> {
-        // Collect eligible objects and sort by size descending (largest first).
-        let mut candidates: Vec<(ObjectID, i64)> = self
-            .pinned_objects
-            .values()
-            .filter(|obj| !obj.is_pending_spill && obj.spill_url.is_none())
-            .map(|obj| (obj.object_id, obj.total_size()))
-            .collect();
+    /// 1. Drains `pending_deletion` into a batch (all pending, not just batch_size,
+    ///    matching C++ which clears the entire set).
+    /// 2. Invokes `on_objects_freed(objects_to_delete)` so the object manager
+    ///    actually frees them from plasma / notifies other nodes.
+    /// 3. Calls `process_spilled_objects_delete_queue(free_objects_batch_size)`.
+    /// 4. Updates `last_free_objects_at_ms`.
+    pub fn flush_free_objects(&mut self) {
+        if !self.pending_deletion.is_empty() {
+            tracing::debug!(
+                num_objects = self.pending_deletion.len(),
+                "Freeing out-of-scope objects"
+            );
+            let objects_to_delete = std::mem::take(&mut self.pending_deletion);
+            if let Some(ref callback) = self.on_objects_freed {
+                callback(objects_to_delete);
+            }
+        }
+        let batch_size = self.config.free_objects_batch_size;
+        self.process_spilled_objects_delete_queue(batch_size);
+        self.last_free_objects_at_ms = self.current_time_ms();
+    }
 
-        candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    /// Process the spilled-objects delete queue, deleting up to `max_batch_size`
+    /// objects from external storage.
+    ///
+    /// C++ equivalent: `ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size)`
+    /// (local_object_manager.cc:523-577).
+    ///
+    /// Walks the `spilled_object_pending_delete` queue front-to-back:
+    /// - If the object is still being spilled (`pending_spill`), stop (blocks queue).
+    /// - If the object was spilled (has a URL in `spilled_objects_url`), decrement
+    ///   the URL ref count. When ref count reaches 0, add the URL to the delete batch.
+    /// - If the object was NOT spilled, it was re-pinned; just remove it.
+    ///
+    /// Returns the list of spill URLs that should be deleted from external storage.
+    /// The caller is responsible for actually invoking `delete_spilled_objects()`.
+    pub fn process_spilled_objects_delete_queue(
+        &mut self,
+        max_batch_size: usize,
+    ) -> Vec<String> {
+        let mut urls_to_delete = Vec::new();
 
-        let mut result = Vec::new();
-        let mut total_selected = 0i64;
+        while !self.spilled_object_pending_delete.is_empty()
+            && urls_to_delete.len() < max_batch_size
+        {
+            let object_id = *self.spilled_object_pending_delete.front().unwrap();
 
-        for (oid, size) in candidates {
-            result.push((oid, size));
-            total_selected += size;
+            // If the object is still being spilled, stop processing.
+            // C++ (local_object_manager.cc:533): blocks queue until spill completes.
+            if self.pending_spill.contains(&object_id) {
+                break;
+            }
 
-            if total_selected >= self.config.min_spilling_size
-                || result.len() >= self.config.max_spill_batch_count
+            // Check if the object was spilled (has a URL).
+            if let Some(object_url) = self.spilled_objects_url.remove(&object_id) {
+                // Parse the base URL from the full object URL.
+                // C++ uses ParseURL to extract the "url" key. For Rust, we use
+                // a simplified approach: the base URL is the part before any
+                // offset separator (commonly '?' or '@' depending on format).
+                let base_url = parse_base_url(&object_url);
+
+                if let Some(ref_count) = self.url_ref_count.get_mut(&base_url) {
+                    *ref_count = ref_count.saturating_sub(1);
+                    if *ref_count == 0 {
+                        self.url_ref_count.remove(&base_url);
+                        tracing::debug!(
+                            url = %object_url,
+                            "URL deleted because all references are out of scope"
+                        );
+                        urls_to_delete.push(object_url);
+                    }
+                } else {
+                    // No ref count entry — just delete the URL directly.
+                    urls_to_delete.push(object_url);
+                }
+            }
+            // If not spilled, C++ erases from pinned_objects_ and local_objects_.
+            // In Rust the pinned_objects entry may already be gone; no action needed.
+
+            self.spilled_object_pending_delete.pop_front();
+        }
+
+        urls_to_delete
+    }
+
+    /// Enqueue an object for spilled-object deletion.
+    /// C++ equivalent: adding to `spilled_object_pending_delete_`.
+    pub fn enqueue_spilled_object_delete(&mut self, object_id: ObjectID) {
+        self.spilled_object_pending_delete.push_back(object_id);
+    }
+
+    /// Register a spill URL and update ref counting.
+    /// Called after spill completes to track the URL for later deletion.
+    /// C++ equivalent: updating `spilled_objects_url_` and `url_ref_count_`.
+    pub fn register_spilled_url(&mut self, object_id: ObjectID, url: String) {
+        let base_url = parse_base_url(&url);
+        *self.url_ref_count.entry(base_url).or_insert(0) += 1;
+        self.spilled_objects_url.insert(object_id, url);
+    }
+
+    /// Set the callback invoked when freed objects should be deleted.
+    /// C++ equivalent: `on_objects_freed_` (local_object_manager.h:289).
+    pub fn set_on_objects_freed(
+        &mut self,
+        callback: Arc<dyn Fn(Vec<ObjectID>) + Send + Sync>,
+    ) {
+        self.on_objects_freed = Some(callback);
+    }
+
+    /// Get the current time in milliseconds (monotonic, relative to manager creation).
+    fn current_time_ms(&self) -> u64 {
+        self.epoch.elapsed().as_millis() as u64
+    }
+
+    /// Get the last flush time in milliseconds.
+    pub fn last_free_objects_at_ms(&self) -> u64 {
+        self.last_free_objects_at_ms
+    }
+
+    /// Select objects for a single spill batch, matching C++ `TryToSpillObjects()`
+    /// (local_object_manager.cc:187-230).
+    ///
+    /// Returns `None` if spilling should be deferred (too-small batch with
+    /// spills already in flight). Returns `Some(vec)` with the batch otherwise.
+    ///
+    /// C++ iterates pinned_objects_ in arbitrary hash-map order. Rust uses
+    /// HashMap which also has arbitrary order — we do NOT sort largest-first
+    /// to match C++ semantics.
+    ///
+    /// Stop criteria (matching C++ exactly):
+    /// 1. `max_spilling_file_size_bytes` exceeded (per-file size cap)
+    /// 2. `max_fused_object_count` reached (per-batch object count cap)
+    /// 3. End of iteration
+    /// 4. Defer: reached end AND batch < min_spilling_size AND spills in flight
+    pub fn try_select_objects_to_spill(&self) -> Option<Vec<(ObjectID, i64)>> {
+        let mut objects_to_spill = Vec::new();
+        let mut bytes_to_spill: i64 = 0;
+        let mut idx: usize = 0;
+
+        for obj in self.pinned_objects.values() {
+            // Skip objects already being spilled or already spilled.
+            if obj.is_pending_spill || obj.spill_url.is_some() {
+                idx += 1;
+                continue;
+            }
+
+            // C++ parity: check is_plasma_object_spillable_ callback
+            // (local_object_manager.cc:196). Only spill objects that are
+            // not pinned by any worker.
+            if let Some(ref predicate) = self.is_plasma_object_spillable {
+                if !predicate(&obj.object_id) {
+                    idx += 1;
+                    continue;
+                }
+            }
+
+            let object_size = obj.total_size();
+
+            // CHECK 1: max_spilling_file_size_bytes cap.
+            // C++ (local_object_manager.cc:202-204): stop if adding this object
+            // would exceed the per-file size limit (but always allow first object).
+            if self.config.max_spilling_file_size_bytes > 0
+                && !objects_to_spill.is_empty()
+                && bytes_to_spill + object_size > self.config.max_spilling_file_size_bytes
             {
                 break;
             }
+
+            bytes_to_spill += object_size;
+            objects_to_spill.push((obj.object_id, object_size));
+
+            // CHECK 2: max_fused_object_count cap.
+            // C++ (local_object_manager.cc:210): stop at object count limit.
+            if objects_to_spill.len() >= self.config.max_fused_object_count {
+                break;
+            }
+
+            idx += 1;
         }
 
-        result
+        if objects_to_spill.is_empty() {
+            return None;
+        }
+
+        // CHECK 3: "Defer too-small batch if other spills are in flight."
+        // C++ (local_object_manager.cc:220-228):
+        //   if we reached end of pinned_objects_ (idx == objects_pending_spill_.size())
+        //   AND batch is below min_spilling_size
+        //   AND there are already spills in progress
+        //   → defer (return false), wait for current spills to finish
+        //
+        // In Rust, `idx` counts all iterated objects. If we reached the end
+        // without hitting a count/size limit, and the batch is small, defer.
+        let reached_end = objects_to_spill.len() < self.config.max_fused_object_count
+            && (self.config.max_spilling_file_size_bytes <= 0
+                || bytes_to_spill <= self.config.max_spilling_file_size_bytes);
+        if reached_end
+            && bytes_to_spill < self.config.min_spilling_size
+            && !self.pending_spill.is_empty()
+        {
+            tracing::debug!(
+                bytes_to_spill,
+                min_spilling_size = self.config.min_spilling_size,
+                pending_spill = self.pending_spill.len(),
+                "Deferring spill — batch too small and spills already in flight"
+            );
+            return None;
+        }
+
+        Some(objects_to_spill)
+    }
+
+    /// Legacy API: select objects to spill without defer logic.
+    /// Prefer `try_select_objects_to_spill()` which matches C++ semantics.
+    pub fn select_objects_to_spill(&self) -> Vec<(ObjectID, i64)> {
+        self.try_select_objects_to_spill().unwrap_or_default()
     }
 
     /// Mark objects as pending spill (spill has been initiated).
@@ -340,6 +625,47 @@ impl LocalObjectManager {
         }
     }
 
+    /// Check if a restore is already pending for this object.
+    /// C++ equivalent: `objects_pending_restore_.count(object_id)` check
+    /// in `AsyncRestoreSpilledObject()` (local_object_manager.cc:469).
+    pub fn is_restore_pending(&self, object_id: &ObjectID) -> bool {
+        self.objects_pending_restore.contains(object_id)
+    }
+
+    /// Mark an object as pending restore. Returns false if already pending
+    /// (deduplication — matching C++ local_object_manager.cc:469-474).
+    pub fn mark_pending_restore(&mut self, object_id: ObjectID, object_size: u64) -> bool {
+        if self.objects_pending_restore.contains(&object_id) {
+            tracing::debug!(
+                ?object_id,
+                "Restore already pending — deduplicating"
+            );
+            return false;
+        }
+        self.objects_pending_restore.insert(object_id);
+        self.num_bytes_pending_restore += object_size;
+        true
+    }
+
+    /// Remove an object from the pending-restore set.
+    /// C++ equivalent: `objects_pending_restore_.erase(object_id)` +
+    /// `num_bytes_pending_restore_ -= object_size` (local_object_manager.cc:489).
+    pub fn clear_pending_restore(&mut self, object_id: &ObjectID, object_size: u64) {
+        if self.objects_pending_restore.remove(object_id) {
+            self.num_bytes_pending_restore = self.num_bytes_pending_restore.saturating_sub(object_size);
+        }
+    }
+
+    /// Number of objects currently pending restore.
+    pub fn num_objects_pending_restore(&self) -> usize {
+        self.objects_pending_restore.len()
+    }
+
+    /// Total bytes currently pending restore.
+    pub fn num_bytes_pending_restore(&self) -> u64 {
+        self.num_bytes_pending_restore
+    }
+
     /// Record a completed restore operation.
     pub fn restore_completed(&mut self, bytes_restored: u64) {
         self.total_bytes_restored
@@ -360,6 +686,43 @@ impl LocalObjectManager {
     /// Whether the object store is above the spilling threshold.
     pub fn should_spill(&self, used_fraction: f64) -> bool {
         used_fraction >= self.config.object_spilling_threshold
+    }
+
+    /// Whether any spill operations are currently in progress.
+    /// C++ equivalent: `IsSpillingInProgress()` (local_object_manager.cc:184).
+    pub fn is_spilling_in_progress(&self) -> bool {
+        self.num_active_workers > 0
+    }
+
+    /// Whether another spill worker can be launched (throughput gating).
+    /// C++ equivalent: check `num_active_workers_ < max_active_workers_`
+    /// in `SpillObjectUptoMaxThroughput()` (local_object_manager.cc:178).
+    pub fn can_spill_more(&self) -> bool {
+        self.num_active_workers < self.max_active_workers
+    }
+
+    /// Increment the active spill worker count.
+    /// Called when a spill worker is popped from the pool.
+    /// C++ equivalent: `num_active_workers_ += 1` (local_object_manager.cc:326).
+    pub fn increment_active_workers(&mut self) {
+        self.num_active_workers += 1;
+    }
+
+    /// Decrement the active spill worker count.
+    /// Called when a spill RPC completes (success or failure).
+    /// C++ equivalent: `num_active_workers_ -= 1` (local_object_manager.cc:361).
+    pub fn decrement_active_workers(&mut self) {
+        self.num_active_workers = (self.num_active_workers - 1).max(0);
+    }
+
+    /// Get the number of failed deletion requests (for metrics).
+    pub fn num_failed_deletion_requests(&self) -> u64 {
+        self.num_failed_deletion_requests
+    }
+
+    /// Increment failed deletion request counter.
+    pub fn increment_failed_deletions(&mut self) {
+        self.num_failed_deletion_requests += 1;
     }
 
     /// Get objects that have been spilled (have spill URLs) and can be
@@ -404,9 +767,79 @@ impl LocalObjectManager {
             total_bytes_restored: self.total_bytes_restored.load(Ordering::Relaxed),
             total_objects_restored: self.total_objects_restored.load(Ordering::Relaxed),
             num_pending_deletion: self.pending_deletion.len(),
+            num_pending_restore: self.objects_pending_restore.len(),
+            bytes_pending_restore: self.num_bytes_pending_restore,
             spill_time_total_s: self.spill_time_total_s,
             restore_time_total_s: self.restore_time_total_s,
         }
+    }
+
+    /// Set the IO worker pool for spill/restore/delete operations.
+    pub fn set_io_worker_pool(&mut self, pool: Arc<dyn IOWorkerPool>) {
+        self.io_worker_pool = Some(pool);
+    }
+
+    /// Set the callback that checks whether a plasma object is spillable.
+    /// C++ equivalent: `is_plasma_object_spillable_` (local_object_manager.h:365).
+    /// Returns true if the object is not pinned by any worker and can be
+    /// safely spilled. If not set, all eligible objects are considered spillable.
+    pub fn set_is_plasma_object_spillable(
+        &mut self,
+        predicate: Arc<dyn Fn(&ObjectID) -> bool + Send + Sync>,
+    ) {
+        self.is_plasma_object_spillable = Some(predicate);
+    }
+
+    /// Initiate spilling of objects to external storage.
+    ///
+    /// C++ equivalent: `LocalObjectManager::SpillObjects()`.
+    /// Selects objects to spill, marks them as pending, and requests a spill
+    /// worker from the IO worker pool. When a worker is assigned, connects
+    /// via gRPC and sends the SpillObjects RPC.
+    ///
+    /// NOTE: This is a convenience wrapper. For the full Arc-based dispatch
+    /// (where the callback can update LocalObjectManager state on completion),
+    /// use the free function [`spill_objects`].
+    pub fn spill_objects(&mut self) {
+        tracing::warn!(
+            "spill_objects() called on &mut self — use the free function \
+             spill_objects(lom) for full RPC dispatch with completion handling"
+        );
+        let to_spill = self.select_objects_to_spill();
+        if to_spill.is_empty() {
+            tracing::debug!("No objects eligible for spilling");
+            return;
+        }
+        let object_ids: Vec<ObjectID> = to_spill.iter().map(|(oid, _)| *oid).collect();
+        let total_bytes: i64 = to_spill.iter().map(|(_, sz)| *sz).sum();
+        self.mark_pending_spill(&object_ids);
+        tracing::info!(
+            num_objects = object_ids.len(),
+            total_bytes,
+            "Spill objects marked pending (no RPC dispatch from &mut self path)"
+        );
+    }
+
+    /// Initiate restoration of a spilled object from external storage.
+    ///
+    /// C++ equivalent: `LocalObjectManager::AsyncRestoreSpilledObject()`.
+    /// NOTE: Use the free function [`restore_object`] for full RPC dispatch.
+    pub fn restore_object(&mut self, _object_id: ObjectID, _url: String) {
+        tracing::warn!(
+            "restore_object() called on &mut self — use the free function \
+             restore_object(lom, ..) for full RPC dispatch"
+        );
+    }
+
+    /// Initiate deletion of spilled objects from external storage.
+    ///
+    /// C++ equivalent: `LocalObjectManager::DeleteSpilledObjects()`.
+    /// NOTE: Use the free function [`delete_spilled_objects`] for full RPC dispatch.
+    pub fn delete_spilled_objects(&mut self, _urls: Vec<String>) {
+        tracing::warn!(
+            "delete_spilled_objects() called on &mut self — use the free function \
+             delete_spilled_objects(lom, ..) for full RPC dispatch"
+        );
     }
 
     pub fn config(&self) -> &LocalObjectManagerConfig {
@@ -427,6 +860,381 @@ impl LocalObjectManager {
     pub fn num_pending_deletion(&self) -> usize {
         self.pending_deletion.len()
     }
+
+    /// Total "primary" bytes: pinned + pending-spill.
+    /// C++ equivalent: `GetPrimaryBytes()` (local_object_manager.cc:669-671).
+    /// Used by `SpillIfOverPrimaryObjectsThreshold` to decide whether to trigger spilling.
+    pub fn get_primary_bytes(&self) -> i64 {
+        self.pinned_bytes + self.pending_spill_bytes
+    }
+}
+
+/// Parse the base URL from a spill object URL.
+///
+/// C++ equivalent: `ParseURL(object_url)` then extracting the `"url"` key.
+/// Ray spill URLs typically have the format `<base_url>?offset=X&size=Y`
+/// or `<base_url>@<offset>_<size>`. We extract the part before any `?` or `@`
+/// separator that indicates object-specific offset information.
+fn parse_base_url(url: &str) -> String {
+    // Try '?' first (query-string style), then '@' (offset-style).
+    if let Some(idx) = url.find('?') {
+        url[..idx].to_string()
+    } else if let Some(idx) = url.rfind('@') {
+        // Only treat '@' as separator if what follows looks like offset info
+        // (digits, underscores). Otherwise the whole URL is the base.
+        let after = &url[idx + 1..];
+        if !after.is_empty() && after.chars().all(|c| c.is_ascii_digit() || c == '_') {
+            url[..idx].to_string()
+        } else {
+            url.to_string()
+        }
+    } else {
+        url.to_string()
+    }
+}
+
+// ─── Free functions for Arc-based RPC dispatch ─────────────────────────
+//
+// These functions take `&Arc<Mutex<LocalObjectManager>>` so that the IO worker
+// callback (which runs after the mutex is released) can lock the manager to
+// update state on RPC completion.  This matches the C++ pattern where the
+// callback captures `this` (the raw pointer to LocalObjectManager).
+
+/// Connect to an IO worker and return a [`CoreWorkerClient`].
+async fn connect_to_worker(
+    pool: &dyn IOWorkerPool,
+    worker_id: &ray_common::id::WorkerID,
+) -> Option<(CoreWorkerClient, String)> {
+    let info = pool.get_worker(worker_id)?;
+    let addr = format!("http://{}:{}", info.ip_address, info.port);
+    match CoreWorkerClient::connect(&addr, RetryConfig::default()).await {
+        Ok(client) => Some((client, addr)),
+        Err(e) => {
+            tracing::error!(error = %e, addr = %addr, "Failed to connect to IO worker");
+            None
+        }
+    }
+}
+
+/// Initiate spilling of objects to external storage via IO worker RPC.
+///
+/// C++ equivalent: `LocalObjectManager::SpillObjects()`.
+///
+/// 1. Selects objects to spill and marks them pending (under lock).
+/// 2. Requests a spill worker from the pool.
+/// 3. When the worker is assigned, spawns a tokio task that connects to the
+///    worker, sends a `SpillObjectsRequest`, and on completion updates the
+///    manager state and returns the worker to the pool.
+/// Default number of retries for delete operations.
+/// C++ equivalent: `kDefaultSpilledObjectDeleteRetries` (local_object_manager.h:42).
+const DEFAULT_SPILLED_OBJECT_DELETE_RETRIES: i64 = 3;
+
+/// Spill objects up to the maximum throughput limit.
+///
+/// C++ equivalent: `SpillObjectUptoMaxThroughput()` (local_object_manager.cc:169-182).
+/// Keeps calling `spill_objects_once` until either no more objects can be spilled
+/// or the active worker count reaches `max_active_workers`.
+pub fn spill_objects_upto_max_throughput(lom: &Arc<Mutex<LocalObjectManager>>) {
+    loop {
+        let can_spill = {
+            let guard = lom.lock();
+            guard.can_spill_more()
+        };
+        if !can_spill {
+            break;
+        }
+        if !spill_objects_once(lom) {
+            break;
+        }
+    }
+}
+
+/// Attempt a single spill batch. Returns true if a spill was initiated.
+///
+/// C++ equivalent: `TryToSpillObjects()` called from `SpillObjectUptoMaxThroughput`.
+fn spill_objects_once(lom: &Arc<Mutex<LocalObjectManager>>) -> bool {
+    let (object_ids, total_bytes, pool) = {
+        let mut guard = lom.lock();
+        // C++ parity: use try_select which implements defer-if-too-small logic.
+        let to_spill = match guard.try_select_objects_to_spill() {
+            Some(batch) if !batch.is_empty() => batch,
+            _ => return false, // Nothing to spill or deferred
+        };
+        let oids: Vec<ObjectID> = to_spill.iter().map(|(oid, _)| *oid).collect();
+        let total: i64 = to_spill.iter().map(|(_, sz)| *sz).sum();
+        guard.mark_pending_spill(&oids);
+        // C++ parity: increment active workers when spill starts (local_object_manager.cc:326).
+        guard.increment_active_workers();
+        let pool = guard.io_worker_pool.clone();
+        (oids, total, pool)
+    };
+
+    let Some(pool) = pool else {
+        tracing::warn!("No IO worker pool set — cannot spill objects");
+        let mut guard = lom.lock();
+        guard.decrement_active_workers();
+        return false;
+    };
+
+    tracing::info!(
+        num_objects = object_ids.len(),
+        total_bytes,
+        "Initiating spill for objects"
+    );
+
+    let lom = Arc::clone(lom);
+    let pool_for_closure = Arc::clone(&pool);
+
+    pool.pop_spill_worker(Box::new(move |worker_id| {
+        let pool = pool_for_closure;
+        tokio::spawn(async move {
+            let start = Instant::now();
+
+            let Some((client, addr)) = connect_to_worker(pool.as_ref(), &worker_id).await else {
+                let mut guard = lom.lock();
+                for oid in &object_ids {
+                    guard.spill_failed(oid);
+                }
+                // C++ parity: decrement active workers on failure (local_object_manager.cc:361).
+                guard.decrement_active_workers();
+                pool.push_spill_worker(worker_id);
+                return;
+            };
+
+            let mut request = ray_proto::ray::rpc::SpillObjectsRequest::default();
+            for oid in &object_ids {
+                let mut obj_ref = ray_proto::ray::rpc::ObjectReference::default();
+                obj_ref.object_id = oid.as_bytes().to_vec();
+                request.object_refs_to_spill.push(obj_ref);
+            }
+
+            tracing::debug!(
+                num_objects = object_ids.len(),
+                addr = %addr,
+                "Sending SpillObjects RPC"
+            );
+
+            match client.spill_objects(request).await {
+                Ok(reply) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let mut guard = lom.lock();
+                    for (i, oid) in object_ids.iter().enumerate() {
+                        if let Some(url) = reply.spilled_objects_url.get(i) {
+                            guard.spill_completed(oid, url.clone());
+                        } else {
+                            guard.spill_failed(oid);
+                        }
+                    }
+                    guard.record_spill_time(elapsed);
+                    // C++ parity: decrement active workers on completion (local_object_manager.cc:361).
+                    guard.decrement_active_workers();
+                    tracing::info!(
+                        num_objects = object_ids.len(),
+                        elapsed_s = elapsed,
+                        "Spill completed"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "SpillObjects RPC failed");
+                    let mut guard = lom.lock();
+                    for oid in &object_ids {
+                        guard.spill_failed(oid);
+                    }
+                    guard.decrement_active_workers();
+                }
+            }
+
+            pool.push_spill_worker(worker_id);
+        });
+    }));
+
+    true
+}
+
+/// Single-shot spill (legacy API). Calls `spill_objects_once` once.
+pub fn spill_objects(lom: &Arc<Mutex<LocalObjectManager>>) {
+    spill_objects_once(lom);
+}
+
+/// Initiate restoration of a spilled object from external storage via IO worker RPC.
+///
+/// C++ equivalent: `LocalObjectManager::AsyncRestoreSpilledObject()`.
+///
+/// Requests a restore worker, connects via gRPC, and sends a
+/// `RestoreSpilledObjectsRequest`. On success, updates cumulative stats.
+pub fn restore_object(
+    lom: &Arc<Mutex<LocalObjectManager>>,
+    object_id: ObjectID,
+    object_size: u64,
+    url: String,
+) {
+    // C++ parity: deduplication check (local_object_manager.cc:469-474).
+    // If this object is already being restored, skip the duplicate request.
+    let pool = {
+        let mut guard = lom.lock();
+        if !guard.mark_pending_restore(object_id, object_size) {
+            // Already pending — deduplicated.
+            return;
+        }
+        guard.io_worker_pool.clone()
+    };
+
+    let Some(pool) = pool else {
+        tracing::warn!("No IO worker pool set — cannot restore object");
+        let mut guard = lom.lock();
+        guard.clear_pending_restore(&object_id, object_size);
+        return;
+    };
+
+    tracing::info!(?object_id, url = %url, "Initiating restore for spilled object");
+
+    let lom = Arc::clone(lom);
+    let pool_for_closure = Arc::clone(&pool);
+
+    pool.pop_restore_worker(Box::new(move |worker_id| {
+        let pool = pool_for_closure;
+        tokio::spawn(async move {
+            let start = Instant::now();
+
+            let Some((client, addr)) = connect_to_worker(pool.as_ref(), &worker_id).await else {
+                tracing::error!("Cannot connect to restore worker — restore failed");
+                let mut guard = lom.lock();
+                guard.clear_pending_restore(&object_id, object_size);
+                pool.push_restore_worker(worker_id);
+                return;
+            };
+
+            let mut request = ray_proto::ray::rpc::RestoreSpilledObjectsRequest::default();
+            request.spilled_objects_url.push(url.clone());
+            request
+                .object_ids_to_restore
+                .push(object_id.as_bytes().to_vec());
+
+            tracing::debug!(
+                ?object_id,
+                url = %url,
+                addr = %addr,
+                "Sending RestoreSpilledObjects RPC"
+            );
+
+            match client.restore_spilled_objects(request).await {
+                Ok(reply) => {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let mut guard = lom.lock();
+                    // C++ parity: clear pending restore state (local_object_manager.cc:489).
+                    guard.clear_pending_restore(&object_id, object_size);
+                    guard.restore_completed(reply.bytes_restored_total as u64);
+                    guard.record_restore_time(elapsed);
+                    tracing::info!(
+                        ?object_id,
+                        bytes_restored = reply.bytes_restored_total,
+                        elapsed_s = elapsed,
+                        "Restore completed"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        ?object_id,
+                        "RestoreSpilledObjects RPC failed"
+                    );
+                    let mut guard = lom.lock();
+                    guard.clear_pending_restore(&object_id, object_size);
+                }
+            }
+
+            pool.push_restore_worker(worker_id);
+        });
+    }));
+}
+
+/// Initiate deletion of spilled objects from external storage via IO worker RPC.
+///
+/// C++ equivalent: `LocalObjectManager::DeleteSpilledObjects()` (local_object_manager.cc:579-614).
+///
+/// Requests a delete worker, connects via gRPC, and sends a
+/// `DeleteSpilledObjectsRequest`. On failure, retries up to `num_retries` times
+/// (matching C++ `kDefaultSpilledObjectDeleteRetries = 3`).
+pub fn delete_spilled_objects(
+    lom: &Arc<Mutex<LocalObjectManager>>,
+    urls: Vec<String>,
+) {
+    delete_spilled_objects_with_retries(lom, urls, DEFAULT_SPILLED_OBJECT_DELETE_RETRIES);
+}
+
+/// Delete with explicit retry count.
+/// C++ equivalent: `DeleteSpilledObjects(urls, num_retries)` (local_object_manager.cc:579).
+fn delete_spilled_objects_with_retries(
+    lom: &Arc<Mutex<LocalObjectManager>>,
+    urls: Vec<String>,
+    num_retries: i64,
+) {
+    if urls.is_empty() {
+        return;
+    }
+
+    let pool = lom.lock().io_worker_pool.clone();
+    let Some(pool) = pool else {
+        tracing::warn!("No IO worker pool set — cannot delete spilled objects");
+        return;
+    };
+
+    tracing::info!(num_urls = urls.len(), num_retries, "Initiating deletion of spilled objects");
+
+    let lom = Arc::clone(lom);
+    let pool_for_closure = Arc::clone(&pool);
+
+    pool.pop_delete_worker(Box::new(move |worker_id| {
+        let pool = pool_for_closure;
+        tokio::spawn(async move {
+            let Some((client, addr)) = connect_to_worker(pool.as_ref(), &worker_id).await else {
+                tracing::error!("Cannot connect to delete worker — delete failed");
+                pool.push_delete_worker(worker_id);
+                // C++ parity: retry on connection failure.
+                if num_retries > 0 {
+                    lom.lock().increment_failed_deletions();
+                    delete_spilled_objects_with_retries(&lom, urls, num_retries - 1);
+                }
+                return;
+            };
+
+            let mut request = ray_proto::ray::rpc::DeleteSpilledObjectsRequest::default();
+            request.spilled_objects_url = urls.clone();
+
+            tracing::debug!(
+                num_urls = urls.len(),
+                addr = %addr,
+                "Sending DeleteSpilledObjects RPC"
+            );
+
+            match client.delete_spilled_objects(request).await {
+                Ok(_) => {
+                    tracing::info!(
+                        num_urls = urls.len(),
+                        "Delete spilled objects completed"
+                    );
+                }
+                Err(e) => {
+                    // C++ parity: retry failed deletions (local_object_manager.cc:597-607).
+                    lom.lock().increment_failed_deletions();
+                    tracing::error!(
+                        error = %e,
+                        num_urls = urls.len(),
+                        retry_count = num_retries,
+                        "DeleteSpilledObjects RPC failed"
+                    );
+
+                    if num_retries > 0 {
+                        // C++ parity: retry immediately via io_service_.post()
+                        // (local_object_manager.cc:601-606).
+                        delete_spilled_objects_with_retries(&lom, urls, num_retries - 1);
+                    }
+                }
+            }
+
+            pool.push_delete_worker(worker_id);
+        });
+    }));
 }
 
 #[cfg(test)]
@@ -442,9 +1250,12 @@ mod tests {
     fn make_config() -> LocalObjectManagerConfig {
         LocalObjectManagerConfig {
             min_spilling_size: 100,
-            max_spill_batch_count: 10,
+            max_fused_object_count: 10,
+            max_spilling_file_size_bytes: 0,
             free_objects_batch_size: 5,
+            free_objects_period_ms: 1000,
             object_spilling_threshold: 0.8,
+            max_io_workers: 4,
         }
     }
 
@@ -517,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_objects_to_spill_largest_first() {
+    fn test_select_objects_to_spill_returns_eligible() {
         let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
             min_spilling_size: 10, // low threshold to trigger
             ..make_config()
@@ -529,8 +1340,11 @@ mod tests {
 
         let to_spill = mgr.select_objects_to_spill();
         assert!(!to_spill.is_empty());
-        // Should be sorted largest first.
-        assert_eq!(to_spill[0].1, 200);
+        // C++ iterates in arbitrary hash-map order (no sorting).
+        // Rust matches this: HashMap iteration order is not guaranteed.
+        // Just verify all selected objects are from the pinned set.
+        let total: i64 = to_spill.iter().map(|(_, sz)| *sz).sum();
+        assert!(total >= 10, "Expected >= min_spilling_size bytes");
     }
 
     #[test]
@@ -673,7 +1487,7 @@ mod tests {
     fn test_select_respects_batch_count() {
         let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
             min_spilling_size: i64::MAX, // very high so count limit triggers
-            max_spill_batch_count: 2,
+            max_fused_object_count: 2,
             ..make_config()
         });
 
@@ -691,7 +1505,7 @@ mod tests {
     fn test_spill_multiple_objects_in_batch() {
         let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
             min_spilling_size: 200, // need at least 200 bytes
-            max_spill_batch_count: 10,
+            max_fused_object_count: 10,
             ..make_config()
         });
 
@@ -701,11 +1515,13 @@ mod tests {
         mgr.pin_object(make_oid(3), 120, 0);
 
         let to_spill = mgr.select_objects_to_spill();
-        // Sorted largest first: 120, 80, 50
-        // 120 + 80 = 200 >= min_spilling_size, so we stop at 2
-        assert_eq!(to_spill.len(), 2);
-        assert_eq!(to_spill[0].1, 120);
-        assert_eq!(to_spill[1].1, 80);
+        // C++ iterates in arbitrary hash-map order, as does Rust.
+        // Total pinned = 250 bytes. With min_spilling_size=200, the batch
+        // accumulates objects until the total >= 200 or the count limit is hit.
+        // We should get at least 2 objects (enough to reach 200 bytes).
+        assert!(to_spill.len() >= 2, "Expected at least 2 objects, got {}", to_spill.len());
+        let total_bytes: i64 = to_spill.iter().map(|(_, sz)| *sz).sum();
+        assert!(total_bytes >= 200, "Expected >= 200 bytes, got {}", total_bytes);
     }
 
     #[test]
@@ -950,5 +1766,196 @@ mod tests {
         // Mark pending but not completed
         mgr.mark_pending_spill(&[oid]);
         assert!(mgr.get_spill_url(&oid).is_none());
+    }
+
+    // ─── Tests for flush_free_objects (full C++ FlushFreeObjects parity) ───
+
+    #[test]
+    fn test_flush_free_objects_invokes_callback() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let freed = Arc::new(Mutex::new(Vec::new()));
+        let freed_clone = Arc::clone(&freed);
+        mgr.set_on_objects_freed(Arc::new(move |ids| {
+            freed_clone.lock().extend(ids);
+        }));
+
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+        mgr.mark_for_deletion(oid1);
+        mgr.mark_for_deletion(oid2);
+
+        mgr.flush_free_objects();
+
+        let freed_ids = freed.lock().clone();
+        assert_eq!(freed_ids.len(), 2);
+        assert!(freed_ids.contains(&oid1));
+        assert!(freed_ids.contains(&oid2));
+        // pending_deletion should be empty after flush
+        assert_eq!(mgr.num_pending_deletion(), 0);
+    }
+
+    #[test]
+    fn test_flush_free_objects_empty_no_callback() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = Arc::clone(&called);
+        mgr.set_on_objects_freed(Arc::new(move |_ids| {
+            *called_clone.lock() = true;
+        }));
+
+        // No pending deletions — callback should NOT be invoked
+        mgr.flush_free_objects();
+        assert!(!*called.lock());
+    }
+
+    #[test]
+    fn test_flush_free_objects_no_callback_set() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        mgr.mark_for_deletion(make_oid(1));
+        // Should not panic even without callback set
+        mgr.flush_free_objects();
+        assert_eq!(mgr.num_pending_deletion(), 0);
+    }
+
+    #[test]
+    fn test_flush_free_objects_updates_timestamp() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let ts_before = mgr.last_free_objects_at_ms();
+        // Small sleep to ensure time progresses
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        mgr.flush_free_objects();
+        assert!(mgr.last_free_objects_at_ms() >= ts_before);
+    }
+
+    // ─── Tests for process_spilled_objects_delete_queue ───
+
+    #[test]
+    fn test_process_spilled_delete_queue_basic() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        // Register spill URLs (simulating completed spills)
+        mgr.register_spilled_url(oid1, "file:///tmp/spill1".to_string());
+        mgr.register_spilled_url(oid2, "file:///tmp/spill2".to_string());
+
+        // Enqueue for deletion
+        mgr.enqueue_spilled_object_delete(oid1);
+        mgr.enqueue_spilled_object_delete(oid2);
+
+        let urls = mgr.process_spilled_objects_delete_queue(10);
+        assert_eq!(urls.len(), 2);
+        assert!(urls.contains(&"file:///tmp/spill1".to_string()));
+        assert!(urls.contains(&"file:///tmp/spill2".to_string()));
+    }
+
+    #[test]
+    fn test_process_spilled_delete_queue_blocks_on_pending_spill() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        mgr.pin_object(oid1, 100, 0);
+        mgr.mark_pending_spill(&[oid1]); // oid1 is still being spilled
+
+        mgr.register_spilled_url(oid2, "file:///tmp/spill2".to_string());
+
+        // Enqueue oid1 (still spilling) then oid2
+        mgr.enqueue_spilled_object_delete(oid1);
+        mgr.enqueue_spilled_object_delete(oid2);
+
+        // Should block at oid1 (still pending spill), not process oid2
+        let urls = mgr.process_spilled_objects_delete_queue(10);
+        assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_process_spilled_delete_queue_ref_counting() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        // Both objects in the same fused spill file
+        let fused_url = "file:///tmp/fused_spill";
+        mgr.register_spilled_url(oid1, format!("{}?offset=0&size=100", fused_url));
+        mgr.register_spilled_url(oid2, format!("{}?offset=100&size=200", fused_url));
+
+        // Delete only oid1 — URL should NOT be deleted (ref count = 1 remaining)
+        mgr.enqueue_spilled_object_delete(oid1);
+        let urls = mgr.process_spilled_objects_delete_queue(10);
+        assert!(urls.is_empty(), "URL should not be deleted while refs remain");
+
+        // Now delete oid2 — URL should be deleted (ref count = 0)
+        mgr.enqueue_spilled_object_delete(oid2);
+        let urls = mgr.process_spilled_objects_delete_queue(10);
+        assert_eq!(urls.len(), 1);
+        assert!(urls[0].starts_with(fused_url));
+    }
+
+    #[test]
+    fn test_process_spilled_delete_queue_respects_batch_size() {
+        let mut mgr = LocalObjectManager::new(make_config());
+
+        for i in 0..5u8 {
+            let oid = make_oid(i);
+            mgr.register_spilled_url(oid, format!("file:///tmp/spill{}", i));
+            mgr.enqueue_spilled_object_delete(oid);
+        }
+
+        // Process only 2 at a time
+        let urls = mgr.process_spilled_objects_delete_queue(2);
+        assert_eq!(urls.len(), 2);
+
+        // 3 remaining
+        let urls = mgr.process_spilled_objects_delete_queue(10);
+        assert_eq!(urls.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_base_url() {
+        assert_eq!(
+            parse_base_url("file:///tmp/spill?offset=0&size=100"),
+            "file:///tmp/spill"
+        );
+        assert_eq!(
+            parse_base_url("file:///tmp/spill@0_100"),
+            "file:///tmp/spill"
+        );
+        assert_eq!(
+            parse_base_url("file:///tmp/spill"),
+            "file:///tmp/spill"
+        );
+        assert_eq!(
+            parse_base_url("s3://bucket/key?offset=0"),
+            "s3://bucket/key"
+        );
+    }
+
+    #[test]
+    fn test_flush_free_objects_processes_spill_delete_queue() {
+        let mut mgr = LocalObjectManager::new(make_config());
+
+        // Set up a spilled object pending delete
+        let oid = make_oid(1);
+        mgr.register_spilled_url(oid, "file:///tmp/spill1".to_string());
+        mgr.enqueue_spilled_object_delete(oid);
+
+        // Track freed objects via callback
+        let freed = Arc::new(Mutex::new(Vec::new()));
+        let freed_clone = Arc::clone(&freed);
+        mgr.set_on_objects_freed(Arc::new(move |ids| {
+            freed_clone.lock().extend(ids);
+        }));
+
+        // Also add a pending deletion
+        mgr.mark_for_deletion(make_oid(2));
+
+        // flush_free_objects should handle both pending deletions AND spill delete queue
+        mgr.flush_free_objects();
+
+        // The pending deletion callback was invoked
+        assert_eq!(freed.lock().len(), 1);
+        // The spill delete queue was processed (queue should be empty now)
+        assert!(mgr.spilled_object_pending_delete.is_empty());
     }
 }

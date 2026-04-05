@@ -44,6 +44,13 @@ pub struct PlasmaStoreConfig {
 /// dedicated single-threaded context; here we use a Mutex for safety.
 pub struct PlasmaStore {
     inner: Mutex<PlasmaStoreInner>,
+    allocator: Arc<dyn IAllocator>,
+    /// Broadcast notification for all waiting `PlasmaClient::get()` calls.
+    /// Notified on every `seal_object()`. Multiple clients can wait
+    /// concurrently — `notify_all()` wakes them all.
+    seal_notify: parking_lot::Condvar,
+    /// Mutex paired with `seal_notify` for condvar wait semantics.
+    seal_mutex: Mutex<()>,
 }
 
 struct PlasmaStoreInner {
@@ -60,15 +67,35 @@ struct PlasmaStoreInner {
 impl PlasmaStore {
     /// Create a new plasma store.
     pub fn new(allocator: Arc<dyn IAllocator>, config: &PlasmaStoreConfig) -> Self {
-        let _ = allocator; // Will be used in create_object
         Self {
+            allocator,
             inner: Mutex::new(PlasmaStoreInner {
                 object_store: ObjectStore::new(),
                 eviction_policy: EvictionPolicy::new(config.object_store_memory),
                 add_object_callback: None,
                 delete_object_callback: None,
             }),
+            seal_notify: parking_lot::Condvar::new(),
+            seal_mutex: Mutex::new(()),
         }
+    }
+
+    /// Get a reference to the allocator.
+    pub fn allocator(&self) -> &Arc<dyn IAllocator> {
+        &self.allocator
+    }
+
+    /// Get the allocator's footprint limit (max object store memory).
+    pub fn allocator_footprint_limit(&self) -> i64 {
+        self.allocator.footprint_limit()
+    }
+
+    /// Get the store-level seal notification condvar and its paired mutex.
+    /// Used by `PlasmaClient::get()` to block until objects are sealed.
+    /// Multiple clients can wait concurrently — `seal_object()` calls
+    /// `notify_all()` to wake them all.
+    pub fn seal_condvar(&self) -> (&Mutex<()>, &parking_lot::Condvar) {
+        (&self.seal_mutex, &self.seal_notify)
     }
 
     /// Set the callback invoked when a new object is sealed.
@@ -127,17 +154,58 @@ impl PlasmaStore {
         Ok(())
     }
 
+    /// Write data and metadata bytes into a created (unsealed) object's allocation.
+    ///
+    /// The object must already exist in the CREATED state. Data is written at
+    /// offset 0 and metadata immediately after. This is used by the receive
+    /// path to copy reassembled chunks into the plasma allocation.
+    pub fn write_object_bytes(
+        &self,
+        object_id: &ObjectID,
+        data: &[u8],
+        metadata: &[u8],
+    ) {
+        let inner = self.inner.lock();
+        if let Some(obj) = inner.object_store.get_object(object_id) {
+            let alloc = obj.allocation();
+            if !alloc.address.is_null() {
+                let data_size = data.len();
+                // Safety: The allocation address points to a valid mmap'd region
+                // of at least data_size + metadata_size bytes. The object is in
+                // CREATED state (not yet sealed), so we have exclusive write access
+                // while holding the lock.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(data.as_ptr(), alloc.address, data_size);
+                    if !metadata.is_empty() {
+                        std::ptr::copy_nonoverlapping(
+                            metadata.as_ptr(),
+                            alloc.address.add(data_size),
+                            metadata.len(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// Seal an object, making it immutable and available for reading.
     pub fn seal_object(&self, object_id: &ObjectID) -> Result<(), PlasmaError> {
         let mut inner = self.inner.lock();
         inner.object_store.seal_object(object_id)?;
 
-        // Notify via callback
+        // Notify via external callback (raylet, application layer).
         if let Some(ref callback) = inner.add_object_callback {
             if let Some(obj) = inner.object_store.get_object(object_id) {
                 callback(obj.object_info());
             }
         }
+
+        // Drop the inner lock before notifying waiters to avoid holding
+        // two locks simultaneously.
+        drop(inner);
+
+        // Wake ALL waiting PlasmaClient::get() calls across all clients.
+        self.seal_notify.notify_all();
 
         Ok(())
     }
@@ -236,6 +304,19 @@ impl PlasmaStore {
     }
 
     /// Check if an object exists.
+    /// Check if an object is spillable.
+    /// C++ equivalent: `PlasmaStore::IsObjectSpillable()` (store.cc:560-568).
+    /// An object is spillable if it exists, is sealed, and has refcount == 1
+    /// (only the store holds a reference — not pinned by any worker).
+    pub fn is_object_spillable(&self, object_id: &ObjectID) -> bool {
+        let inner = self.inner.lock();
+        if let Some(obj) = inner.object_store.get_object(object_id) {
+            obj.is_sealed() && obj.ref_count() == 1
+        } else {
+            false
+        }
+    }
+
     pub fn contains(&self, object_id: &ObjectID) -> bool {
         self.inner.lock().object_store.contains(object_id)
     }

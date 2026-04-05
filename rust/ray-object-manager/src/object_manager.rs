@@ -194,7 +194,24 @@ impl ObjectManager {
         let complete = self.buffer_pool.write_chunk(&object_id, chunk_index, data);
 
         if complete {
-            // Object fully received — add to local objects
+            // Assemble the received bytes and write into the plasma store.
+            if let Some((info, obj_data, obj_metadata)) =
+                self.buffer_pool.take_completed(&object_id)
+            {
+                let allocator = Arc::clone(self.plasma_store.allocator());
+                if self.plasma_store.create_object(
+                    info,
+                    crate::common::ObjectSource::ReceivedFromRemoteRaylet,
+                    allocator.as_ref(),
+                ).is_ok() {
+                    self.plasma_store.write_object_bytes(
+                        &object_id,
+                        &obj_data,
+                        &obj_metadata,
+                    );
+                    let _ = self.plasma_store.seal_object(&object_id);
+                }
+            }
             self.object_added(object_info);
         }
 
@@ -223,6 +240,11 @@ impl ObjectManager {
 
     pub fn self_node_id(&self) -> &NodeID {
         &self.self_node_id
+    }
+
+    /// Access the underlying plasma store.
+    pub fn plasma_store(&self) -> &Arc<PlasmaStore> {
+        &self.plasma_store
     }
 
     pub fn config(&self) -> &ObjectManagerConfig {

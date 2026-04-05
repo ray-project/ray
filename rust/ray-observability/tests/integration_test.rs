@@ -101,19 +101,20 @@ fn test_actor_lifecycle_events() {
     exporter.flush();
 
     let events = captured.lock();
-    assert_eq!(events.len(), 4);
-    assert_eq!(events[0].label, "ACTOR_CREATED");
-    assert_eq!(events[1].label, "ACTOR_DIED");
-    assert_eq!(events[2].label, "ACTOR_RESTARTED");
-    assert_eq!(events[3].label, "ACTOR_DIED");
-
-    // Verify actor_id custom field is present on all events.
-    for event in events.iter() {
-        assert_eq!(
-            event.custom_fields.get("actor_id"),
-            Some(&"act-1".to_string())
-        );
-    }
+    // C++ parity: events with the same (actor_id, event_kind) are merged before export.
+    // All 4 events share actor_id="act-1" and event_kind="lifecycle", so they merge into 1.
+    assert_eq!(events.len(), 1);
+    let merged = &events[0];
+    assert_eq!(merged.label, "ACTOR_CREATED"); // first event's label is preserved
+    assert_eq!(
+        merged.custom_fields.get("actor_id"),
+        Some(&"act-1".to_string())
+    );
+    // Verify merge count reflects all 4 original events.
+    assert_eq!(
+        merged.custom_fields.get("_merge_count"),
+        Some(&"4".to_string())
+    );
 }
 
 /// Test event export with buffer overflow (older events dropped).

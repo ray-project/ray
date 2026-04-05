@@ -48,6 +48,8 @@ pub struct WorkerSpawnerConfig {
     pub metrics_export_port: u16,
     /// Object store memory limit (propagated to worker env).
     pub object_store_memory: u64,
+    /// JSON-serialized object spilling configuration (base64-encoded in IO worker argv).
+    pub object_spilling_config: String,
 }
 
 /// Spawn a worker process for the given language.
@@ -56,7 +58,8 @@ pub struct WorkerSpawnerConfig {
 /// raylet and GCS. Returns the child's PID on success, or None on failure.
 ///
 /// ## PARITY STATUS: MATCHED for regular Python/Java/C++ workers.
-/// ## NOT IMPLEMENTED for IO workers (spill/restore/delete).
+/// ## MATCHED for IO worker argv (`--worker-type`, `--object-spilling-config`).
+/// ## NOT IMPLEMENTED: IO worker pool lifecycle (PopSpillWorker etc.).
 ///
 /// Regular worker flags with real per-task values:
 ///   `--node-ip-address`, `--node-manager-port`, `--worker-id`, `--node-id`,
@@ -64,14 +67,14 @@ pub struct WorkerSpawnerConfig {
 ///   `--runtime-env-hash` (dedicated helper, i32, empty->0),
 ///   `--serialized-runtime-env-context` (from agent callback)
 ///
-/// IO-worker infrastructure is NOT IMPLEMENTED in the Rust raylet:
+/// IO-worker argv flags are IMPLEMENTED:
+///   - `--worker-type=SPILL_WORKER|RESTORE_WORKER|DELETE_WORKER`
+///   - `--object-spilling-config=<base64>` (from WorkerSpawnerConfig)
+///
+/// IO-worker pool infrastructure is NOT IMPLEMENTED in the Rust raylet:
 ///   - No PopSpillWorker/PopRestoreWorker/PopDeleteWorker in WorkerPool
 ///   - No TryStartIOWorkers mechanism
 ///   - No LocalObjectManager -> WorkerPool integration for on-demand IO workers
-///   - `--worker-type` flag emission exists in build_worker_argv() but is
-///     never reached on production paths (SpawnWorkerContext always uses
-///     WorkerType::Worker)
-///   - `--object-spilling-config` requires RayConfig access (not available)
 ///
 /// Flags not applicable to Rust architecture:
 ///   `--startup-token`, `--worker-shim-pid` (C++ shim/process-group model)
@@ -114,6 +117,16 @@ pub(crate) fn build_worker_env(
         env_vars.insert("RAY_OBJECT_STORE_MEMORY".to_string(), config.object_store_memory.to_string());
     }
     env_vars
+}
+
+/// Append `--object-spilling-config=<base64>` to `args` when the config is non-empty.
+fn append_object_spilling_config(args: &mut Vec<String>, object_spilling_config: &str) {
+    if !object_spilling_config.is_empty() {
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD
+            .encode(object_spilling_config);
+        args.push(format!("--object-spilling-config={}", encoded));
+    }
 }
 
 /// Build the full argv (program + arguments) for a worker process.
@@ -209,18 +222,15 @@ pub(crate) fn build_worker_argv(
             match worker_type {
                 WorkerType::SpillWorker => {
                     args.push("--worker-type=SPILL_WORKER".to_string());
-                    // TODO: --object-spilling-config requires RayConfig access
-                    // in the spawn path, which is not yet available.
+                    append_object_spilling_config(&mut args, &config.object_spilling_config);
                 }
                 WorkerType::RestoreWorker => {
                     args.push("--worker-type=RESTORE_WORKER".to_string());
-                    // TODO: --object-spilling-config requires RayConfig access
-                    // in the spawn path, which is not yet available.
+                    append_object_spilling_config(&mut args, &config.object_spilling_config);
                 }
                 WorkerType::DeleteWorker => {
                     args.push("--worker-type=DELETE_WORKER".to_string());
-                    // TODO: --object-spilling-config requires RayConfig access
-                    // in the spawn path, which is not yet available.
+                    append_object_spilling_config(&mut args, &config.object_spilling_config);
                 }
                 WorkerType::Worker | WorkerType::Driver => {
                     // Regular workers and drivers do not set --worker-type.
@@ -749,5 +759,38 @@ mod tests {
         let wid = WorkerID::from_random();
         let (_prog, args) = build_worker_argv(&config, Language::Python, &wid, 0, "", WorkerType::Worker).unwrap();
         assert!(!args_contain(&args, "--worker-type="));
+    }
+
+    #[test]
+    fn test_spill_worker_has_object_spilling_config() {
+        let mut config = test_config();
+        config.object_spilling_config =
+            r#"{"type":"filesystem","params":{"directory_path":"/tmp/spill"}}"#.to_string();
+        let wid = WorkerID::from_random();
+
+        for wt in [WorkerType::SpillWorker, WorkerType::RestoreWorker, WorkerType::DeleteWorker] {
+            let (_prog, args) = build_worker_argv(&config, Language::Python, &wid, 0, "", wt).unwrap();
+            assert!(args_contain(&args, "--object-spilling-config="),
+                "Expected --object-spilling-config for {:?}", wt);
+
+            // Verify the value is valid base64 that decodes to the original config.
+            let flag = args.iter().find(|a| a.starts_with("--object-spilling-config=")).unwrap();
+            let encoded = flag.strip_prefix("--object-spilling-config=").unwrap();
+            use base64::Engine;
+            let decoded = base64::engine::general_purpose::STANDARD.decode(encoded).unwrap();
+            let decoded_str = String::from_utf8(decoded).unwrap();
+            assert_eq!(decoded_str, config.object_spilling_config);
+        }
+    }
+
+    #[test]
+    fn test_regular_worker_no_object_spilling_config() {
+        let mut config = test_config();
+        config.object_spilling_config =
+            r#"{"type":"filesystem"}"#.to_string();
+        let wid = WorkerID::from_random();
+        let (_prog, args) = build_worker_argv(&config, Language::Python, &wid, 0, "", WorkerType::Worker).unwrap();
+        assert!(!args_contain(&args, "--object-spilling-config="),
+            "Regular workers should not have --object-spilling-config");
     }
 }

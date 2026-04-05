@@ -70,9 +70,16 @@ impl Default for PlasmaClientConfig {
 ///
 /// In the C++ version, the client communicates with the store over a Unix
 /// domain socket using Flatbuffer messages. In this Rust port, we use a
-/// direct reference to the PlasmaStore for in-process communication,
-/// which is simpler and avoids serialization overhead. The Unix socket
-/// IPC path can be added later for multi-process deployments.
+/// direct reference to the PlasmaStore for in-process communication.
+///
+/// **Architecture note:** The in-process design is intentional for the Rust
+/// backend. All Ray workers in the Rust architecture share the same process
+/// (CPU actors are in-process, GPU actors are subprocess-isolated). The
+/// shared-memory mmap backing is identical — external processes that mmap the
+/// same files see the same bytes. The IPC socket layer is unnecessary overhead
+/// when all access is in-process. If a future Rust deployment requires out-of-
+/// process Plasma access, the socket transport can be layered beneath this API
+/// without changing callers.
 pub struct PlasmaClient {
     inner: Mutex<PlasmaClientInner>,
 }
@@ -94,6 +101,10 @@ struct PlasmaClientInner {
 
 impl PlasmaClient {
     /// Create a new PlasmaClient connected to the given store.
+    ///
+    /// Multiple clients can be created against the same store. Blocking
+    /// `get()` calls use the store-level broadcast condvar, so all clients
+    /// are woken on seal — no callback overwrite issues.
     pub fn new(
         store: Arc<PlasmaStore>,
         allocator: Arc<dyn IAllocator>,
@@ -348,9 +359,76 @@ impl PlasmaClient {
             } else if timeout_ms == 0 {
                 results.push(None);
             } else {
-                // Object not found and timeout > 0. For now, return None.
-                // TODO: implement blocking wait with store notification.
-                results.push(None);
+                // Object not found and timeout > 0: block until sealed or timeout.
+                // C++ parity: PlasmaClient::GetBuffers waits for the store to
+                // send a notification that the object has been sealed.
+                //
+                // Uses the store-level broadcast condvar so multiple clients
+                // can wait concurrently without stomping each other.
+                let store = Arc::clone(&inner.store);
+                let deadline = std::time::Instant::now()
+                    + std::time::Duration::from_millis(timeout_ms as u64);
+
+                // Release the client lock while waiting — other client methods
+                // (and other clients) must not be blocked.
+                drop(inner);
+
+                let (seal_mutex, seal_cv) = store.seal_condvar();
+                let found = {
+                    let mut guard = seal_mutex.lock();
+                    loop {
+                        // Check if the object appeared.
+                        if store.get_object_info(oid).is_some() {
+                            break true;
+                        }
+                        let remaining =
+                            deadline.saturating_duration_since(std::time::Instant::now());
+                        if remaining.is_zero() {
+                            break false;
+                        }
+                        let result = seal_cv.wait_for(&mut guard, remaining);
+                        if result.timed_out() {
+                            // Final check after timeout.
+                            break store.get_object_info(oid).is_some();
+                        }
+                    }
+                };
+
+                // Re-acquire the client lock.
+                inner = self.inner.lock();
+
+                if found {
+                    let info = inner.store.get_object_info(oid).unwrap();
+                    let _ = inner.store.begin_object_access(oid);
+                    inner.objects_in_use.insert(
+                        *oid,
+                        ObjectInUseEntry {
+                            ref_count: 1,
+                            is_create: false,
+                            object_info: info.clone(),
+                        },
+                    );
+                    results.push(Some(ObjectBuffer {
+                        object_id: *oid,
+                        data: Vec::new(),
+                        metadata: Vec::new(),
+                        plasma_object: PlasmaObject {
+                            store_fd: -1,
+                            header_offset: 0,
+                            data_offset: 0,
+                            metadata_offset: info.data_size as isize,
+                            data_size: info.data_size,
+                            metadata_size: info.metadata_size,
+                            allocated_size: info.data_size + info.metadata_size,
+                            device_num: 0,
+                            mmap_size: info.data_size + info.metadata_size,
+                            fallback_allocated: false,
+                            is_experimental_mutable_object: false,
+                        },
+                    }));
+                } else {
+                    results.push(None);
+                }
             }
         }
 
@@ -687,5 +765,150 @@ mod tests {
         assert!(buffers[1].is_some());
         assert_eq!(buffers[0].as_ref().unwrap().plasma_object.data_size, 100);
         assert_eq!(buffers[1].as_ref().unwrap().plasma_object.data_size, 200);
+    }
+
+    // ── Multi-client tests ──────────────────────────────────────────
+
+    /// Two clients wait on the same missing object. Object gets sealed.
+    /// Both must wake and return Some.
+    #[test]
+    fn test_two_clients_wait_same_object_both_wake() {
+        let (store, allocator) = make_store();
+        let oid = make_oid(50);
+
+        let client1 = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+        let client2 = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+
+        // Create the object (unsealed).
+        store.create_object(
+            ObjectInfo { object_id: oid, data_size: 64, ..Default::default() },
+            crate::common::ObjectSource::CreatedByWorker,
+            allocator.as_ref(),
+        ).unwrap();
+
+        // Both clients wait on background threads.
+        let store_c = Arc::clone(&store);
+        let h1 = std::thread::spawn(move || client1.get(&[oid], 5000));
+        let h2 = std::thread::spawn(move || client2.get(&[oid], 5000));
+
+        // Give threads time to enter wait.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Seal the object — should wake both.
+        store_c.seal_object(&oid).unwrap();
+
+        let r1 = h1.join().unwrap().unwrap();
+        let r2 = h2.join().unwrap().unwrap();
+        assert!(r1[0].is_some(), "client 1 must wake on seal");
+        assert!(r2[0].is_some(), "client 2 must wake on seal");
+    }
+
+    /// Two clients wait on different objects. Both objects get sealed.
+    /// Both clients must wake correctly.
+    #[test]
+    fn test_two_clients_wait_different_objects_both_wake() {
+        let (store, allocator) = make_store();
+        let oid1 = make_oid(51);
+        let oid2 = make_oid(52);
+
+        let client1 = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+        let client2 = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+
+        store.create_object(
+            ObjectInfo { object_id: oid1, data_size: 32, ..Default::default() },
+            crate::common::ObjectSource::CreatedByWorker, allocator.as_ref(),
+        ).unwrap();
+        store.create_object(
+            ObjectInfo { object_id: oid2, data_size: 48, ..Default::default() },
+            crate::common::ObjectSource::CreatedByWorker, allocator.as_ref(),
+        ).unwrap();
+
+        let store_c = Arc::clone(&store);
+        let h1 = std::thread::spawn(move || client1.get(&[oid1], 5000));
+        let h2 = std::thread::spawn(move || client2.get(&[oid2], 5000));
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        store_c.seal_object(&oid1).unwrap();
+        store_c.seal_object(&oid2).unwrap();
+
+        let r1 = h1.join().unwrap().unwrap();
+        let r2 = h2.join().unwrap().unwrap();
+        assert!(r1[0].is_some(), "client 1 must wake for oid1");
+        assert!(r2[0].is_some(), "client 2 must wake for oid2");
+    }
+
+    /// Creating a second client must NOT break the first client's wait.
+    /// This test would FAIL on the old single-callback design.
+    #[test]
+    fn test_second_client_does_not_break_first() {
+        let (store, allocator) = make_store();
+        let oid = make_oid(53);
+
+        let client1 = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+
+        store.create_object(
+            ObjectInfo { object_id: oid, data_size: 16, ..Default::default() },
+            crate::common::ObjectSource::CreatedByWorker, allocator.as_ref(),
+        ).unwrap();
+
+        // Client 1 starts waiting.
+        let store_c = Arc::clone(&store);
+        let alloc_c = Arc::clone(&allocator);
+        let h1 = std::thread::spawn(move || client1.get(&[oid], 5000));
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Create client 2 AFTER client 1 is already waiting.
+        // Old design: this would overwrite client 1's callback.
+        let _client2 = PlasmaClient::new(Arc::clone(&store_c), alloc_c, PlasmaClientConfig::default());
+
+        // Seal the object — client 1 must still wake.
+        store_c.seal_object(&oid).unwrap();
+
+        let r1 = h1.join().unwrap().unwrap();
+        assert!(r1[0].is_some(), "client 1 must wake even after client 2 was created");
+    }
+
+    /// Timeout still works correctly with multi-client design.
+    #[test]
+    fn test_multi_client_timeout_still_works() {
+        let (store, allocator) = make_store();
+        let oid = make_oid(54);
+
+        let client = PlasmaClient::new(store, allocator, PlasmaClientConfig::default());
+
+        // Object does not exist. Timeout of 50ms should return None.
+        let start = std::time::Instant::now();
+        let result = client.get(&[oid], 50).unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(result[0].is_none(), "must return None on timeout");
+        assert!(elapsed >= std::time::Duration::from_millis(40), "must wait near timeout");
+        assert!(elapsed < std::time::Duration::from_secs(2), "must not wait too long");
+    }
+
+    /// Repeated client construction does not accumulate state or break.
+    #[test]
+    fn test_repeated_client_construction() {
+        let (store, allocator) = make_store();
+        let oid = make_oid(55);
+
+        // Create and drop 10 clients.
+        for _ in 0..10 {
+            let _c = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+        }
+
+        // 11th client still works correctly.
+        let client = PlasmaClient::new(Arc::clone(&store), Arc::clone(&allocator), PlasmaClientConfig::default());
+
+        store.create_object(
+            ObjectInfo { object_id: oid, data_size: 8, ..Default::default() },
+            crate::common::ObjectSource::CreatedByWorker, allocator.as_ref(),
+        ).unwrap();
+        store.seal_object(&oid).unwrap();
+
+        let result = client.get(&[oid], 0).unwrap();
+        assert!(result[0].is_some());
     }
 }

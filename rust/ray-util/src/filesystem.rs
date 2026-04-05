@@ -416,8 +416,12 @@ mod tests {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 loop {
                     if let Ok(content) = std::fs::read_to_string(&fp) {
-                        assert_eq!(content, expected);
-                        return;
+                        // std::fs::write is not atomic — the file may exist
+                        // but be empty or partially written. Keep polling
+                        // until the full content is visible.
+                        if content == expected {
+                            return;
+                        }
                     }
                     if std::time::Instant::now() > deadline {
                         panic!("timed out waiting for file");

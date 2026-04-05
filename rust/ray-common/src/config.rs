@@ -74,6 +74,27 @@ pub struct RayConfig {
     // ─── Object Store ─────────────────────────────────────────
     pub object_store_memory: i64,
     pub object_spilling_threshold: f64,
+    /// JSON-serialized object spilling configuration.
+    /// C++ parity: `object_spilling_config` (default empty).
+    pub object_spilling_config: String,
+    /// Maximum number of IO workers (spill/restore/delete).
+    /// C++ parity: `max_io_workers` (default 4).
+    pub max_io_workers: i32,
+    /// Minimum bytes to accumulate before triggering a spill batch.
+    /// C++ parity: `min_spilling_size` (default 100MB).
+    pub min_spilling_size: i64,
+    /// Maximum bytes per single fused spill file. -1 = disabled.
+    /// C++ parity: `max_spilling_file_size_bytes` (default -1).
+    pub max_spilling_file_size_bytes: i64,
+    /// Maximum number of objects fused into a single spill file.
+    /// C++ parity: `max_fused_object_count` (default 2000).
+    pub max_fused_object_count: i64,
+    /// Number of freed objects to batch before deletion.
+    /// C++ parity: `free_objects_batch_size` (default 100).
+    pub free_objects_batch_size: i64,
+    /// Period in milliseconds between free-objects GC sweeps.
+    /// C++ parity: `free_objects_period_milliseconds` (default 1000).
+    pub free_objects_period_milliseconds: i64,
 
     // ─── GCS ──────────────────────────────────────────────────
     pub gcs_server_port: i32,
@@ -133,6 +154,13 @@ impl Default for RayConfig {
             user_memory_proportion_high: 1.0,
             object_store_memory: -1,
             object_spilling_threshold: 0.8,
+            object_spilling_config: String::new(),
+            max_io_workers: 4,
+            min_spilling_size: 100 * 1024 * 1024, // 100MB
+            max_spilling_file_size_bytes: -1, // disabled
+            max_fused_object_count: 2000,
+            free_objects_batch_size: 100,
+            free_objects_period_milliseconds: 1000,
             gcs_server_port: crate::constants::DEFAULT_GCS_PORT as i32,
             gcs_max_active_rpcs_per_handler: -1,
             num_workers_soft_limit: -1,
@@ -231,6 +259,13 @@ impl RayConfig {
         set_field!(min_memory_free_bytes, "min_memory_free_bytes", i64);
         set_field!(gcs_server_port, "gcs_server_port", i32);
         set_field!(object_store_memory, "object_store_memory", i64);
+        set_field!(object_spilling_config, "object_spilling_config", String);
+        set_field!(max_io_workers, "max_io_workers", i32);
+        set_field!(min_spilling_size, "min_spilling_size", i64);
+        set_field!(max_spilling_file_size_bytes, "max_spilling_file_size_bytes", i64);
+        set_field!(max_fused_object_count, "max_fused_object_count", i64);
+        set_field!(free_objects_batch_size, "free_objects_batch_size", i64);
+        set_field!(free_objects_period_milliseconds, "free_objects_period_milliseconds", i64);
         set_field!(enable_metrics_collection, "enable_metrics_collection", bool);
 
         // Apply environment variable overrides (RAY_<NAME>)
@@ -266,6 +301,14 @@ impl RayConfig {
                     }
                 }
             };
+            ($field:ident, i32) => {
+                let env_key = concat!("RAY_", stringify!($field));
+                if let Ok(val) = std::env::var(env_key) {
+                    if let Ok(v) = val.parse::<i32>() {
+                        self.$field = v;
+                    }
+                }
+            };
             ($field:ident, f32) => {
                 let env_key = concat!("RAY_", stringify!($field));
                 if let Ok(val) = std::env::var(env_key) {
@@ -289,6 +332,8 @@ impl RayConfig {
         env_override!(memory_monitor_refresh_ms, u64);
         env_override!(min_memory_free_bytes, i64);
         env_override!(enable_metrics_collection, bool);
+        env_override!(object_spilling_config, String);
+        env_override!(max_io_workers, i32);
         env_override!(enable_export_api_write, bool);
         env_override!(enable_export_api_write_config, String);
         env_override!(enable_ray_event, bool);
@@ -394,6 +439,19 @@ mod tests {
         assert_eq!(c.worker_register_timeout_seconds, 60);
         assert_eq!(c.task_retry_delay_ms, 0);
         assert!(!c.enable_cgroup);
+        assert_eq!(c.object_spilling_config, "");
+        assert_eq!(c.max_io_workers, 4);
+    }
+
+    #[test]
+    fn test_object_spilling_config_and_max_io_workers_from_json() {
+        let json = r#"{
+            "object_spilling_config": "{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}",
+            "max_io_workers": 8
+        }"#;
+        let config = RayConfig::from_json(json).unwrap();
+        assert!(config.object_spilling_config.contains("filesystem"));
+        assert_eq!(config.max_io_workers, 8);
     }
 
     // ─── Ported from C++ ray_config_test.cc ─────────────────────────────────

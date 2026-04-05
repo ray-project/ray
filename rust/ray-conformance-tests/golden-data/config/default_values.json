@@ -11,6 +11,7 @@
     {"description": "raylet_heartbeat_period_milliseconds", "input": {"key": "raylet_heartbeat_period_milliseconds"}, "expected": {"value_u64": 1000}},
     {"description": "worker_register_timeout_seconds", "input": {"key": "worker_register_timeout_seconds"}, "expected": {"value_i64": 60}},
     {"description": "task_retry_delay_ms", "input": {"key": "task_retry_delay_ms"}, "expected": {"value_i64": 0}},
-    {"description": "enable_cluster_auth", "input": {"key": "enable_cluster_auth"}, "expected": {"value_bool": true}}
+    {"description": "enable_cluster_auth", "input": {"key": "enable_cluster_auth"}, "expected": {"value_bool": true}},
+    {"description": "free_objects_period_milliseconds", "input": {"key": "free_objects_period_milliseconds"}, "expected": {"value_i64": 1000}}
   ]
 }

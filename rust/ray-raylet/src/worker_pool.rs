@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use ray_common::id::{JobID, WorkerID};
 
 use crate::runtime_env_agent_client::RuntimeEnvAgentClientTrait;
@@ -134,6 +134,53 @@ impl Default for SpawnWorkerContext {
     }
 }
 
+/// Callback type for IO worker pool operations.
+pub type IOWorkerCallback = Box<dyn FnOnce(WorkerID) + Send + 'static>;
+
+/// Interface for IO worker pool operations.
+/// C++ equivalent: IOWorkerPoolInterface.
+pub trait IOWorkerPool: Send + Sync {
+    fn pop_spill_worker(&self, callback: IOWorkerCallback);
+    fn push_spill_worker(&self, worker_id: WorkerID);
+    fn pop_restore_worker(&self, callback: IOWorkerCallback);
+    fn push_restore_worker(&self, worker_id: WorkerID);
+    fn pop_delete_worker(&self, callback: IOWorkerCallback);
+    fn push_delete_worker(&self, worker_id: WorkerID);
+    /// Look up a worker's info by ID (needed for RPC dispatch).
+    fn get_worker(&self, worker_id: &WorkerID) -> Option<WorkerInfo>;
+}
+
+/// Per-worker-type IO worker pool state.
+/// C++ equivalent: WorkerPool::IOWorkerState (worker_pool.h:623-633).
+struct IOWorkerState {
+    idle_io_workers: HashSet<WorkerID>,
+    pending_io_tasks: VecDeque<Box<dyn FnOnce(WorkerID) + Send + 'static>>,
+    started_io_workers: HashSet<WorkerID>,
+    num_starting_io_workers: i32,
+}
+
+impl Default for IOWorkerState {
+    fn default() -> Self {
+        Self {
+            idle_io_workers: HashSet::new(),
+            pending_io_tasks: VecDeque::new(),
+            started_io_workers: HashSet::new(),
+            num_starting_io_workers: 0,
+        }
+    }
+}
+
+impl std::fmt::Debug for IOWorkerState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IOWorkerState")
+            .field("idle_io_workers", &self.idle_io_workers)
+            .field("pending_io_tasks_len", &self.pending_io_tasks.len())
+            .field("started_io_workers", &self.started_io_workers)
+            .field("num_starting_io_workers", &self.num_starting_io_workers)
+            .finish()
+    }
+}
+
 /// Callback invoked when a worker process needs to be started.
 /// Receives language, job_id, worker_id, and per-task runtime env context.
 /// Returns the PID of the started process.
@@ -162,6 +209,12 @@ pub struct WorkerPool {
     /// C++ equivalent: `runtime_env_agent_client_` in `worker_pool.h`.
     /// Set via `set_runtime_env_agent_client()` after agent is ready.
     runtime_env_agent_client: RwLock<Option<Arc<dyn RuntimeEnvAgentClientTrait>>>,
+    /// Maximum number of IO workers per type (spill/restore).
+    /// C++ equivalent: `io_worker_max_` in `worker_pool.h`.
+    max_io_workers: i32,
+    /// Per-language IO worker state. Kept in a Mutex (not RwLock) because
+    /// IOWorkerState contains non-Sync callback closures.
+    io_states: Mutex<HashMap<Language, LanguageIOState>>,
 }
 
 /// Per-language pool state.
@@ -176,6 +229,14 @@ struct LanguageState {
     pending_requests: VecDeque<PendingPopRequest>,
 }
 
+/// Per-language IO worker state (kept in a separate Mutex because
+/// IOWorkerState contains non-Sync callback closures).
+#[derive(Default)]
+struct LanguageIOState {
+    spill_io_worker_state: IOWorkerState,
+    restore_io_worker_state: IOWorkerState,
+}
+
 /// A queued request waiting for a worker.
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -185,7 +246,11 @@ struct PendingPopRequest {
 }
 
 impl WorkerPool {
-    pub fn new(maximum_startup_concurrency: usize, num_workers_soft_limit: usize) -> Self {
+    pub fn new(
+        maximum_startup_concurrency: usize,
+        num_workers_soft_limit: usize,
+        max_io_workers: i32,
+    ) -> Self {
         Self {
             states: RwLock::new(HashMap::new()),
             all_workers: RwLock::new(HashMap::new()),
@@ -196,6 +261,8 @@ impl WorkerPool {
             num_workers_soft_limit,
             start_worker_callback: RwLock::new(None),
             runtime_env_agent_client: RwLock::new(None),
+            max_io_workers,
+            io_states: Mutex::new(HashMap::new()),
         }
     }
 
@@ -223,12 +290,27 @@ impl WorkerPool {
     pub fn register_worker(&self, worker: WorkerInfo) -> Result<(), String> {
         let worker_id = worker.worker_id;
         let language = worker.language;
+        let worker_type = worker.worker_type;
         self.all_workers.write().insert(worker_id, worker);
 
         // Remove from starting set
         let mut states = self.states.write();
         if let Some(state) = states.get_mut(&language) {
             state.starting_workers.remove(&worker_id);
+        }
+
+        drop(states);
+
+        // Handle IO worker registration.
+        if matches!(worker_type, WorkerType::SpillWorker | WorkerType::RestoreWorker) {
+            let mut io_states = self.io_states.lock();
+            let io_lang = io_states.entry(language).or_default();
+            let io_state = Self::get_io_worker_state(io_lang, worker_type);
+            io_state.started_io_workers.insert(worker_id);
+            io_state.num_starting_io_workers =
+                (io_state.num_starting_io_workers - 1).max(0);
+            drop(io_states);
+            self.try_start_io_workers(language, worker_type);
         }
 
         tracing::info!(?worker_id, ?language, "Worker registered");
@@ -345,15 +427,17 @@ impl WorkerPool {
     /// C++ equivalent: `WorkerPool::DisconnectWorker()` (worker_pool.cc:1592).
     /// Deletes the worker's runtime env via the agent client.
     pub fn disconnect_worker(&self, worker_id: &WorkerID) {
-        let runtime_env = {
+        let (runtime_env, worker_type, language) = {
             let mut workers = self.all_workers.write();
             if let Some(worker) = workers.get_mut(worker_id) {
                 worker.is_alive = false;
                 let env = worker.serialized_runtime_env.clone();
+                let wt = worker.worker_type;
+                let lang = worker.language;
                 self.dead_workers.write().insert(*worker_id, worker.clone());
-                env
+                (env, wt, lang)
             } else {
-                String::new()
+                (String::new(), WorkerType::Worker, Language::Python)
             }
         };
 
@@ -362,7 +446,21 @@ impl WorkerPool {
         for state in states.values_mut() {
             state.idle_workers.retain(|id| id != worker_id);
         }
+
         drop(states);
+
+        // Clean up IO worker state on disconnect.
+        if matches!(worker_type, WorkerType::SpillWorker | WorkerType::RestoreWorker) {
+            let mut io_states = self.io_states.lock();
+            if let Some(io_lang) = io_states.get_mut(&language) {
+                let io_state = Self::get_io_worker_state(io_lang, worker_type);
+                if !io_state.started_io_workers.remove(worker_id) {
+                    io_state.num_starting_io_workers =
+                        (io_state.num_starting_io_workers - 1).max(0);
+                }
+                io_state.idle_io_workers.remove(worker_id);
+            }
+        }
 
         // C++ parity: delete runtime env on worker disconnect (worker_pool.cc:1592).
         if !runtime_env.is_empty() && runtime_env != "{}" {
@@ -867,6 +965,192 @@ impl WorkerPool {
             .flat_map(|s| s.idle_workers.iter().copied())
             .collect()
     }
+
+    // ─── IO Worker Pool methods ──────────────────────────────────
+
+    /// Pop an idle spill worker, or queue callback until one is available.
+    pub fn pop_spill_worker(&self, callback: IOWorkerCallback) {
+        self.pop_io_worker_internal(WorkerType::SpillWorker, callback);
+    }
+
+    /// Return a spill worker to the idle pool.
+    pub fn push_spill_worker(&self, worker_id: WorkerID) {
+        self.push_io_worker_internal(worker_id, WorkerType::SpillWorker);
+    }
+
+    /// Pop an idle restore worker, or queue callback until one is available.
+    pub fn pop_restore_worker(&self, callback: IOWorkerCallback) {
+        self.pop_io_worker_internal(WorkerType::RestoreWorker, callback);
+    }
+
+    /// Return a restore worker to the idle pool.
+    pub fn push_restore_worker(&self, worker_id: WorkerID) {
+        self.push_io_worker_internal(worker_id, WorkerType::RestoreWorker);
+    }
+
+    /// Pop an idle delete worker from whichever pool has more idle workers.
+    /// C++ special case: picks from the larger idle pool (worker_pool.cc:1072-1084).
+    ///
+    /// If no Python IO state exists yet, delegates to the restore pool which
+    /// will create the state on demand via `pop_io_worker_internal` →
+    /// `try_start_io_workers`. This avoids silently dropping the callback.
+    pub fn pop_delete_worker(&self, callback: IOWorkerCallback) {
+        let io_states = self.io_states.lock();
+        let (num_spill, num_restore) = if let Some(io_lang) = io_states.get(&Language::Python) {
+            (
+                io_lang.spill_io_worker_state.idle_io_workers.len(),
+                io_lang.restore_io_worker_state.idle_io_workers.len(),
+            )
+        } else {
+            // No Python IO state yet — default to restore pool.
+            // pop_io_worker_internal will create the state on demand.
+            (0, 0)
+        };
+        drop(io_states);
+
+        if num_restore < num_spill {
+            self.pop_io_worker_internal(WorkerType::SpillWorker, callback);
+        } else {
+            self.pop_io_worker_internal(WorkerType::RestoreWorker, callback);
+        }
+    }
+
+    /// Return a delete worker back to its original pool based on worker type.
+    pub fn push_delete_worker(&self, worker_id: WorkerID) {
+        let workers = self.all_workers.read();
+        if let Some(info) = workers.get(&worker_id) {
+            match info.worker_type {
+                WorkerType::SpillWorker => {
+                    drop(workers);
+                    self.push_spill_worker(worker_id);
+                }
+                WorkerType::RestoreWorker => {
+                    drop(workers);
+                    self.push_restore_worker(worker_id);
+                }
+                _ => {
+                    drop(workers);
+                    self.push_spill_worker(worker_id); // fallback
+                }
+            }
+        }
+    }
+
+    fn get_io_worker_state(
+        io_lang: &mut LanguageIOState,
+        worker_type: WorkerType,
+    ) -> &mut IOWorkerState {
+        match worker_type {
+            WorkerType::SpillWorker => &mut io_lang.spill_io_worker_state,
+            WorkerType::RestoreWorker => &mut io_lang.restore_io_worker_state,
+            _ => &mut io_lang.spill_io_worker_state, // fallback
+        }
+    }
+
+    fn pop_io_worker_internal(&self, worker_type: WorkerType, callback: IOWorkerCallback) {
+        let mut io_states = self.io_states.lock();
+        let io_lang = io_states.entry(Language::Python).or_default();
+        let io_state = Self::get_io_worker_state(io_lang, worker_type);
+
+        if let Some(&worker_id) = io_state.idle_io_workers.iter().next() {
+            let worker_id = worker_id;
+            io_state.idle_io_workers.remove(&worker_id);
+            drop(io_states);
+            callback(worker_id);
+        } else {
+            io_state.pending_io_tasks.push_back(callback);
+            drop(io_states);
+            self.try_start_io_workers(Language::Python, worker_type);
+        }
+    }
+
+    fn push_io_worker_internal(&self, worker_id: WorkerID, worker_type: WorkerType) {
+        let callback = {
+            let mut io_states = self.io_states.lock();
+            let io_lang = io_states.entry(Language::Python).or_default();
+            let io_state = Self::get_io_worker_state(io_lang, worker_type);
+
+            if !io_state.started_io_workers.contains(&worker_id) {
+                return; // Unknown worker
+            }
+
+            if io_state.pending_io_tasks.is_empty() {
+                io_state.idle_io_workers.insert(worker_id);
+                return;
+            }
+
+            io_state.pending_io_tasks.pop_front()
+        };
+
+        if let Some(cb) = callback {
+            cb(worker_id);
+        }
+    }
+
+    fn try_start_io_workers(&self, language: Language, worker_type: WorkerType) {
+        if language != Language::Python {
+            return;
+        }
+
+        let mut io_states = self.io_states.lock();
+        let io_lang = io_states.entry(Language::Python).or_default();
+        let io_state = Self::get_io_worker_state(io_lang, worker_type);
+
+        let available =
+            io_state.num_starting_io_workers as usize + io_state.started_io_workers.len();
+        let max_to_start = (self.max_io_workers as usize).saturating_sub(available);
+        let pending = io_state.pending_io_tasks.len();
+        let idle = io_state.idle_io_workers.len();
+        let needed = pending.saturating_sub(idle);
+        let to_start = needed.min(max_to_start);
+
+        for _ in 0..to_start {
+            io_state.num_starting_io_workers += 1;
+        }
+        drop(io_states);
+
+        for _ in 0..to_start {
+            let ctx = SpawnWorkerContext {
+                worker_type,
+                ..Default::default()
+            };
+            if self
+                .start_worker_process(Language::Python, &ray_common::id::JobID::nil(), &ctx)
+                .is_none()
+            {
+                // Failed to start — decrement counter
+                let mut io_states = self.io_states.lock();
+                let io_lang = io_states.entry(Language::Python).or_default();
+                let io_state = Self::get_io_worker_state(io_lang, worker_type);
+                io_state.num_starting_io_workers -= 1;
+                break;
+            }
+        }
+    }
+}
+
+impl IOWorkerPool for WorkerPool {
+    fn pop_spill_worker(&self, callback: IOWorkerCallback) {
+        self.pop_spill_worker(callback);
+    }
+    fn push_spill_worker(&self, worker_id: WorkerID) {
+        self.push_spill_worker(worker_id);
+    }
+    fn pop_restore_worker(&self, callback: IOWorkerCallback) {
+        self.pop_restore_worker(callback);
+    }
+    fn push_restore_worker(&self, worker_id: WorkerID) {
+        self.push_restore_worker(worker_id);
+    }
+    fn pop_delete_worker(&self, callback: IOWorkerCallback) {
+        self.pop_delete_worker(callback);
+    }
+    fn push_delete_worker(&self, worker_id: WorkerID) {
+        self.push_delete_worker(worker_id);
+    }
+    fn get_worker(&self, worker_id: &WorkerID) -> Option<WorkerInfo> {
+        self.get_worker(worker_id)
+    }
 }
 
 /// Result of a pop-or-start operation.
@@ -909,7 +1193,7 @@ mod tests {
 
     #[test]
     fn test_register_and_pop_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -925,7 +1209,7 @@ mod tests {
 
     #[test]
     fn test_pop_missing_job() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         // Don't call handle_job_started
 
@@ -935,7 +1219,7 @@ mod tests {
 
     #[test]
     fn test_disconnect_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -950,7 +1234,7 @@ mod tests {
 
     #[test]
     fn test_kill_idle_workers() {
-        let pool = WorkerPool::new(10, 0); // soft limit 0
+        let pool = WorkerPool::new(10, 0, 4); // soft limit 0
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -968,7 +1252,7 @@ mod tests {
 
     #[test]
     fn test_start_worker_process() {
-        let pool = WorkerPool::new(2, 100);
+        let pool = WorkerPool::new(2, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -988,7 +1272,7 @@ mod tests {
 
     #[test]
     fn test_register_removes_from_starting() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1014,7 +1298,7 @@ mod tests {
 
     #[test]
     fn test_get_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1032,7 +1316,7 @@ mod tests {
 
     #[test]
     fn test_is_worker_dead() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1047,7 +1331,7 @@ mod tests {
 
     #[test]
     fn test_job_finished_disconnects_idle_workers() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job1 = make_job_id(1);
         let job2 = make_job_id(2);
         pool.handle_job_started(job1);
@@ -1075,7 +1359,7 @@ mod tests {
 
     #[test]
     fn test_pop_worker_different_language() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1097,7 +1381,7 @@ mod tests {
 
     #[test]
     fn test_pop_or_start_idle_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1114,7 +1398,7 @@ mod tests {
 
     #[test]
     fn test_pop_or_start_new_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1127,7 +1411,7 @@ mod tests {
 
     #[test]
     fn test_pop_any_idle_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1144,14 +1428,14 @@ mod tests {
 
     #[test]
     fn test_pop_any_idle_worker_empty() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let result = pool.pop_any_idle_worker(Language::Python);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_num_idle_workers_per_language() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1173,7 +1457,7 @@ mod tests {
 
     #[test]
     fn test_job_lifecycle() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
 
         assert!(!pool.is_job_active(&job));
@@ -1188,7 +1472,7 @@ mod tests {
 
     #[test]
     fn test_idle_worker_ids() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1212,7 +1496,7 @@ mod tests {
     fn test_start_worker_callback() {
         use std::sync::Arc;
 
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1234,7 +1518,7 @@ mod tests {
 
     #[test]
     fn test_pop_worker_wrong_job() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job1 = make_job_id(1);
         let job2 = make_job_id(2);
         pool.handle_job_started(job1);
@@ -1259,7 +1543,7 @@ mod tests {
 
     #[test]
     fn test_pop_worker_after_job_finished() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1276,7 +1560,7 @@ mod tests {
 
     #[test]
     fn test_multiple_languages_isolation() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1308,7 +1592,7 @@ mod tests {
 
     #[test]
     fn test_kill_idle_within_soft_limit() {
-        let pool = WorkerPool::new(10, 100); // soft limit = 100
+        let pool = WorkerPool::new(10, 100, 4); // soft limit = 100
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1326,7 +1610,7 @@ mod tests {
 
     #[test]
     fn test_startup_concurrency_limit() {
-        let pool = WorkerPool::new(3, 100); // max 3 concurrent starts per language
+        let pool = WorkerPool::new(3, 100, 4); // max 3 concurrent starts per language
         let job = make_job_id(1);
         pool.handle_job_started(job);
         let ctx = SpawnWorkerContext::default();
@@ -1348,7 +1632,7 @@ mod tests {
 
     #[test]
     fn test_get_all_workers() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1363,7 +1647,7 @@ mod tests {
 
     #[test]
     fn test_disconnect_removes_from_idle() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1388,7 +1672,7 @@ mod tests {
 
     #[test]
     fn test_pop_or_start_at_concurrency_limit() {
-        let pool = WorkerPool::new(1, 100); // max 1 concurrent start
+        let pool = WorkerPool::new(1, 100, 4); // max 1 concurrent start
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1405,7 +1689,7 @@ mod tests {
 
     #[test]
     fn test_multiple_jobs_lifecycle() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job1 = make_job_id(1);
         let job2 = make_job_id(2);
         let job3 = make_job_id(3);
@@ -1428,7 +1712,7 @@ mod tests {
 
     #[test]
     fn test_next_worker_counter_unique() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let c1 = pool.next_worker_counter();
         let c2 = pool.next_worker_counter();
         let c3 = pool.next_worker_counter();
@@ -1438,7 +1722,7 @@ mod tests {
 
     #[test]
     fn test_pop_any_idle_worker_cross_job() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job1 = make_job_id(1);
         let job2 = make_job_id(2);
         pool.handle_job_started(job1);
@@ -1457,7 +1741,7 @@ mod tests {
 
     #[test]
     fn test_handle_job_finished_only_affects_idle() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1485,7 +1769,7 @@ mod tests {
     /// Port of HandleWorkerPushPop: push then pop same worker.
     #[test]
     fn test_push_pop_same_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1507,7 +1791,7 @@ mod tests {
     /// are isolated.
     #[test]
     fn test_pop_worker_multi_tenancy() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job1 = make_job_id(1);
         let job2 = make_job_id(2);
         pool.handle_job_started(job1);
@@ -1537,7 +1821,7 @@ mod tests {
     /// Port of WorkerNoLeaks: register, push, pop, disconnect, verify clean state.
     #[test]
     fn test_worker_no_leaks() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1560,7 +1844,7 @@ mod tests {
     /// Port of GetAllRegisteredWorkers: get_all_workers returns all registered.
     #[test]
     fn test_get_all_workers_comprehensive() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1576,7 +1860,7 @@ mod tests {
     /// Port of HandleIOWorkersPushPop: spill/restore worker types.
     #[test]
     fn test_register_different_worker_types() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1601,7 +1885,7 @@ mod tests {
     /// be killable.
     #[test]
     fn test_worker_capping_excess_idle() {
-        let pool = WorkerPool::new(10, 2); // soft_limit = 2
+        let pool = WorkerPool::new(10, 2, 4); // soft_limit = 2
 
         let job = make_job_id(1);
         pool.handle_job_started(job);
@@ -1627,7 +1911,7 @@ mod tests {
     /// Port: registering the same worker twice overwrites the old entry.
     #[test]
     fn test_register_duplicate_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let job = make_job_id(1);
         pool.handle_job_started(job);
 
@@ -1647,7 +1931,7 @@ mod tests {
     /// Port: disconnect_worker on non-registered worker should not panic.
     #[test]
     fn test_disconnect_nonexistent_worker() {
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let mut wid_bytes = [0u8; 28];
         wid_bytes[0] = 99;
         let fake_wid = WorkerID::from_binary(&wid_bytes);
@@ -1659,7 +1943,7 @@ mod tests {
     #[test]
     fn test_prestart_workers_spawns_n_workers() {
         use std::sync::Arc;
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let started_count = Arc::new(AtomicU64::new(0));
         let count_clone = started_count.clone();
         pool.set_start_worker_callback(Box::new(move |lang, _job, _wid, _ctx| {
@@ -1675,7 +1959,7 @@ mod tests {
     #[test]
     fn test_prestart_workers_zero_is_noop() {
         use std::sync::Arc;
-        let pool = WorkerPool::new(10, 100);
+        let pool = WorkerPool::new(10, 100, 4);
         let started_count = Arc::new(AtomicU64::new(0));
         let count_clone = started_count.clone();
         pool.set_start_worker_callback(Box::new(move |_lang, _job, _wid, _ctx| {
@@ -1691,7 +1975,7 @@ mod tests {
     fn test_prestart_workers_respects_concurrency_limit() {
         use std::sync::Arc;
         // Pool with max 2 concurrent starting workers.
-        let pool = WorkerPool::new(2, 100);
+        let pool = WorkerPool::new(2, 100, 4);
         let started_count = Arc::new(AtomicU64::new(0));
         let count_clone = started_count.clone();
         pool.set_start_worker_callback(Box::new(move |_lang, _job, _wid, _ctx| {
@@ -1742,7 +2026,7 @@ mod tests {
             }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(42);
         pool.handle_job_started(job);
 
@@ -1823,7 +2107,7 @@ mod tests {
             }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(43);
         pool.handle_job_started(job);
 
@@ -1868,7 +2152,7 @@ mod tests {
         use std::sync::Arc;
         use std::sync::atomic::AtomicU32;
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(44);
         pool.handle_job_started(job);
 
@@ -1934,7 +2218,7 @@ mod tests {
             }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(45);
         pool.handle_job_started(job);
 
@@ -2009,7 +2293,7 @@ mod tests {
             ) { cb(true); }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(50);
         pool.handle_job_started(job);
 
@@ -2074,7 +2358,7 @@ mod tests {
             }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(51);
         pool.handle_job_started(job);
 
@@ -2136,7 +2420,7 @@ mod tests {
         use std::sync::Arc;
         use std::sync::atomic::AtomicU32;
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(52);
         pool.handle_job_started(job);
 
@@ -2169,7 +2453,7 @@ mod tests {
         use std::sync::Arc;
         use std::sync::atomic::AtomicU32;
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(53);
         pool.handle_job_started(job);
 
@@ -2229,7 +2513,7 @@ mod tests {
             ) { cb(true); }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let job = make_job_id(60);
         pool.handle_job_started(job);
 
@@ -2325,7 +2609,7 @@ mod tests {
             ) { cb(true); }
         }
 
-        let pool = Arc::new(WorkerPool::new(10, 200));
+        let pool = Arc::new(WorkerPool::new(10, 200, 4));
         let client = Arc::new(CountingClient {
             create_count: AtomicU32::new(0),
         });
@@ -2436,5 +2720,197 @@ mod tests {
             calculate_runtime_env_hash(r#"{"pip": ["numpy"]}"#),
             calculate_runtime_env_hash(r#"{"pip": ["pandas"]}"#),
         );
+    }
+
+    // ─── IO Worker Pool tests ──────────────────────────────────
+
+    fn make_io_worker(id: u8, wtype: WorkerType) -> WorkerInfo {
+        let mut wid_bytes = [0u8; 28];
+        wid_bytes[0] = id;
+        WorkerInfo {
+            worker_id: WorkerID::from_binary(&wid_bytes),
+            language: Language::Python,
+            worker_type: wtype,
+            job_id: JobID::nil(),
+            pid: 2000 + id as u32,
+            port: 20000 + id as u16,
+            ip_address: "127.0.0.1".to_string(),
+            is_alive: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_pop_spill_worker_with_idle() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let pool = WorkerPool::new(10, 100, 4);
+
+        // Register an IO spill worker
+        let w = make_io_worker(1, WorkerType::SpillWorker);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+
+        // Push it back as idle
+        pool.push_spill_worker(wid);
+
+        // Pop should fire callback immediately
+        let fired = Arc::new(AtomicBool::new(false));
+        let got_id = Arc::new(std::sync::Mutex::new(None));
+        let fired_clone = fired.clone();
+        let got_id_clone = got_id.clone();
+        pool.pop_spill_worker(Box::new(move |id| {
+            fired_clone.store(true, Ordering::Relaxed);
+            *got_id_clone.lock().unwrap() = Some(id);
+        }));
+
+        assert!(fired.load(Ordering::Relaxed));
+        assert_eq!(*got_id.lock().unwrap(), Some(wid));
+    }
+
+    #[test]
+    fn test_pop_spill_worker_queues_when_no_idle() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let pool = WorkerPool::new(10, 100, 4);
+
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+        pool.pop_spill_worker(Box::new(move |_id| {
+            fired_clone.store(true, Ordering::Relaxed);
+        }));
+
+        // No idle workers, so callback should NOT have fired yet.
+        // (It queued a pending task and tried to start a worker.)
+        assert!(!fired.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_push_drains_pending() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let pool = WorkerPool::new(10, 100, 4);
+
+        // Register a spill worker so push_io_worker_internal recognizes it
+        let w = make_io_worker(1, WorkerType::SpillWorker);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+
+        // Queue a callback
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+        pool.pop_spill_worker(Box::new(move |_id| {
+            fired_clone.store(true, Ordering::Relaxed);
+        }));
+
+        // Not fired yet (worker was not idle)
+        assert!(!fired.load(Ordering::Relaxed));
+
+        // Push the worker — should drain the pending callback
+        pool.push_spill_worker(wid);
+        assert!(fired.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_pop_delete_picks_larger_pool() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let pool = WorkerPool::new(10, 100, 4);
+
+        // Register 2 spill workers and 1 restore worker
+        let s1 = make_io_worker(1, WorkerType::SpillWorker);
+        let s1_id = s1.worker_id;
+        pool.register_worker(s1).unwrap();
+        pool.push_spill_worker(s1_id);
+
+        let s2 = make_io_worker(2, WorkerType::SpillWorker);
+        let s2_id = s2.worker_id;
+        pool.register_worker(s2).unwrap();
+        pool.push_spill_worker(s2_id);
+
+        let r1 = make_io_worker(3, WorkerType::RestoreWorker);
+        let r1_id = r1.worker_id;
+        pool.register_worker(r1).unwrap();
+        pool.push_restore_worker(r1_id);
+
+        // Spill pool has 2 idle, restore has 1 — delete should pick from spill
+        let fired = Arc::new(AtomicBool::new(false));
+        let got_id = Arc::new(std::sync::Mutex::new(None));
+        let fired_clone = fired.clone();
+        let got_id_clone = got_id.clone();
+        pool.pop_delete_worker(Box::new(move |id| {
+            fired_clone.store(true, Ordering::Relaxed);
+            *got_id_clone.lock().unwrap() = Some(id);
+        }));
+
+        assert!(fired.load(Ordering::Relaxed));
+        let id = got_id.lock().unwrap().unwrap();
+        // Should have come from the spill pool (s1 or s2)
+        assert!(id == s1_id || id == s2_id);
+    }
+
+    #[test]
+    fn test_try_start_respects_max() {
+        // max_io_workers = 2
+        let pool = WorkerPool::new(10, 100, 2);
+
+        // Queue 5 pending tasks
+        for _ in 0..5 {
+            pool.pop_spill_worker(Box::new(|_| {}));
+        }
+
+        // Check: at most 2 workers should be starting
+        let io_states = pool.io_states.lock();
+        let io_lang = io_states.get(&Language::Python).unwrap();
+        let starting = io_lang.spill_io_worker_state.num_starting_io_workers;
+        assert!(starting <= 2, "started {} but max is 2", starting);
+    }
+
+    #[test]
+    fn test_register_io_worker() {
+        let pool = WorkerPool::new(10, 100, 4);
+
+        let w = make_io_worker(1, WorkerType::SpillWorker);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+
+        let io_states = pool.io_states.lock();
+        let io_lang = io_states.get(&Language::Python).unwrap();
+        assert!(
+            io_lang.spill_io_worker_state.started_io_workers.contains(&wid),
+            "registered IO worker should be in started_io_workers"
+        );
+    }
+
+    #[test]
+    fn test_disconnect_io_worker() {
+        let pool = WorkerPool::new(10, 100, 4);
+
+        let w = make_io_worker(1, WorkerType::SpillWorker);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+        pool.push_spill_worker(wid);
+
+        // Verify it's in idle and started sets
+        {
+            let io_states = pool.io_states.lock();
+            let io_lang = io_states.get(&Language::Python).unwrap();
+            assert!(io_lang.spill_io_worker_state.idle_io_workers.contains(&wid));
+            assert!(io_lang.spill_io_worker_state.started_io_workers.contains(&wid));
+        }
+
+        pool.disconnect_worker(&wid);
+
+        // Should be cleaned up
+        {
+            let io_states = pool.io_states.lock();
+            let io_lang = io_states.get(&Language::Python).unwrap();
+            assert!(!io_lang.spill_io_worker_state.idle_io_workers.contains(&wid));
+            assert!(!io_lang.spill_io_worker_state.started_io_workers.contains(&wid));
+        }
     }
 }

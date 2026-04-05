@@ -453,6 +453,7 @@ impl NodeManager {
         let worker_pool = Arc::new(WorkerPool::new(
             startup_concurrency,
             200, // num_workers_soft_limit
+            config.ray_config.max_io_workers,
         ));
 
         let worker_lease_tracker = Arc::new(WorkerLeaseTracker::default());
@@ -461,9 +462,33 @@ impl NodeManager {
 
         let wait_manager = Arc::new(WaitManager::new());
 
+        // C++ parity: construct LocalObjectManager with real config from RayConfig
+        // (main.cc:871-896) instead of using defaults.
+        let lom_config = {
+            let max_file_size = if config.ray_config.max_spilling_file_size_bytes < 0 {
+                0 // C++ uses -1 to disable; Rust uses 0
+            } else {
+                config.ray_config.max_spilling_file_size_bytes
+            };
+            LocalObjectManagerConfig {
+                min_spilling_size: config.ray_config.min_spilling_size,
+                max_fused_object_count: config.ray_config.max_fused_object_count as usize,
+                max_spilling_file_size_bytes: max_file_size,
+                free_objects_batch_size: config.ray_config.free_objects_batch_size as usize,
+                free_objects_period_ms: config.ray_config.free_objects_period_milliseconds,
+                object_spilling_threshold: config.ray_config.object_spilling_threshold,
+                max_io_workers: config.ray_config.max_io_workers as i64,
+            }
+        };
         let local_object_manager = Arc::new(parking_lot::Mutex::new(LocalObjectManager::new(
-            LocalObjectManagerConfig::default(),
+            lom_config,
         )));
+
+        // Wire IO worker pool into local_object_manager.
+        {
+            let mut lom = local_object_manager.lock();
+            lom.set_io_worker_pool(worker_pool.clone() as Arc<dyn crate::worker_pool::IOWorkerPool>);
+        }
 
         let demand_calculator = Arc::new(DemandCalculator::new(DemandCalculatorConfig::default()));
 
@@ -508,6 +533,37 @@ impl NodeManager {
         // Construct the local PlasmaStore + ObjectManager from raylet config.
         // C++ equivalent: main.cc lines 651-670 (ObjectManagerConfig population).
         let object_manager = Self::create_object_manager(&config);
+
+        // C++ parity: wire is_plasma_object_spillable callback (main.cc:889).
+        // In C++, this checks PlasmaStore::IsObjectSpillable() — the object must
+        // be sealed and have refcount == 1 (not pinned by any worker).
+        if let Some(ref om) = object_manager {
+            let om_ref: Arc<ray_object_manager::object_manager::ObjectManager> = Arc::clone(om);
+            let mut lom = local_object_manager.lock();
+            lom.set_is_plasma_object_spillable(Arc::new(move |object_id| {
+                om_ref.plasma_store().is_object_spillable(object_id)
+            }));
+        }
+
+        // C++ parity: wire on_objects_freed callback (main.cc:884-887).
+        // In C++, this calls `object_manager_->FreeObjects(object_ids, /*local_only=*/false)`.
+        // The Rust equivalent deletes objects from the plasma store. Remote-node
+        // fanout is not yet implemented (mirrors C++ TODO #56414).
+        if let Some(ref om) = object_manager {
+            let plasma = Arc::clone(om.plasma_store());
+            let mut lom = local_object_manager.lock();
+            lom.set_on_objects_freed(Arc::new(move |object_ids| {
+                for oid in &object_ids {
+                    if let Err(e) = plasma.delete_object(oid, plasma.allocator().as_ref()) {
+                        tracing::warn!(
+                            object_id = %oid,
+                            error = %e,
+                            "Failed to delete freed object from plasma store"
+                        );
+                    }
+                }
+            }));
+        }
 
         Self {
             config,
@@ -697,19 +753,11 @@ impl NodeManager {
 
     /// Get the object manager (if constructed from raylet config).
     ///
-    /// PARITY STATUS: PARTIALLY MATCHED — stats sidecar, not full live-object runtime.
-    ///
-    /// The ObjectManager/PlasmaStore is currently integrated for capacity and
-    /// allocation stats (reported via GetNodeStats). It is NOT on the live
-    /// pin/eviction path: PinObjectIDs, FreeObjectsInObjectStore, and
-    /// SpillObjects all route through `local_object_manager()`, which is an
-    /// independent in-memory tracker.
-    ///
-    /// In C++, ObjectManager is the single source of truth for both cross-node
-    /// object transfer AND local object storage (via PlasmaStore). The Rust
-    /// raylet has two separate subsystems: ObjectManager (stats/capacity) and
-    /// LocalObjectManager (pin/eviction tracking). Unifying them so that pin
-    /// operations hold real PlasmaStore handles is required for full parity.
+    /// The ObjectManager/PlasmaStore is integrated for capacity and allocation
+    /// stats (reported via GetNodeStats). IO worker pool management
+    /// (spill/restore/delete workers) is implemented via WorkerPool's
+    /// IOWorkerState. Actual spill/restore/delete RPCs to IO workers are a
+    /// follow-up -- the worker pool acquisition/release pattern is wired.
     pub fn object_manager(&self) -> Option<&Arc<ray_object_manager::object_manager::ObjectManager>> {
         self.object_manager.as_ref()
     }
@@ -1060,6 +1108,7 @@ impl NodeManager {
             worker_port_list: self.config.worker_port_list.clone(),
             metrics_export_port: self.resolved_metrics_export_port.load(std::sync::atomic::Ordering::Acquire) as u16,
             object_store_memory: self.config.object_store_memory,
+            object_spilling_config: self.config.ray_config.object_spilling_config.clone(),
         };
         // Create cgroup manager if enabled.
         let cgroup_manager: Option<std::sync::Arc<dyn ray_common::cgroup::CgroupManager>> = {
@@ -1265,6 +1314,83 @@ impl NodeManager {
 
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
+        // ── Periodic timers (C++ parity: node_manager.cc:418-432) ────────
+        //
+        // Timer 1: Flush freed objects periodically.
+        // Timer 2: Spill objects when usage exceeds the primary-object threshold.
+        // Both use the same period (`free_objects_period_milliseconds`).
+        //
+        // A watch channel is used as a cancellation signal: send `true` on
+        // shutdown so both timer tasks exit cleanly.
+        let (timer_cancel_tx, timer_cancel_rx) = tokio::sync::watch::channel(false);
+        let free_objects_period_ms = self.config.ray_config.free_objects_period_milliseconds;
+        if free_objects_period_ms > 0 {
+            // Timer 1: periodic flush of freed objects.
+            // C++ equivalent: node_manager.cc:418-422.
+            let lom = Arc::clone(&self.local_object_manager);
+            let mut cancel_rx = timer_cancel_rx.clone();
+            let period = std::time::Duration::from_millis(free_objects_period_ms as u64);
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(period);
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    tokio::select! {
+                        _ = cancel_rx.changed() => break,
+                        _ = interval.tick() => {
+                            lom.lock().flush_free_objects();
+                        }
+                    }
+                }
+            });
+
+            // Timer 2: threshold-driven spill scheduling.
+            // C++ equivalent: node_manager.cc:423-431 + SpillIfOverPrimaryObjectsThreshold
+            // (node_manager.cc:2400-2414).
+            let spilling_config = self.config.ray_config.object_spilling_config.clone();
+            if spilling_config.is_empty() {
+                tracing::info!(
+                    "Object spilling is disabled because spilling config is unspecified"
+                );
+            } else {
+                let lom = Arc::clone(&self.local_object_manager);
+                let object_manager_ref = self.object_manager.clone();
+                let spill_threshold = self.config.ray_config.object_spilling_threshold;
+                let mut cancel_rx = timer_cancel_rx.clone();
+                tokio::spawn(async move {
+                    let mut interval = tokio::time::interval(period);
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        tokio::select! {
+                            _ = cancel_rx.changed() => break,
+                            _ = interval.tick() => {
+                                // C++ parity: SpillIfOverPrimaryObjectsThreshold
+                                // (node_manager.cc:2400-2414).
+                                let Some(ref om) = object_manager_ref else {
+                                    continue;
+                                };
+                                let memory_capacity = om.config().object_store_memory;
+                                if memory_capacity <= 0 {
+                                    continue;
+                                }
+                                let primary_bytes = lom.lock().get_primary_bytes();
+                                let allocated_pct =
+                                    primary_bytes as f64 / memory_capacity as f64;
+                                if allocated_pct >= spill_threshold {
+                                    tracing::info!(
+                                        usage_pct = allocated_pct * 100.0,
+                                        threshold_pct = spill_threshold * 100.0,
+                                        "Triggering object spilling because current \
+                                         usage is above threshold"
+                                    );
+                                    crate::local_object_manager::spill_objects_upto_max_throughput(&lom);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
         // Combine OS signals (SIGTERM / Ctrl-C) with the runtime-env timeout
         // shutdown channel so either path triggers graceful server shutdown.
         // We capture the shutdown reason so we can propagate NodeDeathInfo to GCS.
@@ -1296,6 +1422,9 @@ impl NodeManager {
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, combined_shutdown)
             .await?;
+
+        // Cancel periodic timers (flush + spill).
+        let _ = timer_cancel_tx.send(true);
 
         // Clean up: unregister from GCS with appropriate death info.
         let final_reason = *shutdown_reason.lock().unwrap();

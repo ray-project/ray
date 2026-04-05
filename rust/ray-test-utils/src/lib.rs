@@ -215,6 +215,7 @@ pub async fn start_test_raylet_server() -> TestRayletServer {
         auth_token: None,
         python_worker_command: None,
         raw_config_json: "{}".to_string(),
+        ..Default::default()
     };
 
     let nm = Arc::new(NodeManager::new(config));

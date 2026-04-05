@@ -29,6 +29,8 @@ pub struct ChunkInfo {
 struct CreateState {
     /// Object metadata.
     object_info: ObjectInfo,
+    /// Total transfer size (data + metadata).
+    total_size: u64,
     /// Total chunks expected.
     num_chunks: u64,
     /// Per-chunk received data. `None` means the chunk has not been received yet.
@@ -56,12 +58,13 @@ impl ObjectBufferPool {
         }
     }
 
-    /// Calculate the number of chunks for an object of the given size.
-    pub fn num_chunks(&self, data_size: u64) -> u64 {
-        if data_size == 0 {
+    /// Calculate the number of chunks for a transfer of the given total size
+    /// (data + metadata).
+    pub fn num_chunks(&self, total_size: u64) -> u64 {
+        if total_size == 0 {
             return 1;
         }
-        data_size.div_ceil(self.chunk_size)
+        total_size.div_ceil(self.chunk_size)
     }
 
     /// Begin creating an object for inbound transfer.
@@ -71,11 +74,13 @@ impl ObjectBufferPool {
             return false;
         }
 
-        let num_chunks = self.num_chunks(object_info.data_size as u64);
+        let total_size = (object_info.data_size + object_info.metadata_size) as u64;
+        let num_chunks = self.num_chunks(total_size);
         self.create_states.insert(
             object_id,
             CreateState {
                 object_info,
+                total_size,
                 num_chunks,
                 chunk_data: vec![None; num_chunks as usize],
                 chunks_received: 0,
@@ -108,12 +113,12 @@ impl ObjectBufferPool {
 
             // Validate chunk size. For a non-empty object the expected size of
             // each chunk is `chunk_size`, except for the last chunk which may be
-            // smaller.
-            let total_data = state.object_info.data_size as u64;
-            if total_data > 0 {
+            // smaller. Total transfer size is data + metadata.
+            let total = state.total_size;
+            if total > 0 {
                 let is_last = idx as u64 == state.num_chunks - 1;
                 let expected = if is_last {
-                    let remainder = total_data % self.chunk_size;
+                    let remainder = total % self.chunk_size;
                     if remainder == 0 {
                         self.chunk_size
                     } else {
@@ -132,23 +137,42 @@ impl ObjectBufferPool {
             state.chunks_received += 1;
 
             if state.chunks_received >= state.num_chunks {
-                self.create_states.remove(object_id);
-                return true; // Object complete
+                return true; // Object complete — caller retrieves data via take_completed
             }
         }
         false
     }
 
-    /// Retrieve the assembled data for a completed object.
+    /// Take the assembled data for a completed object, splitting it into
+    /// (data, metadata) based on the stored ObjectInfo sizes.
     ///
-    /// This is a convenience for testing — in production, chunks would be
-    /// written directly into a plasma buffer.  Returns `None` if the object
-    /// is still being created (not yet complete).
-    pub fn get_completed_data(&self, _object_id: &ObjectID) -> Option<Vec<u8>> {
-        // Once complete, the CreateState is removed — so the data is only
-        // available transiently.  We could store completed objects separately
-        // but for now we keep the API minimal.
-        None
+    /// Must be called after `write_chunk` returns `true`. Removes the
+    /// CreateState and returns the reassembled bytes. Returns `None` if
+    /// the object is not complete or does not exist.
+    pub fn take_completed(&mut self, object_id: &ObjectID) -> Option<(ObjectInfo, Vec<u8>, Vec<u8>)> {
+        let state = self.create_states.get(object_id)?;
+        if state.chunks_received < state.num_chunks {
+            return None;
+        }
+
+        let state = self.create_states.remove(object_id).unwrap();
+        let mut assembled = Vec::with_capacity(state.total_size as usize);
+        for chunk in state.chunk_data {
+            if let Some(bytes) = chunk {
+                assembled.extend_from_slice(&bytes);
+            }
+        }
+
+        let data_size = state.object_info.data_size as usize;
+        let metadata_size = state.object_info.metadata_size as usize;
+        let data = assembled[..data_size].to_vec();
+        let metadata = if metadata_size > 0 {
+            assembled[data_size..data_size + metadata_size].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        Some((state.object_info, data, metadata))
     }
 
     /// Abort creation of an object (e.g., transfer failed).
@@ -207,6 +231,7 @@ mod tests {
         assert!(!pool.write_chunk(&oid, 0, &[0; 1024]));
         // Second chunk — complete
         assert!(pool.write_chunk(&oid, 1, &[0; 1024]));
+        assert!(pool.take_completed(&oid).is_some());
         assert!(!pool.is_creating(&oid));
     }
 
@@ -261,6 +286,7 @@ mod tests {
         pool.create_object(info);
         // Zero-size object = 1 chunk, so first write completes it
         assert!(pool.write_chunk(&oid, 0, &[]));
+        assert!(pool.take_completed(&oid).is_some());
         assert!(!pool.is_creating(&oid));
     }
 
@@ -295,6 +321,7 @@ mod tests {
 
         // Complete first object
         assert!(pool.write_chunk(&oid1, 0, &[0; 1024]));
+        assert!(pool.take_completed(&oid1).is_some());
         assert_eq!(pool.num_creating(), 1);
         assert!(!pool.is_creating(&oid1));
         assert!(pool.is_creating(&oid2));
@@ -366,6 +393,7 @@ mod tests {
 
         assert!(!pool.write_chunk(&oid, 0, &[0; 1024]));
         assert!(pool.write_chunk(&oid, 1, &[0; 476]));
+        assert!(pool.take_completed(&oid).is_some());
         assert!(!pool.is_creating(&oid));
     }
 
@@ -385,6 +413,7 @@ mod tests {
         assert!(!pool.write_chunk(&oid, 1, &[2; 1024]));
         assert!(pool.is_creating(&oid)); // still creating
         assert!(pool.write_chunk(&oid, 0, &[1; 1024]));
+        assert!(pool.take_completed(&oid).is_some());
         assert!(!pool.is_creating(&oid));
     }
 
@@ -407,6 +436,7 @@ mod tests {
         assert!(pool.is_creating(&oid));
         // Final chunk completes the object.
         assert!(pool.write_chunk(&oid, 1, &[0xBB; 100]));
+        assert!(pool.take_completed(&oid).is_some());
         assert!(!pool.is_creating(&oid));
     }
 }

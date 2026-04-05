@@ -61,6 +61,7 @@ async fn main() {
             auth_token: None,
             python_worker_command: None,
             raw_config_json: "{}".to_string(),
+            ..Default::default()
         },
     ));
     let nm_clone = Arc::clone(&nm);
