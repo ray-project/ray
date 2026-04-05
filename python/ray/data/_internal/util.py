@@ -1191,7 +1191,8 @@ def make_async_gen(
             output_queue.put(e)
 
         finally:
-            fn_gen.close()
+            if hasattr(fn_gen, "close"):
+                fn_gen.close()
 
     # Start workers threads
     filling_worker_thread = threading.Thread(
