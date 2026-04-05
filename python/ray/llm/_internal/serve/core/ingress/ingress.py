@@ -486,28 +486,6 @@ class OpenAiIngress(DeploymentProtocol):
             )
             return
 
-        # Notify the token tracker of the new request's token load.
-        tracker = getattr(self, "_token_tracker", None)
-        if tracker is None:
-            try:
-                from token_tracker import get_or_create_token_tracker
-
-                tracker = get_or_create_token_tracker()
-                self._token_tracker = tracker
-            except Exception:
-                pass
-        if tracker is not None:
-            # Estimate input tokens from the prompt field.
-            prompt = parsed.get("prompt", "")
-            if isinstance(prompt, str):
-                # Rough estimate: 1 token per 4 chars
-                est_tokens = max(1, len(prompt) // 4)
-            elif isinstance(prompt, list):
-                est_tokens = len(prompt)  # token IDs
-            else:
-                est_tokens = 128  # fallback
-            tracker.add.remote(replica_id, est_tokens)
-
         resp = orjson.dumps({"host": host, "port": port})
         await send(
             {
@@ -606,10 +584,32 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
+    def _get_token_tracker(self):
+        """Get or create the TokenTracker actor handle (cached)."""
+        tracker = getattr(self, "_token_tracker", None)
+        if tracker is None:
+            try:
+                from token_tracker import get_or_create_token_tracker
+
+                tracker = get_or_create_token_tracker()
+                self._token_tracker = tracker
+            except Exception:
+                pass
+        return tracker
+
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
     ) -> Tuple[str, int, str]:
-        """Pick a replica via the request router and return (host, port, replica_id)."""
+        """Pick a replica and return (host, port, replica_id).
+
+        Implements router queue threshold: when all replicas exceed
+        ROUTER_QUEUE_THRESHOLD requests, the handler holds the response
+        until one drops below. The Lua coroutine yields while waiting,
+        HAProxy naturally holds the request. Like Dynamo's
+        router_queue_threshold but at the request level.
+        """
+        import os
+
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -619,7 +619,7 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        # Cache the filtered replica list to avoid per-request list allocation.
+        # Cache the filtered replica list.
         cache_key = "_di_replicas_" + base_model_id
         cached = getattr(self, cache_key, None)
         curr = request_router.curr_replicas
@@ -634,6 +634,44 @@ class OpenAiIngress(DeploymentProtocol):
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
+        # Router queue threshold: max ongoing requests per replica before
+        # the router queues. 0 = disabled (use choose_replicas only).
+        queue_threshold = getattr(self, "_queue_threshold", None)
+        if queue_threshold is None:
+            queue_threshold = int(os.environ.get("ROUTER_QUEUE_THRESHOLD", "0"))
+            self._queue_threshold = queue_threshold
+
+        tracker = self._get_token_tracker() if queue_threshold > 0 else None
+
+        if tracker is not None and queue_threshold > 0:
+            # Queue loop: hold until a replica is below threshold.
+            while True:
+                try:
+                    loads = await tracker.get_loads.remote()
+                except Exception:
+                    break  # tracker unavailable, fall through
+
+                # Find least-loaded replica.
+                best_load = float("inf")
+                best_replica = None
+                for r in direct_ingress_replicas:
+                    rid = r.replica_id.unique_id
+                    load = loads.get(rid, 0)
+                    if load < best_load:
+                        best_load = load
+                        best_replica = r
+
+                if best_replica is not None and best_load < queue_threshold:
+                    endpoint = best_replica.direct_ingress_endpoint
+                    rid = best_replica.replica_id.unique_id
+                    tracker.add.remote(rid, 1)
+                    request_router.on_send_request(best_replica.replica_id)
+                    return (*endpoint, rid)
+
+                # All at threshold — wait 10ms and retry.
+                await asyncio.sleep(0.01)
+
+        # Default path: use choose_replicas (round-robin or token-aware).
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
             pending_request=None,
@@ -643,7 +681,10 @@ class OpenAiIngress(DeploymentProtocol):
                 endpoint = replica.direct_ingress_endpoint
                 if endpoint is not None:
                     request_router.on_send_request(replica.replica_id)
-                    return (*endpoint, replica.replica_id.unique_id)
+                    rid = replica.replica_id.unique_id
+                    if tracker is not None:
+                        tracker.add.remote(rid, 1)
+                    return (*endpoint, rid)
 
         idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
         self._direct_ingress_rr_counter += 1
