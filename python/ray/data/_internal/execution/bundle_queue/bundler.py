@@ -203,7 +203,10 @@ class RebundleQueue(BaseBundleQueue):
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
                 self._on_enqueue_bundle(remaining_bundle)
 
-        # If we're flushing and have leftover bundles, convert them to a ready bundle
+        # If we're flushing and have leftover bundles, convert them to a ready bundle.
+        # Note: add() eagerly calls _try_build_ready_bundle after every insertion, so
+        # pending rows are always below the threshold when finalize() is called. This
+        # means at most one ready bundle is built per call (only the flush path fires).
         if flush_remaining and self._pending_bundles:
             self._merge_bundles()
             built_ready_bundle = True
@@ -264,7 +267,8 @@ class RebundleQueue(BaseBundleQueue):
     @override
     def finalize(self, **kwargs: Any):
         if len(self._pending_bundles) > 0:
-            assert self._try_build_ready_bundle(flush_remaining=True)
+            built_ready_bundle = self._try_build_ready_bundle(flush_remaining=True)
+            assert built_ready_bundle
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
 
