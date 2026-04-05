@@ -1,10 +1,11 @@
-"""Benchmark matrix: Actor vs Actorless shuffle across SF x partition combinations.
+"""Benchmark: Hash shuffle for a single (sf, num_partitions, strategy) combination.
 
 Cluster: 32 worker nodes, 8 CPU / 32 GB each (256 CPUs total).
 
 Usage:
-    python benchmark_shuffle_matrix.py
-    python benchmark_shuffle_matrix.py --output results.json
+    python benchmark_shuffle_matrix.py --sf 10 --num-partitions 1000 --strategy actorless
+    python benchmark_shuffle_matrix.py --sf 100 --num-partitions 100 --strategy actor
+    python benchmark_shuffle_matrix.py --sf 10 --num-partitions 1000 --strategy actorless_pre_map_merge
 """
 
 import argparse
@@ -20,22 +21,14 @@ os.environ.setdefault("RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", "0.5")
 import ray
 from ray.data.context import ShuffleStrategy
 
-BENCHMARK_MATRIX = [
-    # (sf, num_partitions)
-    (10, 100),
-    (10, 500),
-    (10, 1000),
-    (100, 100),
-    (100, 1000),
-    (1000, 100),
-    (1000, 1000),
-]
-
-STRATEGIES = [
-    (ShuffleStrategy.HASH_SHUFFLE, "actor"),
-    (ShuffleStrategy.ACTORLESS_HASH_SHUFFLE, "actorless"),
-    (ShuffleStrategy.ACTORLESS_HASH_SHUFFLE, "actorless_pre_map_merge"),
-]
+STRATEGY_MAP = {
+    "actor": (ShuffleStrategy.HASH_SHUFFLE, "actor"),
+    "actorless": (ShuffleStrategy.ACTORLESS_HASH_SHUFFLE, "actorless"),
+    "actorless_pre_map_merge": (
+        ShuffleStrategy.ACTORLESS_HASH_SHUFFLE,
+        "actorless_pre_map_merge",
+    ),
+}
 
 KEY_COLUMNS = ["column00"]  # l_orderkey
 
@@ -64,11 +57,7 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=120, poll_s=5):
 
 
 def run_one(sf, num_partitions, strategy, label):
-    """Run a single repartition and return elapsed time and row count.
-
-    Loads a fresh dataset each time so data is evenly distributed across
-    the cluster rather than pinned to whichever nodes cached it first.
-    """
+    """Run a single repartition and return timing + status info."""
     ds = load_dataset(sf)
 
     ds.context.shuffle_strategy = strategy
@@ -85,10 +74,14 @@ def run_one(sf, num_partitions, strategy, label):
         ds.context.set_config("actorless_shuffle_compaction_strategy", "none")
 
     name = f"sf{sf}_{label}_p{num_partitions}"
-    print(f"  [{label}] sf={sf}, partitions={num_partitions} ... ", end="", flush=True)
-
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
     repartitioned.set_name(name)
+
+    print(
+        f"  Shuffling sf{sf} -> {num_partitions} partitions ({label}) ... ",
+        end="",
+        flush=True,
+    )
 
     start = time.perf_counter()
     result = repartitioned.materialize()
@@ -97,109 +90,87 @@ def run_one(sf, num_partitions, strategy, label):
     num_rows = result.count()
     print(f"{elapsed:.1f}s ({num_rows:,} rows)")
 
-    # Clean up everything and wait for object store to settle.
     del result, repartitioned, ds
     gc.collect()
     wait_for_object_store_to_drain()
 
-    return elapsed, num_rows
+    return {
+        "elapsed_s": elapsed,
+        "num_rows": num_rows,
+        "status": "ok",
+    }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Shuffle Benchmark Matrix")
+    parser = argparse.ArgumentParser(description="Shuffle Benchmark")
     parser.add_argument(
         "--output",
         type=str,
         default="benchmark_shuffle_results.json",
-        help="Output JSON file for results",
+        help="Output JSON file",
     )
     parser.add_argument(
-        "--num-runs",
+        "--sf",
         type=int,
-        default=1,
-        help="Number of runs per (sf, partitions, strategy) combo",
+        required=True,
+        help="TPC-H scale factor (10, 100, 1000)",
+    )
+    parser.add_argument(
+        "--num-partitions",
+        type=int,
+        required=True,
+        help="Number of output partitions",
+    )
+    parser.add_argument(
+        "--strategy",
+        type=str,
+        choices=list(STRATEGY_MAP.keys()),
+        required=True,
+        help="Shuffle strategy",
     )
     args = parser.parse_args()
 
     ray.init()
 
     cluster = ray.cluster_resources()
+    total_cpu = cluster.get("CPU", 0)
+    total_mem_gb = cluster.get("memory", 0) / 1e9
+    total_obj_gb = cluster.get("object_store_memory", 0) / 1e9
+
+    sf = args.sf
+    num_partitions = args.num_partitions
+    strategy, label = STRATEGY_MAP[args.strategy]
+
     print(
-        f"Cluster: {cluster.get('CPU', 0):.0f} CPUs, "
-        f"{cluster.get('memory', 0) / 1e9:.0f} GB memory"
+        f"Cluster: {total_cpu:.0f} CPUs, {total_mem_gb:.0f} GB memory, "
+        f"{total_obj_gb:.0f} GB object store"
     )
-    print(
-        f"Matrix: {len(BENCHMARK_MATRIX)} configs x {len(STRATEGIES)} strategies "
-        f"x {args.num_runs} runs"
-    )
+    print(f"Test: sf{sf}, {num_partitions} partitions, strategy={label}")
     print()
 
-    results = []
+    info = run_one(sf, num_partitions, strategy, label)
 
-    def flush_results():
-        output = {
-            "timestamp": datetime.now().isoformat(),
-            "cluster": {
-                "num_workers": 32,
-                "cpus_per_worker": 8,
-                "memory_per_worker_gb": 32,
-            },
-            "results": results,
-        }
-        with open(args.output, "w") as f:
-            json.dump(output, f, indent=2)
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "cluster": {
+            "num_cpus": total_cpu,
+            "total_memory_gb": round(total_mem_gb, 1),
+            "object_store_gb": round(total_obj_gb, 1),
+        },
+        "config": {
+            "sf": sf,
+            "num_partitions": num_partitions,
+            "strategy": label,
+        },
+        **info,
+    }
+    with open(args.output, "w") as f:
+        json.dump(result, f, indent=2)
 
-    for sf, num_partitions in BENCHMARK_MATRIX:
-        print(f"--- sf={sf}, partitions={num_partitions} ---")
-
-        for strategy, label in STRATEGIES:
-            times = []
-            num_rows = 0
-
-            for run in range(args.num_runs):
-                try:
-                    elapsed, num_rows = run_one(sf, num_partitions, strategy, label)
-                    times.append(elapsed)
-                except Exception as e:
-                    print(f"  [{label}] FAILED: {e}")
-                    times.append(None)
-
-            valid_times = [t for t in times if t is not None]
-            entry = {
-                "sf": sf,
-                "num_partitions": num_partitions,
-                "strategy": label,
-                "num_rows": num_rows,
-                "times": times,
-                "avg_time": sum(valid_times) / len(valid_times)
-                if valid_times
-                else None,
-                "best_time": min(valid_times) if valid_times else None,
-            }
-            results.append(entry)
-            flush_results()
-
-        print()
-
-    print(f"Results written to {args.output}")
-
-    # Print summary table.
-    num_strategies = len(STRATEGIES)
-    print()
-    header = f"{'SF':>6} {'Partitions':>12}"
-    for _, label in STRATEGIES:
-        header += f" {label + ' (s)':>20}"
-    print(header)
-    print("-" * len(header))
-
-    for i in range(0, len(results), num_strategies):
-        row_results = results[i : i + num_strategies]
-        line = f"{row_results[0]['sf']:>6} {row_results[0]['num_partitions']:>12}"
-        for entry in row_results:
-            t = entry["avg_time"]
-            t_str = f"{t:.1f}" if t else "FAIL"
-            line += f" {t_str:>20}"
-        print(line)
+    print(f"\nResults written to {args.output}")
+    t = info["elapsed_s"]
+    tp = f"{info['num_rows'] / t / 1e6:.1f} Mrows/s" if t and t > 0 else "N/A"
+    print(f"  sf{sf}, {num_partitions} partitions, {label}: {t:.1f}s, {tp}")
 
 
 if __name__ == "__main__":
