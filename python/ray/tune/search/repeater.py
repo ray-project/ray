@@ -40,7 +40,7 @@ class _TrialGroup:
     """
 
     def __init__(self, primary_trial_id: str, config: Dict, max_trials: int = 1):
-        assert isinstance(config, dict), "config is not a dict, got {}".format(config)
+        assert type(config) is dict, "config is not a dict, got {}".format(config)
         self.primary_trial_id = primary_trial_id
         self.config = config
         self._trials = {primary_trial_id: None}

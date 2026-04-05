@@ -485,10 +485,7 @@ Ray Data LLM supports cross-node parallelism, including tensor parallelism and p
     :start-after: __cross_node_parallelism_config_example_start__
     :end-before: __cross_node_parallelism_config_example_end__
 
-You can customize the placement group configuration to control how Ray places vLLM engine workers across nodes. Use ``bundle_per_worker`` for basic per-worker resource specification (auto-replicated based on TP*PP), or ``bundles`` for full control over individual bundles. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
-
-.. note::
-   In each bundle dict, omitted ``CPU`` or ``GPU`` keys are treated as **0**. Specify the resources each worker needs explicitly.
+You can customize the placement group strategy to control how Ray places vLLM engine workers across nodes. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python

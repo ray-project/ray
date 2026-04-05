@@ -2,7 +2,6 @@ import time
 
 from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.config import COMPUTE_CONFIG_MODEL_FIELDS
 from ray_release.exception import (
     ClusterComputeCreateError,
     ClusterEnvBuildError,
@@ -148,9 +147,6 @@ class MinimalClusterManager(ClusterManager):
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None
 
-        if self.cluster_compute and self.test.uses_anyscale_sdk_2026():
-            return self._create_cluster_compute_new_sdk(_repeat=_repeat)
-
         if self.cluster_compute:
             assert self.cluster_compute
 
@@ -217,71 +213,6 @@ class MinimalClusterManager(ClusterManager):
                     f"name {self.cluster_compute_name} and "
                     f"ID {self.cluster_compute_id}"
                 )
-
-    def _create_cluster_compute_new_sdk(self, _repeat: bool = True):
-        """Create cluster compute using the anyscale.compute_config API (2026 SDK)."""
-        assert self.cluster_compute
-
-        logger.info(
-            f"Test uses a compute config (2026 SDK) with name "
-            f"{self.cluster_compute_name}. Looking up existing "
-            f"compute configs with this name."
-        )
-
-        # Check if compute config already exists by name
-        anyscale_sdk = self.test.anyscale
-        try:
-            compute_config_version = anyscale_sdk.compute_config.get(
-                self.cluster_compute_name
-            )
-            self.cluster_compute_id = compute_config_version.id
-            logger.info(
-                f"Compute config already exists " f"with ID {self.cluster_compute_id}"
-            )
-            return
-        except RuntimeError as e:
-            if "not found" not in str(e):
-                raise
-        logger.info(
-            f"Compute config not found. "
-            f"Creating with name {self.cluster_compute_name}."
-        )
-
-        # Build ComputeConfig from the cluster compute dict, excluding
-        # keys like idle_termination_minutes/maximum_uptime_minutes that
-        # were added by set_cluster_compute() and are not part of the
-        # ComputeConfig model.
-        ComputeConfig = anyscale_sdk.compute_config.ComputeConfig
-        config_dict = {
-            k: v
-            for k, v in self.cluster_compute.items()
-            if k in COMPUTE_CONFIG_MODEL_FIELDS
-        }
-        config = ComputeConfig.from_dict(config_dict)
-
-        try:
-            full_name = anyscale_sdk.compute_config.create(
-                config, name=self.cluster_compute_name
-            )
-            compute_config_version = anyscale_sdk.compute_config.get(full_name)
-            self.cluster_compute_id = compute_config_version.id
-        except Exception as e:
-            if _repeat:
-                logger.warning(
-                    f"Got exception when trying to create compute "
-                    f"config: {e}. Sleeping for 10 seconds and then "
-                    f"try again once..."
-                )
-                time.sleep(10)
-                return self._create_cluster_compute_new_sdk(_repeat=False)
-
-            raise ClusterComputeCreateError("Could not create cluster compute") from e
-
-        logger.info(
-            f"Compute config created with "
-            f"name {full_name} and "
-            f"ID {self.cluster_compute_id}"
-        )
 
     def build_configs(self, timeout: float = 30.0):
         try:

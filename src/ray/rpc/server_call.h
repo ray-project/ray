@@ -21,7 +21,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 
 #include "ray/common/asio/asio_chaos.h"
@@ -152,31 +151,17 @@ using HandleRequestFunction = void (ServiceHandler::*)(Request,
                                                        Reply *,
                                                        SendReplyCallback);
 
-/// Same as HandleRequestFunction, but the handler also receives the gRPC peer string from
-/// `grpc::ServerContext::peer()` (e.g. "ipv4:host:port") for logging or auditing.
-template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunctionWithGrpcPeer = void (ServiceHandler::*)(
-    Request, Reply *, SendReplyCallback, const std::string &grpc_peer);
-
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
 ///
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-/// \tparam PassGrpcPeer If true, passes `context_.peer()` to the handler as an extra
-/// argument (see HandleRequestFunctionWithGrpcPeer).
 template <class ServiceHandler,
           class Request,
           class Reply,
-          ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH,
-          bool PassGrpcPeer = false>
+          ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH>
 class ServerCallImpl : public ServerCall {
-  using HandleFn = std::conditional_t<
-      PassGrpcPeer,
-      HandleRequestFunctionWithGrpcPeer<ServiceHandler, Request, Reply>,
-      HandleRequestFunction<ServiceHandler, Request, Reply>>;
-
  public:
   /// Constructor.
   ///
@@ -190,15 +175,16 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
   /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
-  ServerCallImpl(const ServerCallFactory &factory,
-                 ServiceHandler &service_handler,
-                 HandleFn handle_request_function,
-                 instrumented_io_context &io_service,
-                 std::string call_name,
-                 const ClusterID &cluster_id,
-                 std::shared_ptr<const AuthenticationToken> auth_token,
-                 bool record_metrics,
-                 std::function<void()> preprocess_function = nullptr)
+  ServerCallImpl(
+      const ServerCallFactory &factory,
+      ServiceHandler &service_handler,
+      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
+      instrumented_io_context &io_service,
+      std::string call_name,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      bool record_metrics,
+      std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -314,23 +300,20 @@ class ServerCallImpl : public ServerCall {
         }
       });
     } else {
-      auto send_reply_callback = [this](Status status,
-                                        std::function<void()> success,
-                                        std::function<void()> failure) {
-        // These two callbacks must be set before `SendReply`, because `SendReply`
-        // is async and this `ServerCall` might be deleted right after `SendReply`.
-        send_reply_success_callback_ = std::move(success);
-        send_reply_failure_callback_ = std::move(failure);
-        boost::asio::post(GetServerCallExecutor(),
-                          [this, status]() { SendReply(status); });
-      };
-      if constexpr (PassGrpcPeer) {
-        (service_handler_.*handle_request_function_)(
-            std::move(request_), reply_, send_reply_callback, context_.peer());
-      } else {
-        (service_handler_.*handle_request_function_)(
-            std::move(request_), reply_, send_reply_callback);
-      }
+      (service_handler_.*handle_request_function_)(
+          std::move(request_),
+          reply_,
+          /*send_reply_callback=*/
+          [this](Status status,
+                 std::function<void()> success,
+                 std::function<void()> failure) {
+            // These two callbacks must be set before `SendReply`, because `SendReply`
+            // is async and this `ServerCall` might be deleted right after `SendReply`.
+            send_reply_success_callback_ = std::move(success);
+            send_reply_failure_callback_ = std::move(failure);
+            boost::asio::post(GetServerCallExecutor(),
+                              [this, status]() { SendReply(status); });
+          });
     }
   }
 
@@ -424,7 +407,7 @@ class ServerCallImpl : public ServerCall {
   bool service_handler_initialized_ = false;
 
   /// Pointer to the service handler function.
-  HandleFn handle_request_function_;
+  HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 
   /// Context for the request, allowing to tweak aspects of it such as the use
   /// of compression, authentication, as well as to send metadata back to the client.
@@ -481,7 +464,7 @@ class ServerCallImpl : public ServerCall {
   ray::stats::Count grpc_server_req_failed_counter_{
       GetGrpcServerReqFailedCounterMetric()};
 
-  template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5, bool T6>
+  template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5>
   friend class ServerCallFactoryImpl;
 };
 
@@ -509,14 +492,9 @@ template <class GrpcService,
           class ServiceHandler,
           class Request,
           class Reply,
-          ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH,
-          bool PassGrpcPeer = false>
+          ClusterIdAuthType EnableAuth = ClusterIdAuthType::NO_AUTH>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
-  using HandleFn = std::conditional_t<
-      PassGrpcPeer,
-      HandleRequestFunctionWithGrpcPeer<ServiceHandler, Request, Reply>,
-      HandleRequestFunction<ServiceHandler, Request, Reply>>;
 
  public:
   /// Constructor.
@@ -538,7 +516,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
-      HandleFn handle_request_function,
+      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
@@ -561,16 +539,15 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call =
-        new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth, PassGrpcPeer>(
-            *this,
-            service_handler_,
-            handle_request_function_,
-            io_service_,
-            call_name_,
-            cluster_id_,
-            auth_token_,
-            record_metrics_);
+    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, EnableAuth>(
+        *this,
+        service_handler_,
+        handle_request_function_,
+        io_service_,
+        call_name_,
+        cluster_id_,
+        auth_token_,
+        record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -594,7 +571,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
-  HandleFn handle_request_function_;
+  HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 
   /// The `CompletionQueue`.
   const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;

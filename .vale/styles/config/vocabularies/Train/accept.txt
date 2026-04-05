@@ -7,9 +7,3 @@ PyTorch Lightning
 TensorFlow
 XGBoost
 FSDP
-Colab
-vLLM
-GRPOTrainer
-GRPOConfig
-GRPO
-TRL

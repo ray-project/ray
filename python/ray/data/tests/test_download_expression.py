@@ -208,7 +208,7 @@ class TestDownloadExpressionFunctionality:
     def test_download_expression_with_pandas_blocks(self, tmp_path):
         """Test download with pandas blocks to ensure arrow conversion works.
 
-        This tests the code path in PartitionActor / AsyncPartitionActor.__call__ where non-arrow
+        This tests the code path in PartitionActor.__call__ where non-arrow
         blocks are converted to arrow format before processing.
         """
         ctx = ray.data.context.DataContext.get_current()
@@ -236,7 +236,7 @@ class TestDownloadExpressionFunctionality:
             )
             ds = ray.data.from_pandas(df)
 
-            # Apply download - this should trigger arrow conversion in the partition actor
+            # Apply download - this should trigger arrow conversion in PartitionActor
             ds_with_downloads = ds.with_column("content", download("file_uri"))
 
             # Verify results

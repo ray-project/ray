@@ -41,8 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     server.add_argument(
         "-m",
         "--model",
-        default=None,
-        help="Model name to send in requests (required except for -i --client)",
+        default="test-model",
+        help="Model name to send in requests (default: %(default)s)",
     )
     server.add_argument(
         "--tokenizer",
@@ -60,34 +60,32 @@ def build_parser() -> argparse.ArgumentParser:
     workload.add_argument(
         "--isl",
         type=int,
-        default=1000,
-        help="Average input sequence length (default: %(default)s)",
+        default=None,
+        help="Average input sequence length",
     )
     workload.add_argument(
         "--hit-rate",
         type=float,
-        default=0.5,
-        help="Prefix cache hit rate [0, 1] (default: %(default)s)",
+        default=None,
+        help="Prefix cache hit rate [0, 1]",
     )
     workload.add_argument(
         "--num-turns",
         type=int,
-        default=1,
-        help="Number of turns per session (default: %(default)s)",
+        default=None,
+        help="Number of turns per session",
     )
     workload.add_argument(
         "--osl",
         type=int,
-        default=100,
-        help="Output tokens per turn (default: %(default)s)",
+        default=None,
+        help="Output tokens per turn",
     )
     workload.add_argument(
-        "--shared-system-prompt-ratio",
-        dest="shared_system_prompt_ratio",
+        "--cross-sharing",
         type=float,
         default=1.0,
-        help="Fraction of the system prompt shared across all sessions "
-        "(1.0 = identical, 0.0 = all unique) (default: %(default)s)",
+        help="Cross-session prefix sharing factor (default: %(default)s)",
     )
     workload.add_argument(
         "--think-time",
@@ -136,20 +134,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Warm-up period in seconds (default: %(default)s)",
     )
     traffic.add_argument(
-        "--warmup-jitter-max",
-        type=float,
-        default=10.0,
-        help="Max random delay (seconds) between turns during entropy warm-up "
-        "in concurrency mode. Jitter desynchronizes sessions so the benchmark "
-        "reaches steady-state faster (default: %(default)s)",
-    )
-    traffic.add_argument(
         "--ramp-interval",
         type=float,
         default=-1,
-        help="Seconds between launching successive sessions at benchmark start. "
-        "Use this to avoid a thundering-herd of simultaneous first requests. "
-        "-1 = auto-derive from request rate or concurrency (default: %(default)s)",
+        help="Ramp interval in seconds (default: %(default)s)",
     )
 
     ## Interactive-only ##
@@ -192,8 +180,8 @@ def build_parser() -> argparse.ArgumentParser:
     interactive.add_argument(
         "--num-workers",
         type=int,
-        default=1,
-        help="Number of process-pool workers for conversation generation (default: %(default)s)",
+        default=None,
+        help="Number of worker tasks",
     )
 
     return parser
@@ -203,31 +191,19 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.interactive and args.client:
-        from ray.llm._internal.serve.benchmark.interactive import run_interactive_client
-
-        sys.exit(run_interactive_client(args))
-
-    # All other modes require --model
-    if not args.model:
-        parser.error("--model is required (except for -i --client mode)")
-
     if args.smoke:
-        from ray.llm._internal.serve.benchmark.runners import run_smoke
+        from ray.llm._internal.serve.benchmark.multiturn_bench import run_smoke
 
         sys.exit(run_smoke(args))
+    elif args.interactive and args.client:
+        print("Interactive client mode is not implemented yet.", file=sys.stderr)
+        sys.exit(1)
     elif args.interactive:
-        from ray.llm._internal.serve.benchmark.interactive import run_interactive_server
-
-        sys.exit(run_interactive_server(args))
+        print("Interactive server mode is not implemented yet.", file=sys.stderr)
+        sys.exit(1)
     elif args.concurrency or args.request_rate:
-        from ray.llm._internal.serve.benchmark.runners import run_direct
-
-        sys.exit(run_direct(args))
+        print("Direct benchmark mode is not implemented yet.", file=sys.stderr)
+        sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

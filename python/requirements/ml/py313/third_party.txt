@@ -1,2 +1,0 @@
-psutil
-colorama

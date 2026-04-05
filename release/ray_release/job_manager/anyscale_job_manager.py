@@ -27,7 +27,6 @@ from ray_release.util import (
 JOB_SUCCEEDED = 0
 JOB_FAILED = -1
 JOB_STATE_UNKNOWN = -2
-JOB_SOFT_INFRA_ERROR = -4
 
 job_status_to_return_code = {
     JobState.SUCCEEDED: JOB_SUCCEEDED,
@@ -230,7 +229,8 @@ class AnyscaleJobManager:
         status = self._last_job_status()
         assert status in terminal_state
         if status == JobState.FAILED and not job_running:
-            retcode = JOB_SOFT_INFRA_ERROR
+            # Soft infra error
+            retcode = -4
         else:
             retcode = job_status_to_return_code[status]
         self._duration = time.time() - self.start_time

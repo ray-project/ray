@@ -1615,12 +1615,6 @@ void GcsActorManager::OnActorSchedulingFailed(
     death_cause.mutable_actor_unschedulable_context()->set_error_message(
         scheduling_failure_message);
     break;
-  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED:
-    error_msg = absl::StrCat(
-        "Could not create the actor because worker startup repeatedly failed.\n",
-        scheduling_failure_message);
-    death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
-    break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
                    << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(

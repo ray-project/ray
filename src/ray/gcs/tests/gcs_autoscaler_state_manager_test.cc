@@ -214,8 +214,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     rpc::autoscaler::DrainNodeReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-    gcs_autoscaler_state_manager_->HandleDrainNode(
-        request, &reply, send_reply_callback, /*grpc_peer=*/"");
+    gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
     return reply.is_accepted();
   }
 
@@ -845,8 +844,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
   rpc::autoscaler::DrainNodeReply reply;
   auto send_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-  gcs_autoscaler_state_manager_->HandleDrainNode(
-      request, &reply, send_reply_callback, /*grpc_peer=*/"");
+  gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
 
   // At this point, the GCS request is not accepted yet since ralyet has not replied.
   ASSERT_FALSE(reply.is_accepted());

@@ -3,7 +3,6 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from ray._common.utils import env_bool
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
@@ -29,8 +28,8 @@ DEFAULT_MAX_BUFFERED_RESULTS = int(
     os.environ.get("RAY_CGRAPH_max_buffered_results", 1000)
 )
 
-DEFAULT_OVERLAP_GPU_COMMUNICATION = env_bool(
-    "RAY_CGRAPH_overlap_gpu_communication", False
+DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
+    os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
 )
 
 

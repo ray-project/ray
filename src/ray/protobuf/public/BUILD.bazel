@@ -20,7 +20,6 @@ proto_library(
         ":events_submission_job_lifecycle_event_proto",
         ":events_task_definition_event_proto",
         ":events_task_lifecycle_event_proto",
-        ":platform_event_proto",
         "//src/ray/protobuf:events_task_profile_events_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
@@ -205,14 +204,4 @@ proto_library(
 cc_proto_library(
     name = "events_placement_group_lifecycle_event_cc_proto",
     deps = [":events_placement_group_lifecycle_event_proto"],
-)
-
-proto_library(
-    name = "platform_event_proto",
-    srcs = ["platform_event.proto"],
-)
-
-cc_proto_library(
-    name = "platform_event_cc_proto",
-    deps = [":platform_event_proto"],
 )

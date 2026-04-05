@@ -1,11 +1,3 @@
-"""SGLang engine integration for Ray Serve LLM.
-
-This module is a demonstration and reference implementation only.
-It is not actively maintained and is not part of Ray's officially supported
-feature set. For community SGLang support status, see:
-https://github.com/ray-project/ray/issues/61114
-"""
-
 import copy
 import json
 import signal
@@ -126,14 +118,11 @@ class SGLangServer:
         return converted_messages
 
     @staticmethod
-    def _build_chat_template_kwargs(request: Any) -> dict[str, Any]:
+    def _build_chat_template_kwargs(request: ChatCompletionRequest) -> dict[str, Any]:
         """
         Build optional chat-template kwargs using request fields when present.
         This mirrors SGLang's chat-serving pipeline semantics without directly
         coupling to its internal server classes.
-
-        Works with both ChatCompletionRequest and TokenizeChatRequest since
-        both expose tools and chat_template_kwargs fields.
         """
         kwargs: dict[str, Any] = {}
 
@@ -153,30 +142,25 @@ class SGLangServer:
 
     def _render_chat_prompt(
         self,
+        request: ChatCompletionRequest,
         messages: List[dict[str, Any]],
-        add_generation_prompt: bool = True,
-        template_kwargs: Optional[dict[str, Any]] = None,
     ) -> str:
         tokenizer = self.engine.tokenizer_manager.tokenizer
         # SGLang supports --skip-tokenizer-init, where tokenizer is intentionally
         # None and text prompt rendering is not available.
         if tokenizer is None:
-            return self._render_fallback_prompt(
-                messages, add_generation_prompt=add_generation_prompt
-            )
+            return self._render_fallback_prompt(messages)
 
+        template_kwargs = self._build_chat_template_kwargs(request)
         return tokenizer.apply_chat_template(
             messages,
             tokenize=False,
-            add_generation_prompt=add_generation_prompt,
-            **(template_kwargs or {}),
+            add_generation_prompt=True,
+            **template_kwargs,
         )
 
     @staticmethod
-    def _render_fallback_prompt(
-        messages: List[dict[str, Any]],
-        add_generation_prompt: bool = True,
-    ) -> str:
+    def _render_fallback_prompt(messages: List[dict[str, Any]]) -> str:
         # Fallback prompt format for tokenizers without chat-template support.
         prompt_lines: List[str] = []
         for message in messages:
@@ -185,8 +169,7 @@ class SGLangServer:
             if content is None:
                 content = ""
             prompt_lines.append(f"{role}: {content}")
-        if add_generation_prompt:
-            prompt_lines.append("assistant:")
+        prompt_lines.append("assistant:")
         return "\n".join(prompt_lines)
 
     async def start(self) -> None:
@@ -329,10 +312,7 @@ class SGLangServer:
         raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         chat_messages = self._build_chat_messages(request.messages)
-        template_kwargs = self._build_chat_template_kwargs(request)
-        prompt = self._render_chat_prompt(
-            chat_messages, template_kwargs=template_kwargs
-        )
+        prompt = self._render_chat_prompt(request, chat_messages)
 
         if request.stream:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
@@ -526,13 +506,7 @@ class SGLangServer:
         else:
             # Chat tokenize request - render messages to prompt string
             chat_messages = self._build_chat_messages(request.messages)
-            add_generation_prompt = getattr(request, "add_generation_prompt", True)
-            template_kwargs = self._build_chat_template_kwargs(request)
-            prompt = self._render_chat_prompt(
-                chat_messages,
-                add_generation_prompt=add_generation_prompt,
-                template_kwargs=template_kwargs,
-            )
+            prompt = self._render_chat_prompt(request, chat_messages)
 
         add_special_tokens = getattr(request, "add_special_tokens", True)
         tokens = tokenizer.encode(prompt, add_special_tokens=add_special_tokens)

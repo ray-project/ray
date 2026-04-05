@@ -1,5 +1,0 @@
-pyarrow==23.0.1
-hudi
-pylance
-modin==0.37.1
-pandas==2.3.3

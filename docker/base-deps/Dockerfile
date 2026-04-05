@@ -109,8 +109,8 @@ USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY --chown=ray "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
-COPY --chown=ray "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 

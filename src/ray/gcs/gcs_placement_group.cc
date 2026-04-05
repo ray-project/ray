@@ -18,9 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/constants.h"
-#include "ray/common/scheduling/label_selector.h"
-
 namespace ray {
 namespace gcs {
 
@@ -145,53 +142,6 @@ const rpc::PlacementGroupStats &GcsPlacementGroup::GetStats() const {
 
 rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
-}
-
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainKey() const {
-  const std::string &key = placement_group_table_data_.label_domain_key();
-  if (key.empty()) {
-    return std::nullopt;
-  }
-  return key;
-}
-
-void GcsPlacementGroup::ComputeLabelDomainKey() {
-  const auto &proto_bundles = placement_group_table_data_.bundles();
-  if (proto_bundles.empty()) {
-    return;
-  }
-  BundleSpecification first_bundle(proto_bundles.Get(0));
-  const LabelSelector &label_selector =
-      first_bundle.GetRequiredResources().GetLabelSelector();
-  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kLabelKeyNodeAcceleratorType &&
-        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        (constraint.GetLabelValues().contains(kGB300) ||
-         constraint.GetLabelValues().contains(kGB200))) {
-      placement_group_table_data_.set_label_domain_key(kGpuDomainLabelKey);
-      return;
-    }
-  }
-}
-
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
-    const std::string &label_key) const {
-  const auto &assignments = placement_group_table_data_.label_domain_assignments();
-  auto it = assignments.find(label_key);
-  if (it != assignments.end()) {
-    return it->second;
-  }
-  return std::nullopt;
-}
-
-void GcsPlacementGroup::SetLabelDomainAssignment(const std::string &label_key,
-                                                 const std::string &label_value) {
-  (*placement_group_table_data_.mutable_label_domain_assignments())[label_key] =
-      label_value;
-}
-
-void GcsPlacementGroup::ClearLabelDomainAssignments() {
-  placement_group_table_data_.mutable_label_domain_assignments()->clear();
 }
 
 }  // namespace gcs

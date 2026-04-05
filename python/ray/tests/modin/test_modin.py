@@ -70,7 +70,7 @@ test_data = {
         "col{}".format(int((i - NCOLS / 2) % NCOLS + 1)): [
             x
             if (j % 4 == 0 and i > NCOLS // 2) or (j != i and i <= NCOLS // 2)
-            else np.nan
+            else np.NaN
             for j, x in enumerate(
                 random_state.uniform(RAND_LOW, RAND_HIGH, size=(NROWS))
             )
@@ -86,7 +86,7 @@ test_data["int_data"]["index"] = test_data["int_data"].pop(
 for col in test_data["float_nan_data"]:
     for row in range(NROWS // 2):
         if row % 16 == 0:
-            test_data["float_nan_data"][col][row] = np.nan
+            test_data["float_nan_data"][col][row] = np.NaN
 
 test_data_values = list(test_data.values())
 test_data_keys = list(test_data.keys())

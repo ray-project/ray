@@ -84,7 +84,7 @@ class InvalidValuesTest(unittest.TestCase):
         ), "Searcher checkpointing failed (unable to serialize)."
 
     def testAxManualSetup(self):
-        from ax.service.ax_client import AxClient, ObjectiveProperties
+        from ax.service.ax_client import AxClient
 
         from ray.tune.search.ax import AxSearch
 
@@ -94,8 +94,7 @@ class InvalidValuesTest(unittest.TestCase):
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
         client.create_experiment(
-            parameters=converted_config,
-            objectives={"_metric": ObjectiveProperties(minimize=False)},
+            parameters=converted_config, objective_name="_metric", minimize=False
         )
         searcher = AxSearch(ax_client=client)
 
@@ -560,15 +559,14 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             assert "not_completed" in searcher._live_trial_mapping
 
     def testAx(self):
-        from ax.service.ax_client import AxClient, ObjectiveProperties
+        from ax.service.ax_client import AxClient
 
         from ray.tune.search.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
         client = AxClient()
         client.create_experiment(
-            parameters=converted_config,
-            objectives={self.metric_name: ObjectiveProperties(minimize=False)},
+            parameters=converted_config, objective_name=self.metric_name, minimize=False
         )
         searcher = AxSearch(ax_client=client)
 
@@ -576,8 +574,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         client = AxClient()
         client.create_experiment(
-            parameters=converted_config,
-            objectives={self.metric_name: ObjectiveProperties(minimize=False)},
+            parameters=converted_config, objective_name=self.metric_name, minimize=False
         )
         searcher = AxSearch(ax_client=client)
         self._restore(searcher)

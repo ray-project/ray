@@ -459,7 +459,6 @@ class UseCase(ExampleEnum):
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
     DOCUMENT_PROCESSING = "Document Processing"
-    REINFORCEMENT_LEARNING = "Reinforcement Learning"
 
     @classmethod
     def formatted_name(cls):
@@ -504,7 +503,6 @@ class Framework(ExampleEnum):
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
     PANDAS = "Pandas"
-    TRL = "TRL"
     ANY = "Any"
     UNSTRUCTURED = "Unstructured"
 

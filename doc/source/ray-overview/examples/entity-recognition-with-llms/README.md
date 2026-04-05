@@ -767,7 +767,6 @@ config = vLLMEngineProcessorConfig(
     model_source=model_source,
     runtime_env={
         "env_vars": {
-            "VLLM_USE_V1": "0",  # v1 doesn't support lora adapters yet
             # "HF_TOKEN": os.environ.get("HF_TOKEN"),
         },
     },

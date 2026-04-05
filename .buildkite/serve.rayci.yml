@@ -203,7 +203,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
+      - raycpubase
       - servebuild-multipy
 
   - label: ":ray-serve: serve: tracing tests"
@@ -279,7 +279,7 @@ steps:
       - python
       - flaky
       - skip-on-premerge
-    instance_type: large
+    instance_type: medium
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3

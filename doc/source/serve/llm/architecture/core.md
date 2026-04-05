@@ -210,7 +210,7 @@ class LLMServerProtocol(DeploymentProtocol):
         """Handle embedding request."""
 ```
 
-This protocol ensures that all LLM server implementations (`LLMServer`, `DPServer`, `PDDecodeServer`, `PDPrefillServer`) provide consistent methods for handling requests.
+This protocol ensures that all LLM server implementations (`LLMServer`, `DPServer`, `PDProxyServer`) provide consistent methods for handling requests.
 
 ## Builder pattern
 

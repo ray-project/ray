@@ -61,7 +61,7 @@ class ReadOnlyProvider(ICloudInstanceProvider):
 
         return cloud_instances
 
-    def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
+    def terminate(self, instance_id: CloudInstanceId) -> None:
         raise NotImplementedError("Cannot terminate instances in read-only mode.")
 
     def launch(

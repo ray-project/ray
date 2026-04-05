@@ -125,10 +125,7 @@ def test_does_not_double_count_usage_from_union():
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=2)
     resource_manager = ResourceManager(
-        topology,
-        ExecutionOptions(),
-        lambda: total_resources,
-        DataContext.get_current(),
+        topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
     )
 
     # Create two 1-byte `RefBundle`s.
@@ -183,10 +180,7 @@ def test_per_input_inqueue_attribution_for_union():
     # Create a resource manager.
     total_resources = ExecutionResources(cpu=0, object_store_memory=200)
     resource_manager = ResourceManager(
-        topology,
-        options,
-        lambda: total_resources,
-        DataContext.get_current(),
+        topology, options, lambda: total_resources, DataContext.get_current()
     )
 
     # Create two 10-byte RefBundles with distinct block refs (simulates real execution

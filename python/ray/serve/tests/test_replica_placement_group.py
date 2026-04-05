@@ -305,8 +305,6 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     assert len(survivor_pg) == 1
     assert len(victim_pg) == 1
     original_survivor_pg_name = survivor_pg[0]
-    original_victim_pg_name = victim_pg[0]
-    prev_per_replica_pg_name = non_gang_pgs[0]
 
     # Kill the controller
     ray.kill(_get_global_client()._controller, no_restart=False)
@@ -333,12 +331,10 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
         except Exception:
             return False
 
-        current_pg_names = get_all_live_placement_group_names()
         current_gang_pgs = [
-            n for n in current_pg_names if n.startswith(GANG_PG_NAME_PREFIX)
-        ]
-        current_non_gang_pgs = [
-            n for n in current_pg_names if not n.startswith(GANG_PG_NAME_PREFIX)
+            n
+            for n in get_all_live_placement_group_names()
+            if n.startswith(GANG_PG_NAME_PREFIX)
         ]
 
         # The survivor's *original* PG must still exist (not removed).
@@ -349,14 +345,6 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
         # Victim should have recovered with a new PG (old one was removed).
         victim_pgs = [n for n in current_gang_pgs if "victim_app" in n]
         if len(victim_pgs) != 1:
-            return False
-        if victim_pgs[0] == original_victim_pg_name:
-            return False
-
-        # The old per-replica PG must be removed, not leaked alongside the new one.
-        if len(current_non_gang_pgs) != 1:
-            return False
-        if current_non_gang_pgs[0] == prev_per_replica_pg_name:
             return False
 
         # Per-replica app should have recovered with a new PG.

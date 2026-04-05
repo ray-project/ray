@@ -105,15 +105,10 @@ class Work {
     return grant_or_reject_ || is_selected_based_on_locality_;
   }
 
-  void IncrementPopWorkerRetries() { pop_worker_retries_++; }
-
-  int GetPopWorkerRetries() const { return pop_worker_retries_; }
-
  private:
   WorkStatus status_ = WorkStatus::WAITING;
   UnscheduledWorkCause unscheduled_work_cause_ =
       UnscheduledWorkCause::WAITING_FOR_RESOURCE_ACQUISITION;
-  int pop_worker_retries_ = 0;
 };
 
 using NodeInfoGetter =

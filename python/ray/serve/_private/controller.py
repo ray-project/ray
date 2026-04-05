@@ -39,12 +39,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_LOG_TO_STDERR,
-    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
-    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
-    RAY_SERVE_THROUGHPUT_OPTIMIZED,
-    RAY_SERVE_USE_GRPC_BY_DEFAULT,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -156,9 +150,6 @@ class ServeController:
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
-        if RAY_SERVE_THROUGHPUT_OPTIMIZED:
-            self._log_throughput_opt_message()
-
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
@@ -293,21 +284,6 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
-
-    def _log_throughput_opt_message(self) -> None:
-        msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
-        if RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            msg += "  • Direct ingress enabled\n"
-        if RAY_SERVE_USE_GRPC_BY_DEFAULT:
-            msg += "  • gRPC communication enabled\n"
-        if not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
-            msg += "  • User code running in main thread (not separate)\n"
-        if not RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
-            msg += "  • Router running in main thread (not separate)\n"
-        if not RAY_SERVE_LOG_TO_STDERR:
-            msg += "  • Log to stderr disabled\n"
-        msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
-        logger.info(msg)
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (

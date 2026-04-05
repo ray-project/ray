@@ -19,7 +19,7 @@ ENV BAZEL_CACHE=${CACHE_DIR}/bazel
 
 WORKDIR /home/forge/ray
 
-COPY --chown=forge . .
+COPY . .
 
 RUN --mount=type=cache,target=${DOWNLOAD_CACHE},uid=2000,gid=100,id=ray-downloads-${HOSTTYPE} \
     --mount=type=cache,target=${BAZEL_CACHE},uid=2000,gid=100,id=ray-bazel-${HOSTTYPE} \

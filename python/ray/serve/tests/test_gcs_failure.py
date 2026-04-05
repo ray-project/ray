@@ -12,25 +12,10 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.serve._private.test_utils import check_apps_running
-from ray.serve.config import DeploymentActorConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 from ray.tests.conftest import external_redis  # noqa: F401
-
-
-@ray.remote
-class _GcsFailureDeploymentActor:
-    """Minimal deployment-scoped actor for ``test_deployment_actor_survives_gcs_failure``."""
-
-    def __init__(self, start: int = 0):
-        self._value = start
-
-    def get(self) -> int:
-        return self._value
-
-    def ray_actor_id(self) -> str:
-        return ray.get_runtime_context().get_actor_id()
 
 
 @pytest.fixture(scope="function")
@@ -133,58 +118,6 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     for _ in range(10):
         assert pid == call()
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Failing on Windows, 'ForkedFunc' object has no attribute 'pid'",
-)
-def test_deployment_actor_survives_gcs_failure(serve_ha):  # noqa: F811
-    """Deployment-scoped actors stay callable from replicas while GCS is down.
-
-    Replicas cache the :func:`serve.get_deployment_actor` handle in ``__init__`` so
-    traffic does not depend on fresh ``get_actor`` lookups during the outage (same idea
-    as keeping replica PIDs stable in ``test_controller_gcs_failure``). Responses
-    include the deployment actor's Ray id so we assert the same process survives (no
-    Serve-driven recreation during the outage).
-    """
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="shared",
-                actor_class=_GcsFailureDeploymentActor,
-                init_kwargs={"start": 12345},
-            ),
-        ],
-    )
-    class WithDeploymentActor:
-        def __init__(self):
-            self._actor = serve.get_deployment_actor("shared")
-
-        def __call__(self):
-            val = ray.get(self._actor.get.remote())
-            aid = ray.get(self._actor.ray_actor_id.remote())
-            return f"{val},{aid}"
-
-    serve.run(WithDeploymentActor.bind(), route_prefix="/da_gcs_survives")
-    url = "http://localhost:8000/da_gcs_survives"
-
-    def parse_val_actor_id(text: str) -> tuple[str, str]:
-        val, aid = text.split(",", 1)
-        return val, aid
-
-    wait_for_condition(
-        lambda: parse_val_actor_id(httpx.get(url, timeout=5.0).text)[0] == "12345"
-    )
-    _, actor_id_before = parse_val_actor_id(httpx.get(url, timeout=5.0).text)
-
-    ray.worker._global_node.kill_gcs_server()
-
-    for _ in range(15):
-        val, aid = parse_val_actor_id(httpx.get(url, timeout=3.0).text)
-        assert val == "12345"
-        assert aid == actor_id_before
 
 
 def router_populated_with_replicas(

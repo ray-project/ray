@@ -115,7 +115,6 @@ from ray.data.block import (
     U,
     UserDefinedFunction,
     _apply_batch_format,
-    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -3953,42 +3952,6 @@ class Dataset:
         # from calculating `sum()` from numpy batches.
         return int(count)
 
-    def _base_schema(
-        self, fetch_if_missing: bool = True
-    ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
-        """Gets the underlying raw schema value not wrapped in Schema class."""
-        base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
-        if base_schema is None:
-            base_schema = self._logical_plan.dag.infer_schema()
-        if base_schema is None and fetch_if_missing:
-            # Lazily execute only the first block to minimize computation.
-            # We achieve this by appending a Limit[1] operation to a copy of
-            # this plan, which we then execute to get its schema.
-            dag = self._logical_plan.dag
-            if isinstance(dag, StreamingSplit):
-                # Unwrap StreamingSplit since it is a terminal operator
-                # that cannot be wrapped into other ops like Limit.
-                dag = dag.input_dependencies[0]
-                limited_ds = Dataset(
-                    ExecutionPlan(
-                        DatasetStats(metadata={}, parent=None),
-                        self._plan._context,
-                    ),
-                    LogicalPlan(dag, self._plan._context),
-                ).limit(1)
-            else:
-                limited_ds = self.limit(1)
-            iter_ref_bundles, _, executor = limited_ds._execute_to_iterator()
-            if executor is not None:
-                # Make sure executor is fully shutdown upon exiting
-                with executor:
-                    base_schema = _take_first_non_empty_schema(
-                        bundle.schema for bundle in iter_ref_bundles
-                    )
-        if base_schema is not None:
-            self._plan._cache.set_schema(self._logical_plan.dag, base_schema)
-        return base_schema
-
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -4018,7 +3981,7 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._base_schema(fetch_if_missing=fetch_if_missing)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             return Schema(base_schema, data_context=self._plan._context)
         return None
@@ -7149,7 +7112,7 @@ class Dataset:
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
         if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self)
+            return self._plan.get_plan_as_string(self.__class__)
 
         is_materialized = isinstance(self, MaterializedDataset)
         return _build_dataset_ascii_repr(self, schema, is_materialized)
@@ -7184,18 +7147,7 @@ class Dataset:
         return ray.get(num_rows)
 
     def _meta_count(self) -> Optional[int]:
-        """Get the number of rows after applying all plan optimizations, if possible.
-
-        This method will never trigger any computation.
-
-        Returns:
-            The number of records of the result Dataset, or None.
-        """
-        dag = self._logical_plan.dag
-        num_rows = self._plan._cache.get_num_rows(dag)
-        if num_rows is None:
-            num_rows = dag.infer_metadata().num_rows
-        return num_rows
+        return self._plan.meta_count()
 
     def _get_uuid(self) -> str:
         return self._uuid

@@ -26,7 +26,6 @@ if sys.platform != "linux" and sys.platform != "darwin":
 
 def mock_actor_handle_init(self, actor_id: str):
     self._ray_actor_id = actor_id
-    self._ray_weak_ref = False
 
 
 def mock_class_method_call_init(self):
@@ -137,7 +136,7 @@ class TestSelectNextNodes:
             False,
         )
         mock_actor_to_candidates = {
-            fake_actor._actor_id: [
+            fake_actor: [
                 dag_node_1,
                 dag_node_2,
             ],
@@ -193,12 +192,8 @@ class TestSelectNextNodes:
         )
         set_sync_idxs_p2p(mock_graph, task_idx_1, task_idx_2)
         mock_actor_to_candidates = {
-            fake_actor_1._actor_id: [
-                mock_graph[task_idx_1][_DAGNodeOperationType.WRITE]
-            ],
-            fake_actor_2._actor_id: [
-                mock_graph[task_idx_2][_DAGNodeOperationType.READ]
-            ],
+            fake_actor_1: [mock_graph[task_idx_1][_DAGNodeOperationType.WRITE]],
+            fake_actor_2: [mock_graph[task_idx_2][_DAGNodeOperationType.READ]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert next_nodes == [
@@ -291,11 +286,11 @@ class TestSelectNextNodes:
             set_sync_idxs_p2p(mock_graph, task_idx_1_0, task_idx_2_1)
             set_sync_idxs_p2p(mock_graph, task_idx_2_0, task_idx_1_1)
             mock_actor_to_candidates = {
-                fake_actor_1._actor_id: [
+                fake_actor_1: [
                     mock_graph[task_idx_1_0][_DAGNodeOperationType.WRITE],
                     mock_graph[task_idx_1_1][_DAGNodeOperationType.READ],
                 ],
-                fake_actor_2._actor_id: [
+                fake_actor_2: [
                     mock_graph[task_idx_2_0][_DAGNodeOperationType.WRITE],
                     mock_graph[task_idx_2_1][_DAGNodeOperationType.READ],
                 ],
@@ -338,12 +333,8 @@ class TestSelectNextNodes:
         set_sync_idxs_collective(mock_graph, [dag_idx_1, dag_idx_2])
 
         mock_actor_to_candidates = {
-            fake_actor_1._actor_id: [
-                mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]
-            ],
-            fake_actor_2._actor_id: [
-                mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]
-            ],
+            fake_actor_1: [mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
@@ -401,18 +392,10 @@ class TestSelectNextNodes:
         set_sync_idxs_collective(mock_graph, [dag_idx_3, dag_idx_4])
 
         mock_actor_to_candidates = {
-            fake_actor_1._actor_id: [
-                mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]
-            ],
-            fake_actor_2._actor_id: [
-                mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]
-            ],
-            fake_actor_3._actor_id: [
-                mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE]
-            ],
-            fake_actor_4._actor_id: [
-                mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE]
-            ],
+            fake_actor_1: [mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_3: [mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_4: [mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {

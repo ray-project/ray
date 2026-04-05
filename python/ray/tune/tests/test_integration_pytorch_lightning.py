@@ -27,25 +27,29 @@ class _MockModule(pl.LightningModule):
     def __init__(self, loss, acc):
         super().__init__()
 
-        self._dummy = torch.nn.Parameter(torch.zeros(1))
-        self.loss_val = loss
-        self.acc_val = acc
+        self.loss = torch.tensor(loss)
+        self.acc = torch.tensor(acc)
 
     def forward(self, *args, **kwargs):
-        return self._dummy
+        return self.loss
+
+    def backward(self, loss, optimizer, optimizer_idx):
+        return None
 
     def training_step(self, train_batch, batch_idx):
-        loss = self._dummy.sum() * 0 + self.loss_val
-        self.log("loss", loss)
-        self.log("acc", torch.tensor(self.acc_val))
-        return loss
+        return {"loss": self.loss, "acc": self.acc}
 
     def validation_step(self, val_batch, batch_idx):
-        self.log("avg_val_loss", torch.tensor(self.loss_val * 1.1))
-        self.log("avg_val_acc", torch.tensor(self.acc_val * 0.9))
+        return {"val_loss": self.loss * 1.1, "val_acc": self.acc * 0.9}
+
+    def validation_epoch_end(self, outputs):
+        avg_val_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+        avg_val_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
+        self.log("avg_val_loss", avg_val_loss)
+        self.log("avg_val_acc", avg_val_acc)
 
     def configure_optimizers(self):
-        return torch.optim.SGD([self._dummy], lr=0.001)
+        return None
 
     def train_dataloader(self):
         return DataLoader(_MockDataset(list(range(10))), batch_size=1)

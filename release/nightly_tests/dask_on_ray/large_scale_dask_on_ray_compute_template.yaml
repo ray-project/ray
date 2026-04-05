@@ -1,0 +1,20 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+advanced_configurations_json:
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: m6i.8xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m6i.8xlarge
+      min_workers: 4
+      max_workers: 4
+      use_spot: false

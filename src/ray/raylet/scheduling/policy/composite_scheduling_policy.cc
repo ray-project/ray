@@ -45,40 +45,16 @@ scheduling::NodeID CompositeSchedulingPolicy::Schedule(
 
 SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-  if (options.label_domain_scheduling_strategy_ != LabelDomainSchedulingStrategy::NONE) {
-    NodeScheduleFn node_schedule_fn =
-        [this](const std::vector<const ResourceRequest *> &reqs,
-               SchedulingOptions opts,
-               absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
-          opts.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::NONE;
-          return this->Schedule(reqs, std::move(opts), std::move(nodes));
-        };
-    switch (options.label_domain_scheduling_strategy_) {
-    case LabelDomainSchedulingStrategy::STRICT_PACK:
-      return label_domain_strict_pack_policy_.Schedule(
-          resource_request_list, options, std::move(candidate_nodes), node_schedule_fn);
-    default:
-      RAY_LOG(FATAL) << "Unsupported label domain scheduling strategy: "
-                     << static_cast<int>(options.label_domain_scheduling_strategy_);
-    }
-    UNREACHABLE;
-  }
-
+    SchedulingOptions options) {
   switch (options.scheduling_type_) {
   case SchedulingType::BUNDLE_PACK:
-    return bundle_pack_policy_.Schedule(
-        resource_request_list, options, std::move(candidate_nodes));
+    return bundle_pack_policy_.Schedule(resource_request_list, options);
   case SchedulingType::BUNDLE_SPREAD:
-    return bundle_spread_policy_.Schedule(
-        resource_request_list, options, std::move(candidate_nodes));
+    return bundle_spread_policy_.Schedule(resource_request_list, options);
   case SchedulingType::BUNDLE_STRICT_PACK:
-    return bundle_strict_pack_policy_.Schedule(
-        resource_request_list, options, std::move(candidate_nodes));
+    return bundle_strict_pack_policy_.Schedule(resource_request_list, options);
   case SchedulingType::BUNDLE_STRICT_SPREAD:
-    return bundle_strict_spread_policy_.Schedule(
-        resource_request_list, options, std::move(candidate_nodes));
+    return bundle_strict_spread_policy_.Schedule(resource_request_list, options);
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << static_cast<typename std::underlying_type<SchedulingType>::type>(

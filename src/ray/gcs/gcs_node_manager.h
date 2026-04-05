@@ -70,8 +70,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Handle unregister rpc request come from raylet.
   void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                             rpc::UnregisterNodeReply *reply,
-                            rpc::SendReplyCallback send_reply_callback,
-                            const std::string &grpc_peer) override;
+                            rpc::SendReplyCallback send_reply_callback) override;
 
   /// TODO(#56627): This method is only called by autoscaler v1. It will be deleted
   /// once autoscaler v1 is fully deprecated. Autoscaler v2 calls

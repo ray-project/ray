@@ -28,11 +28,20 @@ namespace raylet_scheduling_policy {
 /// strategies.
 class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
-  explicit BundleSchedulingPolicy(ClusterResourceManager &cluster_resource_manager)
+  explicit BundleSchedulingPolicy(
+      ClusterResourceManager &cluster_resource_manager,
+      std::function<bool(scheduling::NodeID)> is_node_available)
       : cluster_resource_manager_(cluster_resource_manager),
+        is_node_available_(is_node_available),
         node_scorer_(new LeastResourceScorer()) {}
 
  protected:
+  /// Filter out candidate nodes which can be used for scheduling.
+  ///
+  /// \return The candidate nodes which can be used for scheduling.
+  virtual absl::flat_hash_map<scheduling::NodeID, const Node *> SelectCandidateNodes(
+      const SchedulingContext *context) const;
+
   /// Sort required resources according to the scarcity and capacity of resources.
   /// We will first schedule scarce resources (such as GPU) and large capacity resources
   /// to improve the scheduling success rate.
@@ -67,6 +76,8 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
  protected:
   /// The cluster resource manager.
   ClusterResourceManager &cluster_resource_manager_;
+  /// Function Checks if node is alive.
+  std::function<bool(scheduling::NodeID)> is_node_available_;
   /// Scorer to make a grade to the node.
   std::unique_ptr<NodeScorer> node_scorer_;
 };
@@ -76,8 +87,7 @@ class BundlePackSchedulingPolicy : public BundleSchedulingPolicy {
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      SchedulingOptions options) override;
 };
 
 class BundleSpreadSchedulingPolicy : public BundleSchedulingPolicy {
@@ -85,8 +95,7 @@ class BundleSpreadSchedulingPolicy : public BundleSchedulingPolicy {
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      SchedulingOptions options) override;
 };
 
 class BundleStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
@@ -94,8 +103,7 @@ class BundleStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      SchedulingOptions options) override;
 };
 
 class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
@@ -103,15 +111,14 @@ class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
+      SchedulingOptions options) override;
 
- private:
-  /// Removes nodes that already host bundles for this placement group from
-  /// the candidate set (strict spread requires each bundle on a distinct node).
-  static void ExcludeNodesAlreadyContainingBundles(
-      absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
-      const SchedulingContext *context);
+ protected:
+  /// Filter out candidate nodes which can be used for scheduling.
+  ///
+  /// \return The candidate nodes which can be used for scheduling.
+  absl::flat_hash_map<scheduling::NodeID, const Node *> SelectCandidateNodes(
+      const SchedulingContext *context) const override;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

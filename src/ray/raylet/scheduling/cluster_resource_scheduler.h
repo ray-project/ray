@@ -70,7 +70,7 @@ class ClusterResourceScheduler {
           nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
-  /// Schedule a placement group with the specified resources to the cluster nodes.
+  /// Schedule the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
   /// \param options: scheduling options.
@@ -79,7 +79,7 @@ class ClusterResourceScheduler {
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
-  SchedulingResult SchedulePlacementGroup(
+  SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options);
 

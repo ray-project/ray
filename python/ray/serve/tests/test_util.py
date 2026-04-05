@@ -10,7 +10,6 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import (
     Semaphore,
@@ -451,19 +450,7 @@ def test_get_all_live_placement_group_names(ray_instance):
     pg8 = ray.util.placement_group([{"CPU": 0.1}], lifetime="detached")
     assert pg8.wait()
 
-    # Use wait_for_condition to allow GCS state to propagate after
-    # remove_placement_group(). Removal is async — the scheduling state may not
-    # have flipped to REMOVED by the time we query.
-    def check_live_placement_group_names():
-        assert set(get_all_live_placement_group_names()) == {
-            "pg3",
-            "pg4",
-            "pg5",
-            "pg6",
-        }
-        return True
-
-    wait_for_condition(check_live_placement_group_names, timeout=10)
+    assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
 
 
 def test_get_active_placement_group_ids(ray_instance):
@@ -519,22 +506,21 @@ def test_get_active_placement_group_ids(ray_instance):
     ).remote()
     ray.get(actor_non_serve.ready.remote())
 
+    active_ids = get_active_placement_group_ids()
+
+    # Should contain the PG ID for the live Serve actor's PG
     pg_with_actor_id = pg_with_actor.id.hex()
+    assert pg_with_actor_id in active_ids
+
+    # Should NOT contain the PG with no actor or the PG whose actor was killed
     pg_no_actor_id = pg_no_actor.id.hex()
     pg_killed_id = pg_killed.id.hex()
+    assert pg_no_actor_id not in active_ids
+    assert pg_killed_id not in active_ids
+
+    # Should NOT contain the PG for the non-Serve actor
     pg_non_serve_id = pg_non_serve.id.hex()
-
-    # Use wait_for_condition to allow GCS state to propagate after ray.kill().
-    # ray.kill() is async — the actor's ALIVE -> DEAD transition in GCS may lag.
-    def check_active_placement_group_ids():
-        active_ids = get_active_placement_group_ids()
-        assert pg_with_actor_id in active_ids
-        assert pg_no_actor_id not in active_ids
-        assert pg_killed_id not in active_ids
-        assert pg_non_serve_id not in active_ids
-        return True
-
-    wait_for_condition(check_active_placement_group_ids, timeout=10)
+    assert pg_non_serve_id not in active_ids
 
 
 def test_is_running_in_asyncio_loop_false():

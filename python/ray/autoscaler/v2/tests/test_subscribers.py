@@ -8,9 +8,6 @@ import pytest
 
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import binary_to_hex, hex_to_binary
-from ray.autoscaler.v2.instance_manager.cloud_providers.read_only.cloud_provider import (
-    ReadOnlyProvider,
-)
 from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
     CloudInstanceUpdater,
 )
@@ -295,45 +292,6 @@ class TestCloudInstanceUpdater:
             return True
 
         wait_for_condition(verify)
-
-
-class TestReadOnlyProvider:
-    def test_terminate_raises_not_implemented_with_correct_interface(self):
-        """ReadOnlyProvider.terminate() must accept ids and request_id kwargs.
-
-        Regression test for:
-          TypeError: ReadOnlyProvider.terminate() got an unexpected keyword
-          argument 'ids'
-
-        CloudInstanceUpdater calls provider.terminate(ids=..., request_id=...)
-        which matches the ICloudInstanceProvider interface. ReadOnlyProvider
-        must accept the same signature even though it raises NotImplementedError.
-        """
-        provider = object.__new__(ReadOnlyProvider)  # skip __init__ (needs GCS)
-
-        with pytest.raises(NotImplementedError):
-            provider.terminate(ids=["node-1", "node-2"], request_id="req-1")
-
-    def test_terminate_via_cloud_instance_updater_raises_not_implemented(self):
-        """Verify the full call path: CloudInstanceUpdater -> ReadOnlyProvider.
-
-        When a TERMINATING event arrives, CloudInstanceUpdater calls
-        provider.terminate(ids=..., request_id=...). With ReadOnlyProvider this
-        should surface as NotImplementedError, not TypeError.
-        """
-        provider = object.__new__(ReadOnlyProvider)
-        updater = CloudInstanceUpdater(cloud_provider=provider)
-
-        with pytest.raises(NotImplementedError):
-            updater.notify(
-                [
-                    InstanceUpdateEvent(
-                        new_instance_status=Instance.TERMINATING,
-                        instance_id="i-1",
-                        cloud_instance_id="cloud-node-1",
-                    ),
-                ]
-            )
 
 
 if __name__ == "__main__":

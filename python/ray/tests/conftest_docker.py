@@ -199,10 +199,7 @@ def run_in_container(cmds: List[List[str]], container_id: str):
 
 
 IMAGE_NAME = "rayproject/ray:runtime_env_container"
-# After `docker save` / `podman load`, Podman typically tags the image as below (not the
-# Docker daemon name). Use that ref for `podman create` so resolution stays local.
-PODMAN_BASE_IMAGE = "localhost/runtime_env_container:latest"
-NESTED_IMAGE_NAME = "localhost/runtime_env_container_nested:latest"
+NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
 
 
 @pytest.fixture(scope="session")
@@ -249,11 +246,7 @@ def podman_docker_cluster():
             ["id"],
             ["sudo", "groupadd", "-g", docker_group_id, "docker"],
             ["sudo", "usermod", "-aG", "docker", "ray"],
-            [
-                "bash",
-                "-c",
-                f"docker save {IMAGE_NAME} | podman load",
-            ],
+            ["podman", "pull", f"docker-daemon:{IMAGE_NAME}"],
         ],
         container_id,
     )
@@ -276,7 +269,7 @@ app = Model.bind()
         [
             ["bash", "-c", "echo helloworldalice >> /tmp/file.txt"],
             ["bash", "-c", f"echo '{serve_app}' >> /tmp/serve_application.py"],
-            ["podman", "create", "--name", "tmp_container", PODMAN_BASE_IMAGE],
+            ["podman", "create", "--name", "tmp_container", IMAGE_NAME],
             ["podman", "cp", "/tmp/file.txt", "tmp_container:/home/ray/file.txt"],
             [
                 "podman",

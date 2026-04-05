@@ -34,7 +34,6 @@ user-guides/reduce-image-pull-latency
 user-guides/uv
 user-guides/kuberay-dashboard
 user-guides/resource-isolation-with-writable-cgroups
-user-guides/kuberay-history-server
 ```
 
 
@@ -71,4 +70,3 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-uv`
 * {ref}`kuberay-dashboard`
 * {ref}`resource-isolation-with-writable-cgroups`
-* {ref}`kuberay-history-server`

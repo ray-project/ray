@@ -55,7 +55,7 @@ TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
       0.0 /*usage_threshold*/,
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](SystemMemorySnapshot system_memory) {
+      [has_checked_once](const SystemMemorySnapshot &system_memory) {
         ASSERT_GT(system_memory.total_bytes, 0)
             << "Reported total bytes from cgroup is <= 0. Is the system memory snapshot "
                "taken correctly?";
@@ -85,7 +85,7 @@ TEST_F(ThresholdMemoryMonitorTest,
       0.7 /*usage_threshold (70%)*/,
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once, cgroup_total_bytes](SystemMemorySnapshot system_memory) {
+      [has_checked_once, cgroup_total_bytes](const SystemMemorySnapshot &system_memory) {
         ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes)
             << "Unexpected total bytes read from cgroup. Are we correctly reading memory "
                "from the cgroup?";
@@ -114,7 +114,7 @@ TEST_F(ThresholdMemoryMonitorTest,
       0.7 /*usage_threshold (70%)*/,
       -1 /*min_memory_free_bytes*/,
       1 /*refresh_interval_ms*/,
-      [callback_triggered](SystemMemorySnapshot system_memory) {
+      [callback_triggered](const SystemMemorySnapshot &system_memory) {
         callback_triggered->store(true);
       },
       cgroup_dir /*root_cgroup_path*/);

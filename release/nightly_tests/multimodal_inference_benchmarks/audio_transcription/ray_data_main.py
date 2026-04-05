@@ -13,6 +13,7 @@ from benchmark import Benchmark
 
 
 TRANSCRIPTION_MODEL = "openai/whisper-tiny"
+NUM_GPUS = 8
 SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
@@ -93,11 +94,13 @@ def decoder(batch):
 
 def run_pipeline():
     ds = ray.data.read_parquet(INPUT_PATH)
+    ds = ds.repartition(target_num_rows_per_block=BATCH_SIZE)
     ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess)
+    ds = ds.map_batches(whisper_preprocess, batch_size=BATCH_SIZE)
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,
+        concurrency=NUM_GPUS,
         num_gpus=1,
     )
     ds = ds.map_batches(decoder)

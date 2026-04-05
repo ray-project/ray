@@ -442,23 +442,6 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
                 f" Detailed error: '{error_message}'"
             )
 
-    gpu_domain_accelerator = None
-    for label_selector in bundle_label_selector:
-        accel = label_selector.get("ray.io/accelerator-type")
-        if accel in {"GB200", "GB300"}:
-            gpu_domain_accelerator = accel
-            break
-
-    if gpu_domain_accelerator is not None:
-        for label_selector in bundle_label_selector:
-            if label_selector.get("ray.io/accelerator-type") != gpu_domain_accelerator:
-                raise ValueError(
-                    f"Invalid bundle label selector {label_selector}. "
-                    "GPU-domain scheduling requires all bundles to have "
-                    f"'ray.io/accelerator-type: {gpu_domain_accelerator}'"
-                    " in their label selector."
-                )
-
 
 def _valid_resource_shape(resources, bundle_specs):
     """

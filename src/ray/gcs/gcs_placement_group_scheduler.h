@@ -459,8 +459,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
-                                            rpc::PlacementStrategy strategy);
+  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
+                                            rpc::PlacementStrategy strategy,
+                                            NodeID soft_target_node_id);
 
   /// Try to release bundle resource to cluster resource manager.
   ///

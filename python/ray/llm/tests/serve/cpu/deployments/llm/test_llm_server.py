@@ -598,10 +598,10 @@ class TestGetDeploymentOptions:
         )
         serve_options = LLMServer.get_deployment_options(llm_config)
         # First bundle has replica actor resources merged in (CPU: 1 from config + 1 from replica = 2)
-        # Bundles are validated via PlacementGroupConfig: omitted CPU/GPU become 0.0 (no implicit GPU).
+        # All bundles get GPU: 1.0 added as accelerator hint (and CPU: 0.0 for workers)
         assert serve_options["placement_group_bundles"] == [
-            {"CPU": 2.0, "GPU": 0.0, "XPU": 1}
-        ] + [{"CPU": 0.0, "GPU": 0.0, "XPU": 1} for _ in range(5)]
+            {"CPU": 2.0, "GPU": 1.0, "XPU": 1}
+        ] + [{"CPU": 0.0, "GPU": 1.0, "XPU": 1} for _ in range(5)]
         assert serve_options["placement_group_strategy"] == "PACK"
 
     def test_get_serve_options_with_accelerator_type(self):

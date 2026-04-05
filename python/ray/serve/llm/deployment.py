@@ -1,5 +1,3 @@
-import warnings
-
 from ray.llm._internal.serve.core.server.llm_server import (
     LLMServer as InternalLLMServer,
 )
@@ -7,9 +5,7 @@ from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer as _DPServer,
 )
 from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
-    PDDecodeServer as _PDDecodeServer,
-    PDPrefillServer as _PDPrefillServer,
-    PDProxyServer as _PDProxyServer,  # TODO(Kourosh): Deprecated, remove in Ray 2.58.
+    PDProxyServer as _PDProxyServer,
 )
 from ray.util.annotations import PublicAPI
 
@@ -74,47 +70,19 @@ class LLMServer(InternalLLMServer):
 
 
 @PublicAPI(stability="beta")
-class PDDecodeServer(_PDDecodeServer):
-    """Decode-side LLM server for prefill-decode disaggregation.
-
-    This deployment owns a real engine (decode config) and holds a handle
-    to the prefill deployment. For chat/completions it runs remote prefill
-    first, then local decode.
-
-    Use ``build_pd_openai_app`` to construct the full 3-tier PD graph.
-    """
-
-    pass
-
-
-@PublicAPI(stability="beta")
-class PDPrefillServer(_PDPrefillServer):
-    """Prefill-side LLM server for prefill-decode disaggregation.
-
-    A standard LLMServer with an additional ``prewarm_prefill`` method
-    used during the optional pre-warm handshake.
-    """
-
-    pass
-
-
-# TODO(Kourosh): Deprecated, remove in Ray 2.58.
 class PDProxyServer(_PDProxyServer):
     """A proxy server for prefill-decode disaggregation.
 
-    .. deprecated::
-        ``PDProxyServer`` is deprecated. Use ``PDDecodeServer`` instead.
-        This class will be removed in a future release.
+    This server acts as a proxy in a prefill-decode disaggregated system.
+    For chat and completions, proxy sends the request to the prefill server
+    with max_tokens=1 and then sends the returned metadata to the decode server.
+
+    Args:
+        prefill_server: The prefill server deployment handle.
+        decode_server: The decode server deployment handle.
     """
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        warnings.warn(
-            "PDProxyServer is deprecated and will be removed in Ray 2.58. "
-            "Use PDDecodeServer (decode orchestrator) and PDPrefillServer instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+    pass
 
 
 @PublicAPI(stability="beta")
@@ -162,10 +130,4 @@ class DPServer(_DPServer):
     pass
 
 
-__all__ = [
-    "LLMServer",
-    "PDDecodeServer",
-    "PDPrefillServer",
-    "PDProxyServer",  # TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
-    "DPServer",
-]
+__all__ = ["LLMServer", "PDProxyServer", "DPServer"]

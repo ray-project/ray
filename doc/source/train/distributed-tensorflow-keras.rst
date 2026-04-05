@@ -244,7 +244,6 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
     import numpy as np
 
     def train_func(config):
-        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -253,16 +252,14 @@ These concrete examples demonstrate how Ray Train appropriately saves checkpoint
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
-
         for epoch in range(config["num_epochs"]):
-            history = model.fit(dataset)
+            history = model.fit(X, Y, batch_size=20)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))
@@ -299,7 +296,6 @@ Load checkpoints
     import numpy as np
 
     def train_func(config):
-        os.environ["TF_USE_LEGACY_KERAS"] = "1"
         import tensorflow as tf
         n = 100
         # create a toy dataset
@@ -308,7 +304,7 @@ Load checkpoints
         X = np.random.normal(0, 1, size=(n, 4))
         Y = np.random.uniform(0, 1, size=(n, 1))
 
-        strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
         with strategy.scope():
             # toy neural network : 1-layer
             checkpoint = train.get_checkpoint()
@@ -323,10 +319,8 @@ Load checkpoints
                 )
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-        dataset = tf.data.Dataset.from_tensor_slices((X, Y)).batch(20)
-
         for epoch in range(config["num_epochs"]):
-            history = model.fit(dataset)
+            history = model.fit(X, Y, batch_size=20)
 
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 model.save(os.path.join(temp_checkpoint_dir, "model.keras"))

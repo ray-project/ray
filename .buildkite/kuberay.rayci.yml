@@ -18,7 +18,7 @@ steps:
       - k8sbuild
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
+      - raycpubase
       - ray-core-build
       - ray-dashboard-build
 
@@ -46,6 +46,6 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase(*)
+      - raycpubase
       - ray-core-build
       - ray-dashboard-build

@@ -52,7 +52,8 @@ using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
  *
  * \param system_memory snapshot of system memory information.
  */
-using KillWorkersCallback = std::function<void(SystemMemorySnapshot system_memory)>;
+using KillWorkersCallback =
+    std::function<void(const SystemMemorySnapshot &system_memory)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node
@@ -78,7 +79,7 @@ class MemoryMonitorInterface {
   /**
    * @return True if the memory monitor is enabled, false otherwise.
    */
-  virtual bool IsEnabled() const = 0;
+  virtual bool IsEnabled() = 0;
 
   static constexpr char kDefaultCgroupPath[] = "/sys/fs/cgroup";
   static constexpr int64_t kNull = -1;

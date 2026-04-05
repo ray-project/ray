@@ -655,29 +655,11 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
-        work->IncrementPopWorkerRetries();
       } else {
         RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                        << status;
       }
-
-      auto max_retries = RayConfig::instance().pop_worker_max_retries();
-      if (max_retries >= 0 && work->GetPopWorkerRetries() > max_retries) {
-        // In case of too many retries, we cancel this task
-        // directly and raise a `RaySystemError` exception to user
-        // eventually. The task will be removed from dispatch queue in
-        // `CancelTask`.
-        CancelLeases(
-            [lease_id](const auto &w) {
-              return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
-            },
-            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
-            absl::StrCat("Failed to startup worker after retrying ",
-                         RayConfig::instance().pop_worker_max_retries(),
-                         " times."));
-      } else {
-        work->SetStateWaiting(cause);
-      }
+      work->SetStateWaiting(cause);
     }
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to

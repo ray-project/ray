@@ -52,8 +52,7 @@ void NodeInfoGrpcService::InitServerCallFactories(
                                   max_active_rpcs_per_handler_,
                                   ClusterIdAuthType::EMPTY_AUTH);
   RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
-      NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -167,12 +166,9 @@ void PlacementGroupInfoGrpcService::InitServerCallFactories(
       PlacementGroupInfoGcsService, GetNamedPlacementGroup, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       PlacementGroupInfoGcsService, GetAllPlacementGroup, max_active_rpcs_per_handler_)
-  // WaitPlacementGroupUntilReady (pg.ready()) must stay uncapped (-1). Otherwise,
-  // We may have a deadlock on it since the PG scheduling order may differ from the client
-  // pg.ready() order. Example: cap=2, client waits for PG A, B, C to be ready. Only
-  // Wait(A) and Wait(B) are active; Wait(C) stays queued until A or B completes. If A and
-  // B never become ready, Wait(C) is never handled even if C is already scheduled.
-  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady, -1)
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,
+                      WaitPlacementGroupUntilReady,
+                      max_active_rpcs_per_handler_)
 }
 
 namespace autoscaler {
@@ -193,8 +189,7 @@ void AutoscalerStateGrpcService::InitServerCallFactories(
                       max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, GetClusterStatus, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
-      AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, ResizeRayletResourceInstances, max_active_rpcs_per_handler_)
 }

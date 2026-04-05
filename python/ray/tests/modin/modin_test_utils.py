@@ -19,9 +19,7 @@
 import modin.pandas as pd
 import numpy as np
 import pandas
-
-# to_pandas moved from modin.utils to modin.pandas.io in modin 0.26.0,
-from modin.pandas.io import to_pandas
+from modin.utils import to_pandas
 from pandas.testing import (
     assert_extension_array_equal,
     assert_frame_equal,

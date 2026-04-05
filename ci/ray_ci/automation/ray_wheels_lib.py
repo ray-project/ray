@@ -12,7 +12,6 @@ PYTHON_VERSIONS = [
     "cp311-cp311",
     "cp312-cp312",
     "cp313-cp313",
-    "cp314-cp314",
 ]
 ALL_PLATFORMS = [
     "manylinux2014_x86_64",
@@ -52,10 +51,7 @@ def _get_wheel_names(ray_version: str) -> List[str]:
 
     for python_version in PYTHON_VERSIONS:
         for platform in ALL_PLATFORMS:
-            if (
-                python_version in ("cp313-cp313", "cp314-cp314")
-                and platform == "win_amd64"
-            ):
+            if python_version == "cp313-cp313" and platform == "win_amd64":
                 continue
             wheel_name = f"ray-{ray_version}-{python_version}-{platform}"
             wheel_names.append(wheel_name)

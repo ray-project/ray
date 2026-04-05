@@ -134,7 +134,7 @@ async-generator==1.10
     # via -r python/requirements/test-requirements.txt
 async-lru==2.0.5
     # via jupyterlab
-async-timeout==5.0.1
+async-timeout==4.0.3
     # via redis
 attrs==25.1.0
     # via
@@ -504,7 +504,7 @@ evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
-execnet==2.1.2
+execnet==2.1.1
     # via pytest-shutil
 executing==2.0.1
     # via stack-data
@@ -600,7 +600,7 @@ fugue-sql-antlr==0.2.0
     # via fugue
 future==1.0.0
     # via -r python/requirements/ml/tune-requirements.txt
-gast==0.7.0
+gast==0.6.0
     # via
     #   tensorflow
     #   tensorflow-probability
@@ -1092,7 +1092,7 @@ monotonic==1.6
     # via
     #   gsutil
     #   segment-analytics-python
-more-itertools==11.0.1
+more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
@@ -1594,7 +1594,7 @@ py-cpuinfo==9.0.0
     # via deepspeed
 py-partiql-parser==0.6.3
     # via moto
-py-spy==0.4.1 ; python_version < "3.12"
+py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
@@ -1946,7 +1946,7 @@ responses==0.25.8
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-restrictedpython==8.1
+restrictedpython==8.0
     # via aim
 retry-decorator==1.1.1
     # via
@@ -2051,7 +2051,7 @@ sentry-sdk==2.10.0
     # via
     #   comet-ml
     #   wandb
-serpent==1.42
+serpent==1.41
     # via
     #   hpbandster
     #   pyro4
@@ -2477,7 +2477,7 @@ uvicorn==0.22.0
     #   aim
     #   gradio
     #   mlflow-skinny
-uvloop==0.22.1
+uvloop==0.21.0
     # via pymars
     # via
     #   nsx-policy-python-sdk

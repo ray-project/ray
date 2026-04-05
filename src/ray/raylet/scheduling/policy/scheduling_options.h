@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <optional>
-#include <utility>
-
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 
@@ -40,14 +37,7 @@ enum class SchedulingType {
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
   AFFINITY_WITH_BUNDLE = 8,
-  NODE_LABEL = 9,
-};
-
-// Label-domain-level scheduling strategies for placement groups.
-// Only STRICT_PACK is supported for now.
-enum class LabelDomainSchedulingStrategy {
-  NONE = 0,
-  STRICT_PACK = 1,
+  NODE_LABEL = 9
 };
 
 // Options that controls the scheduling behavior.
@@ -78,7 +68,6 @@ struct SchedulingOptions {
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
-                             /*target_label_domain*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              preferred_node_id);
   }
@@ -115,7 +104,6 @@ struct SchedulingOptions {
         /*avoid_local_node*/ false,
         /*require_node_available*/ true,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_label_domain*/ std::nullopt,
         std::move(scheduling_context));
   }
 
@@ -129,7 +117,6 @@ struct SchedulingOptions {
         /*avoid_local_node*/ false,
         /*require_node_available*/ true,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_label_domain*/ std::nullopt,
         std::move(scheduling_context));
   }
   /*
@@ -137,56 +124,45 @@ struct SchedulingOptions {
    */
 
   // construct option for soft pack scheduling policy.
-  static SchedulingOptions BundlePack(
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+  static SchedulingOptions BundlePack() {
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain));
+                             /*avoid_gpu_nodes*/ false);
   }
 
   // construct option for strict spread scheduling policy.
-  static SchedulingOptions BundleSpread(
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+  static SchedulingOptions BundleSpread() {
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain));
+                             /*avoid_gpu_nodes*/ false);
   }
 
   // construct option for strict pack scheduling policy.
   static SchedulingOptions BundleStrictPack(
-      scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil(),
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
-    SchedulingOptions options(SchedulingType::BUNDLE_STRICT_PACK,
-                              /*spread_threshold*/ 0,
-                              /*avoid_local_node*/ false,
-                              /*require_node_available*/ true,
-                              /*avoid_gpu_nodes*/ false,
-                              std::move(target_label_domain));
-    options.bundle_strict_pack_soft_target_node_id_ = soft_target_node_id;
-    return options;
+      scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil()) {
+    SchedulingOptions scheduling_options =
+        SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
+                          /*spread_threshold*/ 0,
+                          /*avoid_local_node*/ false,
+                          /*require_node_available*/ true,
+                          /*avoid_gpu_nodes*/ false);
+    scheduling_options.bundle_strict_pack_soft_target_node_id_ = soft_target_node_id;
+    return scheduling_options;
   }
 
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleStrictSpread(
-      std::unique_ptr<SchedulingContext> scheduling_context = nullptr,
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+      std::unique_ptr<SchedulingContext> scheduling_context = nullptr) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain),
-                             std::move(scheduling_context));
+                             /*scheduling_context*/ std::move(scheduling_context));
   }
 
   SchedulingType scheduling_type_;
@@ -194,15 +170,6 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
-  // The scheduling strategy for the label domain level.
-  // Set to NONE to disable label domain level scheduling.
-  LabelDomainSchedulingStrategy label_domain_scheduling_strategy_ =
-      LabelDomainSchedulingStrategy::NONE;
-  // The label domain target for label-domain-aware scheduling.
-  // first: the node label key used to partition nodes into groups.
-  // second: if set, constrains scheduling to this domain value
-  //   (bundle rescheduling). If nullopt, a new group is selected.
-  std::pair<std::string, std::optional<std::string>> target_label_domain_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
@@ -226,8 +193,6 @@ struct SchedulingOptions {
       bool avoid_local_node,
       bool require_node_available,
       bool avoid_gpu_nodes,
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
       const std::string &preferred_node_id = std::string(),
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
@@ -237,12 +202,6 @@ struct SchedulingOptions {
         avoid_local_node_(avoid_local_node),
         require_node_available_(require_node_available),
         avoid_gpu_nodes_(avoid_gpu_nodes),
-        label_domain_scheduling_strategy_(target_label_domain.has_value()
-                                              ? LabelDomainSchedulingStrategy::STRICT_PACK
-                                              : LabelDomainSchedulingStrategy::NONE),
-        target_label_domain_(target_label_domain.has_value()
-                                 ? std::move(*target_label_domain)
-                                 : std::pair<std::string, std::optional<std::string>>{}),
         scheduling_context_(std::move(scheduling_context)),
         preferred_node_id_(preferred_node_id),
         schedule_top_k_absolute_(schedule_top_k_absolute),

@@ -126,7 +126,7 @@ class PressureMemoryMonitor : public MemoryMonitorInterface {
   /**
    * @return True if the memory monitor is enabled, false otherwise.
    */
-  bool IsEnabled() const override;
+  bool IsEnabled() override;
 
  private:
   /**

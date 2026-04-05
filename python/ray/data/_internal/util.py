@@ -1,7 +1,6 @@
 import functools
 import importlib
 import logging
-import math
 import os
 import pathlib
 import platform
@@ -182,9 +181,6 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
-        # Guard against non-scalar types (e.g. numpy arrays) that would cause
-        # np.isnan() to raise TypeError in newer numpy versions.
-        and isinstance(mem_size, (int, float))
         and not np.isnan(mem_size)
         and target_max_block_size is not None
     ):
@@ -1012,36 +1008,6 @@ class _InterruptibleQueue(Queue):
                 return
             except Full:
                 pass
-
-
-def _arrow_batcher(table: "pyarrow.Table", output_batch_size: int):
-    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
-    num_rows = table.num_rows
-    for i in range(0, num_rows, output_batch_size):
-        end_idx = min(i + output_batch_size, num_rows)
-        # Use PyArrow's zero-copy slice operation
-        batch_table = table.slice(i, end_idx - i)
-        yield batch_table
-
-
-def _iter_arrow_table_for_target_max_block_size(
-    table: "pyarrow.Table",
-    target_max_block_size: Optional[int],
-) -> Iterator["pyarrow.Table"]:
-    """Yield *table* as one block, or row-split when it exceeds the byte budget.
-
-    Splits by estimating how many blocks are needed from ``table.nbytes`` vs
-    ``target_max_block_size``, then batches rows evenly via :func:`_arrow_batcher`.
-    Used by download paths so block sizing stays consistent.
-    """
-    output_block_size = table.nbytes
-    max_bytes = target_max_block_size
-    if max_bytes is not None and max_bytes > 0 and output_block_size > max_bytes:
-        num_blocks = math.ceil(output_block_size / max_bytes)
-        num_rows = table.num_rows
-        yield from _arrow_batcher(table, int(math.ceil(num_rows / num_blocks)))
-    else:
-        yield table
 
 
 def make_async_gen(

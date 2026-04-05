@@ -6,7 +6,6 @@ in the converted python script.
 """
 
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
@@ -81,13 +80,5 @@ if __name__ == "__main__":
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
 
-    # Run the notebook in a subprocess. Use cwd=script_dir and strip PYTHONPATH
-    # so "import ray" resolves to the installed Ray (e.g. from pip install -e in
-    # CI), not a runfiles or repo copy that may be incomplete (no ray.init).
-    script_dir = str(Path(name).resolve().parent)
-    env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
-    for key in list(env):
-        if key.startswith("RUNFILES_") or key == "PYTHONRUNFILES":
-            env.pop(key, None)
-    subprocess.run(remainder, check=True, env=env, cwd=script_dir)
+    # Run the notebook
+    subprocess.run(remainder, check=True)

@@ -33,7 +33,7 @@ class NoopMemoryMonitor : public MemoryMonitorInterface {
 
   void Enable() override {}
   void Disable() override {}
-  bool IsEnabled() const override { return true; }
+  bool IsEnabled() override { return true; }
 };
 
 }  // namespace ray

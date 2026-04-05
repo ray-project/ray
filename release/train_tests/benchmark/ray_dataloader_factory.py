@@ -207,7 +207,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
             # from the final dataset stage.
             ds_output_summary = summary.parents[0]
             ds_throughput = (
-                ds_output_summary.operators_stats[-1].output_num_rows.sum
+                ds_output_summary.operators_stats[-1].output_num_rows["sum"]
                 / ds_output_summary.get_total_wall_time()
             )
 

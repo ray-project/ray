@@ -45,7 +45,7 @@ class ConcurrencyLimiter(Searcher):
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
-        assert isinstance(max_concurrent, int) and max_concurrent > 0
+        assert type(max_concurrent) is int and max_concurrent > 0
         self.searcher = searcher
         self.max_concurrent = max_concurrent
         self.batch = batch
