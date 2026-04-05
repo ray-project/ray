@@ -167,17 +167,20 @@ class GPUShuffleActor:
             # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
             block = cdf.to_arrow(preserve_index=False)
             existing_metadata = block.schema.metadata or {}
-            tagged_block = block.replace_schema_metadata(
+            tagged_schema = block.schema.with_metadata(
                 {**existing_metadata, b"_gpu_partition_id": str(partition_id).encode()}
             )
             exec_stats = exec_stats_builder.build()
-            stats = yield tagged_block
+            stats = yield block
             if stats:
                 object.__setattr__(
                     exec_stats, "block_ser_time_s", stats.object_creation_dur_s
                 )
-            yield BlockMetadataWithSchema.from_block(
-                tagged_block, block_exec_stats=exec_stats
+            block_meta = BlockMetadataWithSchema.from_block(
+                block, block_exec_stats=exec_stats
+            )
+            yield BlockMetadataWithSchema.from_metadata(
+                block_meta.metadata, schema=tagged_schema
             )
 
 
@@ -496,7 +499,14 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions_reduced = 0
 
         def _on_bundle_ready(bundle: RefBundle) -> None:
-            partition_id = int(bundle.schema.metadata[b"_gpu_partition_id"])
+            assert (
+                bundle.schema is not None
+                and b"_gpu_partition_id" in bundle.schema.metadata
+            ), (
+                "Bundle is missing _gpu_partition_id in schema metadata. "
+                "Was finish_and_extract modified to skip tagging?"
+            )
+            partition_id = int(bundle.schema.metadata[b"_gpu_partition_id"].decode())
             clean_meta = {
                 k: v
                 for k, v in bundle.schema.metadata.items()
