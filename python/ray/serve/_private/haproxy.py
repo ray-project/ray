@@ -880,13 +880,8 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
     local port = response:match('"port"%s*:%s*(%d+)')
 
     if host and port then
-        -- Use set-dst approach: set destination address variables.
-        -- HAProxy's assign_server() still runs (native balance algorithm),
-        -- but set-dst/set-dst-port override the actual TCP destination.
-        -- This preserves HAProxy's connection scheduling intelligence
-        -- while routing to the custom-selected server.
-        txn:set_var("txn.dst_ip", host)
-        txn:set_var("txn.dst_port", port)
+        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
+        txn:set_var("txn.direct_ingress_target", routing_key)
         txn:set_var("txn.custom_request_routed", true)
     end
 end, 0)
