@@ -18,7 +18,6 @@ def create_bundle_queue() -> QueueWithRemoval:
 __all__ = [
     "BaseBundleQueue",
     "create_bundle_queue",
-    "SupportsRemoval",
     "HashLinkedQueue",
     "RebundleQueue",
     "EstimateSize",
