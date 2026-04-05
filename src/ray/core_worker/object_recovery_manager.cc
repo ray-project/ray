@@ -156,13 +156,17 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   const auto task_id = object_id.TaskId();
   std::vector<ObjectID> task_deps;
 
-  // Pool streaming-generator tasks that are still in progress are retried
-  // on a different actor via InternalHeartbeat, not via ResubmitTask.
-  // Mark the object as pending so ray.get waits for the retry to produce
-  // it. For FINISHED/FAILED tasks, fall through to normal reconstruction.
+  // Pool streaming-generator tasks: skip ResubmitTask entirely.
+  // For pending tasks, the ActorTaskSubmitter is already retrying (max_retries=-1)
+  // and the retry writes to the same ObjectRefStream with the same object IDs.
+  // For finished tasks, ResubmitTask would resubmit to the same actor, but the
+  // ObjectRefStream may already be consumed/deleted — resubmitted results would
+  // write to a dead stream and never reach downstream consumers.
+  // In both cases, mark the object as pending creation so downstream consumers
+  // wait. For pending tasks, the in-flight retry will produce the object.
   auto task_spec_opt = task_manager_.GetTaskSpec(task_id);
   if (task_spec_opt.has_value() && task_spec_opt->IsPoolTask() &&
-      task_spec_opt->IsStreamingGenerator() && task_manager_.IsTaskPending(task_id)) {
+      task_spec_opt->IsStreamingGenerator()) {
     reference_counter_.UpdateObjectPendingCreation(object_id, true);
     return;
   }
