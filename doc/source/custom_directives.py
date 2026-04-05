@@ -453,10 +453,13 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    TIME_SERIES_FORECASTING = "Time Series Forecasting"
+    RECOMMENDATION_SYSTEMS = "Recommendation Systems"
     ETL = "ETL"
     DATA_INGESTION = "Data Ingestion"
     DATA_WAREHOUSING = "Data Warehousing"
     DOCUMENT_PROCESSING = "Document Processing"
+    REINFORCEMENT_LEARNING = "Reinforcement Learning"
 
     @classmethod
     def formatted_name(cls):
@@ -488,6 +491,8 @@ class Framework(ExampleEnum):
 
     AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
+    JAX = "JAX"
+    FLAX = "Flax"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
     ACCELERATE = "Accelerate"
@@ -499,6 +504,7 @@ class Framework(ExampleEnum):
     DATAJUICER = "Data-Juicer"
     VLLM = "vLLM"
     PANDAS = "Pandas"
+    TRL = "TRL"
     ANY = "Any"
     UNSTRUCTURED = "Unstructured"
 
@@ -516,6 +522,7 @@ class RelatedTechnology(ExampleEnum):
     LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
+    DEPLOYMENT_PATTERNS = "Deployment Patterns"
 
     @classmethod
     def formatted_name(cls):

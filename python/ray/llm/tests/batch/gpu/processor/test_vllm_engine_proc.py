@@ -18,11 +18,21 @@ from ray.llm._internal.batch.stages.configs import (
 )
 
 
-def test_vllm_engine_processor(gpu_type, model_opt_125m):
+@pytest.mark.parametrize(
+    "tensor_parallel_size, expected_distributed_executor_backend",
+    [(1, "uni"), (2, "ray")],
+)
+def test_vllm_engine_processor(
+    gpu_type,
+    model_opt_125m,
+    tensor_parallel_size,
+    expected_distributed_executor_backend,
+):
     config = vLLMEngineProcessorConfig(
         model_source=model_opt_125m,
         engine_kwargs=dict(
             max_model_len=8192,
+            tensor_parallel_size=tensor_parallel_size,
         ),
         runtime_env=dict(
             env_vars=dict(
@@ -52,7 +62,8 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "model": model_opt_125m,
         "engine_kwargs": {
             "max_model_len": 8192,
-            "distributed_executor_backend": "mp",
+            "distributed_executor_backend": expected_distributed_executor_backend,
+            "tensor_parallel_size": tensor_parallel_size,
             "task_type": vLLMTaskType.GENERATE,
         },
         "task_type": vLLMTaskType.GENERATE,
@@ -61,6 +72,7 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
         "max_concurrent_batches": 8,
         "batch_size": 64,
         "should_continue_on_error": False,
+        "log_engine_metrics": True,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
@@ -68,12 +80,24 @@ def test_vllm_engine_processor(gpu_type, model_opt_125m):
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
     compute = stage.map_batches_kwargs.pop("compute")
     assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
-    assert stage.map_batches_kwargs == {
-        "zero_copy_batch": True,
-        "max_concurrency": 8,
-        "accelerator_type": gpu_type,
-        "num_gpus": 1,
-    }
+
+    if expected_distributed_executor_backend == "ray":
+        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+        assert ray_remote_args_fn is not None
+        assert stage.map_batches_kwargs == {
+            "zero_copy_batch": True,
+            "max_concurrency": 8,
+            "accelerator_type": gpu_type,
+            "num_gpus": 0,
+        }
+    else:
+        assert "ray_remote_args_fn" not in stage.map_batches_kwargs
+        assert stage.map_batches_kwargs == {
+            "zero_copy_batch": True,
+            "max_concurrency": 8,
+            "accelerator_type": gpu_type,
+            "num_gpus": 1,
+        }
 
 
 def test_vllm_engine_processor_task_override(model_opt_125m):
@@ -147,6 +171,76 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     }
 
 
+@pytest.mark.parametrize(
+    "engine_kwargs_extra,expected_num_bundles",
+    [
+        ({"tensor_parallel_size": 2}, 2),
+        (
+            {"tensor_parallel_size": 2, "pipeline_parallel_size": 2},
+            4,
+        ),
+        ({}, 1),  # Default case: tp=1, pp=1 → executor_backend="uni"
+    ],
+)
+def test_vllm_engine_processor_bundle_per_worker(
+    gpu_type, model_opt_125m, engine_kwargs_extra, expected_num_bundles
+):
+    """Test bundle_per_worker auto-expands based on tp*pp."""
+    engine_kwargs = dict(max_model_len=8192)
+    engine_kwargs.update(engine_kwargs_extra)
+    config = vLLMEngineProcessorConfig(
+        model_source=model_opt_125m,
+        engine_kwargs=engine_kwargs,
+        accelerator_type=gpu_type,
+        concurrency=4,
+        batch_size=64,
+        chat_template_stage=ChatTemplateStageConfig(enabled=True),
+        tokenize_stage=TokenizerStageConfig(enabled=True),
+        placement_group_config={"bundle_per_worker": {"CPU": 1, "GPU": 1}},
+    )
+    processor = ProcessorBuilder.build(config)
+    stage = processor.get_stage_by_name("vLLMEngineStage")
+
+    stage.map_batches_kwargs.pop("runtime_env")
+    stage.map_batches_kwargs.pop("compute")
+
+    expected_kwargs = {
+        "zero_copy_batch": True,
+        "max_concurrency": 8,
+        "accelerator_type": gpu_type,
+    }
+
+    if expected_num_bundles > 1:
+        # TP/PP > 1 -> executor_backend="ray"
+        ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")
+        assert ray_remote_args_fn.args[0] == expected_num_bundles
+        assert ray_remote_args_fn.args[1] == gpu_type
+        expected_bundles = [{"CPU": 1, "GPU": 1}] * expected_num_bundles
+        assert ray_remote_args_fn.args[2]["bundles"] == expected_bundles
+        assert ray_remote_args_fn.args[2]["strategy"] == "PACK"
+        expected_kwargs["num_gpus"] = 0
+    else:
+        # TP=1, PP=1 -> executor_backend="uni"
+        expected_kwargs["num_cpus"] = 1
+        expected_kwargs["num_gpus"] = 1
+
+    assert stage.map_batches_kwargs == expected_kwargs
+
+
+def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type, model_opt_125m):
+    """Test that specifying both bundle_per_worker and bundles raises error."""
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        vLLMEngineProcessorConfig(
+            model_source=model_opt_125m,
+            engine_kwargs=dict(max_model_len=8192),
+            accelerator_type=gpu_type,
+            placement_group_config={
+                "bundle_per_worker": {"CPU": 1, "GPU": 1},
+                "bundles": [{"CPU": 1, "GPU": 1}],
+            },
+        )
+
+
 def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_256m):
     config = vLLMEngineProcessorConfig(
         model_source=model_smolvlm_256m,
@@ -175,7 +269,7 @@ def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_
     assert model_config_kwargs["model"] == model_smolvlm_256m
 
 
-@pytest.mark.parametrize("backend", ["mp", "ray"])
+@pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
 def test_generation_model(gpu_type, model_opt_125m, backend):
     # OPT models don't have chat template, so we use ChatML template
     # here to demonstrate the usage of custom chat template.
@@ -590,6 +684,14 @@ def test_audio_model(
 
 
 class TestVLLMEngineProcessorConfig:
+    def test_build_processor_autoconfig_failure(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
+        )
+
+        processor = build_processor(config)
+        assert processor is not None
+
     @pytest.mark.parametrize(
         "experimental_config",
         [

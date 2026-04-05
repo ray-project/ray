@@ -24,7 +24,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"
-#include "ray/util/process.h"
+#include "ray/util/compat.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 

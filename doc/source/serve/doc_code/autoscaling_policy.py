@@ -131,3 +131,48 @@ def stateful_application_level_policy(
 
 
 # __end_stateful_application_level_policy__
+# __begin_apply_autoscaling_config_example__
+from typing import Any, Dict
+from ray.serve.config import AutoscalingContext
+
+
+def queue_length_based_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> tuple[int, Dict[str, Any]]:
+    # This policy calculates the "raw" desired replicas based on queue length.
+    # Ray Serve automatically applies scaling factors, delays, and bounds from
+    # the deployment's autoscaling_config on top of this decision.
+
+    queue_length = ctx.total_num_requests
+
+    if queue_length > 50:
+        return 10, {}
+    elif queue_length > 10:
+        return 5, {}
+    else:
+        return 0, {}
+# __end_apply_autoscaling_config_example__
+
+# __begin_apply_autoscaling_config_usage__
+from ray import serve
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+
+@serve.deployment(
+    autoscaling_config=AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        metrics_interval_s=0.1,
+        upscale_delay_s=1.0,
+        downscale_delay_s=1.0,
+        policy=AutoscalingPolicy(
+            policy_function=queue_length_based_autoscaling_policy
+        )
+    ),
+    max_ongoing_requests=5,
+)
+class MyDeployment:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+app = MyDeployment.bind()
+# __end_apply_autoscaling_config_usage__

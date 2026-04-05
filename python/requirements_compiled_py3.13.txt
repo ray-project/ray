@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 
 about-time==4.2.1
     # via alive-progress
@@ -47,7 +47,7 @@ aiofiles==22.1.0
     #   gradio
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.11.16
+aiohttp==3.13.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -67,7 +67,7 @@ aioitertools==0.11.0
     # via aiobotocore
 aiorwlock==1.3.0
     # via -r python/requirements.txt
-aiosignal==1.3.1
+aiosignal==1.4.0
     # via aiohttp
 alabaster==0.7.13
     # via sphinx
@@ -90,7 +90,7 @@ antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
     #   qpd
-anyio==3.7.1
+anyio==4.5.0
     # via
     #   gradio
     #   httpx
@@ -224,7 +224,7 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==2.4.3 ; python_version < "3.12"
+bokeh==3.1.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -418,7 +418,7 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-dask==2024.8.1 ; python_version < "3.12"
+dask==2025.5.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask-expr
@@ -465,7 +465,7 @@ directsearch==1.0
     # via nevergrad
 distlib==0.3.7
     # via virtualenv
-distributed==2024.8.1 ; python_version < "3.12"
+distributed==2025.5.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -1001,11 +1001,11 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
-kafka-python==2.2.15
+confluent-kafka==2.13.0
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==3.12.0
     # via tensorflow
-kiwisolver==1.4.5
+kiwisolver==1.4.7
     # via matplotlib
 knack==0.11.0
     # via azure-cli-core
@@ -1327,7 +1327,7 @@ numpy==2.2.6
     #   webdataset
     #   xgboost
     #   zoopt
-nvidia-nccl-cu12==2.20.5
+nvidia-nccl-cu12==2.26.2
     # via xgboost
 oauth2client==4.1.3
     # via
@@ -1336,7 +1336,7 @@ oauth2client==4.1.3
     #   google-apitools
 oauthlib==3.2.2
     # via requests-oauthlib
-onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.19.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
@@ -1358,7 +1358,7 @@ openlineage-python==1.40.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.34.1
+opentelemetry-api==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1369,33 +1369,33 @@ opentelemetry-api==1.34.1
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-prometheus==0.55b1
+opentelemetry-exporter-prometheus==0.60b0
     # via -r python/requirements.txt
-opentelemetry-instrumentation==0.55b1
+opentelemetry-instrumentation==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.55b1
+opentelemetry-instrumentation-asgi==0.60b0
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.55b1
+opentelemetry-instrumentation-fastapi==0.60b0
     # via -r python/requirements/test-requirements.txt
 opentelemetry-proto==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-sdk==1.34.1
+opentelemetry-sdk==1.39.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.55b1
+opentelemetry-semantic-conventions==0.60b0
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.55b1
+opentelemetry-util-http==0.60b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -1581,7 +1581,7 @@ proto-plus==1.26.1
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
-protobuf==5.29.5
+protobuf==5.29.6
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1666,7 +1666,7 @@ pybase64==1.4.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
-pycurl==7.45.3
+pycurl==7.45.4
     # via -r python/requirements/cloud-requirements.txt
 pydantic==2.12.3
     # via
@@ -1699,7 +1699,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1707,7 +1707,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==0.22.0
+pylance==1.0.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
@@ -1977,7 +1977,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.13.4
+responses==0.15.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
@@ -2220,7 +2220,7 @@ strictyaml==1.7.3
     # via pyiceberg
 supersuit==3.9.3
     # via -r python/requirements/ml/rllib-test-requirements.txt
-sympy==1.13.1
+sympy==1.13.3
     # via
     #   ax-platform
     #   cfn-lint
@@ -2308,7 +2308,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0
+torch==2.7.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2346,7 +2346,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0
+torchvision==0.22.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml

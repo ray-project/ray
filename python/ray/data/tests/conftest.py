@@ -3,6 +3,7 @@ import os
 import posixpath
 import time
 from collections import defaultdict
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -11,9 +12,12 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
@@ -24,6 +28,24 @@ from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
+
+
+def mock_all_to_all_op(input_op, name="MockAllToAll"):
+    """Create a mock AllToAllOperator for testing.
+
+    Creates an AllToAllOperator which is NOT eligible for resource allocation
+    (throttling_disabled=True) but is a blocking materializing operator.
+
+    Note: Creating this operator automatically adds it to input_op._output_dependencies.
+    """
+    op = AllToAllOperator(
+        bulk_fn=MagicMock(),
+        input_op=input_op,
+        data_context=ray.data.DataContext.get_current(),
+        name=name,
+    )
+    op.start = MagicMock(side_effect=lambda _: None)
+    return op
 
 
 @pytest.fixture(scope="module")
@@ -240,6 +262,48 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
+def _get_supported_tensor_formats():
+    """Get list of supported tensor formats based on PyArrow version.
+
+    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
+    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
+    """
+    from ray.data._internal.tensor_extensions.arrow import (
+        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+        FixedShapeTensorFormat,
+    )
+
+    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
+        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
+    return formats
+
+
+@pytest.fixture(params=_get_supported_tensor_formats())
+def tensor_format(request):
+    """Fixture that yields supported tensor formats.
+
+    Yields V1, V2 for all PyArrow versions.
+    Yields ARROW_NATIVE only when PyArrow >= 16.
+
+    This allows tests to use `tensor_format.to_type()` safely without
+    needing fallback logic for unsupported PyArrow versions.
+    """
+    return request.param
+
+
+@pytest.fixture
+def tensor_format_context(request, restore_data_context, tensor_format):
+    """Fixture that sets the DataContext to use the given tensor format.
+
+    Combines restore_data_context with tensor_format to automatically
+    configure the context for tensor format testing.
+    """
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.arrow_fixed_shape_tensor_format = tensor_format
+    return tensor_format
+
+
 @pytest.fixture
 def disable_fallback_to_object_extension(request, restore_data_context):
     """Disables fallback to ArrowPythonObjectType"""
@@ -422,18 +486,18 @@ def op_two_block():
     block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
-        block_exec_stats = BlockExecStats()
+        start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
-        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
-        block_exec_stats.end_time_s = (
-            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        block_exec_stats = BlockExecStats(
+            start_time_s=start_time_s,
+            end_time_s=start_time_s + block_params["wall_time"][i],
+            wall_time_s=block_params["wall_time"][i],
+            cpu_time_s=block_params["cpu_time"][i],
+            udf_time_s=block_params["udf_time"][i],
+            node_id=block_params["node_id"][i],
+            max_uss_bytes=block_params["uss_bytes"][i],
+            task_idx=block_params["task_idx"][i],
         )
-        block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
-        block_exec_stats.udf_time_s = block_params["udf_time"][i]
-        block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
-        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],

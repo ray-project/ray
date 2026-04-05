@@ -8,6 +8,7 @@ from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
+    DEFAULT_CLOUD_NAME,
     as_smoke_test,
     get_test_project_id,
 )
@@ -32,6 +33,7 @@ DOCKER_PLUGIN_KEY = "docker#v5.8.0"
 _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
+        "ANYSCALE_CLOUD_NAME": str(DEFAULT_CLOUD_NAME),
         "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
         "RELEASE_AWS_BUCKET": str(RELEASE_AWS_BUCKET),
         "RELEASE_AWS_LOCATION": "dev",
@@ -127,8 +129,6 @@ def get_step(
     cmd = [
         "./release/run_release_test.sh",
         shlex.quote(test["name"]),
-        "--log-streaming-limit",
-        "100",
     ]
 
     for file in test_collection_file or []:
@@ -182,16 +182,10 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable, allow to soft fail
-    stable = test.get("stable", True)
     clone_test = copy.deepcopy(test)  # avoid modifying the original test
     clone_test.update_from_s3()
     jailed = clone_test.get_state() == TestState.JAILED
     full_label = ""
-    if not stable:
-        step["soft_fail"] = True
-    if not stable:
-        full_label += "[unstable]"
     if jailed:
         full_label += "[jailed]"
 

@@ -1,0 +1,12 @@
+name: "ray-py$PYTHON_VERSION-cpu$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX"  # CPU base image with Python + deps
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"     # Ray wheel
+dockerfile: ci/docker/ray-image.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - PLATFORM=cpu
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION

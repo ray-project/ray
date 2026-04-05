@@ -382,6 +382,13 @@ class Node:
                     gcs_server_port=int(gcs_server_port) if gcs_server_port else 0
                 )
 
+        # For worker nodes, check version compatibility before spawning
+        # any processes (including the reaper). If the check fails (e.g.
+        # Ray / Python version mismatch) we raise immediately rather than
+        # leave orphaned child processes behind.
+        if not head and not connect_only:
+            self.check_version_info()
+
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
         if not connect_only:
@@ -425,8 +432,8 @@ class Node:
                 self.gcs_address,
                 self._node_id,
             )
-            # Set node labels from GCS if provided at node init.
-            self._node_labels = node_info.get("labels", {})
+        # Set node labels from GCS
+        self._node_labels = node_info.get("labels", {}) if node_info else {}
 
         # port can be 0 or None for two cases:
         # 1. user is starting a new ray cluster and does not specify the port, components self-bind.
@@ -579,6 +586,7 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
+                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
@@ -832,16 +840,21 @@ class Node:
         raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
 
     def should_redirect_logs(self):
+        # Preferred: thread the setting explicitly via RayParams.log_to_stderr.
+        # This avoids relying on process-global environment variables.
+        if getattr(self._ray_params, "log_to_stderr", None) is not None:
+            return not self._ray_params.log_to_stderr
+
+        # Deprecated (kept for backward compatibility): RayParams.redirect_output.
         redirect_output = self._ray_params.redirect_output
-        if redirect_output is None:
+        if redirect_output is not None:
+            return redirect_output
+
             # Fall back to stderr redirect environment variable.
-            redirect_output = (
-                os.environ.get(
-                    ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE
-                )
-                != "1"
-            )
-        return redirect_output
+        return (
+            os.environ.get(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE)
+            != "1"
+        )
 
     # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
@@ -1069,6 +1082,7 @@ class Node:
             backup_count=self.backup_count,
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
+            proxy_server_url=self._ray_params.proxy_server_url,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -1435,10 +1449,6 @@ class Node:
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-
-        # add plasma store memory to the total system reserved memory
-        if self.resource_isolation_config.is_enabled():
-            self.resource_isolation_config.add_object_store_memory(object_store_memory)
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

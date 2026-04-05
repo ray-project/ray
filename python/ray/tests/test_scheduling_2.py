@@ -9,10 +9,13 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     get_metric_check_condition,
     make_global_state_accessor,
 )
@@ -794,9 +797,9 @@ def test_workload_placement_metrics(ray_start_regular):
                 partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_ms_bucket",
+                name="ray_tasks",
                 value=1.0,
-                partial_label_match={"WorkloadType": "Task"},
+                partial_label_match={"State": "FINISHED", "Name": "task"},
             ),
             MetricSamplePattern(
                 name="ray_scheduler_placement_time_ms_bucket",
@@ -806,7 +809,7 @@ def test_workload_placement_metrics(ray_start_regular):
         ],
         timeseries,
     )
-    wait_for_condition(placement_metric_condition, timeout=60)
+    wait_for_condition(placement_metric_condition, timeout=30)
 
 
 def test_negative_resource_availability(shutdown_only):

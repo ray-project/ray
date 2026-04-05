@@ -799,8 +799,25 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
+        response_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         """Set options for this handle and return an updated copy of it.
+
+        Args:
+            method_name: The method name to call on the deployment.
+            multiplexed_model_id: The model ID to use for multiplexed model requests.
+            stream: Whether to use streaming for the request.
+            use_new_handle_api: Whether to use the new handle API.
+            _prefer_local_routing: Whether to prefer local routing.
+            _by_reference: Whether to use by reference.
+            request_serialization: Serialization method for RPC requests.
+                Available options: "cloudpickle", "pickle", "msgpack", "orjson".
+                Defaults to "cloudpickle".
+            response_serialization: Serialization method for RPC responses.
+                Available options: "cloudpickle", "pickle", "msgpack", "orjson".
+                Defaults to "cloudpickle".
 
         Example:
 
@@ -828,6 +845,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _by_reference=_by_reference,
+            request_serialization=request_serialization,
+            response_serialization=response_serialization,
         )
 
     def remote(

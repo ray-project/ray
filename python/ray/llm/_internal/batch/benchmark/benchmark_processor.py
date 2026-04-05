@@ -44,23 +44,19 @@ class Mode(Enum):
 
 # Default sampling parameters -- ensure a fair comparison by omitting sampling-induced variance
 VLLM_SAMPLING_PARAMS = {
+    "top_p": 1.0,
     "temperature": 1.0,
     "max_tokens": 100,
-    "top_p": 1.0,
     "ignore_eos": True,
 }
 
 # Default vLLM engine kwargs
 VLLM_ENGINE_KWARGS = {
-    "enable_prefix_caching": True,
-    "enable_chunked_prefill": True,
     "max_num_batched_tokens": 4096,
 }
 
-# Default pooling parameters for classification
-CLASSIFY_POOLING_PARAMS = {
-    "truncate_prompt_tokens": -1,
-}
+# Default tokenization kwargs for classification -- truncate to max_model_len.
+CLASSIFY_TOKENIZATION_KWARGS_DEFAULT = {"truncation": True, "max_length": 512}
 
 
 def build_vllm_engine_kwargs(**kwargs) -> dict:
@@ -226,10 +222,18 @@ def build_classify_processor(
     batch_size: int,
     concurrency: int,
     model: str,
-    pooling_params: dict = CLASSIFY_POOLING_PARAMS,
+    tokenization_kwargs: dict = CLASSIFY_TOKENIZATION_KWARGS_DEFAULT,
     max_model_len: int = 512,
+    distributed_executor_backend: str = None,
 ):
     """Build vLLM engine processor for classification benchmark."""
+
+    engine_kwargs = VLLM_ENGINE_KWARGS.copy()
+    if distributed_executor_backend is not None:
+        engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
+
+    # Truncate prompts to max_model_len to avoid errors on long inputs.
+    tokenization_kwargs = {**tokenization_kwargs, "max_length": max_model_len}
 
     config = vLLMEngineProcessorConfig(
         model_source=model,
@@ -239,16 +243,13 @@ def build_classify_processor(
         chat_template_stage=ChatTemplateStageConfig(enabled=False),
         tokenize_stage=TokenizerStageConfig(enabled=True),
         detokenize_stage=DetokenizeStageConfig(enabled=False),
-        engine_kwargs={
-            "enforce_eager": True,
-            "max_model_len": max_model_len,
-        },
+        engine_kwargs=engine_kwargs,
     )
     return build_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
-            pooling_params=pooling_params,
+            tokenization_kwargs=tokenization_kwargs,
         ),
         postprocess=lambda row: {
             "probs": float(row["embeddings"][0])
@@ -487,7 +488,7 @@ def benchmark(
             batch_size=batch_size,
             concurrency=concurrency,
             model=model,
-            pooling_params=CLASSIFY_POOLING_PARAMS,
+            distributed_executor_backend=distributed_executor_backend,
         )
     else:
         return run_processor(
@@ -571,9 +572,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--distributed-executor-backend",
         type=str,
-        default="mp",
-        choices=["ray", "mp"],
+        default=None,
+        choices=["ray", "mp", "uni"],
         help="Distributed executor backend for vLLM engine",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Maximum number of tokens to generate per request (default: 100)",
     )
     # Ray Data worker configuration
     parser.add_argument(
@@ -603,13 +610,18 @@ def main() -> None:
         prompts = dataset.sample(args.num_prompts)
 
         dataset = data.from_items(prompts)
+
+        sampling_params = VLLM_SAMPLING_PARAMS.copy()
+        if args.max_tokens is not None:
+            sampling_params["max_tokens"] = args.max_tokens
+
         result = benchmark(
             Mode(args.mode),
             dataset,
             batch_size=args.batch_size,
             concurrency=args.concurrency,
             model=args.model,
-            sampling_params=VLLM_SAMPLING_PARAMS,
+            sampling_params=sampling_params,
             pipeline_parallel_size=args.pipeline_parallel_size,
             tensor_parallel_size=args.tensor_parallel_size,
             distributed_executor_backend=args.distributed_executor_backend,

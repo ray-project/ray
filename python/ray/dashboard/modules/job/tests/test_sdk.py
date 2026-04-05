@@ -4,8 +4,9 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import aiohttp
 import pytest
 
 import ray.experimental.internal_kv as kv
@@ -64,12 +65,14 @@ def check_internal_kv_gced():
 @pytest.mark.parametrize("cookies", [None, {"test_cookie_key": "test_cookie_val"}])
 @pytest.mark.parametrize("metadata", [None, {"test_metadata_key": "test_metadata_val"}])
 @pytest.mark.parametrize("headers", [None, {"test_headers_key": "test_headers_val"}])
+@pytest.mark.parametrize("extra_kwargs", [{}, {"cloud": "my-cloud"}])
 def test_parse_cluster_info(
     address_param: Tuple[str, str, str],
     create_cluster_if_needed: bool,
     cookies: Optional[Dict[str, str]],
     metadata: Optional[Dict[str, str]],
     headers: Optional[Dict[str, str]],
+    extra_kwargs: Dict[str, str],
 ):
     """
     Test ray.dashboard.modules.dashboard_sdk.parse_cluster_info for different
@@ -99,6 +102,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
         elif module_string == "other_module":
             assert (
@@ -108,6 +112,7 @@ def test_parse_cluster_info(
                     cookies=cookies,
                     metadata=metadata,
                     headers=headers,
+                    **extra_kwargs,
                 )
                 == "Other module ClusterInfo"
             )
@@ -118,6 +123,7 @@ def test_parse_cluster_info(
                 cookies=cookies,
                 metadata=metadata,
                 headers=headers,
+                **extra_kwargs,
             )
 
 
@@ -294,6 +300,54 @@ def test_job_submission_with_runtime_env_as_object(
         assert "gcs://" in parsed_runtime_env["working_dir"]
         assert len(parsed_runtime_env["py_modules"]) == 1
         assert "gcs://" in parsed_runtime_env["py_modules"][0]
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_passes_headers_to_websocket(ray_start_regular):
+    """
+    Test that authentication headers are passed to WebSocket connections.
+
+    This test verifies that headers provided to JobSubmissionClient are
+    explicitly passed to the ws_connect() method, not just to the ClientSession.
+    This is required because aiohttp's ClientSession does not automatically
+    include session headers in WebSocket upgrade requests.
+    """
+    dashboard_url = ray_start_regular.dashboard_url
+    test_headers = {"Authorization": "Bearer test-token"}
+    client = JobSubmissionClient(format_web_url(dashboard_url), headers=test_headers)
+
+    # Submit a simple job
+    job_id = client.submit_job(entrypoint="echo hello")
+
+    # Mock the aiohttp ClientSession and WebSocket
+    mock_ws = AsyncMock()
+    mock_ws.receive = AsyncMock()
+    mock_ws.receive.side_effect = [
+        # First call returns a text message
+        MagicMock(type=aiohttp.WSMsgType.TEXT, data="test log line\n"),
+        # Second call indicates WebSocket is closed
+        MagicMock(type=aiohttp.WSMsgType.CLOSED),
+    ]
+    mock_ws.close_code = 1000  # Normal closure
+
+    mock_session = AsyncMock()
+    mock_session.ws_connect = AsyncMock(return_value=mock_ws)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    # Patch ClientSession to use our mock
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        # Tail logs
+        log_lines = []
+        async for lines in client.tail_job_logs(job_id):
+            log_lines.append(lines)
+
+        # Verify ws_connect was called with headers
+        mock_session.ws_connect.assert_called_once()
+        call_args = mock_session.ws_connect.call_args
+
+        assert "headers" in call_args.kwargs
+        assert call_args.kwargs["headers"] == test_headers
 
 
 @pytest.mark.asyncio

@@ -70,7 +70,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Handle unregister rpc request come from raylet.
   void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                             rpc::UnregisterNodeReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
+                            rpc::SendReplyCallback send_reply_callback,
+                            const std::string &grpc_peer) override;
 
   /// TODO(#56627): This method is only called by autoscaler v1. It will be deleted
   /// once autoscaler v1 is fully deprecated. Autoscaler v2 calls
@@ -193,6 +194,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
     absl::MutexLock lock(&mutex_);
     RAY_CHECK(listener);
     node_added_listeners_.emplace_back(std::move(listener), io_context);
+  }
+
+  /// Add listener to monitor when a node is set to draining.
+  /// The listener receives (node_id, is_draining, draining_deadline_timestamp_ms).
+  ///
+  /// \param listener The handler which processes the draining state change.
+  void AddNodeDrainingListener(
+      std::function<void(const NodeID &, bool, int64_t)> listener) {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK(listener);
+    node_draining_listeners_.emplace_back(std::move(listener));
   }
 
   /// Initialize with the gcs tables data synchronously.
@@ -367,6 +379,10 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Listeners which monitors the removal of nodes.
   std::vector<Postable<void(std::shared_ptr<const rpc::GcsNodeInfo>)>>
       node_removed_listeners_ ABSL_GUARDED_BY(mutex_);
+
+  /// Listeners which monitor when nodes are set to draining.
+  std::vector<std::function<void(const NodeID &, bool, int64_t)>> node_draining_listeners_
+      ABSL_GUARDED_BY(mutex_);
 
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;

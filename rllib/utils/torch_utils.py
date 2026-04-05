@@ -646,7 +646,7 @@ def sequence_mask(
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+    mask = torch.ones(tuple(lengths.shape) + (maxlen,))
 
     mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.

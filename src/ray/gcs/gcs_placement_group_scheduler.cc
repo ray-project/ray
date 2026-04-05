@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -57,6 +58,20 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
+  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
+  // domain assignment so a new domain can be selected. If only some bundles are
+  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
+  if (placement_group->GetLabelDomainKey().has_value()) {
+    const std::vector<std::shared_ptr<const BundleSpecification>> &all_bundles =
+        placement_group->GetBundles();
+    bool is_total_failure = (bundles.size() == all_bundles.size());
+    if (is_total_failure) {
+      placement_group->ClearLabelDomainAssignments();
+      RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
+                    << " are unplaced, rescheduling on a new label domain";
+    }
+  }
+
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
@@ -67,12 +82,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     resource_request_list.emplace_back(&bundle->GetRequiredResources());
   }
 
-  auto scheduling_options =
-      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
-                              strategy,
-                              placement_group->GetSoftTargetNodeID());
-  auto scheduling_result =
-      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+  auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
+  auto scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
+      resource_request_list, scheduling_options);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -96,6 +108,15 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ". Selected node size: " << selected_nodes.size();
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
+
+  if (scheduling_result.selected_label_domain.has_value()) {
+    const auto &[label_domain_key, label_domain_value] =
+        *scheduling_result.selected_label_domain;
+    placement_group->SetLabelDomainAssignment(label_domain_key, label_domain_value);
+    RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
+                  << " assigned to label domain " << label_domain_key << ": "
+                  << label_domain_value;
+  }
 
   // Covert to a map of bundle to node.
   ScheduleMap bundle_to_node;
@@ -470,22 +491,34 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
-    const PlacementGroupID &placement_group_id,
-    rpc::PlacementStrategy strategy,
-    NodeID soft_target_node_id) {
+    const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
+  std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
+  std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
+  if (label_domain.has_value()) {
+    const std::string &label_domain_key = label_domain.value();
+    std::optional<std::string> label_value =
+        placement_group.GetLabelDomainAssignment(label_domain_key);
+    // If the label domain value is already selected for this pg, it means
+    // the bundles are being rescheduled and must be on the same domain.
+    target_label_domain = {label_domain_key, label_value};
+  }
+
+  NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
+  PlacementGroupID placement_group_id = placement_group.GetPlacementGroupID();
+
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack();
+    return SchedulingOptions::BundlePack(std::move(target_label_domain));
   case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread();
+    return SchedulingOptions::BundleSpread(std::move(target_label_domain));
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack(
         soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
-                                    : scheduling::NodeID(soft_target_node_id.Binary()));
-
+                                    : scheduling::NodeID(soft_target_node_id.Binary()),
+        std::move(target_label_domain));
   case rpc::PlacementStrategy::STRICT_SPREAD:
     return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id));
+        CreateSchedulingContext(placement_group_id), std::move(target_label_domain));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
@@ -663,9 +696,6 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
   return node_bundle_resources_map;
 }
 
-/// Help function to check if the resource_name has the pattern
-/// {original_resource_name}_group_{placement_group_id}, which means
-/// wildcard resource.
 bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
     const std::string &resource_name) {
   std::string_view resource_name_view(resource_name);
@@ -759,21 +789,6 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     if (IsPlacementGroupWildcardResource(entry.first)) {
       wildcard_resources[entry.first] = capacity - entry.second;
     } else {
-      if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-        auto available_amount =
-            cluster_resource_manager.GetNodeResources(node_id).available.Get(resource_id);
-        if (available_amount != capacity) {
-          RAY_LOG(WARNING)
-              << "The resource " << entry.first
-              << " now is still in use when removing bundle " << bundle_spec->Index()
-              << " from placement group: " << bundle_spec->PlacementGroupId()
-              << ", maybe some workers depending on this bundle have not released the "
-                 "resource yet."
-              << " We will try it later.";
-          bundle_resource_ids.clear();
-          break;
-        }
-      }
       bundle_resource_ids.emplace_back(resource_id);
     }
   }

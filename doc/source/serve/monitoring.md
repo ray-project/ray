@@ -662,9 +662,10 @@ These metrics track request throughput, errors, and latency at the replica level
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
 | `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_replica_utilization_percent` **[D]** | Gauge | `deployment`, `replica`, `application` | Percentage of replica capacity used over a rolling window. Calculated as total user code execution time divided by maximum capacity (`window_duration × max_ongoing_requests`). Useful for capacity planning and identifying underutilized or overloaded replicas. Configure with `RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S` (default: 600s), `RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS` (default: 60). |
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
-| `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
+| `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application`, `exception_type` | Total number of exceptions raised while processing requests. |
 
 ### Batching metrics
 
@@ -692,16 +693,20 @@ These metrics track proxy health and lifecycle.
 
 These metrics track replica health, restarts, and lifecycle timing.
 
+:::{note}
+These lifecycle **histograms** use `deployment` and `application` labels only—no `replica` label—so Prometheus cardinality stays manageable at scale.
+:::
+
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
 | `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
-| `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `replica`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
-| `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
-| `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `replica`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
-| `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `replica`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
+| `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
+| `ray_serve_replica_initialization_latency_ms` | Histogram | `deployment`, `application` | Time for the actor constructor to run in milliseconds. This is a subset of `ray_serve_replica_startup_latency_ms`. |
+| `ray_serve_replica_reconfigure_latency_ms` | Histogram | `deployment`, `application` | Time in milliseconds for a replica to complete reconfiguration. Includes both reconfigure time and one control-loop iteration, so very low values may be unreliable. |
+| `ray_serve_health_check_latency_ms` | Histogram | `deployment`, `application` | Duration of health check calls in milliseconds. Useful for identifying slow health checks blocking scaling. |
 | `ray_serve_health_check_failures_total` | Counter | `deployment`, `replica`, `application` | Total number of failed health checks. Provides early warning before replica is marked unhealthy. |
-| `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `replica`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
+| `ray_serve_replica_shutdown_duration_ms` | Histogram | `deployment`, `application` | Time from shutdown signal to replica fully stopped in milliseconds. Useful for debugging slow draining during scale-down or rolling updates. |
 
 ### Autoscaling metrics
 
@@ -715,6 +720,7 @@ These metrics provide visibility into autoscaling behavior and help debug scalin
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms` | Gauge | `deployment`, `application` | Time taken for async inference task queue metrics (from QueueMonitor) to reach the controller in milliseconds. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
 
@@ -740,8 +746,8 @@ These metrics track the Serve controller's performance. Useful for debugging con
 |--------|------|------|-------------|
 | `ray_serve_controller_control_loop_duration_s` | Gauge | — | Duration of the last control loop iteration in seconds. |
 | `ray_serve_controller_num_control_loops` | Gauge | `actor_id` | Total number of control loop iterations. Increases monotonically. |
-| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `replica`, `application` | Time taken for routing stats to propagate from replica to controller in milliseconds. |
-| `ray_serve_routing_stats_error_total` | Counter | `deployment`, `replica`, `application`, `error_type` | Total number of errors when getting routing stats from replicas. `error_type` is `exception` (replica raised an error) or `timeout` (replica didn't respond in time). |
+| `ray_serve_routing_stats_delay_ms` | Histogram | `deployment`, `application` | Time taken for routing stats to propagate from replica to controller in milliseconds. |
+| `ray_serve_routing_stats_error_total` | Counter | `deployment`, `replica`, `application`, `error_type` | Total number of errors when getting routing stats from replicas. `error_type` is `exception` (replica raised an error) or `timeout` (replica didn't respond in time). Includes `replica` so you can pinpoint which replica failed. |
 | `ray_serve_long_poll_host_transmission_counter_total` **[†]** | Counter | `namespace_or_state` | Total number of long poll updates transmitted to clients. |
 | `ray_serve_deployment_status` | Gauge | `deployment`, `application` | Numeric status of deployment: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = UPDATING, `4` = UPSCALING, `5` = DOWNSCALING, `6` = HEALTHY. Use for state timeline visualization and lifecycle debugging. |
 | `ray_serve_application_status` | Gauge | `application` | Numeric status of application: `0` = UNKNOWN, `1` = DEPLOY_FAILED, `2` = UNHEALTHY, `3` = NOT_STARTED, `4` = DELETING, `5` = DEPLOYING, `6` = RUNNING. Use for state timeline visualization and lifecycle debugging. |

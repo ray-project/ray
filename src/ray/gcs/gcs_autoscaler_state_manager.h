@@ -23,7 +23,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_actor_manager.h"
+#include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/gcs_node_manager.h"
@@ -70,7 +70,13 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
 
   void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
                        rpc::autoscaler::DrainNodeReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback,
+                       const std::string &grpc_peer) override;
+
+  void HandleResizeRayletResourceInstances(
+      rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+      rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleReportClusterConfig(rpc::autoscaler::ReportClusterConfigRequest request,
                                  rpc::autoscaler::ReportClusterConfigReply *reply,
