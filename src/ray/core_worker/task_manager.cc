@@ -743,6 +743,8 @@ void TaskManager::MaybeNotifyPoolTaskStreamDrained(const TaskID &task_id) {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
+      RAY_LOG(INFO) << "MaybeNotifyPoolTaskStreamDrained: task " << task_id
+                    << " not found in submissible_tasks (already erased)";
       return;
     }
     const auto &spec = it->second.spec_;
