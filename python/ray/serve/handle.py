@@ -759,7 +759,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
 class DeploymentBroadcastResponse:
     """Wraps the results of a broadcast call to all replicas of a deployment.
 
-    Collects results from all replicas in parallel.
+    Collects results from all replicas in parallel. Results are collected
+    from every replica that was live at the time ``broadcast()`` was called;
+    replicas added after the call are not included.
 
     Example:
 
@@ -805,11 +807,23 @@ class DeploymentBroadcastResponse:
         if self._replica_results is None:
             if self._loop is None or self._loop.is_closed():
                 # Local testing mode: no running event loop.
-                tmp_loop = asyncio.new_event_loop()
-                try:
-                    self._replica_results = tmp_loop.run_until_complete(self._coro)
-                finally:
-                    tmp_loop.close()
+                # Cache the outcome in _scheduled_future so the single-use
+                # coroutine is never re-entered on a subsequent call.
+                if self._scheduled_future is None:
+                    cached_future: concurrent.futures.Future = (
+                        concurrent.futures.Future()
+                    )
+                    tmp_loop = asyncio.new_event_loop()
+                    try:
+                        cached_future.set_result(
+                            tmp_loop.run_until_complete(self._coro)
+                        )
+                    except Exception as e:
+                        cached_future.set_exception(e)
+                    finally:
+                        tmp_loop.close()
+                    self._scheduled_future = cached_future
+                self._replica_results = self._scheduled_future.result(timeout=timeout_s)
             else:
                 self._replica_results = self._ensure_scheduled().result(
                     timeout=timeout_s
@@ -1124,6 +1138,16 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         This is useful for coordinated operations such as cache resets,
         configuration updates, or state synchronization across replicas.
+
+        .. warning::
+
+            ``broadcast()`` bypasses per-replica backpressure
+            (``max_queued_requests`` is not enforced). It is intended for
+            **infrequent control-plane operations** such as cache
+            invalidation, configuration reload, or state synchronisation
+            across replicas. Do not call it on the hot request path — doing
+            so will send one request per replica on every call, with no
+            rate limiting.
 
         Example:
 

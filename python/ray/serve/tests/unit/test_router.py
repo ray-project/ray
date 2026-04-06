@@ -362,6 +362,54 @@ class TestBroadcast:
             await router.broadcast(dummy_request_metadata())
 
 
+class TestDeploymentBroadcastResponseLocalTesting:
+    """Tests for DeploymentBroadcastResponse with loop=None (local testing mode)."""
+
+    def test_results_twice_after_error_does_not_raise_coroutine_reuse(self):
+        """Calling results() twice when the coroutine raises should replay the
+        cached exception, not crash with 'cannot reuse already awaited coroutine'.
+        """
+        from ray.serve.handle import DeploymentBroadcastResponse
+
+        async def failing_coro():
+            raise DeploymentUnavailableError("no replicas")
+
+        response = DeploymentBroadcastResponse(failing_coro(), loop=None)
+
+        with pytest.raises(DeploymentUnavailableError):
+            response.results()
+
+        # Second call must raise the same error, not RuntimeError about reuse.
+        with pytest.raises(DeploymentUnavailableError):
+            response.results()
+
+    def test_results_twice_after_success_returns_same_results(self):
+        """Calling results() twice on a successful broadcast should return the
+        same cached results both times.
+        """
+        from ray.serve.handle import DeploymentBroadcastResponse
+
+        fake_result = FakeReplicaResult(
+            replica_id=ReplicaID(
+                unique_id="r1", deployment_id=DeploymentID(name="test")
+            ),
+            is_generator_object=False,
+        )
+
+        async def success_coro():
+            return [fake_result]
+
+        response = DeploymentBroadcastResponse(success_coro(), loop=None)
+
+        # First call succeeds and caches.
+        replica_results = response._fetch_replica_results_sync()
+        assert len(replica_results) == 1
+
+        # Second call returns the same cached list.
+        replica_results_2 = response._fetch_replica_results_sync()
+        assert replica_results_2 is replica_results
+
+
 @pytest.mark.asyncio
 class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
