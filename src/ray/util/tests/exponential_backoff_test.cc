@@ -14,6 +14,7 @@
 
 #include "ray/util/exponential_backoff.h"
 
+#include <limits>
 #include <math.h>
 
 #include "gtest/gtest.h"
@@ -45,17 +46,17 @@ TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
         /*max_backoff_ms*/ 1234);
     ASSERT_EQ(backoff, 1234);
 
-  // Test against an attempt number that doesn't cause overflow but
-  // the base multiple does.
-  uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
-  uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
-  
-  auto multiplication_overflow = ExponentialBackoff::GetBackoffMs(
-      /*attempt*/ 2, 
-      /*base_ms*/ large_base, 
-      /*max_backoff_ms*/ max_allowed);
-  
-  ASSERT_EQ(multiplication_overflow, max_allowed);
+    // Test against an attempt number that doesn't cause overflow but
+    // the base multiple does.
+    uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
+    uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
+
+    auto multiplication_overflow = ExponentialBackoff::GetBackoffMs(
+        /*attempt*/ 2,
+        /*base_ms*/ large_base,
+        /*max_backoff_ms*/ max_allowed);
+
+    ASSERT_EQ(multiplication_overflow, max_allowed);
   }
 }
 
