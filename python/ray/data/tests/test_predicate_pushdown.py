@@ -412,10 +412,14 @@ class TestPassthroughBehavior:
         [
             (lambda ds: ds.sort("id"), "Sort"),
             (lambda ds: ds.repartition(10), "Repartition"),
+            (
+                lambda ds: ds.repartition(target_num_rows_per_block=10),
+                "StreamingRepartition",
+            ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
             (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
