@@ -123,9 +123,20 @@ def _get_internal_replica_context():
 def _get_deployment_actor(actor_name: str):
     """Get a handle to a deployment-scoped actor by name.
 
-    Thin wrapper around ``ray.get_actor`` with the Serve deployment-actor naming
-    convention. See ``serve.get_deployment_actor`` docstring for behavior,
-    ``ValueError``/``RayActorError`` expectations, and refresh patterns.
+    Must be called from within a running Serve replica. The actor must be
+    declared in the deployment's deployment_actors config.
+
+    Args:
+        actor_name: Name of the deployment-scoped actor (as specified in
+            deployment_actors list).
+
+    Returns:
+        Ray ActorHandle to the deployment-scoped actor.
+
+    Raises:
+        RayServeException: If not called from within a replica, or if the
+            actor is not found.
+        ValueError: If the actor is not found.
     """
     internal_context = _get_internal_replica_context()
     if internal_context is None:
