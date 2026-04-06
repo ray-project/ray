@@ -50,11 +50,18 @@ class NixlTransportMetadata(TensorTransportMetadata):
 
 @dataclass
 class TensorDesc:
-    # nixlRegDList handle, or None for pool-managed tensors (pool memory is
+    # nixlRegDList handle, or None for pool-only tensors (pool memory is
     # registered once at pool creation, so individual tensors don't need their
     # own NIXL registration).
     reg_desc: Any
-    metadata_count: int  # tracks the number of NIXL metadata containing the tensor
+    # tracks the number of NIXL metadata containing the tensor.
+    metadata_count: int
+    # True when a pool block is allocated for this storage.  The block must be
+    # returned to the pool when metadata_count reaches zero.  An entry may have
+    # both reg_desc != None AND pool_managed=True after a fallback from pool to
+    # traditional registration; in that case GC must both deregister the memory
+    # and return the pool block.
+    pool_managed: bool = False
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -383,11 +390,9 @@ class NixlTensorTransport(TensorTransportManager):
                 if tensor_desc.metadata_count == 0:
                     self._tensor_desc_cache.pop(key)
                     if tensor_desc.reg_desc is not None:
-                        # Traditional path: deregister NIXL memory
                         self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
                         self._nixl_agent_meta_version += 1
-                    else:
-                        # Pool path: return block to pool
+                    if tensor_desc.pool_managed:
                         pool_return_ptrs.append(key)
             if pool_return_ptrs and self._memory_pool is not None:
                 self._memory_pool.return_blocks(pool_return_ptrs)
@@ -435,14 +440,15 @@ class NixlTensorTransport(TensorTransportManager):
                         existing.metadata_count += 1
                         continue
                     # Pool-managed entry (reg_desc=None): register the
-                    # original tensor memory with NIXL for the fallback path,
-                    # and return the pool block since the upgraded entry will
-                    # use deregister_memory on GC instead.
+                    # original tensor memory with NIXL for the fallback path.
+                    # Keep pool_managed=True so GC returns the pool block when
+                    # metadata_count reaches zero (we can't free it now because
+                    # earlier metadata still references the pool address).
                     prev_count = existing.metadata_count
-                    if self._memory_pool is not None:
-                        self._memory_pool.return_block(key)
+                    pool_managed = True
                 else:
                     prev_count = 0
+                    pool_managed = False
                 mem_type = "cuda" if tensor.is_cuda else "cpu"
                 # the GPU ID of the device the tensor is on.
                 # NOTE: we clip this to 0 since the GPU ID is not used for
@@ -479,7 +485,9 @@ class NixlTensorTransport(TensorTransportManager):
                         f"  - Container cgroup memory restrictions\n"
                         f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
                     ) from e
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, prev_count + 1)
+                self._tensor_desc_cache[key] = TensorDesc(
+                    reg_desc, prev_count + 1, pool_managed
+                )
 
     def _add_pool_tensor_descs(self, tensors: List["torch.Tensor"]):
         """Add pool-managed tensor entries to the unified _tensor_desc_cache.
@@ -503,7 +511,7 @@ class NixlTensorTransport(TensorTransportManager):
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
                 self._tensor_desc_cache[key] = TensorDesc(
-                    reg_desc=None, metadata_count=1
+                    reg_desc=None, metadata_count=1, pool_managed=True
                 )
 
     def _allocate_from_memory_pool(
