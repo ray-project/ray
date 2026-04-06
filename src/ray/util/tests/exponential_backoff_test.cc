@@ -38,7 +38,7 @@ TEST(ExponentialBackoffTest, TestExceedMaxBackoffReturnsMaxBackoff) {
   ASSERT_EQ(backoff, 5);
 }
 
-TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
+TEST(ExponentialBackoffTest, TestOverflowAttemptNumberExponential) {
   // Test against a large attempt number causing overflow.
   for (int i = 64; i < 10000; i++) {
     auto backoff = ExponentialBackoff::GetBackoffMs(
@@ -46,13 +46,14 @@ TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
         /*base_ms*/ 1,
         /*max_backoff_ms*/ 1234);
     ASSERT_EQ(backoff, 1234);
-
-    // Test against an attempt number that doesn't cause overflow but
-    // multiplying it against the base backoff does.
-    uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
-    uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
   }
+}
 
+TEST(ExponentialBackoffTest, TestOverflowBaseMultiplication) {
+  // Test against an attempt number that doesn't cause overflow but
+  // multiplying it against the base backoff does.
+  uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
+  uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
   auto multiplication_overflow = ExponentialBackoff::GetBackoffMs(
       /*attempt*/ 2,
       /*base_ms*/ large_base,
