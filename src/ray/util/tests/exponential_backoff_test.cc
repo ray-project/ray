@@ -48,7 +48,7 @@ TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
     ASSERT_EQ(backoff, 1234);
 
     // Test against an attempt number that doesn't cause overflow but
-    // the base multiple does.
+    // multiplying it against the base backoff does.
     uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
     uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
 
