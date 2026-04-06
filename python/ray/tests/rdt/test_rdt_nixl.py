@@ -732,5 +732,77 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     assert not pool.has_block(ptr)
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_memory_pool_fallback(ray_start_regular):
+    """Test fallback from pool to traditional registration.
+
+    When a tensor was previously put via the pool path and a later ray.put
+    batch fails pool allocation (pool full for new tensors), the fallback
+    calls _add_tensor_descs which must:
+    - Register the original tensor memory with NIXL (reg_desc != None)
+    - Preserve pool_managed=True so GC returns the pool block
+    - On GC, both deregister the NIXL memory AND return the pool block
+    """
+    from ray.experimental.rdt.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+
+    tensor_a = torch.tensor([1, 2, 3], dtype=torch.float32).to("cuda")
+    tensor_b = torch.tensor([4, 5, 6, 7], dtype=torch.float32).to("cuda")
+    storage_size_a = tensor_a.untyped_storage().nbytes()
+
+    # Pool only large enough for tensor_a, not both.
+    transport.register_nixl_memory_pool(storage_size_a, torch.device("cuda"))
+    pool = transport._get_memory_pool("cuda")
+
+    # First put: tensor_a goes through pool path.
+    obj_id1 = "pool_obj"
+    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [tensor_a])
+    ptr_a = tensor_a.untyped_storage().data_ptr()
+    assert pool.has_block(ptr_a)
+    assert transport._tensor_desc_cache[ptr_a].reg_desc is None
+    assert transport._tensor_desc_cache[ptr_a].pool_managed is True
+    assert transport._tensor_desc_cache[ptr_a].metadata_count == 1
+
+    # Second put: [tensor_a, tensor_b] — pool can't fit tensor_b,
+    # so _allocate_from_memory_pool returns None and we fall back to
+    # _add_tensor_descs for the whole batch.
+    obj_id2 = "fallback_obj"
+    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [tensor_a, tensor_b])
+
+    # tensor_a: _add_tensor_descs found reg_desc=None, replaced with real
+    # registration, kept pool_managed=True, preserved prev metadata_count.
+    assert transport._tensor_desc_cache[ptr_a].reg_desc is not None
+    assert transport._tensor_desc_cache[ptr_a].pool_managed is True
+    # metadata_count: 1 (from pool put) + 1 (from fallback put) = 2
+    assert transport._tensor_desc_cache[ptr_a].metadata_count == 2
+
+    # tensor_b: new traditional registration, pool_managed=False.
+    ptr_b = tensor_b.untyped_storage().data_ptr()
+    assert transport._tensor_desc_cache[ptr_b].reg_desc is not None
+    assert transport._tensor_desc_cache[ptr_b].pool_managed is False
+    assert transport._tensor_desc_cache[ptr_b].metadata_count == 1
+
+    # Pool block for tensor_a is still alive (not freed yet).
+    assert pool.has_block(ptr_a)
+
+    # GC obj_id1: decrement tensor_a metadata_count (1 tensor -> 1 decrement).
+    transport.garbage_collect(obj_id1, meta1, [tensor_a])
+    assert ptr_a in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[ptr_a].metadata_count == 1
+
+    # GC obj_id2: decrement both tensor_a and tensor_b.
+    transport.garbage_collect(obj_id2, meta2, [tensor_a, tensor_b])
+
+    # tensor_a: metadata_count reaches 0 -> deregister + return pool block.
+    assert ptr_a not in transport._tensor_desc_cache
+    assert not pool.has_block(ptr_a)
+
+    # tensor_b: metadata_count reaches 0 -> deregister only (no pool block).
+    assert ptr_b not in transport._tensor_desc_cache
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

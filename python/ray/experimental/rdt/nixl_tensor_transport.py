@@ -555,8 +555,13 @@ class NixlTensorTransport(TensorTransportManager):
                 if ptr not in storage_map:
                     ptr_to_tensor[ptr] = tensor
                     if pool.has_block(ptr):
-                        # Cross-call cache hit: reuse existing pool slot
-                        offset, _ = pool.get_block(ptr)
+                        # Cross-call cache hit: reuse existing pool slot.
+                        offset, block_size = pool.get_block(ptr)
+                        if tensor.untyped_storage().nbytes() > block_size:
+                            # Storage grew — can't reuse the old slot but can't
+                            # free it either (earlier metadata still references
+                            # it). Fall back to the traditional path.
+                            return None
                         storage_map[ptr] = (-1, offset)
                     else:
                         storage_map[ptr] = (len(alloc_sizes), -1)
