@@ -130,7 +130,7 @@ class _LoraDiskModelLRUCache:
                 await asyncio.get_running_loop().run_in_executor(None, model.__del__)
             else:
                 await model.__del__()
-            model.__del__ = lambda: None  # type: ignore[method-assign, assignment]
+            model.__del__ = lambda _: None  # type: ignore[method-assign, assignment]
 
     async def get(self, model_id: str) -> DiskMultiplexConfig:
         if not isinstance(model_id, str):
