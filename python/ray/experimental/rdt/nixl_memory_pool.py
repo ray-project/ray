@@ -1,6 +1,6 @@
 """Memory pool management for NIXL RDT optimization."""
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import torch
@@ -22,6 +22,10 @@ class MemoryPoolManager:
 
     This class provides a memory allocator interface over a pre-allocated memory pool,
     allowing reuse of registered memory descriptors across multiple transfers.
+
+    It also tracks which storage data pointers have allocated blocks, enabling
+    cross-call reuse (the same storage can reuse its pool slot across multiple
+    ray.put calls) and pool-level block management.
     """
 
     def __init__(self, pool_size: int, device: "torch.device"):
@@ -46,6 +50,10 @@ class MemoryPoolManager:
         # List of (offset, size) tuples for free blocks, sorted by offset
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
 
+        # Track allocated blocks by storage data pointer.
+        # Maps storage_data_ptr -> (offset, size) in the pool.
+        self._allocated_blocks: Dict[int, Tuple[int, int]] = {}
+
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
 
@@ -53,6 +61,89 @@ class MemoryPoolManager:
             The pre-allocated tensor representing the memory pool.
         """
         return self._pool_tensor
+
+    def has_block(self, storage_ptr: int) -> bool:
+        """Check if a storage pointer has an allocated block in the pool.
+
+        Args:
+            storage_ptr: The storage data pointer to check.
+
+        Returns:
+            True if the storage pointer has an allocated block.
+        """
+        return storage_ptr in self._allocated_blocks
+
+    def get_block(self, storage_ptr: int) -> Tuple[int, int]:
+        """Get the (offset, size) for an allocated block.
+
+        Args:
+            storage_ptr: The storage data pointer to look up.
+
+        Returns:
+            Tuple of (offset, size) for the allocated block.
+
+        Raises:
+            KeyError: If no block is allocated for this storage pointer.
+        """
+        return self._allocated_blocks[storage_ptr]
+
+    def track_allocation(self, storage_ptr: int, offset: int, size: int) -> None:
+        """Record a new allocation in the block tracking.
+
+        Args:
+            storage_ptr: The storage data pointer to associate with this block.
+            offset: Offset of the allocated block in the pool.
+            size: Size of the allocated block in bytes.
+        """
+        self._allocated_blocks[storage_ptr] = (offset, size)
+
+    def untrack_allocation(self, storage_ptr: int) -> None:
+        """Remove a storage pointer from the block tracking without freeing memory.
+
+        This is used for error rollback — the corresponding pool memory should
+        be freed separately via ``free_multiple``.
+
+        Args:
+            storage_ptr: The storage data pointer to remove from tracking.
+        """
+        self._allocated_blocks.pop(storage_ptr, None)
+
+    def return_block(self, storage_ptr: int) -> None:
+        """Return a single allocated block to the pool.
+
+        Looks up the block by storage pointer, frees the underlying memory,
+        and removes the tracking entry.
+
+        Args:
+            storage_ptr: The storage data pointer whose block to return.
+
+        Raises:
+            KeyError: If no block is allocated for this storage pointer.
+        """
+        offset, size = self._allocated_blocks.pop(storage_ptr)
+        self.free_multiple([offset], [size])
+
+    def return_blocks(self, storage_ptrs: List[int]) -> None:
+        """Return multiple allocated blocks to the pool.
+
+        Deduplicates the storage pointers and frees all blocks atomically.
+
+        Args:
+            storage_ptrs: List of storage data pointers whose blocks to return.
+        """
+        offsets = []
+        sizes = []
+        seen = set()
+        for ptr in storage_ptrs:
+            if ptr in seen:
+                continue
+            seen.add(ptr)
+            if ptr in self._allocated_blocks:
+                offset, size = self._allocated_blocks.pop(ptr)
+                offsets.append(offset)
+                sizes.append(size)
+        if offsets:
+            self.free_multiple(offsets, sizes)
 
     def allocate_multiple(self, sizes: List[int]) -> Optional[List[Tuple[int, int]]]:
         """Allocate multiple memory blocks from the pool atomically.
@@ -66,7 +157,7 @@ class MemoryPoolManager:
             List of (offset, size) tuples if all allocations succeed, None otherwise.
         """
         if not sizes or any(s <= 0 for s in sizes):
-            return None
+            raise ValueError("Invalid allocation request")
 
         # If total free space is less than total requested, fail fast.
         total_requested = sum(sizes)
@@ -126,7 +217,7 @@ class MemoryPoolManager:
             None.
         """
         if not offsets:
-            return
+            raise ValueError("Invalid free request")
         for offset, size in zip(offsets, sizes):
             self._free_blocks.append(MemoryBlock(offset=offset, size=size))
 

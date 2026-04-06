@@ -569,9 +569,6 @@ def test_nixl_memory_pool(ray_start_regular, device):
         def echo(self, data, device):
             return data.to(device)
 
-        def get_nixl_transport_metadata(self, obj_id: str):
-            return get_tensor_transport_manager("NIXL")._get_meta(obj_id)
-
         def get_num_managed_meta_nixl(self):
             return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
 
@@ -581,26 +578,15 @@ def test_nixl_memory_pool(ray_start_regular, device):
     # Transfer the first small tensor (using memory pool internally).
     ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref1, device)) == 6
-    assert (
-        ray.get(src_actor.get_nixl_transport_metadata.remote(ref1.hex())).pool_offsets
-        is not None
-    )
 
     # Transfer the second small tensor (using memory pool internally).
     ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref2, device)) == 15
-    assert (
-        ray.get(src_actor.get_nixl_transport_metadata.remote(ref2.hex())).pool_offsets
-        is not None
-    )
 
-    # Transfer the third small tensor (falling back to traditional mode).
+    # Transfer the third small tensor (falling back to traditional mode
+    # because pool is full, but data should still transfer correctly).
     ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref3, device)) == 24
-    assert (
-        ray.get(src_actor.get_nixl_transport_metadata.remote(ref3.hex())).pool_offsets
-        is None
-    )
 
     del ref1, ref2
 
@@ -611,13 +597,9 @@ def test_nixl_memory_pool(ray_start_regular, device):
         retry_interval_ms=100,
     )
 
-    # Transfer the fourth tensor (after GC,using memory pool internally).
+    # Transfer the fourth tensor (after GC, using memory pool internally).
     ref4 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
-    assert (
-        ray.get(src_actor.get_nixl_transport_metadata.remote(ref4.hex())).pool_offsets
-        is not None
-    )
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -648,54 +630,50 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     # Put both views in one object — storage should be allocated only once
     obj_id1 = "view_obj_1"
     meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view_a, view_b])
-    assert meta1.pool_offsets is not None
-    assert len(meta1.pool_offsets) == 2
-    # The two views should have different pool offsets (different regions of storage)
-    assert meta1.pool_offsets[0] != meta1.pool_offsets[1]
-    # But total pool_sizes should be less than 2x storage (deduplication)
-    assert sum(meta1.pool_sizes) < storage_size * 2
-    assert meta1.pool_storage_ptrs is not None
+    ptr = base.untyped_storage().data_ptr()
+    # Storage should be tracked in the pool (deduplication: one block for shared storage)
+    pool = transport._get_memory_pool("cuda")
+    assert pool.has_block(ptr)
+    # And in _tensor_desc_cache with reg_desc=None (pool-managed)
+    assert ptr in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[ptr].reg_desc is None
+    assert transport._tensor_desc_cache[ptr].metadata_count == 1
 
     # Second put of the same views — should reuse the same pool slot (cross-call cache)
     obj_id2 = "view_obj_2"
     meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
-    assert meta2.pool_offsets is not None
-    # Should be the SAME base offset as the first put (cross-call cache hit)
-    # view_a starts at the beginning of the storage, so its pool offset
-    # equals the storage's pool offset.
-    assert meta2.pool_offsets[0] == meta1.pool_offsets[0]
+    # Pool block should still exist (same slot reused)
+    assert pool.has_block(ptr)
+    # metadata_count should be incremented
+    assert transport._tensor_desc_cache[ptr].metadata_count == 2
 
     # Verify data freshness: modify tensor, put again, pool data should be updated
     base[0, 0] = 99
     obj_id3 = "view_obj_3"
     meta3 = transport.extract_tensor_transport_metadata(obj_id3, [view_a])
-    assert meta3.pool_offsets is not None
-    # Same pool slot reused
-    assert meta3.pool_offsets[0] == meta1.pool_offsets[0]
+    assert transport._tensor_desc_cache[ptr].metadata_count == 3
     # Read back the pool data to verify freshness
-    pool = transport._get_memory_pool("cuda")
     pool_tensor = pool.get_pool_tensor()
-    offset = meta3.pool_offsets[0]
-    size = meta3.pool_sizes[0]
+    offset, size = pool.get_block(ptr)
     pool_data = (
-        pool_tensor[offset : offset + size].view(torch.float32).reshape(view_a.shape)
+        pool_tensor[offset : offset + size].view(torch.float32).reshape(base.shape)
     )
     assert pool_data[0, 0].item() == 99.0
 
-    # GC: ref_count should track correctly
-    # After first GC, pool slot still alive (ref_count > 0)
+    # GC: metadata_count should track correctly
+    # After first GC, pool block still alive (metadata_count > 0)
     transport.garbage_collect(obj_id1, meta1, [view_a, view_b])
-    ptr = base.untyped_storage().data_ptr()
-    assert ptr in transport._pool_tensor_cache
-    assert transport._pool_tensor_cache[ptr].ref_count == 2  # obj_id2 + obj_id3
+    assert ptr in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[ptr].metadata_count == 2  # obj_id2 + obj_id3
 
     transport.garbage_collect(obj_id2, meta2, [view_a])
-    assert ptr in transport._pool_tensor_cache
-    assert transport._pool_tensor_cache[ptr].ref_count == 1  # obj_id3
+    assert ptr in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[ptr].metadata_count == 1  # obj_id3
 
     transport.garbage_collect(obj_id3, meta3, [view_a])
-    # All refs gone, pool slot freed
-    assert ptr not in transport._pool_tensor_cache
+    # All refs gone, pool block freed
+    assert ptr not in transport._tensor_desc_cache
+    assert not pool.has_block(ptr)
 
 
 if __name__ == "__main__":
