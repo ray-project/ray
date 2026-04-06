@@ -22,12 +22,19 @@ namespace ray {
 uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
                                           uint64_t base_ms,
                                           uint64_t max_backoff_ms) {
-  auto delay = static_cast<uint64_t>(pow(2, attempt));
-  // Use max_backoff_ms if there is an overflow.
-  if (delay == 0) {
+  // Avoid overflowing (2 ^ attempt).
+  if (attempt >= 63) {
     return max_backoff_ms;
   }
-  return std::min(base_ms * delay, max_backoff_ms);
+
+  uint64_t multiple = static_cast<uint64_t>(pow(2, attempt));
+
+	// Avoid overflowing the multiplication.
+  if (multiple > 0 && base_ms > max_backoff_ms / multiple) {
+    return max_backoff_ms;
+  }
+
+  return std::min(base_ms * multiple, max_backoff_ms);
 };
 
 }  // namespace ray
