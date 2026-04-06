@@ -603,6 +603,79 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
 }
 
+TEST(GetTaskRetryDelayMsTest, TestRetryDelayByErrorType) {
+  RayConfig::instance().initialize(
+      R"({"task_retry_delay_ms": 0,
+          "task_oom_retry_delay_base_ms": 1000,
+          "task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+
+  // ACTOR_UNAVAILABLE: exponential backoff with base 100ms, cap 5000ms.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::ACTOR_UNAVAILABLE), 100);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::ACTOR_UNAVAILABLE), 200);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::ACTOR_UNAVAILABLE), 400);
+  ASSERT_EQ(GetTaskRetryDelayMs(3, rpc::ErrorType::ACTOR_UNAVAILABLE), 800);
+  ASSERT_EQ(GetTaskRetryDelayMs(4, rpc::ErrorType::ACTOR_UNAVAILABLE), 1600);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::ACTOR_UNAVAILABLE), 3200);
+  ASSERT_EQ(GetTaskRetryDelayMs(6, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(7, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(100, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+
+  // OOM: exponential backoff with base 1000ms, default cap (60s).
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::OUT_OF_MEMORY), 1000);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::OUT_OF_MEMORY), 2000);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::OUT_OF_MEMORY), 4000);
+
+  // Other errors: flat delay.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::NODE_DIED), 0);
+}
+
+TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {
+  RayConfig::instance().initialize(
+      R"({"task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+  int num_retries = -1;  // Infinite retries.
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(num_retries);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  ASSERT_EQ(num_retries_, 0);
+
+  // ACTOR_UNAVAILABLE should use exponential backoff with base 100ms.
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+  error_info.set_error_message("The actor is temporarily unavailable");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  error_info.error_type(),
+                                  /*status=*/nullptr,
+                                  &error_info,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_,
+            RayConfig::instance().task_actor_unavailable_retry_delay_base_ms());
+
+  // A WORKER_DIED error on the same task should use the default (non-backoff) delay.
+  rpc::RayErrorInfo worker_died_error;
+  worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
+  worker_died_error.set_error_message("Worker died");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  worker_died_error.error_type(),
+                                  /*status=*/nullptr,
+                                  &worker_died_error,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 2);
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
+
+  // Cleanup.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
+}
+
 TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
   RayConfig::instance().initialize(R"({"task_oom_retries": -1})");
 
