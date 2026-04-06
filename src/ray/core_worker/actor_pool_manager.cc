@@ -250,7 +250,7 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
     return PoolStats{};
   }
 
-  const auto &pool_info = pool_it->second;
+  auto &pool_info = pool_it->second;
   auto wq_it = work_queues_.find(pool_id);
   if (wq_it == work_queues_.end()) {
     return PoolStats{};
@@ -286,7 +286,7 @@ int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const
     return 0;
   }
 
-  const auto &pool_info = pool_it->second;
+  auto &pool_info = pool_it->second;
   int64_t total_in_flight = 0;
   for (const auto &[actor_id, state] : pool_info.actor_states) {
     total_in_flight += state.num_tasks_in_flight;
@@ -349,9 +349,11 @@ int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
 
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
                                              const std::vector<ObjectID> &arg_ids,
-                                             const ActorID &exclude_actor_id) {
+                                             const ActorID &exclude_actor_id,
+                                             bool require_available_capacity) {
   absl::MutexLock lock(&mu_);
-  return SelectActorFromPool(pool_id, arg_ids, exclude_actor_id);
+  return SelectActorFromPool(
+      pool_id, arg_ids, exclude_actor_id, require_available_capacity);
 }
 
 void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
@@ -505,18 +507,19 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
                                               const std::vector<ObjectID> &arg_ids,
-                                              const ActorID &exclude_actor_id) {
+                                              const ActorID &exclude_actor_id,
+                                              bool require_available_capacity) {
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
     RAY_LOG(WARNING) << "Pool not found: " << pool_id;
     return ActorID::Nil();
   }
 
-  const auto &pool_info = pool_it->second;
+  auto &pool_info = pool_it->second;
 
-  // Prefer alive actors with available capacity, but fall back to any alive actor.
-  // The ActorTaskSubmitter manages its own per-actor queue and always returns valid
-  // ObjectRefs, so over-submitting beyond max_tasks_in_flight_per_actor is safe.
+  // Prefer alive actors with available capacity. For retries we can require
+  // available capacity to avoid concentrating a burst of retries onto a single
+  // surviving actor.
   std::vector<ActorID> candidates;
   std::vector<ActorID> alive_actors;
   for (const auto &actor_id : pool_info.actor_ids) {
@@ -540,10 +543,10 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
   }
 
-  // Fall back to all alive actors when none have capacity below the configured
-  // limit. This ensures callers always get valid ObjectRefs instead of empty
-  // results from SubmitTaskToPool.
-  if (candidates.empty()) {
+  // Fall back to all alive actors when normal submissions have exhausted the
+  // configured per-actor limit. Retries use require_available_capacity=true so
+  // they will wait for real capacity instead of over-subscribing a healthy actor.
+  if (candidates.empty() && !require_available_capacity) {
     // If exclusion filtered out all candidates, fall back to the full
     // alive set (including the excluded actor).  This handles single-actor
     // pools and the case where all other actors are dead.
@@ -556,11 +559,22 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
   }
 
   auto node_bytes = ComputeNodeLocalityMap(arg_ids);
-
-  auto best_actor = *std::min_element(
-      candidates.begin(), candidates.end(), [&](const ActorID &a, const ActorID &b) {
-        return RankActor(a, node_bytes, pool_info) < RankActor(b, node_bytes, pool_info);
-      });
+  auto best_rank = std::make_pair(INT64_MAX, INT32_MAX);
+  std::vector<ActorID> best_actors;
+  best_actors.reserve(candidates.size());
+  for (const auto &candidate : candidates) {
+    const auto rank = RankActor(candidate, node_bytes, pool_info);
+    if (rank < best_rank) {
+      best_rank = rank;
+      best_actors.clear();
+      best_actors.push_back(candidate);
+    } else if (rank == best_rank) {
+      best_actors.push_back(candidate);
+    }
+  }
+  RAY_CHECK(!best_actors.empty());
+  const auto selected_index = pool_info.next_selection_index++ % best_actors.size();
+  auto best_actor = best_actors[selected_index];
 
   RAY_LOG(DEBUG) << "Selected actor " << best_actor << " from pool " << pool_id;
   return best_actor;

@@ -124,6 +124,17 @@ std::optional<ObjectLocation> TryGetLocalObjectLocation(
   return CreateObjectLocation(object_info);
 }
 
+std::vector<ObjectID> GetTaskArgIdsForPoolRetry(const TaskSpecification &spec) {
+  std::vector<ObjectID> arg_ids;
+  arg_ids.reserve(spec.NumArgs());
+  for (size_t i = 0; i < spec.NumArgs(); ++i) {
+    if (spec.ArgByRef(i)) {
+      arg_ids.push_back(ObjectID::FromBinary(spec.ArgRef(i).object_id()));
+    }
+  }
+  return arg_ids;
+}
+
 /// Converts rpc::WorkerExitType to ShutdownReason
 /// \param exit_type The worker exit type to convert
 /// \param is_force_exit If true, INTENDED_USER_EXIT maps to kForcedExit; otherwise
@@ -872,13 +883,21 @@ void CoreWorker::InternalHeartbeat() {
         const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
         ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
         if (actor_pool_manager_->HasPool(pool_id)) {
+          auto arg_ids = GetTaskArgIdsForPoolRetry(spec);
           // Exclude the actor the task just failed on so we don't
           // route right back to it (the GCS RESTARTING notification
           // may not have arrived yet).
           ActorID failed_actor_id = spec.ActorId();
           ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(
-              pool_id, /*arg_ids=*/{}, /*exclude_actor_id=*/failed_actor_id);
+              pool_id,
+              arg_ids,
+              /*exclude_actor_id=*/failed_actor_id,
+              /*require_available_capacity=*/true);
           if (new_actor_id.IsNil()) {
+            RAY_LOG(INFO) << "Pool task retry waiting for capacity: task_id="
+                          << spec.TaskId() << " pool_id=" << pool_id
+                          << " failed_actor_id=" << failed_actor_id
+                          << " arg_ids=" << arg_ids.size();
             // No healthy actors — re-enqueue with a short delay.
             absl::MutexLock lock(&mutex_);
             task_to_retry.execution_time_ms =
@@ -886,6 +905,11 @@ void CoreWorker::InternalHeartbeat() {
             to_resubmit_.push(task_to_retry);
             continue;
           }
+          RAY_LOG(INFO) << "Pool task retry selected actor: task_id=" << spec.TaskId()
+                        << " pool_id=" << pool_id
+                        << " failed_actor_id=" << failed_actor_id
+                        << " new_actor_id=" << new_actor_id
+                        << " arg_ids=" << arg_ids.size();
           // Ensure the target actor is subscribed for state updates
           // (actors to which tasks have not yet been submitted will not be subscribed)
           // so ConnectActor fires and the submitter learns its address.

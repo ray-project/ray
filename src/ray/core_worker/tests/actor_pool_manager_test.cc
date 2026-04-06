@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
@@ -761,6 +762,63 @@ TEST_F(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad) {
   // No arg_ids
   auto selected = pool_manager_->SelectActorForTask(pool_id, {});
   EXPECT_EQ(selected, actor2);
+}
+
+// Test: Capacity-constrained selection returns Nil when all actors are full.
+TEST_F(ActorPoolManagerLocalityTest, RequireAvailableCapacityReturnsNilWhenFull) {
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>();
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/1);
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node1);
+  pool_manager_->AddActorToPool(pool_id, actor2, node2);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
+  }
+
+  EXPECT_TRUE(
+      pool_manager_->SelectActorForTask(pool_id, {}, ActorID::Nil(), true).IsNil());
+  EXPECT_FALSE(
+      pool_manager_->SelectActorForTask(pool_id, {}, ActorID::Nil(), false).IsNil());
+}
+
+// Test: Equal-ranked selections rotate instead of always choosing the first actor.
+TEST_F(ActorPoolManagerLocalityTest, EqualRankSelectionsRotateAcrossActors) {
+  NodeID node = NodeID::FromRandom();
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>();
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/2);
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+  auto actor3 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node);
+  pool_manager_->AddActorToPool(pool_id, actor2, node);
+  pool_manager_->AddActorToPool(pool_id, actor3, node);
+
+  std::vector<ActorID> selections;
+  selections.push_back(pool_manager_->SelectActorForTask(pool_id));
+  selections.push_back(pool_manager_->SelectActorForTask(pool_id));
+  selections.push_back(pool_manager_->SelectActorForTask(pool_id));
+
+  EXPECT_EQ(absl::flat_hash_set<ActorID>(selections.begin(), selections.end()).size(), 3);
 }
 
 // Test: Actor on node with more bytes wins

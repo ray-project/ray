@@ -122,6 +122,9 @@ struct ActorPoolInfo {
 
   /// Total number of tasks that were retried.
   int64_t total_tasks_retried = 0;
+
+  /// Rotating tie-breaker used to spread equal-ranked selections.
+  uint64_t next_selection_index = 0;
 };
 
 /// Statistics for an actor pool.
@@ -276,10 +279,13 @@ class ActorPoolManager {
   /// \param arg_ids Object IDs of task arguments (for locality).
   /// \param exclude_actor_id Actor to exclude from selection (e.g. the actor
   ///   that just failed). Pass Nil to exclude nothing.
+  /// \param require_available_capacity If true, only actors below the configured
+  ///   max_tasks_in_flight_per_actor are eligible.
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorForTask(const ActorPoolID &pool_id,
                              const std::vector<ObjectID> &arg_ids = {},
-                             const ActorID &exclude_actor_id = ActorID::Nil());
+                             const ActorID &exclude_actor_id = ActorID::Nil(),
+                             bool require_available_capacity = false);
 
   /// Called when a pool task terminally completes (success or exhausted retries).
   /// Updates num_tasks_in_flight and drains queued work on success.
@@ -330,6 +336,8 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerLocalityTest, LocalityTiebreakerIsLoad);
   FRIEND_TEST(ActorPoolManagerLocalityTest, NoLocalityDataFallsBackToLoad);
   FRIEND_TEST(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, RequireAvailableCapacityReturnsNilWhenFull);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, EqualRankSelectionsRotateAcrossActors);
   FRIEND_TEST(ActorPoolManagerLocalityTest, LargerDataNodeWins);
   FRIEND_TEST(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad);
   FRIEND_TEST(ActorPoolManagerTest, GetOccupiedTaskSlots);
@@ -347,10 +355,13 @@ class ActorPoolManager {
   /// \param pool_id The ID of the pool.
   /// \param arg_ids Object IDs of task arguments (for locality).
   /// \param exclude_actor_id Actor to skip during selection.
+  /// \param require_available_capacity If true, actors at or above the configured
+  ///   max_tasks_in_flight_per_actor are excluded from consideration.
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorFromPool(const ActorPoolID &pool_id,
                               const std::vector<ObjectID> &arg_ids,
-                              const ActorID &exclude_actor_id = ActorID::Nil())
+                              const ActorID &exclude_actor_id = ActorID::Nil(),
+                              bool require_available_capacity = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Rank an actor for scheduling (lower is better).
