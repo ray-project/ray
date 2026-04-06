@@ -1219,21 +1219,15 @@ void ReferenceCounter::CleanupBorrowersOnRefRemoved(
 
   // Erase the previous borrower.
   auto it = object_id_refs_.find(object_id);
+  // The object ref could've been erased or the borrower could've been erased already
+  // because it's possible for both the message_published_callback and publisher_failed
+  // callback to be called for the same WORKER_REF_REMOVED_CHANNEL
   if (it == object_id_refs_.end()) {
-    // Note: Object reference already cleaned up.
-    // This can happen due to a race in WORKER_REF_REMOVED_CHANNEL:
-    // - Borrower publishes ref_removed, owner posts message_published_callback.
-    // - Before it runs, borrower process dies, causing publisher_failed_callback to be
-    //   posted by the broken long-polling connection.
-    // Both callbacks call CleanupBorrowersOnRefRemoved(). The second invocation should
-    // be treated as a no-op.
     RAY_LOG(DEBUG) << "CleanupBorrowersOnRefRemoved: object " << object_id
                    << " not found, likely already cleaned up by another callback";
     return;
   }
 
-  // Check if this borrower was already removed (duplicate callback from race condition
-  // between message_published_callback and publisher_failed_callback).
   if (it->second.mutable_borrow()->borrowers.erase(borrower_addr) == 0) {
     RAY_LOG(DEBUG) << "CleanupBorrowersOnRefRemoved: borrower "
                    << WorkerID::FromBinary(borrower_addr.worker_id())

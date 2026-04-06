@@ -1125,8 +1125,6 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
 // b = Borrower.remote(outer_id)
 // b.release.remote()
 TEST(DistributedReferenceCountTest, TestCleanupBorrowersOnRefRemovedIdempotent) {
-  // Clear the failure callback map to ensure clean state.
-  subscription_failure_callback_map.clear();
   auto borrower = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>(
       "2", [&](const rpc::Address &addr) { return borrower; });
@@ -1175,8 +1173,7 @@ TEST(DistributedReferenceCountTest, TestCleanupBorrowersOnRefRemovedIdempotent) 
   // Now simulate the race condition: publisher_failed_callback fires after
   // message_published_callback has already cleaned up.
   // This should trigger CleanupBorrowersOnRefRemoved (2nd call) which should be
-  // idempotent. Before the fix, this would cause RAY_CHECK failure or leave dangling
-  // entries.
+  // idempotent.
   borrower->FailAllWaitForRefRemovedRequests();
 
   // Verify the final state is correct - no references should remain.
