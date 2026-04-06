@@ -82,6 +82,13 @@ def _should_log_actor_pool_fault_debug(operator_name: str) -> bool:
     return "FaultInjectableIncrementBatch" in operator_name
 
 
+def _maybe_get_actor_pool_debug_value(actor_pool: Any, method_name: str) -> Optional[Any]:
+    method = getattr(actor_pool, method_name, None)
+    if method is None:
+        return None
+    return method()
+
+
 def _log_actor_pool_fault_debug(op: "MapOperator", event: str, **fields) -> None:
     if not _should_log_actor_pool_fault_debug(op.name):
         return
@@ -103,14 +110,43 @@ def _log_actor_pool_fault_debug(op: "MapOperator", event: str, **fields) -> None
         else bundle_queue.num_bundles(),
     }
     if actor_pool is not None:
+        pool_tasks_in_flight = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_tasks_in_flight"
+        )
+        pool_running_actors = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_running_actors"
+        )
+        pool_alive_actors = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_alive_actors"
+        )
+        pool_active_actors = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_active_actors"
+        )
+        pool_restarting_actors = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_restarting_actors"
+        )
+        pool_free_slots = _maybe_get_actor_pool_debug_value(
+            actor_pool, "num_free_task_slots"
+        )
+        if pool_free_slots is None:
+            max_tasks_in_flight_per_actor = _maybe_get_actor_pool_debug_value(
+                actor_pool, "max_tasks_in_flight_per_actor"
+            )
+            if (
+                pool_tasks_in_flight is not None
+                and pool_running_actors is not None
+                and max_tasks_in_flight_per_actor is not None
+            ):
+                capacity = max_tasks_in_flight_per_actor * pool_running_actors
+                pool_free_slots = max(0, capacity - pool_tasks_in_flight)
         payload.update(
             {
-                "pool_tasks_in_flight": actor_pool.num_tasks_in_flight(),
-                "pool_free_slots": actor_pool.num_free_task_slots(),
-                "pool_running_actors": actor_pool.num_running_actors(),
-                "pool_alive_actors": actor_pool.num_alive_actors(),
-                "pool_active_actors": actor_pool.num_active_actors(),
-                "pool_restarting_actors": actor_pool.num_restarting_actors(),
+                "pool_tasks_in_flight": pool_tasks_in_flight,
+                "pool_free_slots": pool_free_slots,
+                "pool_running_actors": pool_running_actors,
+                "pool_alive_actors": pool_alive_actors,
+                "pool_active_actors": pool_active_actors,
+                "pool_restarting_actors": pool_restarting_actors,
             }
         )
     payload.update(fields)
