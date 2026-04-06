@@ -654,6 +654,52 @@ TEST(MutableObjectTest, TestMutableObjectManagerDestruct) {
   // function.
 }
 
+TEST(MutableObjectTest, TestSemaphoreNameHasLeadingSlash) {
+  std::unique_ptr<plasma::MutableObject> object = MakeObject();
+  object->header->Init();
+  MutableObjectManager manager;
+  std::string name = manager.GetSemaphoreName(object->header);
+
+  std::string obj_name = std::string("/obj") + name;
+  std::string hdr_name = std::string("/hdr") + name;
+
+  sem_t *obj_sem = sem_open(obj_name.c_str(), O_CREAT, 0644, 1);
+  ASSERT_NE(obj_sem, SEM_FAILED) << "sem_open failed with errno=" << errno;
+  sem_t *hdr_sem = sem_open(hdr_name.c_str(), O_CREAT, 0644, 1);
+  ASSERT_NE(hdr_sem, SEM_FAILED) << "sem_open failed with errno=" << errno;
+
+  sem_close(obj_sem);
+  sem_close(hdr_sem);
+  sem_unlink(obj_name.c_str());
+  sem_unlink(hdr_name.c_str());
+  free(object->header);
+}
+
+TEST(MutableObjectTest, TestCrossNodeSemaphoreCreation) {
+  MutableObjectManager manager;
+  ObjectID object_id = ObjectID::FromRandom();
+  plasma::PlasmaObjectHeader *header;
+  {
+    std::unique_ptr<plasma::MutableObject> object = MakeObject();
+    header = object->header;
+    header->Init();
+    // Simulate the cross-node case: the writer on a remote node has already
+    // set semaphores_created to kDone before the local reader calls OpenSemaphores.
+    header->semaphores_created.store(PlasmaObjectHeader::SemaphoresCreationLevel::kDone,
+                                     std::memory_order_release);
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
+  }
+
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
+  ASSERT_NE(sem.object_sem, SEM_FAILED);
+  ASSERT_NE(sem.header_sem, SEM_FAILED);
+
+  manager.DestroySemaphores(object_id);
+  free(header);
+}
+
 #endif  // defined(__APPLE__) || defined(__linux__)
 
 }  // namespace experimental

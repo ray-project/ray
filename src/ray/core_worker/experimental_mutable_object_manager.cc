@@ -34,14 +34,14 @@ namespace experimental {
 namespace {
 
 std::string GetSemaphoreObjectName(const std::string &name) {
-  std::string ret = absl::StrCat("obj", name);
-  RAY_CHECK_LE(name.size(), PSEMNAMLEN);
+  std::string ret = absl::StrCat("/obj", name);
+  RAY_CHECK_LE(ret.size(), PSEMNAMLEN);
   return ret;
 }
 
 std::string GetSemaphoreHeaderName(const std::string &name) {
-  std::string ret = absl::StrCat("hdr", name);
-  RAY_CHECK_LE(name.size(), PSEMNAMLEN);
+  std::string ret = absl::StrCat("/hdr", name);
+  RAY_CHECK_LE(ret.size(), PSEMNAMLEN);
   return ret;
 }
 
@@ -171,8 +171,14 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
            PlasmaObjectHeader::SemaphoresCreationLevel::kDone) {
       sched_yield();
     }
-    semaphores.object_sem = sem_open(GetSemaphoreObjectName(name).c_str(), /*oflag=*/0);
-    semaphores.header_sem = sem_open(GetSemaphoreHeaderName(name).c_str(), /*oflag=*/0);
+    semaphores.object_sem = sem_open(GetSemaphoreObjectName(name).c_str(),
+                                     /*oflag=*/O_CREAT,
+                                     /*mode=*/0644,
+                                     /*value=*/1);
+    semaphores.header_sem = sem_open(GetSemaphoreHeaderName(name).c_str(),
+                                     /*oflag=*/O_CREAT,
+                                     /*mode=*/0644,
+                                     /*value=*/1);
   }
   RAY_CHECK_NE(semaphores.object_sem, SEM_FAILED);
   RAY_CHECK_NE(semaphores.header_sem, SEM_FAILED);
