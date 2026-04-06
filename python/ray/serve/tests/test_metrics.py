@@ -1553,7 +1553,10 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
                 metric.get("deployment") == "Downstream"
                 and metric.get("application") == "app1"
             ):
-                return True
+                handle = metric.get("handle", "")
+                actor_id = metric.get("actor_id", "")
+                if handle and actor_id:
+                    return True
         return False
 
     wait_for_condition(check_objref_resolution_metric, timeout=30)

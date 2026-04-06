@@ -943,9 +943,9 @@ class AsyncioRouter:
             # not time spent waiting for upstream DeploymentResponse arguments.
             # See: https://github.com/ray-project/ray/issues/60624
             if not pr.resolved:
-                resolution_start = time.time()
+                resolution_start = time.monotonic()
                 await self._resolve_request_arguments(pr)
-                resolution_ms = (time.time() - resolution_start) * 1000
+                resolution_ms = (time.monotonic() - resolution_start) * 1000
                 self._objref_resolution_latency_ms.observe(resolution_ms)
 
             num_curr_replicas = len(self.request_router.curr_replicas)
