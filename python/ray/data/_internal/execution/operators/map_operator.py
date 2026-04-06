@@ -82,7 +82,9 @@ def _should_log_actor_pool_fault_debug(operator_name: str) -> bool:
     return "FaultInjectableIncrementBatch" in operator_name
 
 
-def _maybe_get_actor_pool_debug_value(actor_pool: Any, method_name: str) -> Optional[Any]:
+def _maybe_get_actor_pool_debug_value(
+    actor_pool: Any, method_name: str
+) -> Optional[Any]:
     method = getattr(actor_pool, method_name, None)
     if method is None:
         return None
