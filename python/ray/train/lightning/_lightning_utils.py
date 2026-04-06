@@ -12,6 +12,7 @@ import ray
 import ray.train
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
+from ray.train.v2._internal.constants import is_v2_enabled
 from ray.util import PublicAPI
 
 
@@ -257,8 +258,24 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     CHECKPOINT_NAME = "checkpoint.ckpt"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        # v2-only arguments
+        checkpoint_upload_mode=None,
+        validation=None,
+    ) -> None:
         super().__init__()
+        if is_v2_enabled():
+            self.checkpoint_upload_mode = checkpoint_upload_mode
+            self.validation = validation
+        else:
+            if checkpoint_upload_mode is not None:
+                raise ValueError(
+                    "checkpoint_upload_mode is not supported when using Ray Train V1"
+                )
+            if validation is not None:
+                raise ValueError("validation is not supported when using Ray Train V1")
+
         job_id = ray.get_runtime_context().get_job_id()
         experiment_name = ray.train.get_context().get_experiment_name()
         self.local_rank = ray.train.get_context().get_local_rank()
@@ -287,14 +304,34 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         # Save checkpoint to local
         ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
+        # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
+        # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
+        # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
         checkpoint = Checkpoint.from_directory(tmpdir)
-        ray.train.report(metrics=metrics, checkpoint=checkpoint)
+        if is_v2_enabled():
+            ray.train.report(
+                metrics=metrics,
+                checkpoint=checkpoint,
+                checkpoint_upload_mode=self.checkpoint_upload_mode,
+                validation=self.validation,
+            )
+        else:
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
         trainer.strategy.barrier()
+
+        # With CheckpointUploadMode.ASYNC, the upload may still be in progress
+        # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
+        # handle cleanup instead.
+        if is_v2_enabled() and self.checkpoint_upload_mode is not None:
+            from ray.train.v2.api.report_config import CheckpointUploadMode
+
+            if self.checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
+                return
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

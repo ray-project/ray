@@ -314,6 +314,43 @@ To persist your checkpoints and monitor training progress, add a
 Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`.
 Note that the :class:`ray.train.lightning.RayTrainReportCallback` class only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
+You can also configure :ref:`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and
+:ref:`asynchronous validation <train-validating-checkpoints>` through the callback.
+The ``checkpoint_upload_mode`` flag offloads checkpoint uploading to a Ray Train managed background thread
+instead of blocking the Lightning training loop. The ``validation`` flag launches an asynchronous
+Ray task to validate the checkpoint instead of running ``validation_step`` synchronously in the training workers.
+Note that this is incompatible with Lightning's `AsyncCheckpointIO <https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.plugins.io.AsyncCheckpointIO.html>`_ plugin
+because Ray Train needs to control the upload thread in order to wait for it to finish before committing the checkpoint.
+
+.. code-block:: diff
+
+     import lightning.pytorch as pl
+     from ray.train.lightning import RayTrainReportCallback
+    +from ray.train import CheckpointUploadMode
+    +from ray.train import ValidationConfig, ValidationTaskConfig
+
+     def train_func():
+         ...
+         trainer = pl.Trainer(
+             ...
+    -        callbacks=[..., RayTrainReportCallback()],
+    +        callbacks=[..., RayTrainReportCallback(
+    +            checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+    +            validation=ValidationTaskConfig(fn_kwargs={}),
+    +        )],
+         )
+         ...
+
+    +def validation_fn(checkpoint):
+    +    # Load and validate the checkpoint, return metrics.
+    +    return {"val_score": ...}
+    +
+    +trainer = TorchTrainer(
+    +    train_func,
+    +    validation_config=ValidationConfig(fn=validation_fn),
+    +    ...
+    +)
+
 Prepare your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

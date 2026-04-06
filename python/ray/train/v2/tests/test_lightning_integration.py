@@ -1,6 +1,8 @@
+import os
+
 import pytest
 
-from ray.train import ScalingConfig
+from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.lightning import (
     RayDDPStrategy,
     RayFSDPStrategy,
@@ -11,6 +13,8 @@ from ray.train.lightning._lightning_utils import import_lightning
 from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
 from ray.train.torch import TorchTrainer
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
 
 pl = import_lightning()
 
@@ -77,6 +81,62 @@ def test_trainer_with_native_dataloader(
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
+
+
+def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
+    """Test lightning training with async checkpointing and validation."""
+
+    num_workers = 2
+    num_epochs = 2
+    batch_size = 8
+    dataset_size = 256
+
+    def validation_fn(checkpoint):
+        assert checkpoint.path is not None
+        checkpoint_file = checkpoint.path + "/checkpoint.ckpt"
+        assert os.path.exists(
+            checkpoint_file
+        ), f"Checkpoint file not found: {checkpoint_file}"
+        return {"val_score": 1}
+
+    def train_loop():
+        model = LinearModule(input_dim=32, output_dim=4, strategy="ddp")
+
+        trainer = pl.Trainer(
+            max_epochs=num_epochs,
+            devices="auto",
+            accelerator="cpu",
+            strategy=RayDDPStrategy(),
+            plugins=[RayLightningEnvironment()],
+            callbacks=[
+                RayTrainReportCallback(
+                    checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+                    validation=ValidationTaskConfig(fn_kwargs={}),
+                )
+            ],
+        )
+
+        datamodule = DummyDataModule(batch_size, dataset_size)
+        trainer.fit(model, datamodule=datamodule)
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_loop,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+        validation_config=ValidationConfig(fn=validation_fn),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1, checkpoint_score_attribute="val_score"
+            ),
+        ),
+    )
+
+    results = trainer.fit()
+    assert results.error is None
+    assert "loss" in results.metrics
+    assert results.best_checkpoints is not None
+    assert len(results.best_checkpoints) == 1
+    assert results.best_checkpoints[0][1]["val_score"] == 1
 
 
 if __name__ == "__main__":
