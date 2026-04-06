@@ -1,7 +1,6 @@
 import logging
 import math
 import os
-import warnings
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -124,6 +123,10 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
+
+# Arrow's nested type chunking limit
+# See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
+_ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
 
 
 class _ParquetFragment:
@@ -901,6 +904,91 @@ def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
     return coerced
 
 
+def _get_safe_batch_size_for_nested_types(
+    pf: "pyarrow.parquet.ParquetFile",
+) -> int:
+    """Compute a batch size that keeps each batch under Arrow's ~2GB nested-type
+    chunking threshold.
+
+    Uses Parquet row group metadata (uncompressed column sizes) to estimate
+    bytes per row, then picks a batch size with a 50% safety margin.
+    """
+    safe_batch_size = pf.metadata.num_rows
+    for rg_idx in range(pf.metadata.num_row_groups):
+        rg_meta = pf.metadata.row_group(rg_idx)
+        if rg_meta.num_rows == 0:
+            continue
+        total_uncompressed = sum(
+            rg_meta.column(i).total_uncompressed_size
+            for i in range(rg_meta.num_columns)
+        )
+        bytes_per_row = total_uncompressed / rg_meta.num_rows
+        rg_safe = max(int(_ARROW_CHUNK_LIMIT // bytes_per_row // 2), 1)
+        safe_batch_size = min(safe_batch_size, rg_safe)
+    return safe_batch_size
+
+
+def _iter_batches_with_nested_fallback(
+    fragment: "ParquetFileFragment",
+    *,
+    columns: Optional[List[str]] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+    batch_size: Optional[int] = None,
+    to_batches_kwargs: Optional[Dict[str, Any]] = None,
+    use_threads: bool = False,
+    filter_expr: Optional["pyarrow.dataset.Expression"] = None,
+) -> Iterable["pyarrow.RecordBatch"]:
+    """Iterate over batches from a fragment, falling back to
+    pq.ParquetFile.iter_batches if the Arrow Dataset Scanner raises
+    ArrowNotImplementedError for nested column types exceeding the ~2GB
+    chunking threshold (ARROW-5030).
+
+    In the happy path, ``filter_expr`` is pushed down to the scanner. In the
+    fallback path, it is applied post-read since ``pq.ParquetFile.iter_batches``
+    does not support predicate pushdown.
+    """
+    import pyarrow as pa
+
+    to_batches_kwargs = dict(to_batches_kwargs or {})
+    try:
+        # filter is pushed down to the scanner here
+        yield from fragment.to_batches(
+            columns=columns,
+            filter=filter_expr,
+            schema=schema,
+            use_threads=use_threads,
+            **to_batches_kwargs,
+        )
+    except pa.lib.ArrowNotImplementedError as e:
+        if (
+            "Nested data conversions not implemented for chunked array outputs"
+            not in str(e)
+        ):
+            raise
+
+        import pyarrow.parquet as pq
+
+        logger.warning(
+            "Falling back to pyarrow.parquet row-level batched reader for "
+            "'%s' due to Arrow nested type chunking limitation "
+            "(ARROW-5030). Consider writing Parquet files with smaller "
+            "row group sizes to avoid this.",
+            fragment.path,
+        )
+
+        pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
+        safe = _get_safe_batch_size_for_nested_types(pf)
+        fallback_batch_size = min(batch_size, safe) if batch_size else safe
+        for batch in pf.iter_batches(batch_size=fallback_batch_size, columns=columns):
+            # Apply filter post-read since iter_batches doesn't support
+            # predicate pushdown.
+            if filter_expr is not None:
+                table = pa.Table.from_batches([batch]).filter(filter_expr)
+                yield from table.to_batches()
+            else:
+                yield batch
+
+
 def _read_batches_from(
     fragment: "ParquetFileFragment",
     *,
@@ -950,110 +1038,48 @@ def _read_batches_from(
 
     def _generate_tables() -> "pa.Table":
         """Inner generator that yields tables without renaming."""
+
+        def _postprocess_table(table):
+            if partition_col_values:
+                table = _add_partitions_to_table(partition_col_values, table)
+
+            if include_path:
+                table = ArrowBlockAccessor.for_block(table).fill_column(
+                    "path", fragment.path
+                )
+
+            # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
+            # which could have empty projection (ie ``num_columns`` == 0)
+            # while having non-empty rows (ie ``num_rows`` > 0), which
+            # could occur when list of requested columns is empty.
+            #
+            # However, when ``RecordBatches`` are concatenated using
+            # ``pyarrow.concat_tables`` it will return a single ``Table``
+            # with 0 columns and therefore 0 rows (since ``Table``s number of
+            # rows is determined as the length of its columns).
+            #
+            # To avoid running into this pitfall, we introduce a stub column
+            # holding just nulls to maintain invariance of the number of rows.
+            #
+            # NOTE: There's no impact from this as the binary size of the
+            #       extra column is basically 0
+            if table.num_columns == 0 and table.num_rows > 0:
+                table = table.append_column(
+                    _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
+                )
+            return table
+
         try:
-            for batch in fragment.to_batches(
+            for batch in _iter_batches_with_nested_fallback(
+                fragment,
                 columns=data_columns,
-                filter=filter_expr,
+                filter_expr=filter_expr,
                 schema=schema,
+                batch_size=batch_size,
                 use_threads=use_threads,
-                **to_batches_kwargs,
+                to_batches_kwargs=to_batches_kwargs,
             ):
-                table = pa.Table.from_batches([batch])
-
-                if partition_col_values:
-                    table = _add_partitions_to_table(partition_col_values, table)
-
-                if include_path:
-                    table = ArrowBlockAccessor.for_block(table).fill_column(
-                        "path", fragment.path
-                    )
-
-                # ``ParquetFileFragment.to_batches`` returns ``RecordBatch``,
-                # which could have empty projection (ie ``num_columns`` == 0)
-                # while having non-empty rows (ie ``num_rows`` > 0), which
-                # could occur when list of requested columns is empty.
-                #
-                # However, when ``RecordBatches`` are concatenated using
-                # ``pyarrow.concat_tables`` it will return a single ``Table``
-                # with 0 columns and therefore 0 rows (since ``Table``s number of
-                # rows is determined as the length of its columns).
-                #
-                # To avoid running into this pitfall, we introduce a stub column
-                # holding just nulls to maintain invariance of the number of rows.
-                #
-                # NOTE: There's no impact from this as the binary size of the
-                #       extra column is basically 0
-                if table.num_columns == 0 and table.num_rows > 0:
-                    table = table.append_column(
-                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.nulls(table.num_rows)
-                    )
-
-                yield table
-
-        except pa.lib.ArrowNotImplementedError as e:
-            if (
-                "Nested data conversions not implemented for chunked array outputs"
-                not in str(e)
-            ):
-                raise
-
-            # Fallback for Parquet files with nested column types (list<struct>,
-            # map, struct with nested fields) whose binary/string data in a single
-            # row group exceeds PyArrow's internal chunking threshold (~2GB).
-            # fragment.to_batches() uses the Arrow Dataset Scanner which cannot
-            # handle chunked binary arrays when reconstructing nested types
-            # (ArrowNotImplementedError in WrapIntoListArray).
-            # We fall back to pyarrow.parquet direct reading per row-group and
-            # call combine_chunks() to produce contiguous arrays.
-            # See: https://github.com/apache/arrow/issues/21526
-            import pyarrow.parquet as pq
-
-            warnings.warn(
-                f"Encountered ArrowNotImplementedError while reading "
-                f"'{fragment.path}' due to nested column types (e.g. "
-                f"list<struct>) exceeding PyArrow's internal chunking "
-                f"threshold. Falling back to pyarrow.parquet direct reading. "
-                f"Consider writing Parquet files with smaller row group sizes "
-                f"to avoid this. "
-                f"See: https://github.com/apache/arrow/issues/21526",
-                UserWarning,
-            )
-
-            pf = pq.ParquetFile(fragment.path)
-            # Determine which row groups belong to this fragment.
-            if fragment.row_groups is not None:
-                row_group_indices = [rg.id for rg in fragment.row_groups]
-            else:
-                row_group_indices = list(range(pf.metadata.num_row_groups))
-
-            read_kwargs: Dict[str, Any] = {}
-            if data_columns is not None:
-                read_kwargs["columns"] = data_columns
-
-            for rg_idx in row_group_indices:
-                rg_table = pf.read_row_group(rg_idx, **read_kwargs)
-                # combine_chunks() converts ChunkedArrays to contiguous Arrays,
-                # resolving ArrowNotImplementedError for nested types.
-                rg_table = rg_table.combine_chunks()
-
-                if filter_expr is not None:
-                    rg_table = rg_table.filter(filter_expr)
-
-                if partition_col_values:
-                    rg_table = _add_partitions_to_table(partition_col_values, rg_table)
-
-                if include_path:
-                    rg_table = ArrowBlockAccessor.for_block(rg_table).fill_column(
-                        "path", fragment.path
-                    )
-
-                if rg_table.num_columns == 0 and rg_table.num_rows > 0:
-                    rg_table = rg_table.append_column(
-                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                        pa.nulls(rg_table.num_rows),
-                    )
-
-                yield rg_table
+                yield _postprocess_table(pa.Table.from_batches([batch]))
 
         except pa.lib.ArrowInvalid as e:
             error_message = str(e)
@@ -1129,17 +1155,15 @@ def _fetch_parquet_file_info(
         # Limit prefetching to just 1 batch
         to_batches_kwargs["batch_readahead"] = 1
 
-    batches_iter = row_group_fragment.to_batches(
+    avg_row_size: Optional[int] = None
+    # Use first non-empty batch to estimate the avg size of the row in-memory
+    for batch in _iter_batches_with_nested_fallback(
+        row_group_fragment,
         columns=columns,
         schema=schema,
         batch_size=batch_size,
-        **to_batches_kwargs,
-    )
-
-    avg_row_size: Optional[int] = None
-    # Use first batch non-empty batch to estimate the avg size of the
-    # row in-memory
-    for batch in batches_iter:
+        to_batches_kwargs=to_batches_kwargs,
+    ):
         if batch.num_rows > 0:
             avg_row_size = math.ceil(batch.nbytes / batch.num_rows)
             break

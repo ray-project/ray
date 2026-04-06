@@ -2753,6 +2753,84 @@ class TestParquetFragmentBatchSizeCoercion:
             assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
 
 
+@pytest.fixture(scope="module")
+def nested_parquet_exceeding_2gb(tmp_path_factory):
+    """Create a Parquet file with nested columns (list<struct>) whose string
+    data in a single row group exceeds Arrow's ~2GB chunking threshold.
+
+    This triggers ARROW-5030 / ArrowNotImplementedError when read via the
+    Arrow Dataset Scanner (fragment.to_batches).
+    """
+    import random
+    import string
+
+    tmp_path = tmp_path_factory.mktemp("nested_parquet")
+
+    num_rows = 2500
+    items_per_row = 10
+    payload_size = 100_000  # 100KB per list item -> ~2.5GB total nested data
+
+    ids = list(range(num_rows))
+    nested_data = [
+        [
+            {
+                "key": f"item_{i}_{j}",
+                "payload": "".join(
+                    random.choices(string.ascii_letters + string.digits, k=payload_size)
+                ),
+                "value": random.randint(0, 10000),
+            }
+            for j in range(items_per_row)
+        ]
+        for i in ids
+    ]
+
+    schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "nested_col",
+                pa.list_(
+                    pa.struct(
+                        [
+                            ("key", pa.string()),
+                            ("payload", pa.string()),
+                            ("value", pa.int64()),
+                        ]
+                    )
+                ),
+            ),
+        ]
+    )
+
+    table = pa.table({"id": ids, "nested_col": nested_data}, schema=schema)
+    file_path = os.path.join(str(tmp_path), "data.parquet")
+    pq.write_table(table, file_path, row_group_size=num_rows, use_dictionary=False)
+    return str(tmp_path), file_path, num_rows, schema
+
+
+def test_read_parquet_nested_type_arrow_not_implemented_fallback(
+    shutdown_only, nested_parquet_exceeding_2gb
+):
+    """Test that read_parquet succeeds on Parquet files with nested column types
+    whose data exceeds Arrow's ~2GB chunking threshold, by falling back to
+    pq.ParquetFile.iter_batches.
+
+    Regression test for https://github.com/ray-project/ray/issues/61675
+    See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
+    """
+    data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
+
+    ray.init()
+    ds = ray.data.read_parquet(data_dir)
+    total_rows = 0
+    for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
+        total_rows += batch.num_rows
+        assert "id" in batch.column_names
+        assert "nested_col" in batch.column_names
+    assert total_rows == num_rows
+
+
 if __name__ == "__main__":
     import sys
 
