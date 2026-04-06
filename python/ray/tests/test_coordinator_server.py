@@ -84,7 +84,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         )
         return node_provider, head_ip, provider_config, cluster_name
 
-    def testGetAllNodeIdsIncludesTerminated(self):
+    def testNodesForTeardownIncludesTerminated(self):
         """nodes_for_teardown must return every known IP regardless of state.
 
         This is the crux of the docker-stop-on-teardown fix: the invoking
