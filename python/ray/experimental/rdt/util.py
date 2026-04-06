@@ -278,12 +278,13 @@ def deregister_nixl_memory(tensor: "torch.Tensor") -> None:
         tensor: A PyTorch tensor whose NIXL memory registration reference count should be decremented.
 
     Example:
-        Extending the example from :func:`register_nixl_memory`:
+
         .. code-block:: python
 
+            # Extending the example from :func:`register_nixl_memory`:
             @ray.remote(num_gpus=1, enable_tensor_transport=True)
             class Trainer:
-                def done(self):
+                def deregister_weight(self):
                     # Remove the NIXL memory registration added by register_nixl_memory.
                     # The memory may still be registered if there are live ObjectRefs
                     # that reference it.
