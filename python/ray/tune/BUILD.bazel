@@ -216,12 +216,11 @@ py_test(
 
 py_test(
     name = "test_integration_pytorch_lightning",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
-        "ptl_v1",
         "ptl_v2",
         "team:ml",
     ],

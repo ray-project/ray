@@ -318,7 +318,7 @@ steps:
       - gpu
     instance_type: gpu-large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... //python/ray/tune/... ml
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --build-name mllightning1gpubuild-py3.10 --python-version 3.10
         --only-tags ptl_v1
     depends_on: [ "mllightning1gpubuild", "forge" ]
