@@ -635,7 +635,7 @@ doctest(
 
 doctest(
     name = "doctest[rllib2]",
-    size = "large",
+    size = "enormous",
     files = glob(
         include = [
             "source/rllib/getting-started.rst",

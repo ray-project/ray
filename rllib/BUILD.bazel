@@ -5084,7 +5084,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/ray_serve/ray_serve_with_rllib",
-    size = "medium",
+    size = "large",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
     args = [
         "--stop-iters=2",
