@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -8,7 +9,12 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     ResourceRequestPriority,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
-from ray.train.v2._internal.execution.scaling_policy import NoopDecision, ResizeDecision
+from ray.train.v2._internal.execution.scaling_policy import (
+    AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+    AUTOSCALING_REQUESTS_INTERVAL_S,
+    NoopDecision,
+    ResizeDecision,
+)
 from ray.train.v2._internal.execution.scaling_policy.elastic import (
     ElasticScalingPolicy,
 )
@@ -383,7 +389,7 @@ def test_request_and_clear():
         mock_coordinator.request_resources.remote.assert_called_with(
             requester_id=policy._requester_id,
             resources=[resources_per_worker] * 4,
-            expire_after_s=ElasticScalingPolicy.AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+            expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
         )
 
@@ -399,14 +405,14 @@ def test_request_and_clear():
         # Test request_resources is only called in
         # `make_decision_for_running_worker_group`,
         # if `AUTOSCALING_REQUESTS_INTERVAL_S` has passed.
-        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S / 2)
         policy.make_decision_for_running_worker_group(
             worker_group_state=worker_group_state,
             worker_group_status=worker_group_status,
         )
         assert mock_coordinator.request_resources.remote.call_count == 1
 
-        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        frozen_time.tick(AUTOSCALING_REQUESTS_INTERVAL_S / 2)
         policy.make_decision_for_running_worker_group(
             worker_group_state=worker_group_state,
             worker_group_status=worker_group_status,
@@ -415,8 +421,56 @@ def test_request_and_clear():
         assert_resource_request_called_with()
 
     # Test cancel_request is called when the controller is shutting down.
-    policy.before_controller_shutdown()
+    asyncio.run(policy.before_controller_shutdown())
     mock_coordinator.cancel_request.remote.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "num_autoscaler_nodes, mock_gcs_intact_slices, expected_workers",
+    [
+        # No resources -> 0 workers
+        (0, 0, 0),
+        # Autoscaler sees 3 nodes but slice requires 4 -> rounds to 0 workers
+        (3, 0, 0),
+        # Autoscaler sees 4 nodes and 1 intact slice -> 4 workers
+        (4, 1, 4),
+        # Autoscaler sees 8 nodes (2 slices worth) but only 1 slice is intact
+        # (e.g. 1 host down in the other slice) -> capped at 4 workers
+        (8, 1, 4),
+        # Autoscaler sees 8 nodes and both slices are intact -> 8 workers
+        (8, 2, 8),
+        # Autoscaler sees 12 nodes (3 slices), all 3 intact -> 12 workers (max)
+        (12, 3, 12),
+    ],
+)
+@patch("ray.util.tpu.get_num_tpu_slices")
+def test_count_possible_workers_tpu_slice_rounding(
+    mock_get_intact_slices,
+    num_autoscaler_nodes,
+    mock_gcs_intact_slices,
+    expected_workers,
+):
+    """
+    Test that TPU scaling correctly floors to the nearest complete, physically
+    intact TPU slice. Intact slices are counted regardless of whether they are
+    currently idle or in use.
+    """
+    mock_get_intact_slices.return_value = mock_gcs_intact_slices
+
+    # Scaling config for TPU v6e 4x4 between 1 and 3 slices.
+    scaling_config = ScalingConfig(
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        num_workers=(4, 12),
+        resources_per_worker={"TPU": 4, "CPU": 1},
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+
+    tpu_node = {"TPU": 4, "CPU": 1, "accelerator_type:TPU-V6E": 1}
+    allocated_resources = [tpu_node] * num_autoscaler_nodes
+
+    assert policy._count_possible_workers(allocated_resources) == expected_workers
 
 
 if __name__ == "__main__":

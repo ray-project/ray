@@ -101,6 +101,10 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        # Executor sink (DAG root: unique op with no output_dependencies).
+        # Iterator/streaming_split prefetch bytes are charged on this
+        # operator's output usage.
+        self._output_operator = self._terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -117,6 +121,30 @@ class ResourceManager:
         )
 
         self._warn_about_object_store_memory_if_needed()
+
+    def _terminal_operator_from_topology(
+        self, topology: "Topology"
+    ) -> PhysicalOperator:
+        """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+        ``build_streaming_topology`` is rooted at the same node passed to
+        ``StreamingExecutor``; that root is the only operator whose
+        ``output_dependencies`` is empty.
+        """
+        if not topology:
+            raise ValueError("topology must be non-empty")
+        sinks = [op for op in topology if not op.output_dependencies]
+        if len(sinks) == 1:
+            return sinks[0]
+        if not sinks:
+            raise ValueError(
+                "No terminal operator found in topology (expected exactly one "
+                "operator with empty output_dependencies)"
+            )
+        raise ValueError(
+            "Expected exactly one terminal operator in topology, found "
+            f"{len(sinks)}: {sinks!r}"
+        )
 
     def _warn_about_object_store_memory_if_needed(self):
         """Warn if object store memory is configured below 50% of total memory."""
@@ -149,6 +177,9 @@ class ResourceManager:
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
+        assert (
+            num_bytes >= 0
+        ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
 
     def get_external_consumer_bytes(self) -> int:
@@ -161,6 +192,10 @@ class ResourceManager:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
+            if op is self._output_operator:
+                self._mem_op_internal[op] = 0
+                self._mem_op_outputs[op] = self._external_consumer_bytes
+                return self._external_consumer_bytes
             return 0
 
         # Operator's internal Object Store usage
@@ -192,6 +227,10 @@ class ResourceManager:
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
 
+        # Attribute iterator / streaming_split prefetch to the executor sink only.
+        if op is self._output_operator:
+            self._mem_op_outputs[op] += self._external_consumer_bytes
+
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
     def update_usages(self):
@@ -210,7 +249,6 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
-            op.update_resource_usage()
             op_usage = op.current_logical_usage()
             op_running_usage = op.running_logical_usage()
             op_pending_usage = op.pending_logical_usage()
@@ -263,6 +301,9 @@ class ResourceManager:
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
+        assert (
+            self._global_usage.is_non_negative()
+        ), f"Global usage should be non-negative, got {self._global_usage}"
         return self._global_usage
 
     def get_global_running_usage(self) -> ExecutionResources:
@@ -295,7 +336,14 @@ class ResourceManager:
             object_store_memory=total_resources.object_store_memory
             * default_mem_fraction
         )
-        self._global_limits = default_limits.min(total_resources).subtract(exclude)
+        # Clamp to non-negative because exclude_resources (e.g., training worker
+        # CPUs) can exceed the total resources reported by the cluster autoscaler,
+        # such as when Ray Train reserves more CPUs than are visible to Ray Data.
+        self._global_limits = (
+            default_limits.min(total_resources)
+            .subtract(exclude)
+            .max(ExecutionResources.zero())
+        )
         return self._global_limits
 
     def get_op_usage(

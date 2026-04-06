@@ -299,7 +299,7 @@ class NixlTensorTransport(TensorTransportManager):
                 local_xfer_descs,
                 remote_xfer_descs,
                 remote_name,
-                "UUID",
+                b"UUID",
             )
 
             state = nixl_agent.transfer(xfer_handle)
@@ -454,17 +454,31 @@ class NixlTensorTransport(TensorTransportManager):
                 # GPU ID, and meta info. Doing the equivalent of what nixl
                 # does for pytorch tensors internally:
                 # https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
-                reg_desc = self.get_nixl_agent().register_memory(
-                    [
-                        (
-                            tensor.untyped_storage().data_ptr(),
-                            tensor.untyped_storage().nbytes(),
-                            gpu_id,
-                            "",
-                        )
-                    ],
-                    mem_type=mem_type,
-                )
+                try:
+                    reg_desc = self.get_nixl_agent().register_memory(
+                        [
+                            (
+                                tensor.untyped_storage().data_ptr(),
+                                tensor.untyped_storage().nbytes(),
+                                gpu_id,
+                                "",
+                            )
+                        ],
+                        mem_type=mem_type,
+                    )
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to register {mem_type} memory with NIXL "
+                        f"(size={tensor.untyped_storage().nbytes()} bytes, "
+                        f"gpu_id={gpu_id}). "
+                        f"Common causes:\n"
+                        f"  - Locked memory limit too low: check 'ulimit -l' (should be 'unlimited')\n"
+                        f"  - nvidia-peermem kernel module not loaded: check 'lsmod | grep nvidia_peermem'\n"
+                        f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
+                        f"  - IOMMU enabled without passthrough mode\n"
+                        f"  - Container cgroup memory restrictions\n"
+                        f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                    ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, prev_count + 1)
 
     def _add_pool_tensor_descs(self, tensors: List["torch.Tensor"]):
