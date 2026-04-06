@@ -3,7 +3,7 @@ import logging
 import os
 import posixpath
 import time
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import numpy
 import pyarrow
@@ -262,86 +262,6 @@ class IdColumnCheckpointLoader(CheckpointLoader):
         """
         # Sort by the ID column.
         return checkpoint_ds.sort(self.id_column)
-
-
-class IcebergCheckpointLoader:
-    """Loader for Iceberg write results."""
-
-    def __init__(self, config: CheckpointConfig):
-        self.config = config
-        self.filesystem = config.filesystem
-        self.path = _unwrap_protocol(config.checkpoint_path)
-
-    def load_write_results(self) -> List[Any]:
-        import pickle
-
-        results = []
-        selector = pyarrow.fs.FileSelector(self.path)
-        info_list = self.filesystem.get_file_info(selector)
-        # Only load metadata when its corresponding parquet ID file exists.
-        #
-        # This prevents treating "meta-only" partial state as committed progress.
-        # It can happen if a worker crashes after writing metadata but before
-        # persisting the parquet checkpoint IDs. Without this guard, we'd load
-        # an IcebergWriteResult for rows that the restore path will not skip.
-        #
-        # Note: The inverse partial state ("parquet-only") is avoided by writing
-        # metadata before parquet in the writer.
-        parquet_ids = {
-            info.base_name[: -len(".parquet")]
-            for info in info_list
-            if info.type == pyarrow.fs.FileType.File and info.base_name.endswith(".parquet")
-        }
-
-        load_errors = []
-        for info in info_list:
-            if info.type != pyarrow.fs.FileType.File:
-                continue
-            # Match "{uuid}.meta.pkl"
-            if not info.base_name.endswith(".meta.pkl"):
-                continue
-            file_id = info.base_name[: -len(".meta.pkl")]
-            if file_id not in parquet_ids:
-                continue
-            try:
-                with self.filesystem.open_input_stream(info.path) as f:
-                    results.append(pickle.load(f))
-            except Exception as e:
-                load_errors.append((info.base_name, e))
-
-        if load_errors:
-            first_name, first_exc = load_errors[0]
-            raise RuntimeError(
-                f"Failed to load {len(load_errors)} checkpoint metadata files; "
-                f"first failure: {first_name}: {first_exc}"
-            ) from first_exc
-        return results
-
-    def get_checkpoint_ids(self, id_col: str) -> "set[Any]":
-        """Load all IDs from the checkpoint files."""
-        try:
-            # Check if there are any parquet files first to avoid read_parquet error on empty dir
-            selector = pyarrow.fs.FileSelector(self.path)
-            info_list = self.filesystem.get_file_info(selector)
-            has_parquet = any(
-                f.base_name.endswith(".parquet")
-                for f in info_list
-                if f.type == pyarrow.fs.FileType.File
-            )
-
-            if not has_parquet:
-                return set()
-
-            ds = ray.data.read_parquet(
-                self.config.checkpoint_path,
-                filesystem=self.filesystem,
-                columns=[id_col],
-            )
-            rows = ds.take_all()
-            return {row[id_col] for row in rows}
-        except Exception as e:
-            logger.warning(f"Failed to load checkpoint IDs: {e}")
-            return set()
 
 
 class BatchBasedCheckpointFilter(CheckpointFilter):

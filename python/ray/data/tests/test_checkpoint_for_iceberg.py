@@ -21,7 +21,10 @@ from ray.data._internal.savemode import SaveMode
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
-from ray.data.checkpoint.checkpoint_filter import IcebergCheckpointLoader
+from ray.data.checkpoint.iceberg_checkpoint import (
+    IcebergCheckpointLoader,
+    write_iceberg_checkpoint_metadata,
+)
 from ray.data.checkpoint.checkpoint_writer import BatchBasedCheckpointWriter
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import WriteResult
@@ -159,8 +162,26 @@ def test_iceberg_checkpoint_write_and_load(
         schemas=[],
     )
 
-    writer.write_block_checkpoint(block1, write_result=result1)
-    writer.write_block_checkpoint(block2, write_result=result2)
+    # Use the separated API: write .meta.pkl first, then .parquet, sharing file_id
+    import uuid
+
+    file_id_1 = str(uuid.uuid4())
+    write_iceberg_checkpoint_metadata(
+        filesystem=writer.filesystem,
+        checkpoint_path_unwrapped=writer.checkpoint_path_unwrapped,
+        file_id=file_id_1,
+        write_result=result1,
+    )
+    writer.write_block_checkpoint(block1, checkpoint_file_id=file_id_1)
+
+    file_id_2 = str(uuid.uuid4())
+    write_iceberg_checkpoint_metadata(
+        filesystem=writer.filesystem,
+        checkpoint_path_unwrapped=writer.checkpoint_path_unwrapped,
+        file_id=file_id_2,
+        write_result=result2,
+    )
+    writer.write_block_checkpoint(block2, checkpoint_file_id=file_id_2)
 
     files = os.listdir(checkpoint_dir)
     parquet_files = [f for f in files if f.endswith(".parquet")]

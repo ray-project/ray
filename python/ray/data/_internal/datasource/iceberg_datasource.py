@@ -429,19 +429,6 @@ class IcebergDatasource(Datasource):
         # Get the plan files in this query
         plan_files = self.plan_files
 
-        # Filter plan files if checkpoint path partition filter is set
-        if (
-            data_context
-            and data_context.checkpoint_config
-            and data_context.checkpoint_config.checkpoint_path_partition_filter
-        ):
-            partition_filter = (
-                data_context.checkpoint_config.checkpoint_path_partition_filter
-            )
-            plan_files = [
-                f for f in plan_files if partition_filter.apply(f.file.file_path)
-            ]
-
         # Get the projected schema for this scan, given all the row filters,
         # snapshot ID, etc.
         projected_schema = data_scan.projection()

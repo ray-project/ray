@@ -391,7 +391,9 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         if schema is not None:
             table_schema = self._table.metadata.schema()
 
+            # Use Iceberg's schema update API to evolve table schema
             def _update_schema():
+                # union_by_name merges old and new schemas, automatically adding new columns
                 with self._table.update_schema() as update:
                     self._update_schema_with_union(update, schema, table_schema)
 
@@ -436,7 +438,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         all_data_files = []
         upsert_keys_tables = []
         block_schemas = []
-        per_block_write_results = []
         use_copy_on_write_upsert = self._mode == SaveMode.UPSERT
 
         for block in blocks:
@@ -471,25 +472,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     max_backoff_s=iceberg_config.write_file_retry_max_backoff_s,
                 )
                 all_data_files.extend(data_files)
-                per_block_write_results.append(
-                    IcebergWriteResult(
-                        data_files=data_files,
-                        upsert_keys=per_block_upsert_keys,
-                        schemas=[pa_table.schema],
-                    )
-                )
             else:
-                per_block_write_results.append(None)
-
-        # Store per-block IcebergWriteResult in the task context so the checkpoint writer
-        # can persist metadata alongside each block's checkpointed IDs.
-        #
-        # This avoids coupling a task-level write result (covering multiple blocks) with a
-        # single block's checkpoint file. If a task crashes after checkpointing some blocks
-        # but before checkpointing others, recovering a task-level write result would allow
-        # uncheckpointed rows to be reprocessed while still committing previously-written
-        # data files for those rows, resulting in duplicate data.
-        ctx.kwargs["_datasink_write_return_per_block"] = per_block_write_results
+                pass
 
         # Combine all upsert key tables into one
         from ray.data._internal.arrow_ops.transform_pyarrow import concat
@@ -544,59 +528,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         logger.info("[on_write_complete] Starting commit phase (mode=%s)", self._mode)
 
         write_returns = write_result.write_returns
-
-        context = DataContext.get_current()
-        if context.checkpoint_config:
-            from ray.data.checkpoint.checkpoint_filter import IcebergCheckpointLoader
-
-            try:
-                existing_data_file_paths = set()
-                for r in write_returns:
-                    if not r or not r.data_files:
-                        continue
-                    for df in r.data_files:
-                        file_path = getattr(df, "file_path", None)
-                        if file_path is not None:
-                            existing_data_file_paths.add(file_path)
-
-                loader = IcebergCheckpointLoader(context.checkpoint_config)
-                previous_results = loader.load_write_results()
-                deduped_previous_results = []
-                num_skipped_results = 0
-                for r in previous_results:
-                    if not r:
-                        continue
-                    if r.data_files:
-                        all_duplicate = True
-                        for df in r.data_files:
-                            file_path = getattr(df, "file_path", None)
-                            if (
-                                file_path is None
-                                or file_path not in existing_data_file_paths
-                            ):
-                                all_duplicate = False
-                                break
-                        if all_duplicate:
-                            num_skipped_results += 1
-                            continue
-                        for df in r.data_files:
-                            file_path = getattr(df, "file_path", None)
-                            if file_path is not None:
-                                existing_data_file_paths.add(file_path)
-                    deduped_previous_results.append(r)
-
-                write_returns.extend(deduped_previous_results)
-                logger.info(
-                    "[on_write_complete] Loaded %d results from checkpoint (skipped_duplicates=%d, merged_total=%d)",
-                    len(deduped_previous_results),
-                    num_skipped_results,
-                    len(write_returns),
-                )
-            except Exception as e:
-                raise RuntimeError(
-                    "Failed to load checkpoint results; aborting commit to avoid data loss."
-                ) from e
-
         valid_results = [r for r in write_returns if r and r.data_files]
 
         if not valid_results:

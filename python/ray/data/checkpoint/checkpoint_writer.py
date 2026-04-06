@@ -1,10 +1,9 @@
 import logging
 import os
-import pickle
 import uuid
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from pyarrow import parquet as pq
 from pyarrow.fs import FileType
@@ -58,7 +57,7 @@ class CheckpointWriter:
         self.write_num_threads = self.ckpt_config.write_num_threads
 
     @abstractmethod
-    def write_block_checkpoint(self, block: BlockAccessor, **kwargs):
+    def write_block_checkpoint(self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
 
@@ -160,7 +159,7 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
         return pa.table({self.id_col: id_column_data})
 
     def write_block_checkpoint(
-        self, block: BlockAccessor, write_result: Any = None, **kwargs
+        self, block: BlockAccessor, checkpoint_file_id: str = None, **kwargs
     ):
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.checkpoint_path`.
@@ -168,60 +167,26 @@ class BatchBasedCheckpointWriter(CheckpointWriter):
         This is used for non-file datasinks (SQL, MongoDB, etc.) where there's
         no predictable file path to store in checkpoint metadata.
 
+        Iceberg-specific metadata files (e.g., .meta.pkl for Iceberg WriteResult recovery)
+        are handled separately by the planner layer, not by this writer.
+
         Args:
             block: The block accessor containing the data to checkpoint.
+            checkpoint_file_id: Optional deterministic file ID for the checkpoint.
+                If provided, the parquet file will be named {checkpoint_file_id}.parquet.
+                This allows external callers (e.g., planner layer) to pair the parquet
+                file with other metadata files using the same ID.
         """
         if block.num_rows() == 0:
             return
 
-        file_id = str(uuid.uuid4())
+        file_id = checkpoint_file_id or str(uuid.uuid4())
         file_name = f"{file_id}.parquet"
         ckpt_file_path = os.path.join(self.checkpoint_path_unwrapped, file_name)
-        meta_bytes = None
-        meta_path = None
-        meta_tmp_path = None
-        if write_result is not None:
-            # Serialize first so pickling errors don't occur after the parquet file
-            # has already been persisted.
-            #
-            # Write metadata before parquet to avoid a "parquet-only" partial state:
-            # the restore path reads checkpoint IDs from parquet and may skip rows,
-            # while Iceberg write-result recovery reads .meta.pkl. If we crash after
-            # parquet but before metadata, we can skip rows without recovering the
-            # corresponding IcebergWriteResult, leading to silent data loss.
-            meta_bytes = pickle.dumps(write_result)
-            meta_name = f"{file_id}.meta.pkl"
-            meta_path = os.path.join(self.checkpoint_path_unwrapped, meta_name)
-            meta_tmp_path = os.path.join(
-                self.checkpoint_path_unwrapped, f".{meta_name}.tmp"
-            )
 
         checkpoint_ids_table = self._prepare_checkpoint_table_from_block(block)
 
         try:
-            if meta_bytes is not None:
-
-                def _write_meta():
-                    with self.filesystem.open_output_stream(meta_tmp_path) as f:
-                        f.write(meta_bytes)
-                    # Use a temp file + move to make metadata creation atomic.
-                    # If move isn't atomic for this filesystem, the loader also
-                    # validates metadata/parquet pairing before loading metadata.
-                    try:
-                        self.filesystem.move(meta_tmp_path, meta_path)
-                    except Exception:
-                        try:
-                            self.filesystem.delete_file(meta_path)
-                        except Exception:
-                            pass
-                        self.filesystem.move(meta_tmp_path, meta_path)
-
-                call_with_retry(
-                    _write_meta,
-                    description=f"Write checkpoint metadata file: {file_id}.meta.pkl",
-                    match=DataContext.get_current().retried_io_errors,
-                )
-
             def _write_parquet():
                 pq.write_table(
                     checkpoint_ids_table,
