@@ -68,9 +68,10 @@ def get_deploy_args(
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
     deployment_def = replica_config.deployment_def
+    uses_multiplexed = _deployment_uses_multiplexed(deployment_def)
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        if _deployment_uses_multiplexed(deployment_def):
+        if uses_multiplexed:
             # HAProxy mode turns on direct ingress; prefer the HAProxy-specific error
             # below so callers/tests see RAY_SERVE_ENABLE_HA_PROXY when applicable.
             if not RAY_SERVE_ENABLE_HA_PROXY:
@@ -82,7 +83,7 @@ def get_deploy_args(
                     "not a model-serving leaf."
                 )
 
-    if _deployment_uses_multiplexed(deployment_def):
+    if uses_multiplexed:
         if RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING:
             raise ValueError(
                 "Model multiplexing (@serve.multiplexed) is disallowed because "
