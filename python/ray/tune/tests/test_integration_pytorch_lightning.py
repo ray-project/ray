@@ -2,6 +2,7 @@ import shutil
 import tempfile
 import unittest
 
+import lightning.pytorch as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -9,11 +10,6 @@ from ray import tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune import CheckpointConfig
 from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
-
-try:
-    import lightning.pytorch as pl
-except ModuleNotFoundError:
-    import pytorch_lightning as pl
 
 
 class _MockDataset(Dataset):
