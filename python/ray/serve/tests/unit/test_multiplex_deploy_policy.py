@@ -54,7 +54,9 @@ def test_multiplex_raises_with_strict(patch_ray_job_id):
         True,
     ):
         with patch.object(deploy_utils, "RAY_SERVE_ENABLE_HA_PROXY", False):
-            with pytest.raises(ValueError, match="RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING"):
+            with pytest.raises(
+                ValueError, match="RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING"
+            ):
                 deploy_utils.get_deploy_args("d", replica_config, ingress=False)
 
 
@@ -80,6 +82,10 @@ def test_multiplex_ingress_direct_ingress_error_preempts_soft_path(patch_ray_job
         ):
             with patch.object(deploy_utils, "RAY_SERVE_ENABLE_HA_PROXY", False):
                 with pytest.raises(ValueError, match="not supported on"):
-                    deploy_utils.get_deploy_args(
-                        "d", replica_config, ingress=True
-                    )
+                    deploy_utils.get_deploy_args("d", replica_config, ingress=True)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
