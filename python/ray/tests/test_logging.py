@@ -7,6 +7,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
+from glob import glob
 from pathlib import Path
 from typing import Dict, List, Tuple
 from unittest.mock import MagicMock, Mock, patch
@@ -1258,6 +1259,37 @@ class TestSetupLogRecordFactory:
 
         assert "_ray_timestamp_ns" not in record_old.__dict__
         assert "_ray_timestamp_ns" in record_new.__dict__
+
+
+def test_agent_log_auto_increment(ray_start_cluster):
+    cluster = ray_start_cluster
+
+    # add first node
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    # add second node
+    cluster.add_node(num_cpus=1)
+
+    session_dir = cluster.head_node.get_session_dir_path()
+    logs_dir = os.path.join(session_dir, "logs")
+
+    def verify_logs_present():
+        dashboard_logs = sorted(glob(os.path.join(logs_dir, "dashboard_agent*.log")))
+        runtime_env_logs = sorted(glob(os.path.join(logs_dir, "runtime_env_agent*.log")))
+
+        dashboard_log_names = [os.path.basename(p) for p in dashboard_logs]
+        runtime_env_log_names = [os.path.basename(p) for p in runtime_env_logs]
+
+        assert "dashboard_agent.log" in dashboard_log_names, dashboard_log_names
+        assert "dashboard_agent.1.log" in dashboard_log_names, dashboard_log_names
+
+        assert "runtime_env_agent.log" in runtime_env_log_names, runtime_env_log_names
+        assert "runtime_env_agent.1.log" in runtime_env_log_names, runtime_env_log_names
+        return True
+
+    from ray._common.test_utils import wait_for_condition
+    wait_for_condition(verify_logs_present, timeout=15)
 
 
 if __name__ == "__main__":

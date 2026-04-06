@@ -1622,8 +1622,10 @@ def start_raylet(
     raylet_stderr_filepath: Optional[str] = None,
     dashboard_agent_stdout_filepath: Optional[str] = None,
     dashboard_agent_stderr_filepath: Optional[str] = None,
+    dashboard_agent_log_filepath: Optional[str] = None,
     runtime_env_agent_stdout_filepath: Optional[str] = None,
     runtime_env_agent_stderr_filepath: Optional[str] = None,
+    runtime_env_agent_log_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1857,6 +1859,10 @@ def start_raylet(
         dashboard_agent_command.append(
             f"--stderr-filepath={dashboard_agent_stderr_filepath}"
         )
+    if dashboard_agent_log_filepath:
+        dashboard_agent_command.append(
+            f"--logging-filename={os.path.basename(dashboard_agent_log_filepath)}"
+        )
     if (
         dashboard_agent_stdout_filepath is None
         and dashboard_agent_stderr_filepath is None
@@ -1903,6 +1909,10 @@ def start_raylet(
     if runtime_env_agent_stderr_filepath:
         runtime_env_agent_command.append(
             f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
+        )
+    if runtime_env_agent_log_filepath:
+        runtime_env_agent_command.append(
+            f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
         )
     if (
         runtime_env_agent_stdout_filepath is None
