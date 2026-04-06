@@ -243,11 +243,19 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
       << ", port: " << actor_data.address().port()
       << ", num_restarts: " << actor_data.num_restarts() << ", death context type="
       << gcs::GetActorDeathCauseString(actor_data.death_cause());
+  RAY_LOG(INFO).WithField(actor_id).WithField(worker_id).WithField(node_id)
+      << "ActorManagerDebug actor-state-notification state=" << actor_state
+      << " num_restarts=" << actor_data.num_restarts()
+      << " preempted=" << actor_data.preempted()
+      << " death_cause=" << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.preempted()) {
     actor_task_submitter_.SetPreempted(actor_id);
   }
 
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
+    RAY_LOG(INFO).WithField(actor_id)
+        << "ActorManagerDebug actor-restarting num_restarts="
+        << actor_data.num_restarts();
     actor_task_submitter_.DisconnectActor(actor_id,
                                           actor_data.num_restarts(),
                                           /*dead=*/false,
@@ -257,6 +265,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
       actor_pool_state_callback_(actor_id, /*is_alive=*/false, NodeID::Nil());
     }
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
+    RAY_LOG(INFO).WithField(actor_id)
+        << "ActorManagerDebug actor-dead num_restarts=" << actor_data.num_restarts()
+        << " restartable=" << gcs::IsActorRestartable(actor_data);
     OnActorKilled(actor_id);
     actor_task_submitter_.DisconnectActor(actor_id,
                                           actor_data.num_restarts(),
@@ -270,6 +281,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
+    RAY_LOG(INFO).WithField(actor_id).WithField(node_id)
+        << "ActorManagerDebug actor-alive num_restarts=" << actor_data.num_restarts();
     actor_task_submitter_.ConnectActor(
         actor_id, actor_data.address(), actor_data.num_restarts());
     if (actor_pool_state_callback_) {

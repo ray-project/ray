@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,32 @@
 
 namespace ray {
 namespace core {
+
+namespace {
+
+std::string PoolStateDebugString(const ActorPoolID &pool_id,
+                                 const ActorPoolInfo &pool_info,
+                                 size_t backlog_size) {
+  int32_t total_in_flight = 0;
+  int32_t alive_actors = 0;
+  for (const auto &[actor_id, state] : pool_info.actor_states) {
+    total_in_flight += state.num_tasks_in_flight;
+    if (state.is_alive) {
+      alive_actors++;
+    }
+  }
+
+  std::ostringstream stream;
+  stream << "pool_id=" << pool_id << " alive_actors=" << alive_actors << "/"
+         << pool_info.actor_ids.size() << " total_in_flight=" << total_in_flight
+         << " backlog=" << backlog_size
+         << " total_submitted=" << pool_info.total_tasks_submitted
+         << " total_failed=" << pool_info.total_tasks_failed
+         << " total_retried=" << pool_info.total_tasks_retried;
+  return stream.str();
+}
+
+}  // namespace
 
 ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
                                    ActorTaskSubmitterInterface &task_submitter,
@@ -333,10 +360,6 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
                                           const ActorID &actor_id,
                                           const Status &status,
                                           const rpc::RayErrorInfo *error_info) {
-  RAY_LOG(DEBUG) << "Pool task complete: pool=" << pool_id
-                 << ", work_item=" << work_item_id << ", task=" << task_id
-                 << ", actor=" << actor_id << ", status=" << status.ToString();
-
   absl::MutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
@@ -344,6 +367,15 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
     RAY_LOG(DEBUG) << "Pool " << pool_id << " no longer exists, ignoring task completion";
     return;
   }
+  auto wq_it = work_queues_.find(pool_id);
+  RAY_CHECK(wq_it != work_queues_.end());
+  RAY_LOG(INFO) << "ActorPoolDebug pool-task-complete work_item_id=" << work_item_id
+                << " task_id=" << task_id << " actor_id=" << actor_id
+                << " status=" << status.ToString() << " error_type="
+                << (error_info == nullptr ? "OK"
+                                          : rpc::ErrorType_Name(error_info->error_type()))
+                << " "
+                << PoolStateDebugString(pool_id, pool_it->second, wq_it->second->Size());
 
   if (status.ok()) {
     OnTaskSucceeded(pool_id, actor_id);
@@ -390,6 +422,14 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
       wi_it->second.pushed_to_actor = true;
     }
   }
+
+  auto wq_it = work_queues_.find(pool_it->second);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug task-submitted actor_id=" << actor_id
+                  << " work_item_id=" << work_item_id << " "
+                  << PoolStateDebugString(
+                         pool_it->second, info_it->second, wq_it->second->Size());
+  }
 }
 
 void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_id) {
@@ -423,8 +463,12 @@ void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_
     actor_state.location = node_id;
   }
 
-  RAY_LOG(INFO) << "Actor " << actor_id << " in pool " << pool_id
-                << " is alive (possibly restarted), draining work queue";
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug actor-alive actor_id=" << actor_id
+                  << " node_id=" << node_id << " "
+                  << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
+  }
 
   DrainWorkQueue(pool_id);
 }
@@ -451,8 +495,12 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
   state_it->second.is_alive = false;
   state_it->second.num_tasks_in_flight = 0;
 
-  RAY_LOG(INFO) << "Actor " << actor_id << " in pool " << pool_id
-                << " marked dead/restarting";
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug actor-dead actor_id=" << actor_id << " "
+                  << PoolStateDebugString(
+                         pool_id, info_it->second, wq_it->second->Size());
+  }
 }
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
@@ -578,8 +626,11 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   TaskID work_item_id = work_item.work_item_id;
   int32_t attempt_number = work_item.attempt_number;
 
-  RAY_LOG(DEBUG) << "Submitting work item " << work_item_id << " to actor " << actor_id
-                 << " in pool " << pool_id << " (attempt " << attempt_number << ")";
+  auto wq_it = work_queues_.find(pool_id);
+  RAY_CHECK(wq_it != work_queues_.end());
+  RAY_LOG(INFO) << "ActorPoolDebug submit-to-actor work_item_id=" << work_item_id
+                << " actor_id=" << actor_id << " attempt=" << attempt_number << " "
+                << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
 
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
@@ -642,8 +693,14 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
   }
 
   pool_info.total_tasks_failed++;
+  auto wq_it = work_queues_.find(pool_id);
+  RAY_CHECK(wq_it != work_queues_.end());
 
   bool should_retry = ShouldRetryTask(pool_info.config, error_info);
+  RAY_LOG(INFO) << "ActorPoolDebug task-failed work_item_id=" << work_item_id
+                << " actor_id=" << failed_actor_id << " should_retry=" << should_retry
+                << " error_type=" << rpc::ErrorType_Name(error_info.error_type()) << " "
+                << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
 
   if (!should_retry) {
     RAY_LOG(INFO) << "Work item " << work_item_id << " failed with non-retriable error, "
@@ -698,6 +755,12 @@ void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
   if (actor_state.num_tasks_in_flight > 0) {
     actor_state.num_tasks_in_flight--;
     actor_state.consecutive_failures = 0;
+  }
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug task-succeeded actor_id=" << actor_id << " "
+                  << PoolStateDebugString(
+                         pool_id, pool_it->second, wq_it->second->Size());
   }
 
   DrainWorkQueue(pool_id);

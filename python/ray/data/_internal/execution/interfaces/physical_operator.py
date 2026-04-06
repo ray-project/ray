@@ -126,6 +126,7 @@ class DataOpTask(OpTask):
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        operator_id: str = "unknown",
     ):
         """Create a DataOpTask
         Args:
@@ -153,6 +154,7 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._operator_id = operator_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -266,6 +268,20 @@ class DataOpTask(OpTask):
                     f"Will retry next iteration. "
                     f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
+                if "FaultInjectableIncrementBatch" in self._operator_name:
+                    logger.warning(
+                        "RayDataActorPoolDebug %s",
+                        {
+                            "event": "metadata_timeout",
+                            "operator_name": self._operator_name,
+                            "operator_id": self._operator_id,
+                            "task_index": self.task_index(),
+                            "task_id": self.get_task_id().hex(),
+                            "pending_block_ref": self._pending_block_ref.hex(),
+                            "pending_meta_ref": self._pending_meta_ref.hex(),
+                            "has_finished": self._has_finished,
+                        },
+                    )
                 break
 
             meta = meta_with_schema.metadata

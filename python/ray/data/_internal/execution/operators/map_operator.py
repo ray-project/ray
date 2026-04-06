@@ -78,6 +78,45 @@ from ray.data.context import DataContext
 logger = logging.getLogger(__name__)
 
 
+def _should_log_actor_pool_fault_debug(operator_name: str) -> bool:
+    return "FaultInjectableIncrementBatch" in operator_name
+
+
+def _log_actor_pool_fault_debug(op: "MapOperator", event: str, **fields) -> None:
+    if not _should_log_actor_pool_fault_debug(op.name):
+        return
+
+    actor_pool = getattr(op, "_actor_pool", None)
+    bundle_queue = getattr(op, "_bundle_queue", None)
+    payload = {
+        "event": event,
+        "operator_name": op.name,
+        "operator_id": op.id,
+        "active_data_tasks": len(getattr(op, "_data_tasks", {})),
+        "active_metadata_tasks": len(getattr(op, "_metadata_tasks", {})),
+        "output_queue_blocks": op._output_queue.num_blocks(),
+        "bundle_queue_blocks": None
+        if bundle_queue is None
+        else bundle_queue.num_blocks(),
+        "bundle_queue_bundles": None
+        if bundle_queue is None
+        else bundle_queue.num_bundles(),
+    }
+    if actor_pool is not None:
+        payload.update(
+            {
+                "pool_tasks_in_flight": actor_pool.num_tasks_in_flight(),
+                "pool_free_slots": actor_pool.num_free_task_slots(),
+                "pool_running_actors": actor_pool.num_running_actors(),
+                "pool_alive_actors": actor_pool.num_alive_actors(),
+                "pool_active_actors": actor_pool.num_active_actors(),
+                "pool_restarting_actors": actor_pool.num_restarting_actors(),
+            }
+        )
+    payload.update(fields)
+    logger.warning("RayDataActorPoolDebug %s", payload)
+
+
 @ray.remote(num_cpus=0)
 def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     """Extract PyArrow schema from a block by converting a 1-row sample.
@@ -571,6 +610,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._metrics.on_task_output_generated(task_index, output)
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
+            if task_index not in first_output_logged:
+                first_output_logged.add(task_index)
+                _log_actor_pool_fault_debug(
+                    self,
+                    "first_output",
+                    task_index=task_index,
+                    output_num_rows=output.num_rows(),
+                )
 
         def _task_done_callback(
             task_index: int,
@@ -602,20 +649,38 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
+            _log_actor_pool_fault_debug(
+                self,
+                "task_done",
+                task_index=task_index,
+                exception=None if exception is None else type(exception).__name__,
+                output_backpressure_s=None
+                if task_exec_driver_stats is None
+                else task_exec_driver_stats.task_output_backpressure_s,
+            )
             if task_done_callback:
                 task_done_callback()
 
+        first_output_logged = set()
         data_task = DataOpTask(
             task_index,
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            operator_id=self.id,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
         )
         self._data_tasks[task_index] = data_task
+        _log_actor_pool_fault_debug(
+            self,
+            "task_submitted",
+            task_index=task_index,
+            task_id=data_task.get_task_id().hex(),
+            input_blocks=len(inputs.blocks),
+        )
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
