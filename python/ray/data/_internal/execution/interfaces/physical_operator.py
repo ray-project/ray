@@ -142,6 +142,8 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            operator_id: The unique ID of the physical operator that created this
+                task. Used for correlating debug logs across Ray Data and Ray Core.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
