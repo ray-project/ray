@@ -979,9 +979,20 @@ def _iter_batches_with_nested_fallback(
         pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
         safe = _get_safe_batch_size_for_nested_types(pf)
         fallback_batch_size = min(batch_size, safe) if batch_size else safe
-        for batch in pf.iter_batches(batch_size=fallback_batch_size, columns=columns):
-            # Apply filter post-read since iter_batches doesn't support
-            # predicate pushdown.
+
+        # Use fragment.subset(filter=) for row-group-level predicate
+        # pushdown via Parquet statistics (metadata only, no data read).
+        iter_kwargs: Dict[str, Any] = {}
+        if filter_expr is not None:
+            pruned = fragment.subset(filter=filter_expr)
+            if pruned.row_groups is not None:
+                iter_kwargs["row_groups"] = [rg.id for rg in pruned.row_groups]
+
+        for batch in pf.iter_batches(
+            batch_size=fallback_batch_size, columns=columns, **iter_kwargs
+        ):
+            # Row-level filter still needed since row-group pruning only
+            # skips entire row groups that can't match.
             if filter_expr is not None:
                 table = pa.Table.from_batches([batch]).filter(filter_expr)
                 yield from table.to_batches()
