@@ -743,7 +743,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+            get_metric_dictionaries(
+                "ray_serve_deployment_request_counter_total", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -775,7 +777,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries(
+                "ray_serve_deployment_processing_latency_ms_count", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -794,7 +798,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
+        )
         == 2
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
@@ -812,7 +818,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_deployment_error_counter_total", wait=False
+            )
+        )
         == 1,
         timeout=40,
     )
@@ -826,7 +836,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     ) == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
+        lambda: len(
+            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+        )
         == 3,
         timeout=40,
     )
