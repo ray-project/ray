@@ -32,6 +32,7 @@
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -333,6 +334,35 @@ class RayEventExportGrpcService : public GrpcService {
 };
 
 }  // namespace events
+
+/// gRPC Health Check service that dispatches through the io_context.
+/// Unlike the default gRPC health check service (which responds directly from gRPC
+/// threads), this service's handler runs on the io_context event loop. If the event loop
+/// is stuck, the health check will not respond and the client will time out.
+class HealthCheckGrpcService : public GrpcService {
+ public:
+  explicit HealthCheckGrpcService(instrumented_io_context &io_service)
+      : GrpcService(io_service) {}
+
+  void HandleCheck(grpc::health::v1::HealthCheckRequest request,
+                   grpc::health::v1::HealthCheckResponse *reply,
+                   SendReplyCallback send_reply_callback) {
+    reply->set_status(grpc::health::v1::HealthCheckResponse::SERVING);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
+
+ private:
+  grpc::health::v1::Health::AsyncService service_;
+};
 
 }  // namespace rpc
 }  // namespace ray

@@ -103,13 +103,15 @@ class GrpcServer {
              bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr,
+             bool enable_default_health_check = true)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
         is_shutdown_(true),
         num_threads_(num_threads),
-        keepalive_time_ms_(keepalive_time_ms) {
+        keepalive_time_ms_(keepalive_time_ms),
+        disable_default_health_check_(!enable_default_health_check) {
     // Initialize auth token: use provided value or load from AuthenticationTokenLoader
     if (auth_token) {
       auth_token_ = auth_token;
@@ -214,6 +216,9 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
+
+  /// If true, the default gRPC health check service will be disabled for this server.
+  bool disable_default_health_check_ = false;
 };
 
 /// Base class that represents an abstract gRPC service.
