@@ -192,8 +192,7 @@ class AllToAllOperator(
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
-        # Stamp output bundles with this operator's ID for per-producer
-        # memory attribution in downstream operators.
+        # Stamp output bundles with this operator's ID.
         output_buffer = [
             dataclasses.replace(b, producer_op_ids=(self.id,) * len(b.blocks))
             for b in output_buffer
