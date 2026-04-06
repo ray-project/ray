@@ -216,7 +216,7 @@ class LocalNodeProvider(NodeProvider):
                 matching_ips.append(worker_ip)
         return matching_ips
 
-    def get_all_node_ids(self, tag_filters):
+    def nodes_for_teardown(self, tag_filters):
         """Return all known node ids matching tag_filters regardless of state.
 
         The local state file on the machine invoking ``ray down`` may show

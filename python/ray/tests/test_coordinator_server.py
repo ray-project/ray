@@ -85,13 +85,13 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         return node_provider, head_ip, provider_config, cluster_name
 
     def testGetAllNodeIdsIncludesTerminated(self):
-        """get_all_node_ids must return every known IP regardless of state.
+        """nodes_for_teardown must return every known IP regardless of state.
 
         This is the crux of the docker-stop-on-teardown fix: the invoking
         machine's state file shows workers as terminated (the head's
         autoscaler never updates it), so non_terminated_nodes returns an
         empty worker list and ``ray down`` skips their docker containers.
-        get_all_node_ids closes that gap.
+        nodes_for_teardown closes that gap.
         """
         worker_ips = ["10.0.0.1", "10.0.0.2"]
         provider, head_ip, _, _ = self._make_local_provider(
@@ -101,35 +101,35 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Initially everything is terminated (mirrors the local-machine state
         # file that was never updated by the head's autoscaler).
         assert provider.non_terminated_nodes({}) == []
-        all_ids = provider.get_all_node_ids({})
+        all_ids = provider.nodes_for_teardown({})
         assert set(all_ids) == {head_ip} | set(worker_ips)
 
         # Tag-filtered queries should also work.
         assert set(
-            provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         ) == set(worker_ips)
-        assert set(provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})) == {
-            head_ip
-        }
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+        ) == {head_ip}
 
         # Mark head as running; workers stay terminated.
         record_local_head_state_if_needed(provider)
         assert provider.non_terminated_nodes({}) == [head_ip]
-        # get_all_node_ids still returns all three.
-        assert set(provider.get_all_node_ids({})) == {head_ip} | set(worker_ips)
+        # nodes_for_teardown still returns all three.
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
         assert set(
-            provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         ) == set(worker_ips)
 
         # After creating one worker (simulating what the head autoscaler does),
-        # both methods should include it, but get_all_node_ids also includes
+        # both methods should include it, but nodes_for_teardown also includes
         # the still-terminated worker.
         provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1)
         running_workers = provider.non_terminated_nodes(
             {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         )
         assert len(running_workers) == 1
-        all_workers = provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        all_workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert set(all_workers) == set(worker_ips)
 
     def testClusterStateInit(self):

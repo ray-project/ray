@@ -71,7 +71,7 @@ class NodeProvider:
         """
         raise NotImplementedError
 
-    def get_all_node_ids(self, tag_filters: Dict[str, str]) -> List[str]:
+    def nodes_for_teardown(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return all node ids matching tag_filters, including terminated nodes.
 
         Used during teardown to ensure cleanup of external resources (e.g.

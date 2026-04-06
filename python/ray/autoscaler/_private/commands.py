@@ -566,14 +566,14 @@ def teardown_cluster(
         # LocalNodeProvider where the invoking machine's state file
         # marks workers as terminated even though the head's autoscaler
         # started them and their Docker containers are still running.
-        # For cloud providers this adds nothing because get_all_node_ids
+        # For cloud providers this adds nothing because nodes_for_teardown
         # delegates to non_terminated_nodes.
-        stale_terminated = set(provider.get_all_node_ids({})) - set(
+        stale_terminated = set(provider.nodes_for_teardown({})) - set(
             provider.non_terminated_nodes({})
         )
         if workers_only:
             stale_terminated -= set(
-                provider.get_all_node_ids({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+                provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
             )
         docker_stop_nodes = list(set(A) | stale_terminated)
 
