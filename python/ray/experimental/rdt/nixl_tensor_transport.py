@@ -509,6 +509,7 @@ class NixlTensorTransport(TensorTransportManager):
             key = tensor.untyped_storage().data_ptr()
             if key in self._tensor_desc_cache:
                 self._tensor_desc_cache[key].metadata_count += 1
+                self._tensor_desc_cache[key].pool_managed = True
             else:
                 self._tensor_desc_cache[key] = TensorDesc(
                     reg_desc=None, metadata_count=1, pool_managed=True
