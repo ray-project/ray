@@ -14,8 +14,9 @@
 
 #include "ray/util/exponential_backoff.h"
 
-#include <limits>
 #include <math.h>
+
+#include <limits>
 
 #include "gtest/gtest.h"
 
