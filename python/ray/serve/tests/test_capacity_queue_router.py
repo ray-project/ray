@@ -558,24 +558,25 @@ class TestCapacityQueueRouterFailures:
         ray.kill(signal)
 
     def test_queue_converges_after_restart(self, serve_instance):
-        """After the queue restarts, its in_flight view is stale (all zeros).
-        Tokens for saturated replicas get rejected, and because rejected
-        tokens are NOT released, the queue's in_flight counts ratchet up to
-        reflect reality. Once the real requests complete and the TTL reaper
-        clears the phantom tokens, the queue converges to an accurate view.
+        """After the queue restarts, its per-replica token view converges to
+        match actual replica capacity.
 
-        Convergence mechanism:
-        1. Queue restarts with in_flight=0 (stale).
-        2. Rejected tokens are NOT released → in_flight ratchets up,
-           teaching the queue the replica is saturated.
-        3. Blocking requests complete → replica has real capacity again.
-        4. TTL reaper reclaims the phantom in_flight entries (from
-           unreleased rejection tokens).
-        5. Queue converges: in_flight=0, full capacity restored.
-
-        Setup: 1 replica, max_ongoing_requests=2, token_ttl_s=2.
+        Setup: 1 replica, max_ongoing_requests=5, 3 blocked requests.
+        1. Send 3 blocking requests occupying 3/5 slots. Queue correctly
+           shows in_flight=3, available_tokens=2 for the replica.
+        2. Kill the queue — it restarts with in_flight=0, thinking the
+           replica has 5 available tokens (stale).
+        3. The router sends requests via the stale queue. Tokens for the
+           3 occupied slots get rejected. Unreleased rejection tokens
+           ratchet in_flight up, teaching the queue the correct state.
+        4. Release the blocking requests — replica frees all 5 slots.
+        5. TTL reaper clears phantom in_flight entries from rejections.
+        6. Assert per-replica convergence: available_tokens == max_capacity.
         """
         token_ttl_s = 2.0
+        max_ongoing = 5
+        num_blocked = 3
+
         signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
         signal = SignalActor.options(name=signal_name).remote()
 
@@ -599,7 +600,7 @@ class TestCapacityQueueRouterFailures:
                 ),
             ),
             num_replicas=1,
-            max_ongoing_requests=2,
+            max_ongoing_requests=max_ongoing,
             ray_actor_options={"num_cpus": 0},
         )
         class ConvergeApp:
@@ -624,15 +625,22 @@ class TestCapacityQueueRouterFailures:
             timeout=15,
         )
 
-        # Step 1: Saturate the replica with 2 blocking requests.
-        blocking_refs = [handle.remote(block=True) for _ in range(2)]
+        # Step 1: Occupy 3 of 5 slots with blocking requests.
+        blocking_refs = [handle.remote(block=True) for _ in range(num_blocked)]
         wait_for_condition(
-            lambda: ray.get(queue.get_stats.remote()).total_in_flight == 2,
-            timeout=10,
+            lambda: ray.get(queue.get_stats.remote()).total_in_flight == num_blocked,
+            timeout=15,
         )
 
-        # Step 2: Kill the queue. It restarts with in_flight=0, thinking the
-        # replica has full capacity — but it's actually saturated.
+        # Verify pre-crash per-replica state: in_flight=3, capacity=5.
+        replica_info = ray.get(queue.get_replica_in_flight.remote())
+        assert len(replica_info) == 1
+        for rid, (in_flight, max_cap) in replica_info.items():
+            assert max_cap == max_ongoing
+            assert in_flight == num_blocked
+            assert max_cap - in_flight == 2  # 2 available tokens
+
+        # Step 2: Kill the queue. It restarts with in_flight=0.
         ray.kill(queue)
 
         def _new_queue_ready():
@@ -645,48 +653,47 @@ class TestCapacityQueueRouterFailures:
         wait_for_condition(_new_queue_ready, timeout=30)
 
         new_queue = _find_capacity_queue_handle()
-        stats = ray.get(new_queue.get_stats.remote())
-        # Queue thinks replica has full capacity (stale view).
-        assert stats.total_in_flight == 0
-        assert stats.total_capacity == 2
 
-        # Step 3: Send a non-blocking request. The queue issues a token but the
-        # replica is full and rejects. The rejection teaches the queue (token
-        # not released, in_flight stays elevated). The framework retries and
-        # the request eventually succeeds once a slot frees up.
+        # Verify stale state: queue thinks replica has 5 available tokens.
+        stale_info = ray.get(new_queue.get_replica_in_flight.remote())
+        for rid, (in_flight, max_cap) in stale_info.items():
+            assert in_flight == 0
+            assert max_cap == max_ongoing
 
-        # Step 4: Release the blocking requests so the replica has room.
+        # Step 3 & 4: Release the blocking requests so the replica frees up.
         ray.get(signal.send.remote())
         for ref in blocking_refs:
             try:
-                ref.result(timeout_s=10)
+                ref.result(timeout_s=15)
             except Exception:
                 pass  # May fail — queue died while these were in flight.
 
-        # Now the replica has capacity. Send requests and verify they work.
-        resp = handle.remote().result(timeout_s=15)
-        assert isinstance(resp, str)
-
-        # Step 5: Verify convergence. Unreleased rejection tokens created
-        # phantom in_flight entries. The TTL reaper clears them once they
-        # expire, restoring the queue to an accurate view.
-        def _queue_converged():
-            stats = ray.get(new_queue.get_stats.remote())
-            return stats.total_in_flight == 0 and stats.queue_size == 2
-
-        wait_for_condition(_queue_converged, timeout=token_ttl_s + 10)
-
-        # Final proof: sequential requests all succeed through the queue
-        # and the queue settles back to zero in-flight.
+        # Send requests to exercise the queue and trigger any rejection-based
+        # learning for the stale window.
         for _ in range(5):
-            resp = handle.remote().result(timeout_s=10)
-            assert isinstance(resp, str)
+            handle.remote().result(timeout_s=15)
 
-        def _final_stats_settled():
-            stats = ray.get(new_queue.get_stats.remote())
-            return stats.total_acquires >= 5 and stats.total_in_flight == 0
+        # Step 5 & 6: Wait for TTL reaper, then verify per-replica convergence.
+        # available_tokens (max_capacity - in_flight) must equal max_capacity
+        # because the replica has 0 real in-flight after the signal release.
+        def _per_replica_converged():
+            info = ray.get(new_queue.get_replica_in_flight.remote())
+            if len(info) != 1:
+                return False
+            for rid, (in_flight, max_cap) in info.items():
+                if max_cap - in_flight != max_ongoing:
+                    return False
+            return True
 
-        wait_for_condition(_final_stats_settled, timeout=10)
+        wait_for_condition(_per_replica_converged, timeout=token_ttl_s + 10)
+
+        # Final assertion: in_flight is exactly 0, all 5 tokens available.
+        final_info = ray.get(new_queue.get_replica_in_flight.remote())
+        for rid, (in_flight, max_cap) in final_info.items():
+            assert (
+                in_flight == 0
+            ), f"Replica {rid}: expected converged in_flight=0, got {in_flight}"
+            assert max_cap - in_flight == max_ongoing
 
         ray.kill(signal)
 

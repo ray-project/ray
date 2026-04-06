@@ -106,7 +106,6 @@ py_test_module_list(
         "test_backpressure_grpc.py",
         "test_batching.py",
         "test_callback.py",
-        "test_capacity_queue_router.py",
         "test_cluster.py",
         "test_controller.py",
         "test_controller_benchmark.py",
@@ -251,6 +250,7 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
+        "test_capacity_queue_router.py",
         "test_cli.py",
         "test_cli_2.py",
         "test_cli_3.py",

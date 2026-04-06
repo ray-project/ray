@@ -263,6 +263,21 @@ Because the queue is a deployment actor, the controller handles its lifecycle
 automatically — health checks, cleanup on app deletion, and versioning during
 rolling updates are all managed for you.
 
+### Fault tolerance
+
+The `CapacityQueueRouter` handles failures gracefully:
+
+- **Queue unavailable** — if the queue actor is dead, not yet discovered, or
+  times out, the router falls back to standard power-of-two-choices routing.
+  Requests are never blocked by queue issues.
+- **Queue restart** — a restarted queue has no knowledge of pre-crash
+  in-flight counts. Tokens issued for saturated replicas get rejected by the
+  replica, and the unreleased tokens teach the queue the correct state.
+  Configure `token_ttl_s` on the `CapacityQueue` to automatically reclaim
+  leaked tokens and speed up convergence.
+- **Replica death** — the controller sends a long-poll update, the queue
+  unregisters the dead replica, and tokens are only issued for live replicas.
+
 
 :::{warning}
 ## Gotchas and limitations

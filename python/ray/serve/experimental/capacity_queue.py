@@ -311,5 +311,12 @@ class CapacityQueue:
         """Get list of registered replica IDs."""
         return list(self._replicas.keys())
 
+    def get_replica_in_flight(self) -> Dict[str, Tuple[int, int]]:
+        """Get per-replica (in_flight, max_capacity) for convergence checks."""
+        return {
+            rid: (info.in_flight, info.max_capacity)
+            for rid, info in self._replicas.items()
+        }
+
 
 # __end_define_capacity_queue__

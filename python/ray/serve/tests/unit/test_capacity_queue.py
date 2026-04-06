@@ -435,6 +435,61 @@ class TestCapacityQueueEdgeCases:
         assert queue.get_num_waiters() == 0
         assert queue._total_timeouts == 3
 
+    @pytest.mark.asyncio
+    async def test_cancel_before_token_acquired(self):
+        """Cancelling a request while waiting for a token (tokens exhausted)
+        should clean up the waiter without affecting capacity."""
+        queue = _create_queue()
+        queue.register_replica("replica1", 1)
+
+        # Exhaust the single token.
+        r1 = await queue.acquire()
+        assert queue.get_queue_length() == 0
+
+        # Second acquire blocks — no capacity available.
+        waiting_task = asyncio.create_task(queue.acquire(timeout_s=5.0))
+        await asyncio.sleep(0.01)
+        assert queue.get_num_waiters() == 1
+
+        # Cancel before a token is granted.
+        waiting_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting_task
+
+        await asyncio.sleep(0.01)
+        assert queue.get_num_waiters() == 0
+        # Capacity unchanged — still 0 available (1 in-flight).
+        assert queue.get_queue_length() == 0
+        assert queue._replicas["replica1"].in_flight == 1
+
+        # Release the held token — full capacity restored.
+        queue.release(r1)
+        assert queue.get_queue_length() == 1
+        assert queue._replicas["replica1"].in_flight == 0
+
+    @pytest.mark.asyncio
+    async def test_cancel_after_token_acquired(self):
+        """Cancelling a request after a token was acquired should still allow
+        the caller to release the token, preserving capacity."""
+        queue = _create_queue()
+        queue.register_replica("replica1", 2)
+
+        # Acquire a token normally.
+        r1 = await queue.acquire()
+        assert r1 == "replica1"
+        assert queue._replicas["replica1"].in_flight == 1
+        assert queue.get_queue_length() == 1
+
+        # Simulate the caller being cancelled after acquiring — the token is
+        # held. The caller (router) is responsible for releasing it.
+        # Verify capacity is reduced while the token is held.
+        assert queue._replicas["replica1"].in_flight == 1
+
+        # Release the token (as the router's on_request_cancelled would do).
+        queue.release(r1)
+        assert queue._replicas["replica1"].in_flight == 0
+        assert queue.get_queue_length() == 2
+
 
 class TestReplicaLifecycleOnDeploymentTargetUpdate:
     """Tests that the queue reflects replica changes from the controller.
