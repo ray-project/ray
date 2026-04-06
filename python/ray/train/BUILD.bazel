@@ -609,6 +609,7 @@ py_test(
     tags = [
         "exclusive",
         "ptl_v1",
+        "ptl_v2",
         "team:ml",
         "train_v2_gpu",
     ],
