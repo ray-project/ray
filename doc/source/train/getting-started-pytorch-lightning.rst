@@ -312,7 +312,6 @@ To persist your checkpoints and monitor training progress, add a
 
 
 Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`.
-Note that the :class:`ray.train.lightning.RayTrainReportCallback` class only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 You can also configure :ref:`asynchronous checkpointing <train-checkpoint-upload-mode-async>` and
 :ref:`asynchronous validation <train-validating-checkpoints>` through the callback.
@@ -350,6 +349,8 @@ because Ray Train needs to control the upload thread in order to wait for it to 
     +    validation_config=ValidationConfig(fn=validation_fn),
     +    ...
     +)
+
+Note that the :class:`ray.train.lightning.RayTrainReportCallback` class only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 Prepare your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
