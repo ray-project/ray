@@ -634,24 +634,25 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     # Storage should be tracked in the pool (deduplication: one block for shared storage)
     pool = transport._get_memory_pool("cuda")
     assert pool.has_block(ptr)
-    # And in _tensor_desc_cache with reg_desc=None (pool-managed)
+    # And in _tensor_desc_cache with reg_desc=None (pool-managed).
+    # metadata_count == 2 because both views share the same storage ptr
+    # and _add_pool_tensor_descs increments once per tensor (not per unique ptr).
     assert ptr in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[ptr].reg_desc is None
-    assert transport._tensor_desc_cache[ptr].metadata_count == 1
+    assert transport._tensor_desc_cache[ptr].metadata_count == 2
 
     # Second put of the same views — should reuse the same pool slot (cross-call cache)
     obj_id2 = "view_obj_2"
     meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
     # Pool block should still exist (same slot reused)
     assert pool.has_block(ptr)
-    # metadata_count should be incremented
-    assert transport._tensor_desc_cache[ptr].metadata_count == 2
+    assert transport._tensor_desc_cache[ptr].metadata_count == 3
 
     # Verify data freshness: modify tensor, put again, pool data should be updated
     base[0, 0] = 99
     obj_id3 = "view_obj_3"
     meta3 = transport.extract_tensor_transport_metadata(obj_id3, [view_a])
-    assert transport._tensor_desc_cache[ptr].metadata_count == 3
+    assert transport._tensor_desc_cache[ptr].metadata_count == 4
     # Read back the pool data to verify freshness
     pool_tensor = pool.get_pool_tensor()
     offset, size = pool.get_block(ptr)
@@ -660,8 +661,9 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     )
     assert pool_data[0, 0].item() == 99.0
 
-    # GC: metadata_count should track correctly
-    # After first GC, pool block still alive (metadata_count > 0)
+    # GC: metadata_count should track correctly (symmetric with _add_pool_tensor_descs).
+    # GC decrements once per tensor passed in, matching how _add_pool_tensor_descs
+    # increments once per tensor — no deduplication on either side.
     transport.garbage_collect(obj_id1, meta1, [view_a, view_b])
     assert ptr in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[ptr].metadata_count == 2  # obj_id2 + obj_id3

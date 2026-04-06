@@ -373,15 +373,9 @@ class NixlTensorTransport(TensorTransportManager):
                 return
             self._managed_meta_nixl.pop(obj_id, None)
 
-            # Deduplicate storage pointers to avoid double-decrementing for
-            # tensors that share the same underlying storage (e.g. views).
-            seen_ptrs = set()
             pool_return_ptrs = []
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
-                if key in seen_ptrs:
-                    continue
-                seen_ptrs.add(key)
                 if key not in self._tensor_desc_cache:
                     continue
                 tensor_desc = self._tensor_desc_cache[key]
