@@ -119,10 +119,7 @@ class UCCLTensorTransport(TensorTransportManager):
         return self._uccl_endpoint
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
-        def __ray_actor_has_tensor_transport__(
-            self: "ray.actor.ActorHandle",
-        ) -> bool:
-            return True
+        return True
 
     def extract_tensor_transport_metadata(
         self,
