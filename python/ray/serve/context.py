@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
-from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
@@ -99,7 +98,11 @@ def _get_global_client(
             if _health_check_controller:
                 ray.get(_global_client._controller.check_alive.remote())
             return _global_client
-    except RayActorError:
+    except Exception:
+        # RayActorError when the controller actor died within the same session.
+        # Plain Exception when the cached handle is from a previous cluster
+        # session — _raylet.pyx raises a bare Exception on task submission to
+        # an actor from a different cluster.
         logger.info("The cached controller has died. Reconnecting.")
         _set_global_client(None)
 
