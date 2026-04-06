@@ -120,6 +120,7 @@ class RuntimeEnvSetupTracker:
         try:
             creation_times: List[float] = [
                 env.creation_time_ms
+                # We are looping through all nodes
                 for env in list_runtime_envs()
                 if env.creation_time_ms is not None
             ]
@@ -133,7 +134,7 @@ class RuntimeEnvSetupTracker:
         mean = sum(creation_times) / len(creation_times)
         variance = sum((t - mean) ** 2 for t in creation_times) / len(creation_times)
         return {
-            "count": len(creation_times),
+            "num_nodes": len(creation_times),
             "mean_creation_time_ms": round(mean, 2),
             "stdev_creation_time_ms": round(math.sqrt(variance), 2),
         }
