@@ -265,5 +265,33 @@ def test_listen_for_change_java(serve_instance):
     ]
 
 
+def test_listen_for_change_java_timeout_returns_empty_result(serve_instance):
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+    ray.get(host.notify_changed.remote({"key_1": 999}))
+
+    initial_result = LongPollResult.FromString(
+        ray.get(
+            host.listen_for_change_java.remote(
+                LongPollRequest(keys_to_snapshot_ids={"key_1": -1}).SerializeToString()
+            )
+        )
+    )
+    snapshot_id = initial_result.updated_objects["key_1"].snapshot_id
+
+    timeout_result = LongPollResult.FromString(
+        ray.get(
+            host.listen_for_change_java.remote(
+                LongPollRequest(
+                    keys_to_snapshot_ids={"key_1": snapshot_id}
+                ).SerializeToString()
+            )
+        )
+    )
+
+    assert len(timeout_result.updated_objects) == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

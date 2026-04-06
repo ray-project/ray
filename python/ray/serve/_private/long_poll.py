@@ -438,8 +438,14 @@ class LongPollHost:
             self._parse_xlang_key(xlang_key): snapshot_id
             for xlang_key, snapshot_id in request_proto.keys_to_snapshot_ids.items()
         }
-        keys_to_updated_objects = await self.listen_for_change(keys_to_snapshot_ids)
-        return self._listen_result_to_proto_bytes(keys_to_updated_objects)
+        result = await self.listen_for_change(keys_to_snapshot_ids)
+
+        # Java long-poll protocol currently doesn't encode LongPollState.
+        # Convert timeout to an empty update payload so the Java client can retry.
+        if result is LongPollState.TIME_OUT:
+            result = {}
+
+        return self._listen_result_to_proto_bytes(result)
 
     def _parse_poll_namespace(self, name: str):
         if name == LongPollNamespace.ROUTE_TABLE.name:
