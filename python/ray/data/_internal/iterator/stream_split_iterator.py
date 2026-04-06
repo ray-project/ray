@@ -297,16 +297,13 @@ class SplitCoordinator:
                 self._cond.notify_all()
             else:
                 # Wait for all other consumers to arrive.
+                # Use a timeout so we can log a warning for blocked clients.
                 target_epoch = self._cur_epoch + 1
-                while self._cur_epoch < target_epoch:
-                    # Use a timeout so we can log a warning for blocked clients.
-                    # wait() returns False iff the timeout elapsed (no notify).
-                    timed_out = not self._cond.wait(timeout=BLOCKED_CLIENT_WARN_TIMEOUT)
-                    if (
-                        self._cur_epoch < target_epoch
-                        and timed_out
-                        and log_once(f"stream_split_blocked_{split_idx}_{target_epoch}")
-                    ):
+                while not self._cond.wait_for(
+                    lambda: self._cur_epoch >= target_epoch,
+                    timeout=BLOCKED_CLIENT_WARN_TIMEOUT,
+                ):
+                    if log_once(f"stream_split_blocked_{split_idx}_{target_epoch}"):
                         logger.warning(
                             f"StreamSplitDataIterator(split={split_idx}) "
                             f"blocked waiting on other clients for at least "
