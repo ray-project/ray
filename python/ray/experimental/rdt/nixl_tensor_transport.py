@@ -429,28 +429,43 @@ class NixlTensorTransport(TensorTransportManager):
             for tensor in tensors:
                 key = tensor.untyped_storage().data_ptr()
                 if key in self._tensor_desc_cache:
-                    self._tensor_desc_cache[key].metadata_count += 1
+                    existing = self._tensor_desc_cache[key]
+                    if existing.reg_desc is not None:
+                        # Already registered with NIXL, just bump count.
+                        existing.metadata_count += 1
+                        continue
+                    # Pool-managed entry (reg_desc=None): register the
+                    # original tensor memory with NIXL for the fallback path,
+                    # and return the pool block since the upgraded entry will
+                    # use deregister_memory on GC instead.
+                    prev_count = existing.metadata_count
+                    if self._memory_pool is not None:
+                        self._memory_pool.return_block(key)
                 else:
-                    mem_type = "cuda" if tensor.is_cuda else "cpu"
-                    # the GPU ID of the device the tensor is on.
-                    # NOTE: we clip this to 0 since the GPU ID is not used for CPU tensors, and get_device returns -1 for CPU tensors.
-                    # This triggers an error in nixl since it expects an unsigned.
-                    gpu_id = max(tensor.get_device(), 0)
-                    # Registering the full underlying pytorch storage object by constructing a memory region
-                    # with the data pointer, size, GPU ID, and meta info. Doing the equivalent of what nixl does for pytorch tensors
-                    # internally: https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
-                    reg_desc = self.get_nixl_agent().register_memory(
-                        [
-                            (
-                                tensor.untyped_storage().data_ptr(),
-                                tensor.untyped_storage().nbytes(),
-                                gpu_id,
-                                "",
-                            )
-                        ],
-                        mem_type=mem_type,
-                    )
-                    self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
+                    prev_count = 0
+                mem_type = "cuda" if tensor.is_cuda else "cpu"
+                # the GPU ID of the device the tensor is on.
+                # NOTE: we clip this to 0 since the GPU ID is not used for
+                # CPU tensors, and get_device returns -1 for CPU tensors.
+                # This triggers an error in nixl since it expects an unsigned.
+                gpu_id = max(tensor.get_device(), 0)
+                # Registering the full underlying pytorch storage object by
+                # constructing a memory region with the data pointer, size,
+                # GPU ID, and meta info. Doing the equivalent of what nixl
+                # does for pytorch tensors internally:
+                # https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
+                reg_desc = self.get_nixl_agent().register_memory(
+                    [
+                        (
+                            tensor.untyped_storage().data_ptr(),
+                            tensor.untyped_storage().nbytes(),
+                            gpu_id,
+                            "",
+                        )
+                    ],
+                    mem_type=mem_type,
+                )
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, prev_count + 1)
 
     def _add_pool_tensor_descs(self, tensors: List["torch.Tensor"]):
         """Add pool-managed tensor entries to the unified _tensor_desc_cache.
