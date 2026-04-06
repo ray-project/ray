@@ -106,6 +106,9 @@ def report(
             If a ValidationTaskConfig, validation is run using fn_kwargs merged with validation_config
             defaults, with fn_kwargs taking precedence on conflicts. If False, no validation.
     """
+    if validation and not checkpoint:
+        raise ValueError("Validation requires a checkpoint to be provided.")
+
     if delete_local_checkpoint_after_upload is None:
         delete_local_checkpoint_after_upload = (
             checkpoint_upload_mode._default_delete_local_checkpoint_after_upload()

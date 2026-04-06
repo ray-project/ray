@@ -21,9 +21,9 @@ steps:
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_ml-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
-      IMAGE_TO: mlbuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
       RAYCI_IS_GPU_BUILD: "false"
     matrix:
       - "3.10"
@@ -31,7 +31,14 @@ steps:
     tags: cibase
 
   - name: mllightning2gpubuild
-    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
+    wanda: ci/docker/ml.build.wanda.yaml
+    env:
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "lightninggpubuild"
+      RAYCI_IS_GPU_BUILD: "true"
+      RAYCI_LIGHTNING_2: "true"
+    tags: cibase
     depends_on: oss-ci-base_gpu-multipy
 
   - name: mlgpubuild-multipy
@@ -39,9 +46,9 @@ steps:
     wanda: ci/docker/ml.build.wanda.yaml
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: mlgpubuild-py{{matrix}}
       PYTHON: "{{matrix}}"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     matrix:
       - "3.10"
@@ -292,7 +299,7 @@ steps:
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
-        --build-name mllightning2gpubuild --python-version 3.10
+        --build-name mllightninggpubuild-py3.10 --python-version 3.10
         --only-tags ptl_v2
     depends_on: [ "mllightning2gpubuild", "forge" ]
 

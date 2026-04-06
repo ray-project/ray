@@ -1,6 +1,7 @@
 import collections
 import logging
 import sys
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -32,7 +33,6 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DataContext
 from ray.data.expressions import Expr
 
@@ -277,7 +277,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return self._column.to_numpy(copy=not zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self.to_pylist()
 
     def _is_all_null(self):
@@ -346,9 +346,16 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# This is to be compatible with pyarrow.lib.schema
-# TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
+# NOTE: This has to be compatible with Pyarrow ``Schema``
+@dataclass(frozen=True, init=False)
+class PandasBlockSchema:
+    # Stored as tuples for hash-ability.
+    names: Tuple[str, ...]
+    types: Tuple
+
+    def __init__(self, names, types):
+        object.__setattr__(self, "names", tuple(names))
+        object.__setattr__(self, "types", tuple(types))
 
 
 class PandasBlockAccessor(TableBlockAccessor):
@@ -370,17 +377,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             return self.upsert_column(name, value)
         # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
-
-    @staticmethod
-    def _build_tensor_row(row: PandasRow, row_idx: int) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[TENSOR_COLUMN_NAME].iloc[row_idx]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
@@ -426,7 +422,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
         schema = PandasBlockSchema(
-            names=dtypes.index.tolist(), types=dtypes.values.tolist()
+            names=tuple(dtypes.index.tolist()),
+            types=tuple(dtypes.values.tolist()),
         )
         # Column names with non-str types of a pandas DataFrame is not
         # supported by Ray Dataset.
@@ -575,7 +572,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # extension columns separately.
         memory_usage = self._table.memory_usage(index=True, deep=False)
 
-        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        # TensorDtype for ray.data._internal.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
         max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
 
@@ -694,7 +691,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = ret.sort_values(by=columns, ascending=ascending)
         from ray.data.block import BlockMetadataWithSchema
 
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

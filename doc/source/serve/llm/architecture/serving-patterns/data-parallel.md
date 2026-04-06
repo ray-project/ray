@@ -12,15 +12,16 @@ In this serving pattern, engine replicas aren't isolated. In fact, they need to 
 width: 700px
 name: dp-architecture
 ---
-Data parallel attention architecture showing DPRankAssigner coordinating multiple LLMServer replicas.
+Data parallel attention architecture showing LLMServer replicas coordination.
 ```
 
 In data parallel attention serving:
 
-- The system creates `dp_size` replicas of the LLM server.
-- Each replica runs an independent inference engine with the same model.
+- Ray Serve's controller creates `data_parallel_size` replicas as a cohesive gang (i.e. data parallel group), assigning each data parallel replica a unique rank (0 to `data_parallel_size-1`).
+- Each data parallel replica runs an independent vLLM inference engine with its assigned data parallel rank.
 - Requests are distributed across replicas through Ray Serve's routing.
-- All replicas work together as a cohesive unit.
+- All data parallel replicas carry out GPU collective operations (e.g. dispatch-combine) as a cohesive unit, i.e. data parallel group.
+- If any data parallel replica fails, the entire data parallel group is restarted atomically.
 
 
 ### When to use DP
@@ -36,7 +37,7 @@ Data parallel attention serving works best when:
 Consider alternatives when:
 
 - **Low to medium throughput**: If you can't saturate the MoE layers, don't use DP. 
-- **Non-MLA Attention with sufficient TP**: DP is most beneficial with MLA (Multi-head Latent Attention), where KV cache can't be sharded along the head dimension. For models with GQA (Grouped Query Attention), you can use TP to shard the KV cache up to the degree where `TP_size <= num_kv_heads`. Beyond that point, TP requires KV cache replication, which wastes memory—DP becomes a better choice to avoid duplication. For example, for Qwen-235b, using `DP=2, TP=4, EP=8` makes more sense than `DP=8, EP=8` because you can still shard the KV cache with TP=4 before needing to replicate it. Benchmark these configurations with your workload to determine the optimal setup.
+- **Non-MLA Attention with sufficient TP**: DP is most beneficial with MLA (Multi-head Latent Attention), where KV cache can't be sharded along the head dimension. For models with GQA (Grouped Query Attention), you can use TP to shard the KV cache up to the degree where `TP_size <= num_kv_heads`. Beyond that point, TP requires KV cache replication, which wastes memory—DP becomes a better choice to avoid duplication. For example, for Qwen-235B, using `DP=2, TP=4, EP=8` makes more sense than `DP=8, EP=8` because you can still shard the KV cache with TP=4 before needing to replicate it. Benchmark these configurations with your workload to determine the optimal setup.
 - **Non-MoE models**: The main reason for using DP at the cost of this complexity is to lift the effective batch size during decoding for saturating the experts. 
 
 ## Components
@@ -45,78 +46,86 @@ The following are the main components of DP deployments:
 
 ### DPServer
 
-`DPServer` extends `LLMServer` with data parallel attention coordination. The following pseudocode shows the structure:
+`DPServer` extends `LLMServer` with data parallel attention coordination. `DPServer` utilizes Ray Serve's gang scheduling capability to ensure that all replicas in a DP group start and fail together atomically. In the following sections, we will use "gang" and "DP group" interchangeably. The following pseudocode shows the structure:
 
 ```python
 from ray import serve
 
 class DPServer(LLMServer):
     """LLM server with data parallel attention coordination."""
-    
-    async def __init__(
-        self,
-        llm_config: LLMConfig,
-        rank_assigner_handle: DeploymentHandle,
-        dp_size: int,
-        **kwargs
-    ):
-        self.rank_assigner = rank_assigner_handle
-        self.dp_size = dp_size
-        
-        # Get assigned rank from coordinator and pass it to engine.
-        replica_id = serve.get_replica_context().replica_id
-        llm_config.rank = await self.rank_assigner.assign_rank.remote(replica_id)
-        
-        # Call parent initialization
-        await super().__init__(llm_config, **kwargs)
+
+    async def __init__(self, llm_config: LLMConfig):
+        # Get rank and gang info from Ray Serve's gang context.
+        gang_context = serve.get_replica_context().gang_context
+
+        self.dp_rank = gang_context.rank
+        self.gang_id = gang_context.gang_id
+
+        # Register and obtain master address / port
+        if self.dp_rank == 0:
+            address, rpc_port = get_address_and_port()
+            GangMasterInfoRegistry.register(self.gang_id, address, rpc_port)
+        else:
+            address, rpc_port = await GangMasterInfoRegistry.get(self.gang_id)
+
+        # Pass DP metadata to the engine
+        llm_config.engine_kwargs["data_parallel_rank"] = self.dp_rank
+        llm_config.engine_kwargs["data_parallel_address"] = address
+        llm_config.engine_kwargs["data_parallel_rpc_port"] = rpc_port
+
+        await super().__init__(llm_config)
+
+    @classmethod
+    def get_deployment_options(cls, llm_config):
+        options = super().get_deployment_options(llm_config)
+        dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
+
+        # Configure gang scheduling for the DP group.
+        # This tells Ray Serve controller to treat data parallel replicas within a DP group as a cohesive unit.
+        options["gang_scheduling_config"] = GangSchedulingConfig(
+            gang_size=dp_size,
+            gang_placement_strategy=GangPlacementStrategy.PACK,
+            runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
+        )
+        return options
 ```
 
 Key responsibilities:
 
-- Register with the rank assigner coordinator.
-- Obtain a unique rank (0 to `dp_size-1`).
+- Obtain rank and gang identity from Ray Serve's gang context.
+- Exchange DP master address/port through `GangMasterInfoRegistry`.
 - Coordinate with other replicas for collective operations.
-- Handle replica failures and re-registration.
+- Gracefully handle failures and re-registration.
 
-### DPRankAssigner
+### GangMasterInfoRegistry
 
-`DPRankAssigner` is a singleton coordinator that manages rank assignment for data parallel attention replicas. The following pseudocode shows the structure:
+`GangMasterInfoRegistry` is a GCS-backed KV store, persisting the DP master address and port. The following pseudocode shows the structure:
 
 ```python
-class DPRankAssigner:
-    """Coordinator for data parallel attention rank assignment."""
-    
-    def __init__(self, dp_size: int):
-        self.dp_size = dp_size
-        self.assigned_ranks: Set[int] = set()
-        self.rank_to_replica: Dict[int, str] = {}
-        self.lock = asyncio.Lock()
-    
-    async def assign_rank(self, replica_id: str) -> int:
-        """Assign a rank to a replica.
-        
-        Returns:
-            int: Assigned rank (0 to dp_size-1)
-        """
-        async with self.lock:
-            # Find first available rank
-            for rank in range(self.dp_size):
-                if rank not in self.assigned_ranks:
-                    self.assigned_ranks.add(rank)
-                    self.rank_to_replica[rank] = replica_id
-                    return rank
-    
-    async def release_rank(self, rank: int):
-        """Release a rank when replica dies."""
-        async with self.lock:
-            self.assigned_ranks.discard(rank)
-            self.rank_to_replica.pop(rank, None)
+class GangMasterInfoRegistry:
+    """Registry for gang DP master info using GCS KV store."""
+
+    @classmethod
+    def register(cls, gang_id: str, address: str, port: int):
+        """Persists address and port associated with a DP group (gang) in the KV store."""
+        ...
+
+    @classmethod
+    async def get(cls, gang_id: str, timeout: float) -> Tuple[str, int]:
+        """Polls for address and port for a given DP group."""
+        ...
+
+    @classmethod
+    def unregister(cls, gang_id: str):
+        """Remove the DP master info on shutdown."""
+        ...
 ```
 
 Key responsibilities:
 
-- Assign unique ranks to replicas.
-- Ensure exactly `dp_size` replicas are serving.
+- Store DP master info in GCS KV store.
+- Provide async polling for non-zero ranks to discover the master.
+- Clean up entries on shutdown.
 
 ## Request flow
 
@@ -131,41 +140,43 @@ Data parallel attention request flow from client to distributed replicas.
 The following is the request flow through a data parallel attention deployment:
 
 1. **Client request**: HTTP request arrives at ingress.
-2. **Ingress routing**: Ingress uses deployment handle to call DPServer.
+2. **Ingress routing**: Ingress uses deployment handle to call `DPServer`.
 3. **Ray Serve routing**: Ray Serve's request router selects a replica.
    - Default: Power of Two Choices (load balancing).
    - Custom: Prefix-aware, session-aware, etc.
-4. **Replica processing**: Selected DPServer replica processes request.
+4. **Replica processing**: Selected `DPServer` replica processes request.
 5. **Engine inference**: vLLM engine generates response.
 6. **Streaming response**: Tokens stream back to client.
 
-The key difference from basic serving is that all the `dp_size` replicas are working in coordination with each other rather than in isolation.
+The key difference from basic serving is that all the `dp_size` replicas coordinate with each other rather than in isolation.
 
-## Scaling
+## Autoscaling
 
-### Scaling behavior
+### Autoscaling behavior
 
-Data parallel attention deployments require a fixed number of replicas equal to `dp_size`, as autoscaling isn't supported for this pattern. You must set `num_replicas` to `dp_size`, or if using `autoscaling_config`, both `min_replicas` and `max_replicas` must equal `dp_size`.
+Data parallel attention deployments support autoscaling based on request queue length. Specify `min_replicas`, `max_replicas`, `initial_replicas` to configure autoscaling bound and starting point. Note that all `min_replicas`, `max_replicas`, `initial_replicas` refer to the number of DP groups, where each group has `dp_size` of engine instances.
+
+
+```{literalinclude} ../../../../llm/doc_code/serve/multi_gpu/dp_autoscaling_example.py
+:language: python
+:start-after: __dp_autoscaling_example_start__
+:end-before: __dp_autoscaling_example_end__
+```
 
 
 ## Design considerations
 
-### Coordination overhead
-
-The `DPRankAssigner` introduces minimal coordination overhead:
-
-- **Startup**: Each replica makes one RPC to get its rank.
-- **Runtime**: No coordination overhead during request processing.
-
-The singleton actor pattern ensures consistency during startup time.
-
 ### Placement strategy
 
-The PACK strategy places each replica's resources together:
+`DPServer` always uses the `PACK` strategy to place each replica's resources together:
 
 - Tensor parallel workers for one replica pack on the same node when possible.
 - Different replicas can be on different nodes.
 - This minimizes inter-node communication within each replica.
+
+### Fault tolerance
+
+If any DP replica in a DP group fails, Ray Serve controller restarts the entire DP group atomically. This ensures all replicas in a group are always in a consistent state, which is critical because DP replicas perform collective operations together.
 
 ## Combining with other patterns
 
@@ -173,28 +184,16 @@ The PACK strategy places each replica's resources together:
 
 You can run data parallel attention on both prefill and decode phases:
 
+```{figure} ../../images/dp_pd.svg
+---
+width: 500px
+name: dp-pd-architecture
+---
+Combined DP + PD architecture: each phase has its own gang-scheduled DP group.
 ```
-┌─────────────────────────────────────────────┐
-│              OpenAiIngress                  │
-└─────────────┬───────────────────────────────┘
-              │
-              ▼
-        ┌─────────────┐
-        │PDProxyServer│
-        └──┬───────┬──┘
-           │       │
-     ┌─────┘       └─────┐
-     ▼                   ▼
-┌──────────┐        ┌──────────┐
-│ Prefill  │        │  Decode  │
-│   DP-2   │        │   DP-4   │
-│          │        │          │
-│ Replica0 │        │ Replica0 │
-│ Replica1 │        │ Replica1 │
-└──────────┘        │ Replica2 │
-                    │ Replica3 │
-                    └──────────┘
-```
+
+Each phase can have an independent `data_parallel_size`.
+`PDDecodeServer` orchestrates remote prefill then runs decode locally.
 
 ## See also
 

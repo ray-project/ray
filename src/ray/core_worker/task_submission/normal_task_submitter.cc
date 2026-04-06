@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -280,6 +281,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   if (scheduling_key_entry.pending_lease_requests.size() >=
       kMaxPendingLeaseRequestsPerSchedulingCategory) {
+    size_t backlog_size = scheduling_key_entry.BacklogSize();
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Task submission is being throttled: pending lease requests ("
+        << scheduling_key_entry.pending_lease_requests.size() << ") reached limit ("
+        << kMaxPendingLeaseRequestsPerSchedulingCategory << "), with " << backlog_size
+        << " tasks waiting for lease requests. "
+        << "This especially affects workloads submitting many tasks of the same type "
+           "to a cluster with few nodes but many cores per node. "
+        << "Consider increasing RAY_max_pending_lease_requests_per_scheduling_category.";
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
                    << kMaxPendingLeaseRequestsPerSchedulingCategory;
     return;
@@ -359,7 +369,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                       rpc::RequestWorkerLeaseReply::
                           SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                   reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE ||
+                  reply.failure_type() ==
+                      rpc::RequestWorkerLeaseReply::
+                          SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
                 // We need to actively fail all of the pending tasks in the queue when the
                 // placement group was removed or the runtime env failed to be set up.
                 // Such an operation is straightforward for the scenario of placement
@@ -377,6 +390,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
+                  error_type = rpc::ErrorType::WORKER_STARTUP_FAILED;
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }

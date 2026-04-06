@@ -40,7 +40,7 @@ from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 transformers = try_import("transformers")
 
@@ -84,7 +84,7 @@ class LoraConfig(BaseModelExtended):
     )
     max_num_adapters_per_replica: PositiveInt = Field(
         default=16,
-        description="The maximum number of adapters load on each replica.",
+        description="The maximum number of adapters to load on each replica.",
     )
     download_timeout_s: Optional[float] = Field(
         DEFAULT_MULTIPLEX_DOWNLOAD_TIMEOUT_S,
@@ -183,8 +183,11 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Ray placement group configuration for scheduling vLLM engine workers. "
             "Defines resource bundles and placement strategy for multi-node deployments. "
-            "Should contain 'bundles' (list of resource dicts) and optionally 'strategy' "
-            "(defaults to 'PACK'). Example: {'bundles': [{'GPU': 1, 'CPU': 2}], 'strategy': 'PACK'}"
+            "Can specify either 'bundle_per_worker' (auto-replicated by tp*pp) or 'bundles' "
+            "(full list of resource dicts). Optionally include 'strategy' key "
+            "('PACK', 'STRICT_PACK', 'SPREAD', or 'STRICT_SPREAD'). "
+            "Example with bundle_per_worker: {'bundle_per_worker': {'CPU': 1, 'GPU': 1}, 'strategy': 'SPREAD'}. "
+            "Example with bundles: {'bundles': [{'CPU': 1, 'GPU': 1}] * 4, 'strategy': 'SPREAD'}."
         ),
     )
 
@@ -395,7 +398,17 @@ class LLMConfig(BaseModelExtended):
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
         try:
-            DeploymentConfig(**value)
+            # Resolve "auto" for num_replicas before validating against DeploymentConfig
+            if value.get("num_replicas") == "auto":
+                resolved = {**value, "num_replicas": None}
+                _, autoscaling_config = handle_num_replicas_auto(
+                    resolved.get("max_ongoing_requests"),
+                    resolved.get("autoscaling_config"),
+                )
+                resolved["autoscaling_config"] = autoscaling_config
+                DeploymentConfig(**resolved)
+            else:
+                DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 

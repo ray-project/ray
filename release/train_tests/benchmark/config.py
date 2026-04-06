@@ -29,6 +29,7 @@ class ImageClassificationConfig(TaskConfig):
     class ImageFormat(enum.Enum):
         JPEG = "jpeg"
         PARQUET = "parquet"
+        S3_URL = "s3_url"
 
     image_classification_local_dataset: bool = False
     image_classification_data_format: ImageFormat = ImageFormat.PARQUET
@@ -62,6 +63,9 @@ class TorchConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
+    # Elastic scaling range. If both are set > 0, use (min_workers, max_workers).
+    min_workers: int = 0
+    max_workers: int = 0
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
 

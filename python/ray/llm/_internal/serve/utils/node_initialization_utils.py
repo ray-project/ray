@@ -56,7 +56,7 @@ async def initialize_node(llm_config: LLMConfig):
         )
         download_tasks.append(
             ray.remote(initialize_remote_node).options(
-                num_cpus=1,
+                num_cpus=0,
                 scheduling_strategy=node_affinity_strategy,
                 runtime_env=ctx.runtime_env,
             )

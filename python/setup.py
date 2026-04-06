@@ -22,7 +22,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -307,6 +307,7 @@ if setup_spec.type == SetupType.RAY:
             setup_spec.extras["serve"]
             + [
                 "celery",
+                "taskiq",
             ]
         )
     )
@@ -365,10 +366,8 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.13.0",
-                "nixl>=0.6.1",
-                # TODO(llm): remove after next vLLM version bump
-                "transformers>=4.57.3",
+                "vllm[audio]>=0.18.0",
+                "nixl>=1.0.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -822,6 +821,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.11",
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
+            "Programming Language :: Python :: 3.14",
         ],
         packages=setup_spec.get_packages(),
         cmdclass=cmdclass,

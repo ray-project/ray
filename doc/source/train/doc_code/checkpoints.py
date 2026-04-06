@@ -177,8 +177,6 @@ def train_fn(config):
             checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
 
         train.report(metrics, checkpoint=checkpoint)
-
-
 # __checkpoint_from_single_worker_end__
 
 
@@ -260,8 +258,6 @@ class CustomRayTrainReportCallback(Callback):
 
             # Report to train session
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
-
-
 # __lightning_custom_save_example_end__
 
 # __lightning_restore_example_start__
@@ -368,8 +364,6 @@ class MyTrainReportCallback(TrainerCallback):
 
         # Clear the metrics buffer
         self.metrics = {}
-
-
 # __transformers_custom_save_example_end__
 
 
@@ -448,8 +442,6 @@ def train_fn(config):
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.SYNC,
         )
-
-
 # __checkpoint_upload_mode_sync_end__
 
 # __checkpoint_upload_mode_async_start__
@@ -464,8 +456,6 @@ def train_fn(config):
         checkpoint=checkpoint,
         checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
     )
-
-
 # __checkpoint_upload_mode_async_end__
 
 # __checkpoint_upload_mode_no_upload_start__
@@ -498,13 +488,10 @@ def train_fn(config):
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.NO_UPLOAD,
         )
-
-
 # __checkpoint_upload_mode_no_upload_end__
 
 
 # __checkpoint_upload_fn_start__
-
 from torch.distributed.checkpoint.state_dict_saver import async_save
 from s3torchconnector.dcp import S3StorageWriter
 from torch.distributed.checkpoint.state_dict import get_state_dict
@@ -545,11 +532,17 @@ def train_fn(config):
             checkpoint_upload_fn=wait_async_save,
         )
 
-
+trainer = TorchTrainer(
+   train_fn,
+   train_loop_config={"num_epochs": 3},
+   scaling_config=train.ScalingConfig(num_workers=2, use_gpu=True),
+   # we need a cpu backend for async_save and a gpu backend for training
+   torch_config=train.torch.TorchConfig(backend="cpu:gloo,cuda:nccl"),
+   run_config=train.RunConfig(storage_path="s3://bucket/")
+)
 # __checkpoint_upload_fn_end__
 
 # __get_all_reported_checkpoints_example_start__
-
 import ray.train
 from ray.train import CheckpointConsistencyMode
 
@@ -571,5 +564,4 @@ def train_fn():
     # with validation metrics attached.
     validated_checkpoints = ray.train.get_all_reported_checkpoints()
     ...
-
 # __get_all_reported_checkpoints_example_end__

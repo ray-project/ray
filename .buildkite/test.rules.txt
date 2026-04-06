@@ -26,6 +26,7 @@ python/ray/air/
 
 python/ray/llm/
 doc/source/llm/
+doc/source/data/doc_code/working-with-llms/
 .buildkite/llm.rayci.yml
 ci/docker/llm.build.Dockerfile
 python/deplocks/llm/*.lock
@@ -95,9 +96,9 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-python/ray/experimental/gpu_object_manager/
+python/ray/experimental/rdt/
 python/ray/experimental/collective/
-python/ray/tests/gpu_objects/
+python/ray/tests/rdt/
 @ python cgraphs_direct_transport
 ;
 
@@ -185,6 +186,7 @@ site/
 ;
 
 ci/lint/
+.buildkite/cicd.rayci.yml
 .buildkite/lint.rayci.yml
 .buildkite/bisect/
 ci/fossa/
@@ -213,6 +215,8 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/hooks/post-command
 .buildkite/release/
 .buildkite/release-automation/
+build-wheel.sh
+build-image.sh
 @ tools
 ;
 
@@ -230,6 +234,8 @@ build-docker.sh
 
 ci/run/
 ci/ci.sh
+.buildkite/*.rules.test.txt
+.buildkite/*.rules.txt
 @ tools
 ;
 

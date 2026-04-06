@@ -1,3 +1,4 @@
+import asyncio
 import time
 import unittest.mock
 from unittest.mock import create_autospec
@@ -6,6 +7,7 @@ import pytest
 
 import ray
 from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint import validation_manager
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
@@ -16,7 +18,7 @@ from ray.train.v2._internal.execution.training_report import (
 )
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.train.v2.api.validation_config import ValidationConfig, ValidationTaskConfig
-from ray.train.v2.tests.util import create_dummy_training_results
+from ray.train.v2.tests.util import create_dummy_training_reports
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -51,7 +53,7 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     monkeypatch.setattr(ray, "get", lambda x: {"score": 1})
 
     # Call before_controller_shutdown
-    vm.before_controller_shutdown()
+    asyncio.run(vm.before_controller_shutdown())
     assert mock_wait.call_count == 2
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
         unittest.mock.call({checkpoint1: {"score": 1}}),
@@ -87,7 +89,7 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     (
         low_initial_high_final_training_result,
         high_initial_low_final_training_result,
-    ) = create_dummy_training_results(
+    ) = create_dummy_training_reports(
         num_results=2,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -146,7 +148,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(fn=failing_validation_fn),
     )
-    failing_training_result = create_dummy_training_results(
+    failing_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -175,32 +177,7 @@ def test_checkpoint_validation_management_failure(tmp_path):
     )
 
 
-@pytest.mark.parametrize(
-    "base_task_config,override_task_config",
-    [
-        (
-            None,
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]}
-            ),
-        ),
-        (
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]}
-            ),
-            True,
-        ),
-        (
-            ValidationTaskConfig(
-                ray_remote_kwargs={"max_retries": 0, "retry_exceptions": [ValueError]}
-            ),
-            ValidationTaskConfig(ray_remote_kwargs={"max_retries": 1}),
-        ),
-    ],
-)
-def test_checkpoint_validation_management_success_after_retry(
-    tmp_path, base_task_config, override_task_config
-):
+def test_checkpoint_validation_management_success_after_retry(tmp_path):
     @ray.remote
     class Counter:
         def __init__(self):
@@ -223,10 +200,10 @@ def test_checkpoint_validation_management_success_after_retry(
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(
             fn=one_time_failing_validation_fn,
-            task_config=base_task_config,
+            ray_remote_kwargs={"max_retries": 1, "retry_exceptions": [ValueError]},
         ),
     )
-    training_result = create_dummy_training_results(
+    training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
@@ -238,7 +215,7 @@ def test_checkpoint_validation_management_success_after_retry(
         training_report=_TrainingReport(
             metrics=training_result.metrics,
             checkpoint=training_result.checkpoint,
-            validation=override_task_config,
+            validation=True,
         ),
         metrics={},
     )
@@ -267,11 +244,11 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
         checkpoint_manager=checkpoint_manager,
         validation_config=ValidationConfig(fn=infinite_waiting_validation_fn),
     )
-    timing_out_training_result = create_dummy_training_results(
+    timing_out_training_result = create_dummy_training_reports(
         num_results=1,
         storage_context=StorageContext(
             storage_path=tmp_path,
-            experiment_dir_name="checkpoint_validation_management_failure_experiment",
+            experiment_dir_name="checkpoint_validation_management_slow_validation_fn_experiment",
         ),
     )[0]
 
@@ -299,6 +276,72 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
         {
             timing_out_training_result.checkpoint: {},
         }
+    )
+
+
+def test_checkpoint_validation_management_resume(tmp_path):
+    training_reports = create_dummy_training_reports(
+        num_results=3,
+        storage_context=StorageContext(
+            storage_path=tmp_path,
+            experiment_dir_name="checkpoint_validation_management_resume_experiment",
+        ),
+    )
+    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
+    checkpoint_manager.get_pending_training_results.return_value = {
+        training_reports[0].checkpoint: (
+            _TrainingResult(
+                checkpoint=training_reports[0].checkpoint,
+                metrics=training_reports[0].metrics,
+            ),
+            True,
+        ),
+        training_reports[1].checkpoint: (
+            _TrainingResult(
+                checkpoint=training_reports[1].checkpoint,
+                metrics=training_reports[1].metrics,
+            ),
+            False,
+        ),
+        training_reports[2].checkpoint: (
+            _TrainingResult(
+                checkpoint=training_reports[2].checkpoint,
+                metrics=training_reports[2].metrics,
+            ),
+            ValidationTaskConfig(fn_kwargs={"score": 2}),
+        ),
+    }
+
+    def validation_fn(checkpoint, score):
+        return {"score": score}
+
+    vm = validation_manager.ValidationManager(
+        checkpoint_manager=checkpoint_manager,
+        validation_config=ValidationConfig(
+            fn=validation_fn,
+            task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+        ),
+    )
+
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+    )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 1
+    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
+        {training_reports[0].checkpoint: {"score": 1}}
+    )
+    ray.wait(
+        list(vm._pending_validations.keys()),
+        num_returns=1,
+    )
+    assert vm._poll_validations() == 0
+    assert vm._kick_off_validations() == 0
+    checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
+        {training_reports[2].checkpoint: {"score": 2}}
     )
 
 

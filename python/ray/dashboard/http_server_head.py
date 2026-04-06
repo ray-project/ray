@@ -8,8 +8,9 @@ import posixpath
 import sys
 import time
 from math import floor
-from typing import List, Set
+from typing import List
 
+import multidict
 from packaging.version import Version
 
 import ray
@@ -93,6 +94,7 @@ class HttpServerDashboardHead:
         gcs_address: str,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
+        proxy_server_url: str | None = None,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -101,6 +103,7 @@ class HttpServerDashboardHead:
         self.head_node_ip = parse_address(gcs_address)[0]
         self.metrics = metrics
         self._session_name = session_name
+        self.proxy_server_url = proxy_server_url
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -282,36 +285,92 @@ class HttpServerDashboardHead:
                 raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
-    def get_browsers_no_post_put_middleware(self, whitelisted_paths: Set[str]):
-        """Create middleware that blocks POST/PUT requests from browsers.
-
-        Args:
-            whitelisted_paths: Set of paths that are allowed to accept POST/PUT
-                              from browsers (e.g., {"/api/authenticate"})
-
-        Returns:
-            An aiohttp middleware function
+    @aiohttp.web.middleware
+    async def proxy_server_middleware(self, request, handler):
+        """Redirects the request to the proxy server if the related proxy server
+        url env var is set.
         """
+        # paths/endpoints that should not be directed when RAY_API_PROXY_URL_ENV_VAR is set
+        ignored_path = (
+            "/api/gcs_healthz",
+            "/usage_stats_enabled",
+            "/api/healthz",
+            "/api/local_raylet_healthz",
+        )
 
-        @aiohttp.web.middleware
-        async def browsers_no_post_put_middleware(request, handler):
-            # Allow whitelisted paths
-            if request.path in whitelisted_paths:
-                return await handler(request)
+        rel_path = str(request.rel_url)
+        body_data = None
+        if self.proxy_server_url and not rel_path.startswith(ignored_path):
+            logger.debug(f"Redirecting request to {self.proxy_server_url}")
+            body_data = await request.read()
 
-            if (
-                # Deny mutating requests from browsers.
-                # See `is_browser_request` for details of the check.
-                dashboard_optional_utils.is_browser_request(request)
-                and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
-            ):
-                return aiohttp.web.Response(
-                    status=405, text="Method Not Allowed for browser traffic."
+            # Headers that should be removed from the new request
+            # Case sensitive, keep everything lowercase for checking purposes.
+            headers_to_remove = {
+                "content-encoding",  # This could cause the browser to try to unzip plain-text
+                "content-length",  # Let aiohttp calculate instead
+                "host",
+                "connection",
+                "keep-alive",
+                "te",
+                "trailers",
+                "upgrade",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "transfer-encoding",
+            }
+            # We have to use multidict here since there are multiple cookies being set
+            proxy_headers = multidict.CIMultiDict(
+                (k, v)
+                for k, v in request.headers.items()
+                if k.lower() not in headers_to_remove
+            )
+
+            # This is to fix 415 error caused by content-type not in headers
+            proxy_headers.setdefault("Content-Type", "application/json")
+
+            timeout = aiohttp.ClientTimeout(total=30)
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    # Manual concatenation to preserve potential paths in proxy_server_url
+                    full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
+                    logger.debug(
+                        f"Sending request to proxy server instead. {full_url=}"
+                    )
+
+                    async with session.request(
+                        method=request.method,
+                        url=full_url,
+                        headers=proxy_headers,
+                        data=body_data,
+                    ) as resp:
+                        body = await resp.read()
+                        # only fallback if the reponse from the proxy server is not found
+                        if not resp.status == 404:
+                            resp_headers = multidict.CIMultiDict(
+                                (k, v)
+                                for k, v in resp.headers.items()
+                                if k.lower()
+                                not in {
+                                    "transfer-encoding",
+                                    "content-encoding",
+                                    "content-length",
+                                }
+                            )
+
+                            return aiohttp.web.Response(
+                                body=body, status=resp.status, headers=resp_headers
+                            )
+                        else:
+                            logger.warning(
+                                f"Calling endpoint {request.rel_url} returned status {resp.status} and {body}, falling back"
+                            )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to use proxy server endpoint: {e}. Falling back to original handler."
                 )
 
-            return await handler(request)
-
-        return browsers_no_post_put_middleware
+        return await handler(request)
 
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
@@ -379,11 +438,6 @@ class HttpServerDashboardHead:
         }
         public_path_prefixes = ("/static/",)  # Static assets (JS, CSS, images)
 
-        # Paths that are allowed to accept POST/PUT requests from browsers
-        browser_post_put_allowed_paths = {
-            "/api/authenticate",  # Token authentication endpoint
-        }
-
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
 
@@ -395,10 +449,13 @@ class HttpServerDashboardHead:
                     aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
-                self.get_browsers_no_post_put_middleware(
-                    browser_post_put_allowed_paths
+                dashboard_optional_utils.get_browser_request_middleware(
+                    aiohttp,
+                    allowed_methods={"GET", "HEAD", "OPTIONS"},
+                    allowed_paths=["/api/authenticate"],
                 ),
                 self.cache_control_static_middleware,
+                self.proxy_server_middleware,
             ],
         )
         app.add_routes(routes=routes.bound_routes())

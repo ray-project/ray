@@ -599,6 +599,8 @@ doctest_each(
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
 )
 
 doctest(
@@ -666,7 +668,10 @@ doctest(
 doctest(
     name = "doctest[train]",
     # TODO: [V2] Migrate
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -689,7 +694,6 @@ doctest(
         "source/train/user-guides/data-loading-preprocessing.rst",
         "source/train/user-guides/using-gpus.rst",
     ],
-    # TODO: [V2] Migrate
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
     gpu = True,
