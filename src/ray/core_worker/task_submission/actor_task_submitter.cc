@@ -42,7 +42,7 @@ std::string PoolTaskDebugString(const TaskSpecification &task_spec) {
     }
   }
   stream << " class=" << task_spec.FunctionDescriptor()->ClassName()
-         << " fn=" << task_spec.FunctionDescriptor()->FunctionName();
+         << " call=" << task_spec.FunctionDescriptor()->CallString();
   return stream.str();
 }
 
