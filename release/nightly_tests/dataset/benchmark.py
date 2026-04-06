@@ -1,15 +1,20 @@
 import gc
 import json
+import logging
+import math
 import os
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.util.state import list_runtime_envs
+
+logger = logging.getLogger(__name__)
 
 
 def _get_spilled_bytes_total() -> float:
@@ -85,13 +90,53 @@ class OperatorStatsTracker(ExecutionCallback):
 
         seconds_since_start = now_perf - cls._start_time
         start_time = cls._make_readable_timestamp(ts=now_wall - seconds_since_start)
-        return {"start_time": start_time, "op_stats": stats}
+
+        return {
+            "execution_loop_start_time": start_time,
+            "op_stats": stats,
+        }
 
     @classmethod
     def _make_readable_timestamp(cls, ts: float) -> str:
         return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
+
+
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
+
+    Usage::
+
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
+    """
+
+    @staticmethod
+    def collect() -> Dict[str, float]:
+        try:
+            creation_times: List[float] = [
+                env.creation_time_ms
+                for env in list_runtime_envs()
+                if env.creation_time_ms is not None
+            ]
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return {}
+
+        if not creation_times:
+            return {}
+
+        mean = sum(creation_times) / len(creation_times)
+        variance = sum((t - mean) ** 2 for t in creation_times) / len(creation_times)
+        return {
+            "count": len(creation_times),
+            "mean_creation_time_ms": round(mean, 2),
+            "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+        }
 
 
 class BenchmarkMetric(Enum):
