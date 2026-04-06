@@ -86,7 +86,7 @@ class UCCLTensorTransport(TensorTransportManager):
 
     def _get_uccl_endpoint(self):
         """
-        Creates a UCCL P2P endpoint with passive accept if not already created.
+        Creates a UCCL P2P endpoint if not already created.
         """
         if self._uccl_endpoint is not None:
             return self._uccl_endpoint
@@ -94,20 +94,18 @@ class UCCLTensorTransport(TensorTransportManager):
         import torch
         from uccl import p2p
 
-        # CUDA-visible device index for GPU operations.
+        # Currently using physical GPU index when creating the endpoint.
         cuda_device = (
             torch.cuda.current_device() if torch.cuda.is_available() else 0
         )
-        # Physical GPU index for UCCL identity (shm ring naming, metadata).
-        # Ray remaps CUDA_VISIBLE_DEVICES per actor so each actor sees
-        # device 0, but UCCL needs node-unique physical indices.
         gpu_ids = ray.get_gpu_ids()
         if gpu_ids:
             physical_gpu_idx = int(gpu_ids[cuda_device])
         else:
             physical_gpu_idx = cuda_device
-        # print(f"cuda_device, p_gpu_idx:{cuda_device, physical_gpu_idx}")
-        self._uccl_endpoint = p2p.Endpoint(physical_gpu_idx)
+        # TODO: This endpoint API is subject to future changes as UCCL is evolving to
+        # better support GPU index identification for workloads like Ray.
+        self._uccl_endpoint = p2p.Endpoint(cuda_device, physical_gpu_idx)
         self._uccl_endpoint.start_passive_accept()
 
         ctx = ray.get_runtime_context()

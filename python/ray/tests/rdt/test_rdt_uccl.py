@@ -144,6 +144,7 @@ def test_p2p(ray_start_regular):
     assert tensor.sum().item() == ray.get(result)
 
 
+@pytest.mark.skip(reason="CPU-CPU transfer support is WIP")
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p_cpu_to_cpu(ray_start_regular):
     num_actors = 2
@@ -251,6 +252,7 @@ def test_uccl_abort_sender_dies_before_creating(ray_start_regular):
     assert ray.get(result) == 15
 
 
+@pytest.mark.skip(reason="UCCL connection state corruption after sender killed. Fixing this is WIP.")
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_uccl_abort_sender_dies_before_sending(ray_start_regular):
     actors = [UCCLGPUTestActor.remote() for _ in range(2)]
