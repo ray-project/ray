@@ -950,6 +950,8 @@ def _iter_batches_with_nested_fallback(
     import pyarrow as pa
 
     to_batches_kwargs = dict(to_batches_kwargs or {})
+    if batch_size is not None:
+        to_batches_kwargs.setdefault("batch_size", batch_size)
     try:
         # filter is pushed down to the scanner here
         yield from fragment.to_batches(
