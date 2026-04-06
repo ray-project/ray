@@ -822,7 +822,7 @@ python/ray/dashboard/head.py
 --------------------
 python/ray/dashboard/modules/dashboard_sdk.py
     DOC101: Function `get_job_submission_client_cluster_info`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `get_job_submission_client_cluster_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [_use_tls: Optional[bool], cookies: Optional[Dict[str, Any]], headers: Optional[Dict[str, Any]], metadata: Optional[Dict[str, Any]]].
+    DOC103: Function `get_job_submission_client_cluster_info`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , _use_tls: Optional[bool], cookies: Optional[Dict[str, Any]], headers: Optional[Dict[str, Any]], metadata: Optional[Dict[str, Any]]].
 --------------------
 python/ray/dashboard/modules/event/event_head.py
     DOC101: Function `_list_cluster_events_impl`: Docstring contains fewer arguments than in function signature.
@@ -966,10 +966,6 @@ python/ray/data/_internal/block_batching/iter_batches.py
 python/ray/data/_internal/block_batching/util.py
     DOC402: Function `resolve_block_refs` has "yield" statements, but the docstring does not have a "Yields" section
     DOC404: Function `resolve_block_refs` yield type(s) in docstring not consistent with the return annotation. Return annotation exists, but docstring "yields" section does not exist or has 0 type(s).
---------------------
-python/ray/data/_internal/datasource/lance_datasink.py
-    DOC101: Method `LanceDatasink.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `LanceDatasink.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: , *args: , max_rows_per_file: int, min_rows_per_file: int, mode: Literal['create', 'append', 'overwrite'], schema: Optional[pa.Schema], storage_options: Optional[Dict[str, Any]], uri: str]. Arguments in the docstring but not in the function signature: [max_rows_per_file : , min_rows_per_file : , mode : , schema : , storage_options : , uri : ].
 --------------------
 python/ray/data/_internal/datasource/sql_datasource.py
     DOC101: Method `SQLDatasource.supports_sharding`: Docstring contains fewer arguments than in function signature.
@@ -1118,7 +1114,7 @@ python/ray/data/_internal/output_buffer.py
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset_cls: Type['Dataset']].
+    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset: 'Dataset'].
 --------------------
 python/ray/data/_internal/planner/exchange/interfaces.py
     DOC103: Method `ExchangeTaskSpec.reduce`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*mapper_outputs: List[Block]]. Arguments in the docstring but not in the function signature: [mapper_outputs: ].
@@ -1158,6 +1154,9 @@ python/ray/data/block.py
     DOC102: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring contains more arguments than in function signature.
     DOC103: Method `BlockAccessor._get_group_boundaries_sorted`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [block: ].
 --------------------
+python/ray/data/checkpoint/checkpoint_writer.py
+    DOC201: Method `BatchBasedCheckpointWriter.write_block_checkpoint` does not have a return section in docstring
+--------------------
 python/ray/data/context.py
     DOC201: Method `DataContext.get_current` does not have a return section in docstring
     DOC201: Method `DataContext.get_config` does not have a return section in docstring
@@ -1181,7 +1180,6 @@ python/ray/data/datasource/filename_provider.py
 --------------------
 python/ray/data/datasource/path_util.py
     DOC201: Function `_has_file_extension` does not have a return section in docstring
-    DOC201: Function `_resolve_paths_and_filesystem` does not have a return section in docstring
 --------------------
 python/ray/data/grouped_data.py
     DOC103: Method `GroupedData.aggregate`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*aggs: AggregateFn]. Arguments in the docstring but not in the function signature: [aggs: ].

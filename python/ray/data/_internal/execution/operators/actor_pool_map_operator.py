@@ -2,15 +2,18 @@ import logging
 import time
 import uuid
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    DefaultDict,
     Dict,
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -19,7 +22,6 @@ from typing_extensions import override
 
 if TYPE_CHECKING:
     import pyarrow as pa
-
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -29,6 +31,7 @@ from ray.data._internal.actor_autoscaler import (
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolInfo,
     ActorPoolScalingRequest,
+    AutoscalingActorConfig,
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
@@ -55,15 +58,19 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
+from ray.data._internal.utils.heapdict import heapdict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
 from ray.types import ObjectRef
-from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
+
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
+_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
 # Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
 LogicalActorId = str
@@ -179,29 +186,34 @@ class ActorPoolMapOperator(MapOperator):
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
+        config = self._create_actor_pool_config(compute_strategy)
+        return _ActorPool(
+            create_actor_fn=self._start_actor,
+            config=config,
+            map_worker_cls_name=self._map_worker_cls_name,
+        )
+
+    def _create_actor_pool_config(
+        self, compute_strategy: ActorPoolStrategy
+    ) -> "AutoscalingActorConfig":
         per_actor_resource_usage = ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus"),
             gpu=self._ray_remote_args.get("num_gpus"),
             memory=self._ray_remote_args.get("memory"),
         )
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
-        max_tasks_in_flight_per_actor = (
-            compute_strategy.max_tasks_in_flight_per_actor
-            or self.data_context.max_tasks_in_flight_per_actor
-            or max_actor_concurrency
-            * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
-        )
-        return _ActorPool(
-            create_actor_fn=self._start_actor,
+        config = AutoscalingActorConfig(
             min_size=compute_strategy.min_size,
             max_size=compute_strategy.max_size,
             initial_size=compute_strategy.initial_size,
-            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
+            max_tasks_in_flight_per_actor=compute_strategy.max_tasks_in_flight_per_actor
+            or self.data_context.max_tasks_in_flight_per_actor
+            or max_actor_concurrency
+            * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
             max_actor_concurrency=max_actor_concurrency,
             per_actor_resource_usage=per_actor_resource_usage,
-            map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
         )
+        return config
 
     @staticmethod
     def _apply_default_actor_task_remote_args(
@@ -248,10 +260,6 @@ class ActorPoolMapOperator(MapOperator):
         super().start(options)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
-        # Trigger the large UDF warning check by accessing the property.
-        # This is needed because ActorPoolMapOperator passes _map_transformer
-        # directly to actors, never accessing the lazy _map_transformer_ref property.
-        _ = self._map_transformer_ref
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
@@ -306,16 +314,15 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._actor_cls is not None
-        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
-            ctx=ctx,
+            ctx=self._data_context_ref,
             logical_actor_id=logical_actor_id,
             src_fn_name=self.name,
-            map_transformer=self._map_transformer,
+            map_transformer=self._map_transformer_ref,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
         res_ref = actor.get_location.options(
@@ -390,7 +397,7 @@ class ActorPoolMapOperator(MapOperator):
                 _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
                 **actor_task_args,
             ).remote(
-                self.data_context,
+                self._data_context_ref,
                 ctx,
                 *input_blocks,
                 slices=bundle.slices,
@@ -411,7 +418,7 @@ class ActorPoolMapOperator(MapOperator):
 
             # Update locality metrics
             if (
-                self._actor_pool._get_actor_node_id(actor)
+                self._actor_pool.get_actor_location(actor)
                 in bundle.get_preferred_object_locations()
             ):
                 self._locality_hits += 1
@@ -693,12 +700,19 @@ class _MapWorker:
         # This can happen during actor restarts or initialization failures.
         return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
-    def on_exit(self):
-        """Called when the actor is about to exist.
-        This enables performing cleanup operations via `UDF.__del__`.
+    def __ray_shutdown__(self):
+        """Called by Ray Core when the actor exits gracefully.
 
-        Note, this only ensures cleanup is performed when the job exists gracefully.
-        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        Triggered when all Python actor handles go out of scope and the handle
+        is collected by reference counting.
+
+        During graceful shutdown, ActorPoolMapOperator clears _data_tasks and
+        drops pool references so handles become collectible immediately.
+        Ray Core guarantees this is called after all pending tasks complete
+        and before the actor process exits.
+
+        Note: this is NOT called if the actor is forcefully killed (e.g. via
+        `ray.kill(actor)`) or crashes unexpectedly.
         """
         # `_map_actor_context` is a global variable that references the UDF object.
         # Delete it to trigger `UDF.__del__`.
@@ -722,6 +736,10 @@ class _ActorState:
     is_restarting: bool
 
 
+# num tasks in flight (fewer = higher ranked = preferred)
+_ActorRank = int
+
+
 class _ActorPool(AutoscalingActorPool):
     """A pool of actors for map task execution.
 
@@ -731,37 +749,30 @@ class _ActorPool(AutoscalingActorPool):
     """
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
-    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
-    _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
         self,
         create_actor_fn: Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any]]],
-        min_size: int,
-        max_size: int,
-        initial_size: int,
-        max_tasks_in_flight_per_actor: int,
-        max_actor_concurrency: int,
-        per_actor_resource_usage: ExecutionResources,
+        config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
-        _enable_actor_pool_on_exit_hook: bool = False,
     ):
-        assert min_size >= 1
-        assert max_size >= min_size
-        assert initial_size <= max_size
-        assert initial_size >= min_size
-        assert max_tasks_in_flight_per_actor >= 1
+        """Initialize the actor pool.
 
-        self._min_size = min_size
-        self._max_size = max_size
-        self._initial_size = initial_size
-        self._max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
-        self._max_actor_concurrency = max_actor_concurrency
-        self._per_actor_resource_usage = per_actor_resource_usage
+        Args:
+            create_actor_fn: Callable that takes key-value labels as input and
+                creates an actor with those labels. Returns the actor handle and
+                a reference to the actor's node ID.
+            config: Configuration for the autoscaling actor pool, including
+                min/max/initial pool sizes, concurrency, and resource usage.
+            map_worker_cls_name: Name of the map worker class for logging
+                purposes.
+            debounce_period_s: Debounce period for scaling down after scaling
+                up.
+        """
+        super().__init__(config=config)
 
         self._create_actor_fn = create_actor_fn
-        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
         # Timestamp of the last scale up action
@@ -778,22 +789,31 @@ class _ActorPool(AutoscalingActorPool):
         self._num_active_actors: int = 0
         self._total_num_tasks_in_flight: int = 0
 
-    @override
-    def min_size(self) -> int:
-        return self._min_size
+        # ALIVE Actor on ACTIVE node -> _ActorRank(num_tasks_in_flight)
+        # heap gives highest rank (lowest comparable value) first.
+        # This means we prefer actors with FEWER num tasks inflight.
+        # NOTE: This is needed as a fallback when locality is disabled,
+        # or when no actors are scheduled on a node with the current bundle.
+        self._alive_actors_to_in_flight_tasks_heap: heapdict[
+            ActorHandle, _ActorRank
+        ] = heapdict()
 
-    @override
-    def max_size(self) -> int:
-        return self._max_size
+        # ACTIVE node -> ALIVE actors.
+        self._alive_node_to_actor_map: DefaultDict[
+            NodeIdStr, Set[ActorHandle]
+        ] = defaultdict(set)
 
-    @override
-    def current_size(self) -> int:
-        return self.num_pending_actors() + self.num_running_actors()
+    @property
+    def map_worker_cls_name(self) -> str:
+        return self._map_worker_cls_name
+
+    # === Overriding methods of AutoscalingActorPool ===
 
     @override
     def num_running_actors(self) -> int:
         return len(self._running_actors)
 
+    @override
     def num_restarting_actors(self) -> int:
         """Restarting actors are all the running actors not in ALIVE state."""
         return self._num_restarting_actors
@@ -803,72 +823,18 @@ class _ActorPool(AutoscalingActorPool):
         """Active actors are all the running actors with inflight tasks."""
         return self._num_active_actors
 
-    def num_alive_actors(self) -> int:
-        """Alive actors are all the running actors in ALIVE state."""
-        return self.num_running_actors() - self.num_restarting_actors()
-
     @override
     def num_pending_actors(self) -> int:
         return len(self._pending_actors)
 
     @override
-    def max_tasks_in_flight_per_actor(self) -> int:
-        return self._max_tasks_in_flight_per_actor
-
-    @override
-    def max_actor_concurrency(self) -> int:
-        return self._max_actor_concurrency
-
-    @override
     def num_tasks_in_flight(self) -> int:
         return self._total_num_tasks_in_flight
-
-    def initial_size(self) -> int:
-        return self._initial_size
-
-    @property
-    def map_worker_cls_name(self) -> str:
-        return self._map_worker_cls_name
-
-    def _get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
-        return self._actor_to_logical_id[actor]
-
-    def _get_actor_node_id(self, actor: ActorHandle):
-        return self._running_actors[actor].actor_location
-
-    def _can_apply(self, req: ActorPoolScalingRequest) -> bool:
-        """Returns whether Actor Pool is able to execute scaling request"""
-
-        if req.delta < 0:
-            # To prevent bouncing back and forth, we disallow scale down for
-            # a "cool-off" period after the most recent scaling up, with an intention
-            # to allow application to actually utilize newly provisioned resources
-            # before making decisions on subsequent actions.
-            #
-            # Note that this action is unidirectional and doesn't apply to
-            # scaling up, ie if actor pool just scaled down, it'd still be able
-            # to scale back up immediately.
-            if (
-                not req.force
-                and self._last_upscaled_at is not None
-                and (time.time() <= self._last_upscaled_at + self._debounce_period_s)
-            ):
-                # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
-                #       per upscaling event
-                if self._last_upscaled_at != self._last_downscaling_debounce_warning_ts:
-                    logger.debug(
-                        f"Ignoring scaling down request (request={req}; reason=debounced from scaling up at {self._last_upscaled_at})"
-                    )
-                    self._last_downscaling_debounce_warning_ts = self._last_upscaled_at
-
-                return False
-
-        return True
 
     @override
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         # Verify request could be applied
-        if not self._can_apply(req):
+        if not self._can_apply_request(req):
             return 0
 
         map_worker_cls_name = self.map_worker_cls_name
@@ -908,41 +874,13 @@ class _ActorPool(AutoscalingActorPool):
 
         return None
 
-    def _create_actor(self) -> Tuple[ActorHandle, ObjectRef]:
-        logical_actor_id = str(uuid.uuid4())
-        labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
-        self._actor_to_logical_id[actor] = logical_actor_id
-        return actor, ready_ref
+    @override
+    def refresh_actor_state(self):
+        self._alive_node_to_actor_map.clear()
+        for actor in self._running_actors:
+            self._update_running_actor_state(actor)
 
-    def _schedulable_actors(self) -> List[ActorHandle]:
-        return [
-            actor
-            for actor, state in self._running_actors.items()
-            if state.num_tasks_in_flight < self.max_tasks_in_flight_per_actor()
-            and not state.is_restarting
-        ]
-
-    def can_schedule_task(self) -> bool:
-        """Returns `True` iff the actor pool has an available actor that can run a task."""
-        return self.select_actors() is not None
-
-    def select_actors(
-        self,
-        bundle: Optional[RefBundle] = None,
-        actor_locality_enabled: bool = False,
-    ) -> Optional[ActorHandle]:
-        available_actors = self._schedulable_actors()
-        if not available_actors:
-            return None
-
-        ranks = self._rank_actors(
-            available_actors, bundle if actor_locality_enabled else None
-        )
-
-        target_actor_idx = min(range(len(available_actors)), key=lambda idx: ranks[idx])
-        return available_actors[target_actor_idx]
-
+    @override
     def on_task_submitted(self, actor: ActorHandle):
         state = self._running_actors[actor]
         state.num_tasks_in_flight += 1
@@ -951,53 +889,25 @@ class _ActorPool(AutoscalingActorPool):
         if state.num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
-    def refresh_actor_state(self):
-        for actor in self._running_actors:
-            self._update_running_actor_state(actor)
+        assert actor in self._alive_actors_to_in_flight_tasks_heap
+        self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
+            state.num_tasks_in_flight
+        )
 
-    def _update_running_actor_state(self, actor: ActorHandle) -> _ActorState:
-        """Update running actor state. This is called for every actor
-        in `refresh_actor_state`.
+    @override
+    def get_actor_location(self, actor: ActorHandle) -> NodeIdStr:
+        return self._running_actors[actor].actor_location
 
-        Args:
-            actor: The running actor that needs state update.
+    @override
+    def shutdown(self, force: bool = False):
+        """Kills all actors, including running/active actors.
 
-        Returns:
-            The new actor state
+        This is called once the operator is shutting down.
         """
-        actor_state = actor._get_local_state()
-        running_actor_state = self._running_actors[actor]
-        if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
-            # actor._get_local_state can return None if the state is Unknown
-            # If actor_state is None or dead, there is nothing to do.
-            return running_actor_state
-        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
-            # The actors can be either ALIVE or RESTARTING here because they will
-            # be restarted indefinitely until execution finishes.
-            assert (
-                actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-            ), actor_state
-            if not running_actor_state.is_restarting:
-                self._num_restarting_actors += 1
-                running_actor_state.is_restarting = True
-        else:
-            if running_actor_state.is_restarting:
-                self._num_restarting_actors -= 1
-                running_actor_state.is_restarting = False
-        return running_actor_state
+        self._release_pending_actors(force=force)
+        self._release_running_actors(force=force)
 
-    def _add_pending_actor(self, actor: ActorHandle, ready_ref: ray.ObjectRef):
-        """Adds a pending actor to the pool.
-
-        This actor won't be pickable until it is marked as running via a
-        pending_to_running() call.
-
-        Args:
-            actor: The not-yet-ready actor to add as pending to the pool.
-            ready_ref: The ready future for the actor.
-        """
-        self._pending_actors[ready_ref] = actor
-
+    @override
     def pending_to_running(self, ready_ref: ray.ObjectRef) -> Optional[ActorHandle]:
         """Mark the actor corresponding to the provided ready future as running, making
         the actor pickable.
@@ -1018,7 +928,7 @@ class _ActorPool(AutoscalingActorPool):
             return None
         actor = self._pending_actors.pop(ready_ref)
         try:
-            actor_location = ray.get(ready_ref)
+            actor_location: NodeIdStr = ray.get(ready_ref)
         except Exception:
             # Actor init failed - clean up the actor from _actor_to_logical_id
             # This must happen for all exceptions, not just RayError, to prevent
@@ -1030,8 +940,65 @@ class _ActorPool(AutoscalingActorPool):
             actor_location=actor_location,
             is_restarting=False,
         )
+        # NOTE: We assume any actor that goes from pending to running is ALIVE
+        self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(0)
+        self._alive_node_to_actor_map[actor_location].add(actor)
         return actor
 
+    @override
+    def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
+        return list(self._pending_actors.keys())
+
+    @override
+    def select_actors(
+        self,
+        bundle: Optional[RefBundle] = None,
+        actor_locality_enabled: bool = False,
+    ) -> Optional[ActorHandle]:
+        """Select an actor to process the given bundle.
+
+        When ``bundle`` is ``None``, returns any available actor with spare
+        capacity (used by ``can_schedule_task`` to probe schedulability).
+        When ``bundle`` is provided, returns the best actor for that bundle
+        (considering locality when ``actor_locality_enabled`` is True).
+
+        This method peeks (does not pop) from the heap, so
+        ``on_task_submitted()`` must be called for the returned actor before
+        the next ``select_actors()`` call.  Otherwise the same
+        actor will be selected repeatedly.  The caller in
+        ``ActorPoolMapOperator._dispatch_tasks()`` upholds this contract.
+
+        TODO: Change this to support N bundles, M actors. This will significantly
+        help with actor locality, since we'll have more knowledge in scheduling.
+
+        Args:
+            bundle: The bundle to schedule. When ``None``, returns any
+                available actor with spare capacity.
+            actor_locality_enabled: Whether to consider data locality
+                when selecting an actor.
+
+        Returns:
+            An actor handle if an actor with capacity is available, otherwise
+            ``None``.
+        """
+        if not self._alive_actors_to_in_flight_tasks_heap:
+            return None
+
+        _, least_busy_rank = self._alive_actors_to_in_flight_tasks_heap.peekitem()
+        if least_busy_rank >= self.max_tasks_in_flight_per_actor():
+            return None
+
+        target_actor: Optional[ActorHandle] = None
+
+        if bundle is not None and actor_locality_enabled:
+            target_actor = self._find_actor_with_locality(bundle)
+
+        if target_actor is None:
+            target_actor, _ = self._alive_actors_to_in_flight_tasks_heap.peekitem()
+
+        return target_actor
+
+    @override
     def on_task_completed(self, actor: ActorHandle):
         """Called when a task completes. Returns the provided actor to the pool."""
         state = self._running_actors[actor]
@@ -1041,8 +1008,111 @@ class _ActorPool(AutoscalingActorPool):
         if not state.num_tasks_in_flight:
             self._num_active_actors -= 1
 
-    def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
-        return list(self._pending_actors.keys())
+        if actor in self._alive_actors_to_in_flight_tasks_heap:
+            self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
+                state.num_tasks_in_flight
+            )
+
+    # === End of overriding methods of AutoscalingActorPool ===
+
+    def _get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
+        return self._actor_to_logical_id[actor]
+
+    def _can_apply_request(self, req: ActorPoolScalingRequest) -> bool:
+        """Returns whether Actor Pool is able to execute scaling request"""
+
+        if req.delta < 0:
+            # To prevent bouncing back and forth, we disallow scale down for
+            # a "cool-off" period after the most recent scaling up, with an intention
+            # to allow application to actually utilize newly provisioned resources
+            # before making decisions on subsequent actions.
+            #
+            # Note that this action is unidirectional and doesn't apply to
+            # scaling up, ie if actor pool just scaled down, it'd still be able
+            # to scale back up immediately.
+            if (
+                not req.force
+                and self._last_upscaled_at is not None
+                and (time.time() <= self._last_upscaled_at + self._debounce_period_s)
+            ):
+                # NOTE: To avoid spamming logs unnecessarily, debounce log is produced once
+                #       per upscaling event
+                if self._last_upscaled_at != self._last_downscaling_debounce_warning_ts:
+                    logger.debug(
+                        f"Ignoring scaling down request (request={req}; reason=debounced from scaling up at {self._last_upscaled_at})"
+                    )
+                    self._last_downscaling_debounce_warning_ts = self._last_upscaled_at
+
+                return False
+
+        return True
+
+    def _create_actor(self) -> Tuple[ActorHandle, ObjectRef]:
+        logical_actor_id = str(uuid.uuid4())
+        labels = {self.get_logical_id_label_key(): logical_actor_id}
+        actor, ready_ref = self._create_actor_fn(labels, logical_actor_id)
+        self._actor_to_logical_id[actor] = logical_actor_id
+        return actor, ready_ref
+
+    def _update_running_actor_state(self, actor: ActorHandle):
+        """Update running actor state. This is called for every actor
+        in `refresh_actor_state`.
+
+        Args:
+            actor: The running actor that needs state update.
+        """
+        actor_state = actor._get_local_state()
+
+        # 1) Check if actor is restarting
+        running_actor_state = self._running_actors[actor]
+        died: bool = False
+        if actor_state in (None, _ACTOR_STATE_DEAD):
+            # actor._get_local_state can return None if the state is Unknown
+            # If actor_state is None or dead, there is nothing to do.
+            died = True
+        elif actor_state != _ACTOR_STATE_ALIVE:
+            # The actors can be either ALIVE or RESTARTING here because they will
+            # be restarted indefinitely until execution finishes.
+            assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
+            if not running_actor_state.is_restarting:
+                self._num_restarting_actors += 1
+                running_actor_state.is_restarting = True
+        else:
+            if running_actor_state.is_restarting:
+                self._num_restarting_actors -= 1
+                running_actor_state.is_restarting = False
+
+        self._update_rank(actor=actor, state=running_actor_state, died=died)
+
+    def _update_rank(self, actor: ActorHandle, state: _ActorState, died: bool):
+        """Update the scheduling rank for an actor after a state refresh.
+
+        Alive actors are added/updated in both structures; restarting
+        actors are removed from the heap (and omitted from the node map
+        since ``refresh_actor_state`` clears it before calling this).
+        """
+        if not (state.is_restarting or died):
+            node_id = state.actor_location
+            self._alive_node_to_actor_map[node_id].add(actor)
+            if actor not in self._alive_actors_to_in_flight_tasks_heap:
+                assert state.num_tasks_in_flight <= self.max_tasks_in_flight_per_actor()
+                self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
+                    state.num_tasks_in_flight
+                )
+        elif actor in self._alive_actors_to_in_flight_tasks_heap:
+            del self._alive_actors_to_in_flight_tasks_heap[actor]
+
+    def _add_pending_actor(self, actor: ActorHandle, ready_ref: ray.ObjectRef):
+        """Adds a pending actor to the pool.
+
+        This actor won't be pickable until it is marked as running via a
+        pending_to_running() call.
+
+        Args:
+            actor: The not-yet-ready actor to add as pending to the pool.
+            ready_ref: The ready future for the actor.
+        """
+        self._pending_actors[ready_ref] = actor
 
     def _get_logical_ids(self) -> List[LogicalActorId]:
         """Get the logical IDs for pending and running actors in the actor pool.
@@ -1052,17 +1122,6 @@ class _ActorPool(AutoscalingActorPool):
         after.
         """
         return list(self._actor_to_logical_id.values())
-
-    def get_logical_id_label_key(self) -> str:
-        """Get the label key for the logical actor ID.
-
-        Actors launched by this pool should have this label.
-        """
-        return self._LOGICAL_ACTOR_ID_LABEL_KEY
-
-    def num_idle_actors(self) -> int:
-        """Return the number of idle actors in the pool."""
-        return self.num_running_actors() - self.num_active_actors()
 
     def _remove_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
@@ -1097,14 +1156,6 @@ class _ActorPool(AutoscalingActorPool):
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
 
-    def shutdown(self, force: bool = False):
-        """Kills all actors, including running/active actors.
-
-        This is called once the operator is shutting down.
-        """
-        self._release_pending_actors(force=force)
-        self._release_running_actors(force=force)
-
     def _release_pending_actors(self, force: bool):
         # Release pending actors from the set of pending ones
         pending = dict(self._pending_actors)
@@ -1119,16 +1170,8 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = list(self._running_actors.keys())
 
-        on_exit_refs = []
-
-        # First release actors and collect their shutdown hook object-refs
         for actor in running:
-            ref = self._release_running_actor(actor)
-            if ref:
-                on_exit_refs.append(ref)
-
-        # Wait for all actors to shutdown gracefully before killing them
-        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+            self._release_running_actor(actor)
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -1136,18 +1179,15 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(self, actor: ActorHandle) -> Optional[ObjectRef]:
-        """Remove the given actor from the pool and trigger its `on_exit` callback.
-
-        This method returns a ``ref`` to the result
-        """
+    def _release_running_actor(self, actor: ActorHandle):
+        """Remove the given actor from the pool by dropping all pool references."""
         # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
         #
         # Otherwise, actor cannot be reconstructed for the purposes of produced
         # object's lineage reconstruction.
         if actor not in self._running_actors:
-            return None
+            return
 
         # Update cached statistics before removing the actor
         actor_state = self._running_actors[actor]
@@ -1163,75 +1203,57 @@ class _ActorPool(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        if self._enable_actor_pool_on_exit_hook:
-            # Call `on_exit` to trigger `UDF.__del__` which may perform
-            # cleanup operations.
-            ref = actor.on_exit.remote()
-        else:
-            ref = None
+        if actor in self._alive_actors_to_in_flight_tasks_heap:
+            del self._alive_actors_to_in_flight_tasks_heap[actor]
+
+        node_id = actor_state.actor_location
+        if node_id in self._alive_node_to_actor_map:
+            self._alive_node_to_actor_map[node_id].discard(actor)
+
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
 
-        return ref
+    def _find_actor_with_locality(self, bundle: RefBundle) -> Optional[ActorHandle]:
+        """Exhaustively search all alive actors on preferred nodes for the best match.
 
-    def get_actor_info(self) -> ActorPoolInfo:
-        """Returns current snapshot of actors' being used in the pool"""
-        return ActorPoolInfo(
-            running=self.num_alive_actors(),
-            pending=self.num_pending_actors(),
-            restarting=self.num_restarting_actors(),
-        )
-
-    @override
-    def per_actor_resource_usage(self) -> ExecutionResources:
-        return self._per_actor_resource_usage
-
-    def _rank_actors(
-        self,
-        actors: List[ActorHandle],
-        bundle: Optional[RefBundle],
-    ) -> List[Tuple[int, int]]:
-        """Return ranks for each actor based on node affinity with the blocks in the provided
-        bundle and current Actor's load.
-
-        The rank for each actor is a tuple of
-
-            1. Locality rank: a rank of a node Actor is scheduled on determined based on
-            the ranking of preferred locations for provided ``RefBundle`` (defined by
-            ``RefBundle.get_preferred_locations``). Lower is better.
-            2. Number of tasks currently executed by Actor. Lower is better.
+        Iterates over every node where the bundle's data resides and every alive
+        actor on those nodes, collecting candidates that still have task capacity.
+        Returns the best candidate ranked by (locality, busyness), or None if no
+        actor on a preferred node has capacity.
 
         Args:
-            actors: List of actors to rank
-            bundle: Optional bundle whose locality preferences should be considered
+            bundle: The bundle to find an actor for.
 
         Returns:
-            List of (locality_rank, num_tasks) tuples, one per input actor
+            The best locality-aware actor, or None if none are available.
         """
-        locs_priorities = (
-            {
-                # NOTE: We're negating total bytes to maintain an invariant
-                #       of the rank used -- lower value corresponding to a higher rank
-                node_id: -total_bytes
-                for node_id, total_bytes in bundle.get_preferred_object_locations().items()
-            }
-            if bundle is not None
-            else {}
-        )
+        preferred_locs = bundle.get_preferred_object_locations()
+        if not preferred_locs:
+            return None
 
-        # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
-        #       and rank[-1] is the lowest)
-        ranks = [
-            (
-                # Priority/rank of the location (based on the object size).
-                # Defaults to int32 max value (ie no rank)
-                locs_priorities.get(
-                    self._running_actors[actor].actor_location, INT32_MAX
-                ),
-                # Number of tasks currently in flight at the given actor
-                self._running_actors[actor].num_tasks_in_flight,
-            )
-            for actor in actors
-        ]
+        # Scan every alive actor across all preferred nodes (exhaustive search).
+        # We collect all candidates rather than short-circuiting so we can pick
+        # the globally best (locality, busyness) pair.
+        actor_ranks = []
 
-        return ranks
+        # TODO(Justin): This can optimized further to node_id -> heap[actor, num_tasks_in_flight]
+        # 1. Get the node with the most bytes the bundle has
+        # 2. Pick the best actor (least num_tasks_in_flight) on that node
+        for node_id, total_bytes in preferred_locs.items():
+            if node_id not in self._alive_node_to_actor_map:
+                continue
+            for actor in self._alive_node_to_actor_map[node_id]:
+                num_tasks_in_flight = self._running_actors[actor].num_tasks_in_flight
+                if num_tasks_in_flight >= self.max_tasks_in_flight_per_actor():
+                    continue
+                # Negate total_bytes so that more data on-node = lower rank = preferred.
+                locality_rank = -total_bytes
+                busyness_rank = num_tasks_in_flight
+                actor_ranks.append((actor, locality_rank, busyness_rank))
+
+        if not actor_ranks:
+            return None
+
+        # Pick the best candidate: prefer highest locality (most data on-node),
+        # breaking ties by fewest tasks in flight.
+        return min(actor_ranks, key=lambda x: (x[1], x[2]))[0]

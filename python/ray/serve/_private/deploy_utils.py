@@ -11,6 +11,8 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -65,8 +67,9 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+    deployment_def = replica_config.deployment_def
+
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        deployment_def = replica_config.deployment_def
         if _deployment_uses_multiplexed(deployment_def):
             raise ValueError(
                 "Model multiplexing (@serve.multiplexed) is not supported on "
@@ -75,6 +78,28 @@ def get_deploy_args(
                 "via DeploymentHandle. The ingress is the routing entry point, "
                 "not a model-serving leaf."
             )
+
+    if _deployment_uses_multiplexed(deployment_def):
+        if RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is disallowed because "
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1 is set. "
+                "Remove multiplexed model loaders from your deployments or unset "
+                "this variable."
+            )
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is not supported when "
+                "RAY_SERVE_ENABLE_HA_PROXY=1. Disable HAProxy or remove "
+                "@serve.multiplexed from your deployments."
+            )
+        logger.warning(
+            "This deployment uses @serve.multiplexed. Model multiplexing will be "
+            "disallowed in a future Ray Serve release. If you rely on this feature, "
+            "please reach out to the Ray team on GitHub or the Ray Slack. To fail "
+            "deployments that use multiplexing immediately, set "
+            "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
+        )
 
     deployment_config.version = version
 
