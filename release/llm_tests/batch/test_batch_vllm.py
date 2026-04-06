@@ -1,6 +1,9 @@
 import sys
 import logging
 import time
+import os
+import signal
+import subprocess
 
 import pytest
 
@@ -49,6 +52,24 @@ def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
     ray.shutdown()
+    _kill_gpu_processes()
+
+
+def _kill_gpu_processes():
+    """
+    Kill all processes occupying GPUs, particularly for
+    cleaning GPU processes created by vLLM's ``mp`` executor.
+    """
+    pids = subprocess.run(
+        ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    for pid in pids:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (ProcessLookupError, ValueError):
+            pass
 
 
 @pytest.mark.asyncio
