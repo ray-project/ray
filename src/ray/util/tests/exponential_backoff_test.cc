@@ -51,14 +51,14 @@ TEST(ExponentialBackoffTest, TestOverflowReturnsMaxBackoff) {
     // multiplying it against the base backoff does.
     uint64_t large_base = std::numeric_limits<uint64_t>::max() / 2;
     uint64_t max_allowed = std::numeric_limits<uint64_t>::max();
-
-    auto multiplication_overflow = ExponentialBackoff::GetBackoffMs(
-        /*attempt*/ 2,
-        /*base_ms*/ large_base,
-        /*max_backoff_ms*/ max_allowed);
-
-    ASSERT_EQ(multiplication_overflow, max_allowed);
   }
+
+  auto multiplication_overflow = ExponentialBackoff::GetBackoffMs(
+      /*attempt*/ 2,
+      /*base_ms*/ large_base,
+      /*max_backoff_ms*/ max_allowed);
+
+  ASSERT_EQ(multiplication_overflow, max_allowed);
 }
 
 TEST(ExponentialBackoffTest, GetNext) {
