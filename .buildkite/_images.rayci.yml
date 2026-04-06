@@ -2,260 +2,247 @@ group: images
 sort_key: "_images"
 steps:
   - name: raycpubase
-    label: "wanda: ray-py{{matrix}}-cpu-base"
+    label: "wanda: ray-py{{array.python}}-cpu-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/base-deps/cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
 
   - name: raycpubaseextra
-    label: "wanda: ray-py{{matrix}}-cpu-base-extra"
+    label: "wanda: ray-py{{array.python}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
-    depends_on: raycpubase
+    depends_on: raycpubase($)
 
   - name: raytpubase
-    label: "wanda: ray-py{{matrix}}-tpu-base"
+    label: "wanda: ray-py{{array.python}}-tpu-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/base-deps/tpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
 
   - name: raycudabase
-    label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base"
+    label: "wanda: ray-py{{array.python}}-cu{{array.cuda}}-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/base-deps/cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        cuda:
-          - "11.7.1-cudnn8"
-          - "11.8.0-cudnn8"
-          - "12.1.1-cudnn8"
-          - "12.3.2-cudnn9"
-          - "12.4.1-cudnn"
-          - "12.5.1-cudnn"
-          - "12.6.3-cudnn"
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+      cuda:
+        - "11.7.1-cudnn8"
+        - "11.8.0-cudnn8"
+        - "12.1.1-cudnn8"
+        - "12.3.2-cudnn9"
+        - "12.4.1-cudnn"
+        - "12.5.1-cudnn"
+        - "12.6.3-cudnn"
+        - "12.8.1-cudnn"
+        - "12.9.1-cudnn"
+        - "13.0.0-cudnn"
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""
 
   - name: raycudabaseextra
-    label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
+    label: "wanda: ray-py{{array.python}}-cu{{array.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        cuda:
-          - "11.7.1-cudnn8"
-          - "11.8.0-cudnn8"
-          - "12.1.1-cudnn8"
-          - "12.3.2-cudnn9"
-          - "12.4.1-cudnn"
-          - "12.5.1-cudnn"
-          - "12.6.3-cudnn"
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+      cuda:
+        - "11.7.1-cudnn8"
+        - "11.8.0-cudnn8"
+        - "12.1.1-cudnn8"
+        - "12.3.2-cudnn9"
+        - "12.4.1-cudnn"
+        - "12.5.1-cudnn"
+        - "12.6.3-cudnn"
+        - "12.8.1-cudnn"
+        - "12.9.1-cudnn"
+        - "13.0.0-cudnn"
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
-    depends_on: raycudabase
+    depends_on: raycudabase($)
 
   - name: ray-llmbase
-    label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base"
+    label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/ray-llm/cuda.wanda.yaml
-    depends_on: raycudabase
-    matrix:
-      setup:
-        python:
-          - "3.11"
-          - "3.12"
-        cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    depends_on: raycudabase($)
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
 
   - name: ray-llmbaseextra
-    label: "wanda: ray-llm-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
+    label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.11"
-          - "3.12"
-        cuda:
-          - "12.8.1-cudnn"
-          - "12.9.1-cudnn"
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "12.9.1-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-llm"
       ARCH_SUFFIX: ""
-    depends_on: ray-llmbase
+    depends_on: ray-llmbase($)
 
   - name: ray-mlcpubase
-    label: "wanda: ray-ml-py{{matrix}}-cpu-base"
+    label: "wanda: ray-ml-py{{array.python}}-cpu-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/ray-ml/cpu.wanda.yaml
-    depends_on: raycpubase
-    matrix:
-      - "3.10"
-      - "3.11"
+    depends_on: raycpubase($)
+    array:
+      python:
+        - "3.10"
+        - "3.11"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
 
   - name: ray-mlcpubaseextra
-    label: "wanda: ray-ml-py{{matrix}}-cpu-base-extra"
+    label: "wanda: ray-ml-py{{array.python}}-cpu-base-extra"
     wanda: docker/base-extra/cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-    depends_on: ray-mlcpubase
+    depends_on: ray-mlcpubase($)
 
   - name: ray-mlcudabase
-    label: "wanda: ray-ml-py{{matrix.python}}-cu{{matrix.cuda}}-base"
+    label: "wanda: ray-ml-py{{array.python}}-cu{{array.cuda}}-base"
     tags:
       - python_dependencies
       - docker
     wanda: docker/ray-ml/cuda.wanda.yaml
-    depends_on: raycudabase
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-        cuda:
-          - "12.1.1-cudnn8"
+    depends_on: raycudabase($)
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+      cuda:
+        - "12.1.1-cudnn8"
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
 
   - name: ray-mlcudabaseextra
-    label: "wanda: ray-ml-py{{matrix.python}}-cu{{matrix.cuda}}-base-extra"
+    label: "wanda: ray-ml-py{{array.python}}-cu{{array.cuda}}-base-extra"
     wanda: docker/base-extra/cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-        cuda:
-          - "12.1.1-cudnn8"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+      cuda:
+        - "12.1.1-cudnn8"
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-ml"
       ARCH_SUFFIX: ""
-    depends_on: ray-mlcudabase
+    depends_on: ray-mlcudabase($)
 
   - name: ray-slimcpubase
-    label: "wanda: ray-slim-py{{matrix}}-cpu-base"
+    label: "wanda: ray-slim-py{{array.python}}-cpu-base"
     tags:
       - python_dependencies
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cpu.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
 
   - name: ray-slimcudabase
-    label: "wanda: ray-slim-py{{matrix.python}}-cu{{matrix.cuda}}-base"
+    label: "wanda: ray-slim-py{{array.python}}-cu{{array.cuda}}-base"
     tags:
       - python_dependencies
       - docker
       - skip-on-release-tests
     wanda: docker/base-slim/cuda.wanda.yaml
-    matrix:
-      setup:
-        python:
-          - "3.10"
-          - "3.11"
-          - "3.12"
-          - "3.13"
-        cuda:
-          - "11.7.1"
-          - "11.8.0"
-          - "12.1.1"
-          - "12.3.2"
-          - "12.4.1"
-          - "12.5.1"
-          - "12.6.3"
-          - "12.8.1"
-          - "12.9.1"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+      cuda:
+        - "11.7.1"
+        - "11.8.0"
+        - "12.1.1"
+        - "12.3.2"
+        - "12.4.1"
+        - "12.5.1"
+        - "12.6.3"
+        - "12.8.1"
+        - "12.9.1"
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
       ARCH_SUFFIX: ""

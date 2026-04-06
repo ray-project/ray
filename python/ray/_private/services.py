@@ -12,7 +12,9 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
+from functools import cache
 from pathlib import Path
 from typing import IO, AnyStr, List, Optional
 
@@ -369,9 +371,32 @@ def find_node_ids():
     return _find_address_from_flag("--node_id")
 
 
+_find_gcs_addresses_lock = threading.Lock()
+
+
+@cache
+def _cached_find_gcs_addresses():
+    return frozenset(_find_address_from_flag("--gcs-address"))
+
+
 def find_gcs_addresses():
-    """Finds any local GCS processes based on grepping ps."""
-    return _find_address_from_flag("--gcs-address")
+    """Finds any local GCS processes based on grepping ps.
+
+    Empty discovery results are not cached.
+    """
+    with _find_gcs_addresses_lock:
+        addresses = _cached_find_gcs_addresses()
+        if not addresses:
+            _cached_find_gcs_addresses.cache_clear()
+        return addresses
+
+
+def _thread_safe_find_gcs_addresses_cache_clear():
+    with _find_gcs_addresses_lock:
+        _cached_find_gcs_addresses.cache_clear()
+
+
+find_gcs_addresses.cache_clear = _thread_safe_find_gcs_addresses_cache_clear
 
 
 def find_bootstrap_address(temp_dir: Optional[str]):
@@ -405,7 +430,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
 
     if len(gcs_addrs) > 1 and bootstrap_addr is not None:
         logger.warning(
-            f"Found multiple active Ray instances: {gcs_addrs}. "
+            f"Found multiple active Ray instances: {set(gcs_addrs)}. "
             f"Connecting to latest cluster at {bootstrap_addr}. "
             "You can override this by setting the `--address` flag "
             "or `RAY_ADDRESS` environment variable."
@@ -413,7 +438,7 @@ def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
     elif len(gcs_addrs) > 0 and addr == "auto":
         # Preserve legacy "auto" behavior of connecting to any cluster, even if not
         # started with ray start. However if addr is None, we will raise an error.
-        bootstrap_addr = list(gcs_addrs).pop()
+        bootstrap_addr = next(iter(gcs_addrs))
 
     if bootstrap_addr is None:
         if addr is None:
@@ -708,11 +733,11 @@ def canonicalize_bootstrap_address_or_die(
         )
     if len(running_gcs_addresses) > 1:
         raise ConnectionError(
-            f"Found multiple active Ray instances: {running_gcs_addresses}. "
+            f"Found multiple active Ray instances: {set(running_gcs_addresses)}. "
             "Please specify the one to connect to by setting the `--address` "
             "flag or `RAY_ADDRESS` environment variable."
         )
-    return running_gcs_addresses.pop()
+    return next(iter(running_gcs_addresses))
 
 
 def extract_ip_port(bootstrap_address: str):
@@ -1190,6 +1215,7 @@ def start_api_server(
     backup_count: int = 0,
     stdout_filepath: Optional[str] = None,
     stderr_filepath: Optional[str] = None,
+    proxy_server_url: Optional[str] = None,
 ):
     """Start a API server process.
 
@@ -1221,6 +1247,8 @@ def start_api_server(
             If None, stdout is not redirected.
         stderr_filepath: The file path to dump dashboard stderr.
             If None, stderr is not redirected.
+        proxy_server_url: The url to redirect dashboard backend api requests to
+            Ex: http://historyserver:8080
 
     Returns:
         A tuple of :
@@ -1299,6 +1327,7 @@ def start_api_server(
             f"--gcs-address={gcs_address}",
             f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
+            f"--proxy-server-url={proxy_server_url or ''}",
         ]
 
         if stdout_filepath:
@@ -1683,7 +1712,7 @@ def start_raylet(
     Returns:
         ProcessInfo for the process that was started.
     """
-    assert node_manager_port is not None and type(node_manager_port) is int
+    assert node_manager_port is not None and isinstance(node_manager_port, int)
 
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")

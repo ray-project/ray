@@ -1,6 +1,7 @@
 import os
 import sys
-import tempfile
+import threading
+import time
 
 import pytest
 
@@ -9,9 +10,13 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import check_apps_running
+from ray.serve._private.test_utils import (
+    check_apps_running,
+    check_num_replicas_eq,
+)
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -714,30 +719,27 @@ class TestGangConstructorFailure:
         ray.init(num_cpus=1)
         serve.start()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            file_path = os.path.join(tmpdir, "test_deploy.txt")
+        failed_replica_store = FailedReplicaStore.remote()
 
-            @serve.deployment(
-                num_replicas=4,
-                ray_actor_options={"num_cpus": 0.1},
-                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
-            )
-            class GangPartialConstructorFailure:
-                def __init__(self):
-                    if not os.path.exists(file_path):
-                        with open(file_path, "w") as f:
-                            f.write(serve.get_replica_context().replica_id.unique_id)
-                        raise RuntimeError("Consistently throwing on same replica.")
-                    else:
-                        with open(file_path) as f:
-                            content = f.read()
-                        if content == serve.get_replica_context().replica_id.unique_id:
-                            raise RuntimeError("Consistently throwing on same replica.")
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangPartialConstructorFailure:
+            def __init__(self, store):
+                replica_id = serve.get_replica_context().replica_id.unique_id
+                is_first = ray.get(store.set_if_first.remote(replica_id))
+                if is_first:
+                    raise RuntimeError("Consistently throwing on same replica.")
+                failed_id = ray.get(store.get.remote())
+                if replica_id == failed_id:
+                    raise RuntimeError("Consistently throwing on same replica.")
 
-                async def __call__(self, request):
-                    return "hi"
+            async def __call__(self, request):
+                return "hi"
 
-            serve.run(GangPartialConstructorFailure.bind())
+        serve.run(GangPartialConstructorFailure.bind(failed_replica_store))
 
         client = serve.context._get_global_client()
         deployment_id = DeploymentID(name="GangPartialConstructorFailure")
@@ -754,26 +756,24 @@ class TestGangConstructorFailure:
         ray.init(num_cpus=1)
         serve.start()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            file_path = os.path.join(tmpdir, "test_deploy.txt")
+        failed_replica_store = FailedReplicaStore.remote()
 
-            @serve.deployment(
-                num_replicas=4,
-                ray_actor_options={"num_cpus": 0.1},
-                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
-            )
-            class GangTransientConstructorFailure:
-                def __init__(self):
-                    if os.path.exists(file_path):
-                        return
-                    with open(file_path, "w") as f:
-                        f.write("ONE")
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangTransientConstructorFailure:
+            def __init__(self, store):
+                replica_id = serve.get_replica_context().replica_id.unique_id
+                is_first = ray.get(store.set_if_first.remote(replica_id))
+                if is_first:
                     raise RuntimeError("Intentionally throw on first try.")
 
-                async def __call__(self, request):
-                    return "hi"
+            async def __call__(self, request):
+                return "hi"
 
-            serve.run(GangTransientConstructorFailure.bind())
+        serve.run(GangTransientConstructorFailure.bind(failed_replica_store))
 
         client = serve.context._get_global_client()
         deployment_id = DeploymentID(name="GangTransientConstructorFailure")
@@ -1099,6 +1099,887 @@ class TestGangChildSpawnPlacementGroup:
             assert result["child_pg_id"] is None
 
         serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangControllerRecovery:
+    def test_gang_context_recovery(self, ray_cluster):
+        """Verifies that the controller recovers all app and deployment states
+        after a crash, including gang_context for gang deployments and normal
+        replicas for non-gang deployments.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class Gang1:
+            def __call__(self):
+                return "ok"
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class Gang2:
+            def __call__(self):
+                return "ok"
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+        )
+        class NoGang:
+            def __call__(self):
+                return "ok"
+
+        app_names = ["gang_app1", "gang_app2", "no_gang_app"]
+        serve.run(Gang1.bind(), name="gang_app1", route_prefix="/gang1")
+        serve.run(Gang2.bind(), name="gang_app2", route_prefix="/gang2")
+        serve.run(NoGang.bind(), name="no_gang_app", route_prefix="/no_gang")
+        wait_for_condition(check_apps_running, apps=app_names)
+
+        gang_deployment_ids = [
+            DeploymentID(name="Gang1", app_name="gang_app1"),
+            DeploymentID(name="Gang2", app_name="gang_app2"),
+        ]
+        no_gang_deployment_id = DeploymentID(name="NoGang", app_name="no_gang_app")
+        controller = serve.context._get_global_client()._controller
+
+        # Record controller-side gang_context before crash
+        gang_ctx_before = {}
+        for dep_id in gang_deployment_ids:
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            for r in running:
+                assert r.gang_context is not None
+                gang_ctx_before[r.replica_id.unique_id] = r.gang_context
+
+        # Record non-gang replica count
+        no_gang_replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(no_gang_deployment_id)
+        )
+        no_gang_count_before = len(no_gang_replicas.get([ReplicaState.RUNNING]))
+        assert no_gang_count_before == 2
+
+        # Kill the controller and wait for recovery of all apps
+        ray.kill(controller, no_restart=False)
+        wait_for_condition(check_apps_running, apps=app_names, timeout=60)
+
+        new_controller = serve.context._get_global_client()._controller
+
+        def all_states_recovered():
+            # Verify gang_context recovered for all gang deployments
+            for dep_id in gang_deployment_ids:
+                replicas = ray.get(
+                    new_controller._dump_replica_states_for_testing.remote(dep_id)
+                )
+                running = replicas.get([ReplicaState.RUNNING])
+                for r in running:
+                    before = gang_ctx_before.get(r.replica_id.unique_id)
+                    if r.gang_context is None or r.gang_context != before:
+                        return False
+
+            # Verify non-gang deployment recovered
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(
+                    no_gang_deployment_id
+                )
+            )
+            if len(replicas.get([ReplicaState.RUNNING])) != no_gang_count_before:
+                return False
+
+            return True
+
+        wait_for_condition(all_states_recovered, timeout=60)
+
+        # Verify application and deployment statuses after recovery
+        status = serve.status()
+        for app_name in app_names:
+            app_status = status.applications[app_name]
+            assert app_status.status == "RUNNING"
+            for dep_name, dep_status in app_status.deployments.items():
+                assert dep_status.status == "HEALTHY"
+
+        for app_name in app_names:
+            serve.delete(app_name)
+        serve.shutdown()
+
+    @pytest.mark.parametrize("same_gang", [True, False])
+    def test_gang_replica_crash_during_controller_downtime(
+        self, ray_cluster, same_gang
+    ):
+        """When gang replicas crash while the controller is down, the controller
+        recovers and reschedules the affected gangs.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            health_check_period_s=1,
+        )
+        class GangApp:
+            def __call__(self):
+                return os.getpid()
+
+        app_name = "gang_crash_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
+        serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        controller = serve.context._get_global_client()._controller
+
+        # Record initial replicas and group by gang.
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == 4
+
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+        gang_ids = list(gangs.keys())
+        assert len(gang_ids) == 2
+
+        # Pick 2 victims
+        if same_gang:
+            victims = gangs[gang_ids[0]]
+        else:
+            victims = [gangs[gang_ids[0]][0], gangs[gang_ids[1]][0]]
+
+        victim_ids = {v.replica_id.unique_id for v in victims}
+
+        # Kill the controller, then kill the victims while it is down.
+        ray.kill(controller, no_restart=False)
+        for v in victims:
+            handle = ray.get_actor(v.replica_id.to_full_id_str(), namespace="serve")
+            ray.kill(handle, no_restart=True)
+
+        # Wait for the controller to restart and the app to recover.
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        new_controller = serve.context._get_global_client()._controller
+
+        def fully_recovered():
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != 4:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            return True
+
+        wait_for_condition(fully_recovered)
+
+        # The killed replicas should have been replaced by new ones.
+        replicas = ray.get(
+            new_controller._dump_replica_states_for_testing.remote(dep_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        recovered_ids = {r.replica_id.unique_id for r in running}
+        assert victim_ids.isdisjoint(recovered_ids)
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangNodeFailure:
+    @pytest.mark.parametrize(
+        "strategy", [GangPlacementStrategy.SPREAD, GangPlacementStrategy.PACK]
+    )
+    def test_worker_node_failure_restarts_gang(self, ray_cluster, strategy):
+        """Killing a node restarts the affected gang with no request
+        downtime (surviving gang keeps serving) and no leaked PGs.
+        """
+        cluster = ray_cluster
+        # Head and workers each get 1 CPU. Each PG (2 × 0.5 CPU = 1.0 CPU)
+        # fills exactly one node for PACK, and SPREAD distributes one bundle
+        # per node. At most 1 PG fits on the head, so at least 1 PG must
+        # land on a worker, giving the test a killable target. The extra
+        # nodes provide recovery capacity after one worker is removed.
+        cluster.add_node(num_cpus=1)
+        workers = [cluster.add_node(num_cpus=1) for _ in range(3)]
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        num_replicas = 4
+        gang_size = 2
+
+        @serve.deployment(
+            num_replicas=num_replicas,
+            ray_actor_options={"num_cpus": 0.5},
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=gang_size,
+                gang_placement_strategy=strategy,
+            ),
+            health_check_period_s=1,
+        )
+        class GangApp:
+            def __call__(self):
+                return ray.get_runtime_context().get_node_id()
+
+        app_name = "node_kill_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
+        handle = serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        controller = serve.context._get_global_client()._controller
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == num_replicas
+
+        # Group replicas by gang
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+
+        # Pick a worker to kill that (a) hosts at least one gang member and
+        # (b) leaves at least one gang fully intact on the surviving nodes.
+        node_to_kill = None
+        affected_gangs = []
+        for worker in workers:
+            affected_gangs = [
+                gid
+                for gid, members in gangs.items()
+                if any(r.actor_node_id == worker.node_id for r in members)
+            ]
+            surviving = [
+                gid
+                for gid, members in gangs.items()
+                if all(r.actor_node_id != worker.node_id for r in members)
+            ]
+            if affected_gangs and surviving:
+                node_to_kill = worker
+                break
+
+        assert node_to_kill is not None
+        assert len(affected_gangs) > 0
+
+        # Continuously send requests in a background thread.
+        stop = threading.Event()
+        recovered = threading.Event()
+        errors_before_recovery = []
+        errors_after_recovery = []
+        successes = []
+
+        def send_requests():
+            while not stop.is_set():
+                try:
+                    result = handle.remote().result()
+                    successes.append(result)
+                except Exception as e:
+                    if recovered.is_set():
+                        errors_after_recovery.append(e)
+                    else:
+                        errors_before_recovery.append(e)
+                time.sleep(0.1)
+
+        sender = threading.Thread(target=send_requests, daemon=True)
+        sender.start()
+        time.sleep(1)
+
+        cluster.remove_node(node_to_kill)
+
+        expected_num_pgs = num_replicas // gang_size
+
+        def fully_recovered():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != num_replicas:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            # Verify PG count has converged: the old affected PG should be removed
+            # and the replacement PG should be created.
+            gang_pg_names = [
+                n
+                for n in get_all_live_placement_group_names()
+                if n.startswith(GANG_PG_NAME_PREFIX)
+            ]
+            if len(gang_pg_names) != expected_num_pgs:
+                return False
+            return True
+
+        wait_for_condition(fully_recovered, timeout=60)
+        recovered.set()
+
+        # Wait for at least one post-recovery success
+        successes_at_recovery = len(successes)
+        wait_for_condition(
+            lambda: len(successes) > successes_at_recovery,
+            timeout=10,
+        )
+        stop.set()
+        sender.join(timeout=5)
+
+        # Requests may fail during the brief disruption window: the node
+        # is dead but the handle may still route to the dead replica actors
+        # until the controller detects the failure and restarts them.
+        # After full recovery, no errors should occur.
+        assert len(errors_after_recovery) == 0
+        assert len(successes) > 0
+
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangScaling:
+    @pytest.mark.parametrize(
+        "initial_num_replicas, final_num_replicas",
+        [
+            (4, 2),  # Manual downscale: serve deploy num_replicas = 4 -> 2
+            (8, 4),  # Downscaling
+            (4, 8),  # Upscaling
+        ],
+    )
+    def test_scale_gang_boundary(
+        self, ray_cluster, initial_num_replicas, final_num_replicas
+    ):
+        """Validates that scaling preserves complete gangs."""
+        GANG_SIZE = 2
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            version="v1",
+            num_replicas=initial_num_replicas,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class D:
+            def __call__(self):
+                ctx = ray.serve.context._get_internal_replica_context()
+                gc = ctx.gang_context
+                return {"pid": os.getpid(), "gang_id": gc.gang_id if gc else None}
+
+        handle = serve.run(D.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        initial_num_gangs = initial_num_replicas // GANG_SIZE
+
+        # Collect the initial gang_ids.
+        initial_gang_ids = set()
+        # Hit the deployment with enough requests to collect all initial gang_ids
+        for _ in range(initial_num_replicas * 10):
+            resp = handle.remote().result()
+            if resp["gang_id"] is not None:
+                initial_gang_ids.add(resp["gang_id"])
+        assert len(initial_gang_ids) == initial_num_gangs
+
+        # Monitor requests during scaling to ensure zero downtime
+        errors, successes = [], []
+        stop_event = threading.Event()
+
+        def send_requests():
+            while not stop_event.is_set():
+                try:
+                    handle.remote().result(timeout_s=10)
+                    successes.append(True)
+                except Exception as e:
+                    errors.append(str(e))
+                time.sleep(0.1)
+
+        t = threading.Thread(target=send_requests, daemon=True)
+        t.start()
+
+        # Scale to the final replica count.
+        handle = serve.run(
+            D.options(num_replicas=final_num_replicas).bind(), name="app"
+        )
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        deployment = list(serve.status().applications["app"].deployments.values())[0]
+        assert deployment.replica_states.get("RUNNING", 0) == final_num_replicas
+
+        stop_event.set()
+        t.join(timeout=5)
+
+        # Scaling should be zero-downtime: no requests should fail.
+        assert len(errors) == 0
+        assert len(successes) > 0
+
+        final_num_gangs = final_num_replicas // GANG_SIZE
+
+        # Verify that the final replicas form complete gangs and the
+        # preserved gangs are a subset relationship
+        final_gang_ids = set()
+        seen_pids = set()
+        for _ in range(final_num_replicas * 10):
+            resp = handle.remote().result()
+            if resp["gang_id"] is not None:
+                final_gang_ids.add(resp["gang_id"])
+            seen_pids.add(resp["pid"])
+            if len(seen_pids) >= final_num_replicas:
+                break
+        assert len(final_gang_ids) == final_num_gangs
+
+        smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
+        assert smaller.issubset(larger)
+
+        serve.delete("app")
+        serve.shutdown()
+
+
+class TestGangRollingUpdate:
+    def test_rolling_update(self, ray_cluster):
+        """Verifies that rolling update replaces complete gangs atomically.
+
+        During the update, RUNNING replicas must always form complete gangs.
+        """
+        GANG_SIZE = 2
+        NUM_REPLICAS = 4
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V1:
+            def __call__(self):
+                return "v1"
+
+        handle = serve.run(V1.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+        assert handle.remote().result() == "v1"
+
+        client = _get_global_client()
+        controller = client._controller
+        deployment_id = DeploymentID(name="D", app_name="app")
+
+        # Collect initial gang_ids.
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == NUM_REPLICAS
+        initial_gang_ids = {r.gang_context.gang_id for r in running}
+        assert len(initial_gang_ids) == NUM_REPLICAS // GANG_SIZE
+
+        # Gate V2 startup behind a signal so we can deterministically
+        # observe mixed old/new gang state during the rolling update.
+        signal = SignalActor.remote()
+
+        # New code version triggers requires_actor_restart -> rolling update
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V2:
+            def __init__(self):
+                ray.get(signal.wait.remote())
+
+            def __call__(self):
+                return "v2"
+
+        # Issue the update in a background thread so we can poll
+        # intermediate controller state from the main thread.
+        update_done = threading.Event()
+
+        def update():
+            serve.run(V2.bind(), name="app")
+            update_done.set()
+
+        t = threading.Thread(target=update, daemon=True)
+        t.start()
+
+        # Wait until we observe mixed state: at least one old gang still
+        # RUNNING and at least one new gang in STARTING (blocked on signal).
+        def mixed_state_observed():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            starting = replicas.get([ReplicaState.STARTING])
+
+            running_gang_ids = {
+                r.gang_context.gang_id for r in running if r.gang_context is not None
+            }
+            starting_gang_ids = {
+                r.gang_context.gang_id for r in starting if r.gang_context is not None
+            }
+
+            has_old_running = bool(running_gang_ids & initial_gang_ids)
+            has_new_starting = bool(starting_gang_ids - initial_gang_ids)
+
+            # While old gangs are still running, they must be complete.
+            gang_counts: dict = {}
+            for r in running:
+                if r.gang_context is not None:
+                    gid = r.gang_context.gang_id
+                    gang_counts[gid] = gang_counts.get(gid, 0) + 1
+            for gid, count in gang_counts.items():
+                if gid in initial_gang_ids:
+                    assert count == GANG_SIZE
+
+            return has_old_running and has_new_starting
+
+        wait_for_condition(mixed_state_observed, timeout=30)
+
+        # Unblock V2 constructors and wait for the update to finish.
+        signal.send.remote()
+
+        def update_complete():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != NUM_REPLICAS:
+                return False
+            current_gang_ids = {
+                r.gang_context.gang_id for r in running if r.gang_context is not None
+            }
+            return current_gang_ids and not (current_gang_ids & initial_gang_ids)
+
+        wait_for_condition(update_complete, timeout=60)
+        t.join(timeout=10)
+
+        # Confirm all replicas serve the new version.
+        for _ in range(20):
+            assert handle.remote().result() == "v2"
+
+        serve.delete("app")
+        serve.shutdown()
+
+
+class TestGangAutoscaling:
+    def test_gang_autoscaling(self, ray_cluster):
+        """Verifies that autoscaling with gang scheduling scales in complete gangs."""
+        GANG_SIZE = 2
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 2,
+                "max_replicas": 8,
+                # Lower delays/windows so the test observes scaling within seconds
+                "upscale_delay_s": 0.1,
+                "downscale_delay_s": 0.1,
+                "look_back_period_s": 0.1,
+                "target_ongoing_requests": 1,
+            },
+            max_ongoing_requests=20,
+        )
+        class GangAutoscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(GangAutoscale.bind(), name="gang_autoscale_app")
+        wait_for_condition(check_apps_running, apps=["gang_autoscale_app"])
+
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+            use_controller=True,
+        )
+
+        # Send enough requests to trigger upscaling
+        results = [handle.remote() for _ in range(20)]
+
+        # Wait for scale-up to 8 replicas (4 complete gangs).
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=8,
+            app_name="gang_autoscale_app",
+            timeout=60,
+            use_controller=True,
+        )
+
+        # Replica count should always be a multiple of gang_size
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        # Release all requests to allow traffic to drain
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        # As the queue is drained, we should scale back down
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+            timeout=60,
+            use_controller=True,
+        )
+
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        serve.delete("gang_autoscale_app")
+        serve.shutdown()
+
+    def test_gang_autoscaling_unaligned_upscale(self, ray_cluster):
+        GANG_SIZE = 3
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 3,
+                "max_replicas": 9,
+                "metrics_interval_s": 0.5,
+                "upscale_delay_s": 0.1,
+                "downscale_delay_s": 0.1,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 2,
+            },
+            max_ongoing_requests=50,
+        )
+        class UnalignedUpscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(UnalignedUpscale.bind(), name="unaligned_upscale_app")
+        wait_for_condition(check_apps_running, apps=["unaligned_upscale_app"])
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedUpscale",
+            target=3,
+            app_name="unaligned_upscale_app",
+            use_controller=True,
+        )
+
+        # Send 9 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(9/2) = 5 (unaligned).
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        results = [handle.remote() for _ in range(9)]
+
+        def upscaled_and_aligned():
+            deployment = (
+                serve.status()
+                .applications["unaligned_upscale_app"]
+                .deployments["UnalignedUpscale"]
+            )
+            running = deployment.replica_states.get("RUNNING", 0)
+            assert running == 6
+            return True
+
+        wait_for_condition(upscaled_and_aligned, timeout=60)
+
+        # Release all requests so the queue drains.
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        # The autoscaler should scale back down to min_replicas=3.
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedUpscale",
+            target=3,
+            app_name="unaligned_upscale_app",
+            timeout=60,
+            use_controller=True,
+        )
+
+        serve.delete("unaligned_upscale_app")
+        serve.shutdown()
+
+    def test_gang_autoscaling_unaligned_downscale(self, ray_cluster):
+        GANG_SIZE = 3
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 6,
+                "max_replicas": 9,
+                "initial_replicas": 9,
+                "metrics_interval_s": 0.5,
+                "upscale_delay_s": 5,
+                # Must be long enough for all 9 gang-scheduled replicas to
+                # start before the autoscaler can trigger a downscale.
+                "downscale_delay_s": 20,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 2,
+            },
+            max_ongoing_requests=50,
+        )
+        class UnalignedDownscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(UnalignedDownscale.bind(), name="unaligned_downscale_app")
+        wait_for_condition(check_apps_running, apps=["unaligned_downscale_app"])
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedDownscale",
+            target=9,
+            app_name="unaligned_downscale_app",
+            use_controller=True,
+            timeout=60,
+        )
+
+        # Send 10 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(10/2) = 5 (unaligned).
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        results = [handle.remote() for _ in range(10)]
+
+        # Wait for downscale from 9 to 6.
+        def downscaled_and_aligned():
+            deployment = (
+                serve.status()
+                .applications["unaligned_downscale_app"]
+                .deployments["UnalignedDownscale"]
+            )
+            running = deployment.replica_states.get("RUNNING", 0)
+            assert running == 6
+            return True
+
+        wait_for_condition(downscaled_and_aligned, timeout=60)
+
+        # Release all requests so the queue drains.
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        serve.delete("unaligned_downscale_app")
+        serve.shutdown()
+
+
+class TestGangMigration:
+    def test_gang_migration(self, ray_cluster):
+        """Verifies that when a node drains, entire gangs migrate together."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        node_to_drain = cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            version="v1",
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class D:
+            def __call__(self):
+                ctx = ray.serve.context._get_internal_replica_context()
+                gc = ctx.gang_context
+                return {
+                    "pid": os.getpid(),
+                    "gang_id": gc.gang_id if gc else None,
+                    "node_id": ray.get_runtime_context().get_node_id(),
+                }
+
+        handle = serve.run(D.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        gang_ids = set()
+        for _ in range(40):
+            resp = handle.remote().result()
+            if resp["gang_id"] is not None:
+                gang_ids.add(resp["gang_id"])
+        assert len(gang_ids) == 2
+
+        # Add another node for replicas to migrate to, then drain a node
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        cluster.remove_node(node_to_drain)
+        wait_for_condition(check_apps_running, apps=["app"], timeout=120)
+
+        deployment = list(serve.status().applications["app"].deployments.values())[0]
+        assert deployment.replica_states.get("RUNNING", 0) == 4
+
+        deployment_id = DeploymentID(name="D", app_name="app")
+        controller = serve.context._get_global_client()._controller
+
+        def check_complete_gangs():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            assert len(running) == 4
+            gang_ids = {
+                r.gang_context.gang_id for r in running if r.gang_context is not None
+            }
+            assert len(gang_ids) == 2
+            return True
+
+        wait_for_condition(check_complete_gangs, timeout=60)
+
+        serve.delete("app")
         serve.shutdown()
 
 

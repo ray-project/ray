@@ -14,12 +14,17 @@ from .base_autoscaling_coordinator import (
     ResourceDict,
     ResourceRequestPriority,
 )
+from ray._common.utils import env_bool
 from ray.autoscaler._private.constants import env_integer
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+
+RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
+    "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
+)
 
 
 @dataclass
@@ -131,7 +136,12 @@ def handle_timeout_errors(
                         f"after {failure_counter} consecutive failures."
                     ) from exc
 
-                logger.warning(msg, exc_info=True)
+                logger.warning(msg)
+                if RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
+                    logger.debug(
+                        f"Traceback for {operation_name} failure for {requester_id}:",
+                        exc_info=True,
+                    )
 
                 # Return value on error if callback provided
                 if on_error_return is not None:
@@ -215,8 +225,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             " or CPU being overloaded, it's safe to ignore this error."
             " If this error persists, file a GitHub issue."
         ),
-        on_error_return=lambda self, requester_id: (
-            self._cached_allocated_resources.get(requester_id, [])
+        on_error_return=lambda self, requester_id: self._cached_allocated_resources.get(
+            requester_id, []
         ),
     )
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
@@ -243,9 +253,9 @@ class _AutoscalingCoordinatorActor:
     def __init__(
         self,
         get_current_time: Callable[[], float] = time.time,
-        send_resources_request: Callable[
-            [List[ResourceDict]], None
-        ] = lambda bundles: ray.autoscaler.sdk.request_resources(bundles=bundles),
+        send_resources_request: Callable[[List[ResourceDict]], None] = lambda bundles: (
+            ray.autoscaler.sdk.request_resources(bundles=bundles)
+        ),
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
         self._get_current_time = get_current_time
