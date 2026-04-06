@@ -250,5 +250,5 @@ def start_chaos():
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init()
+    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
     main(args)

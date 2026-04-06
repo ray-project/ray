@@ -148,6 +148,6 @@ def get_hf_token() -> str:
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
     args = parse_args()
     main(args)
