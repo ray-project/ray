@@ -6,7 +6,9 @@
 .trialProgress {
   display: flex;
   flex-direction: column;
-  color: var(--jp-ui-font-color1);
+  --tp-bg: var(--jp-layout-color1, #fff);
+  --tp-fg: var(--jp-content-font-color1, #000);
+  color: var(--tp-fg);
 }
 .trialProgress h3 {
   font-weight: bold;
@@ -21,11 +23,15 @@ body.vscode-dark .trialProgress {
   --tp-fg: var(--jp-content-font-color1, #e0e0e0);
 }
 
+.trialProgress table {
+  border-collapse: collapse;
+}
+
 .trialProgress table,
 .trialProgress th,
 .trialProgress td {
-  background-color: var(--tp-bg, #fff);
-  color: var(--tp-fg, #000);
-  border: 1px solid var(--jp-border-color0, #444);
+  background-color: var(--tp-bg);
+  color: var(--tp-fg);
+  border: var(--jp-border-width, 1px) solid var(--jp-border-color0, #444);
 }
 </style>

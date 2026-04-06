@@ -19,7 +19,9 @@
 </div>
 <style>
 .tuneStatus {
-  color: var(--jp-ui-font-color1);
+  --ts-bg: var(--jp-layout-color1, #fff);
+  --ts-fg: var(--jp-content-font-color1, #000);
+  color: var(--ts-fg);
 }
 .tuneStatus .systemInfo {
   display: flex;
@@ -53,11 +55,15 @@ body.vscode-dark .tuneStatus {
   --ts-fg: var(--jp-content-font-color1, #e0e0e0);
 }
 
+.tuneStatus table {
+  border-collapse: collapse;
+}
+
 .tuneStatus table,
 .tuneStatus th,
 .tuneStatus td {
-  background-color: var(--ts-bg, #fff);
-  color: var(--ts-fg, #000);
-  border: 1px solid var(--jp-border-color0, #444);
+  background-color: var(--ts-bg);
+  color: var(--ts-fg);
+  border: var(--jp-border-width, 1px) solid var(--jp-border-color0, #444);
 }
 </style>
