@@ -407,22 +407,38 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
     def verify_error_count(do_assert=False):
         resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
         resp = resp.split("\n")
+        http_error_count = 0
+        deployment_500_count = 0
+
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
-            if "ray_serve_num_http_error_requests_total" in metrics:
-                # route "/" should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert "2.0" in metrics
-                if "2.0" not in metrics:
-                    return False
-            elif "ray_serve_num_deployment_http_error_requests" in metrics:
-                # deployment A should have error count 2 (HTTP 500)
-                if do_assert:
-                    assert 'deployment="A"' in metrics and "2.0" in metrics
-                if 'deployment="A"' not in metrics or "2.0" not in metrics:
-                    return False
-        return True
+            # Skip health check metrics
+            if "/-/healthz" in metrics:
+                continue
+            if (
+                "ray_serve_num_http_error_requests_total" in metrics
+                and 'route="/"' in metrics
+            ):
+                # Accumulate HTTP 5xx errors for route "/"
+                http_error_count += int(float(metrics.split(" ")[-1]))
+            elif (
+                "ray_serve_num_deployment_http_error_requests_total" in metrics
+                and 'route="/"' in metrics
+                and 'deployment="A"' in metrics
+                and 'error_code="500"' in metrics
+            ):
+                deployment_500_count += int(float(metrics.split(" ")[-1]))
+
+        if do_assert:
+            assert (
+                http_error_count >= 2
+            ), f"Expected at least 2 HTTP errors on /, got {http_error_count}"
+            assert (
+                deployment_500_count == 2
+            ), f"Expected 2 deployment HTTP 500 errors, got {deployment_500_count}"
+
+        return http_error_count >= 2 and deployment_500_count == 2
 
     # There is a latency in updating the counter
     try:
