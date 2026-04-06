@@ -1,4 +1,5 @@
 import atexit
+import dataclasses
 import faulthandler
 import functools
 import inspect
@@ -1693,6 +1694,14 @@ def init(
                 # builder
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
+
+        # Convert LoggingConfig to dict before client sends it over JSON
+        if "logging_config" in passed_kwargs and isinstance(
+            passed_kwargs["logging_config"], LoggingConfig
+        ):
+            lc = passed_kwargs["logging_config"]
+            passed_kwargs["logging_config"] = dataclasses.asdict(lc)
+
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
         from ray._common.usage import usage_lib

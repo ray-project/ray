@@ -133,6 +133,26 @@ class JobConfig:
         """
         self.py_logging_config = logging_config
 
+    def ensure_logging_config(
+        self,
+        logging_config: Optional[Union[dict, LoggingConfig]] = None,
+    ) -> None:
+        """Set logging config from a dict or LoggingConfig if not already configured.
+
+        This is a no-op when *logging_config* is ``None`` or
+        ``py_logging_config`` is already set.
+        """
+        if logging_config is None or self.py_logging_config is not None:
+            return
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.from_dict(logging_config)
+        elif not isinstance(logging_config, LoggingConfig):
+            raise TypeError(
+                "logging_config must be a dict or LoggingConfig, "
+                f"got {type(logging_config)}"
+            )
+        self.set_py_logging_config(logging_config)
+
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
 
