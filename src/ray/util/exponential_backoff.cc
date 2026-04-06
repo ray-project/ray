@@ -29,7 +29,7 @@ uint64_t ExponentialBackoff::GetBackoffMs(uint64_t attempt,
 
   uint64_t multiple = static_cast<uint64_t>(pow(2, attempt));
 
-	// Avoid overflowing the multiplication.
+  // Avoid overflowing the multiplication.
   if (multiple > 0 && base_ms > max_backoff_ms / multiple) {
     return max_backoff_ms;
   }
