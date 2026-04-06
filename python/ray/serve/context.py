@@ -98,12 +98,14 @@ def _get_global_client(
             if _health_check_controller:
                 ray.get(_global_client._controller.check_alive.remote())
             return _global_client
-    except Exception:
+    except Exception as e:
         # RayActorError when the controller actor died within the same session.
         # Plain Exception when the cached handle is from a previous cluster
         # session — _raylet.pyx raises a bare Exception on task submission to
         # an actor from a different cluster.
-        logger.info("The cached controller has died. Reconnecting.")
+        logger.info(
+            f"The cached controller has died or is unreachable: {e}. Reconnecting."
+        )
         _set_global_client(None)
 
     return _connect(raise_if_no_controller_running)
