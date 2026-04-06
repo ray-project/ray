@@ -2,11 +2,14 @@ import gc
 import json
 import os
 import time
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 
 def _get_spilled_bytes_total() -> float:
@@ -19,6 +22,76 @@ def _get_spilled_bytes_total() -> float:
 
 def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
+
+
+class OperatorStatsTracker(ExecutionCallback):
+    """Records per-operator start time and duration.
+
+    Tracks when each operator first submits a task (start) and when it
+    completes (duration = completion time - start time).
+
+    Uses class-level state because the planner instantiates callback classes
+    with ``cls()``, so callers can't hold a reference to the instance.
+
+    Usage::
+
+        ctx = ray.data.DataContext.get_current()
+        ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
+        # ... run pipeline ...
+
+        metrics = OperatorStatsTracker.collect()
+    """
+
+    _op_start: Dict[str, float] = {}
+    _op_end: Dict[str, Optional[float]] = {}
+    _start_time: float = 0
+
+    def before_execution_starts(self, executor: "StreamingExecutor"):
+        cls = type(self)
+        cls._start_time = executor._start_time
+        cls._op_start.clear()
+        cls._op_end.clear()
+
+    def on_execution_step(self, executor: "StreamingExecutor"):
+        cls = type(self)
+        if executor._topology is None:
+            return
+        for i, op in enumerate(executor._topology):
+            op_key = f"{op.name}_{i}"
+            if op_key not in cls._op_start and op.metrics.num_tasks_submitted > 0:
+                cls._op_start[op_key] = time.perf_counter()
+                cls._op_end[op_key] = None
+            if (
+                op_key in cls._op_start
+                and cls._op_end[op_key] is None
+                and op.has_completed()
+            ):
+                cls._op_end[op_key] = time.perf_counter()
+
+    @classmethod
+    def collect(cls) -> Dict[str, Any]:
+        stats: Dict[str, Dict[str, Any]] = {}
+        now_wall = time.time()
+        now_perf = time.perf_counter()
+        for key, start in cls._op_start.items():
+            end = cls._op_end.get(key)
+            duration_s = round(end - start, 2) if end is not None else None
+            start_dt = cls._make_readable_timestamp(ts=now_wall - (now_perf - start))
+            stats[key] = {
+                "start": start_dt,
+                "duration_s": duration_s,
+            }
+
+        seconds_since_start = now_perf - cls._start_time
+        start_time = cls._make_readable_timestamp(ts=now_wall - seconds_since_start)
+        return {"start_time": start_time, "op_stats": stats}
+
+    @classmethod
+    def _make_readable_timestamp(cls, ts: float) -> str:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
 
 class BenchmarkMetric(Enum):
