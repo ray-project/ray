@@ -52,6 +52,7 @@ from ray.data._internal.datasource.kafka_datasource import (
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
+from ray.data._internal.datasource.kinetica_datasource import KineticaDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
@@ -849,6 +850,173 @@ def read_mongo(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_kinetica(
+    table_name: str,
+    url: str,
+    *,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    columns: Optional[List[str]] = None,
+    filter_expression: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "ascending",
+    limit: Optional[int] = None,
+    batch_size: int = 10000,
+    options: Optional[Dict[str, Any]] = None,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a Kinetica database table.
+
+    Kinetica is a distributed, in-memory analytical database designed for
+    real-time analytics on streaming and historical data. This function reads
+    data using Kinetica's native API with parallel pagination.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_kinetica( # doctest: +SKIP
+        ...     table_name="transactions",
+        ...     url="http://localhost:9191",
+        ...     username="admin",
+        ...     password="password",
+        ...     filter_expression="amount > 1000",
+        ...     columns=["id", "customer", "amount"],
+        ... )
+
+    Args:
+        table_name: Name of the Kinetica table to read.
+        url: URL of the Kinetica server (e.g., "http://localhost:9191").
+        username: Authentication username.
+        password: Authentication password.
+        columns: Specific columns to read. None reads all columns.
+        filter_expression: SQL WHERE clause filter (without WHERE keyword).
+        sort_by: Column to sort by for consistent pagination.
+        sort_order: "ascending" or "descending".
+        limit: Maximum rows to read.
+        batch_size: Records per API request for pagination. Default is 10,000.
+        options: Additional GPUdb client options.
+        parallelism: This argument is deprecated. Use ``override_num_blocks``.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing rows from the Kinetica table.
+    """
+    datasource = KineticaDatasource(
+        url=url,
+        table_name=table_name,
+        username=username,
+        password=password,
+        columns=columns,
+        filter_expression=filter_expression,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit,
+        batch_size=batch_size,
+        options=options,
+    )
+    return read_datasource(
+        datasource,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_kinetica_sql(
+    sql: str,
+    url: str,
+    *,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    oauth_token: Optional[str] = None,
+    default_schema: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from a Kinetica SQL query.
+
+    This function uses Kinetica's DB-API 2.0 compliant interface with Ray Data's
+    native ``read_sql`` method. It's ideal for complex SQL queries including JOINs,
+    aggregations, and subqueries.
+
+    For simple table reads with parallel pagination, consider using
+    :func:`~ray.data.read_kinetica` instead which uses Kinetica's native API.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_kinetica_sql( # doctest: +SKIP
+        ...     sql="SELECT t.id, t.customer, SUM(t.amount) as total "
+        ...         "FROM transactions t "
+        ...         "JOIN customers c ON t.customer_id = c.id "
+        ...         "GROUP BY t.id, t.customer",
+        ...     url="http://localhost:9191",
+        ...     username="admin",
+        ...     password="password",
+        ... )
+
+    Args:
+        sql: SQL query to execute.
+        url: URL of the Kinetica server (e.g., "http://localhost:9191").
+        username: Authentication username.
+        password: Authentication password.
+        oauth_token: OAuth token for authentication (alternative to username/password).
+        default_schema: Default schema to use for queries.
+        options: Additional GPUdb client options.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently.
+        override_num_blocks: Override the number of output blocks.
+
+    Returns:
+        :class:`~ray.data.Dataset` producing rows from the query results.
+    """
+    from ray.data._internal.datasource.kinetica_sql_connection import (
+        create_kinetica_connection_factory,
+    )
+
+    connection_factory = create_kinetica_connection_factory(
+        url=url,
+        username=username,
+        password=password,
+        oauth_token=oauth_token,
+        default_schema=default_schema,
+        options=options,
+    )
+
+    read_kwargs: Dict[str, Any] = {
+        "sql": sql,
+        "connection_factory": connection_factory,
+    }
+
+    if ray_remote_args is not None:
+        read_kwargs["ray_remote_args"] = ray_remote_args
+
+    if concurrency is not None:
+        read_kwargs["concurrency"] = concurrency
+
+    if override_num_blocks is not None:
+        read_kwargs["override_num_blocks"] = override_num_blocks
+
+    return read_sql(**read_kwargs)
 
 
 @PublicAPI(stability="alpha")
