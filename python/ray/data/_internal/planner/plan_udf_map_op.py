@@ -147,9 +147,7 @@ def plan_explode_op(
 
         col_idx = table.schema.get_field_index(column)
         if col_idx == -1:
-            raise ValueError(
-                f"Column '{column}' not found in schema: {table.schema}"
-            )
+            raise ValueError(f"Column '{column}' not found in schema: {table.schema}")
 
         col_arr = table.column(col_idx)
         col_type = col_arr.type
@@ -171,9 +169,7 @@ def plan_explode_op(
 
         # Replace the list column with flattened values.
         # Use value_field to preserve element nullability and metadata.
-        new_field = col_type.value_field.with_name(
-            table.schema.field(col_idx).name
-        )
+        new_field = col_type.value_field.with_name(table.schema.field(col_idx).name)
         new_table = new_table.set_column(col_idx, new_field, flattened)
         return new_table
 
@@ -906,6 +902,7 @@ def _generate_transform_fn_for_async_map(
         #       to keep the output ordering the same as that one of the input
         #       iterator.
         completed_tasks_queue = asyncio.Queue(maxsize=max_concurrency)
+
         # NOTE: This method is nested to support Python 3.9 where we only can
         #       init `asyncio.Queue` inside the async function
         async def _reorder() -> None:

@@ -378,9 +378,7 @@ def test_explode_mixed_empty_null_populated(ray_start_regular_shared):
     table = pa.table(
         {
             "id": [1, 2, 3, 4],
-            "items": pa.array(
-                [[10, 20], [], None, [30]], type=pa.list_(pa.int64())
-            ),
+            "items": pa.array([[10, 20], [], None, [30]], type=pa.list_(pa.int64())),
         }
     )
     ds = ray.data.from_arrow(table)
