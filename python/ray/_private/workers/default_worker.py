@@ -319,6 +319,36 @@ if __name__ == "__main__":
         if error is not None:
             worker.core_worker.drain_and_exit_worker("system", error)
 
+    # Setup JAX Profiler if requested
+    if os.getenv("RAY_ENABLE_JAX_PROFILER") == "1":
+        import logging
+
+        try:
+            import jax
+
+            base_port = int(os.getenv("JAX_PROFILER_PORT", "9999"))
+            # Try to find a free port
+            for port in range(base_port, base_port + 100):
+                try:
+                    jax.profiler.start_server(port)
+                    logging.info(f"Started JAX profiler server on port {port}")
+                    break
+                except Exception as e:
+                    # JAX might raise different errors depending on platform
+                    # We check for address in use in string representation
+                    if "Address already in use" in str(e) or "EADDRINUSE" in str(e):
+                        continue
+                    else:
+                        raise
+            else:
+                logging.error(
+                    f"Failed to find a free port for JAX profiler in range {base_port}-{base_port+99}"
+                )
+        except ImportError:
+            logging.warning("JAX is not installed, skipping JAX profiler setup")
+        except Exception as e:
+            logging.error(f"Failed to start JAX profiler server: {e}")
+
     if mode == ray.WORKER_MODE:
         worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:

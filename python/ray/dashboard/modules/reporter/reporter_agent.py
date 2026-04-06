@@ -65,6 +65,7 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     GpuUtilizationInfo,
     TpuUtilizationInfo,
 )
+from ray.dashboard.modules.reporter.jax_profile_manager import JaxProfilingManager
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -515,6 +516,10 @@ class ReporterAgent(
         )
         self._gpu_profiling_manager.start_monitoring_daemon()
 
+        self._jax_profiling_manager = JaxProfilingManager(
+            profile_dir_path=self._log_dir
+        )
+
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider()
 
@@ -550,6 +555,15 @@ class ReporterAgent(
             pid=pid, num_iterations=num_iterations
         )
         return reporter_pb2.GpuProfilingReply(success=success, output=output)
+
+    async def JaxProfiling(self, request, context):
+        pid = request.pid
+        port = request.port
+        duration = request.duration if request.duration else 5
+        success, output = await self._jax_profiling_manager.jax_profile(
+            pid=pid, port=port, duration_s=duration
+        )
+        return reporter_pb2.JaxProfilingReply(success=success, output=output)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
