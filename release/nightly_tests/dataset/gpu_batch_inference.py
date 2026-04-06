@@ -161,7 +161,7 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-
+    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
     benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()
