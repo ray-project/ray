@@ -116,28 +116,31 @@ class RuntimeEnvSetupTracker:
     """
 
     @staticmethod
-    def collect() -> Dict[str, float]:
+    def collect() -> Dict[str, Any]:
         try:
-            creation_times: List[float] = [
-                env.creation_time_ms
-                # We are looping through all nodes
-                for env in list_runtime_envs()
-                if env.creation_time_ms is not None
-            ]
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs():
+                if env.creation_time_ms is None:
+                    continue
+                key = json.dumps(env.runtime_env, sort_keys=True)
+                groups.setdefault(key, []).append(env.creation_time_ms)
         except Exception:
             logger.warning("Failed to query runtime env creation times.", exc_info=True)
             return {}
 
-        if not creation_times:
+        if not groups:
             return {}
 
-        mean = sum(creation_times) / len(creation_times)
-        variance = sum((t - mean) ** 2 for t in creation_times) / len(creation_times)
-        return {
-            "num_nodes": len(creation_times),
-            "mean_creation_time_ms": round(mean, 2),
-            "stdev_creation_time_ms": round(math.sqrt(variance), 2),
-        }
+        result: Dict[str, Any] = {}
+        for key, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            result[key] = {
+                "num_nodes": len(times),
+                "mean_creation_time_ms": round(mean, 2),
+                "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+            }
+        return result
 
 
 class BenchmarkMetric(Enum):
