@@ -231,10 +231,6 @@ def get_deployment_actor(actor_name: str):
 
                 def __call__(self, request):
                     ray.get(self.tree.insert.remote(request.text))
-
-    The above caches the handle in ``__init__`` for a simple demo; if the controller
-    recreates ``prefix_tree``, prefer resolving in ``__call__`` or refreshing the
-    handle as described in **Notes**.
     """
     return _get_deployment_actor(actor_name)
 
