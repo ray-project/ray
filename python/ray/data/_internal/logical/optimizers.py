@@ -35,7 +35,6 @@ _LOGICAL_RULESET = Ruleset(
     ]
 )
 
-
 _PHYSICAL_RULESET = Ruleset(
     [
         InheritTargetMaxBlockSizeRule,
