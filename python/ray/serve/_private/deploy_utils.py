@@ -71,13 +71,16 @@ def get_deploy_args(
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
         if _deployment_uses_multiplexed(deployment_def):
-            raise ValueError(
-                "Model multiplexing (@serve.multiplexed) is not supported on "
-                "ingress deployments when direct ingress is enabled. "
-                "Multiplexing should only be used on downstream replicas composed "
-                "via DeploymentHandle. The ingress is the routing entry point, "
-                "not a model-serving leaf."
-            )
+            # HAProxy mode turns on direct ingress; prefer the HAProxy-specific error
+            # below so callers/tests see RAY_SERVE_ENABLE_HA_PROXY when applicable.
+            if not RAY_SERVE_ENABLE_HA_PROXY:
+                raise ValueError(
+                    "Model multiplexing (@serve.multiplexed) is not supported on "
+                    "ingress deployments when direct ingress is enabled. "
+                    "Multiplexing should only be used on downstream replicas composed "
+                    "via DeploymentHandle. The ingress is the routing entry point, "
+                    "not a model-serving leaf."
+                )
 
     if _deployment_uses_multiplexed(deployment_def):
         if RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING:

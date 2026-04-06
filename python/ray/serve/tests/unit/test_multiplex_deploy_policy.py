@@ -85,6 +85,20 @@ def test_multiplex_ingress_direct_ingress_error_preempts_soft_path(patch_ray_job
                     deploy_utils.get_deploy_args("d", replica_config, ingress=True)
 
 
+def test_multiplex_ingress_haproxy_error_when_direct_ingress_on(patch_ray_job_id):
+    """HAProxy enables direct ingress; ingress multiplexing should cite HA_PROXY."""
+    replica_config = ReplicaConfig.create(MultiplexedIngress)
+    with patch.object(deploy_utils, "RAY_SERVE_ENABLE_DIRECT_INGRESS", True):
+        with patch.object(
+            deploy_utils,
+            "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING",
+            False,
+        ):
+            with patch.object(deploy_utils, "RAY_SERVE_ENABLE_HA_PROXY", True):
+                with pytest.raises(ValueError, match="RAY_SERVE_ENABLE_HA_PROXY"):
+                    deploy_utils.get_deploy_args("d", replica_config, ingress=True)
+
+
 if __name__ == "__main__":
     import sys
 
