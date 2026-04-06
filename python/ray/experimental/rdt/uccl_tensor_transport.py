@@ -122,21 +122,7 @@ class UCCLTensorTransport(TensorTransportManager):
         def __ray_actor_has_tensor_transport__(
             self: "ray.actor.ActorHandle",
         ) -> bool:
-            try:
-                from ray.experimental.rdt.util import (
-                    get_tensor_transport_manager,
-                )
-
-                get_tensor_transport_manager("UCCL")._get_uccl_endpoint()
-                return True
-            except Exception:
-                return False
-
-        return ray.get(
-            actor.__ray_call__.options(concurrency_group="_ray_system").remote(
-                __ray_actor_has_tensor_transport__
-            )
-        )
+            return True
 
     def extract_tensor_transport_metadata(
         self,
