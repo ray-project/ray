@@ -35,6 +35,7 @@ user-guides/uv
 user-guides/kuberay-dashboard
 user-guides/resource-isolation-with-writable-cgroups
 user-guides/kuberay-history-server
+user-guides/kuberay-serve-high-throughput
 ```
 
 
@@ -72,3 +73,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-dashboard`
 * {ref}`resource-isolation-with-writable-cgroups`
 * {ref}`kuberay-history-server`
+* {ref}`kuberay-serve-high-throughput`
