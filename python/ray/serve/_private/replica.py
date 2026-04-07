@@ -786,7 +786,9 @@ class ReplicaMetricsManager:
         while True:
             try:
                 await asyncio.sleep(self._max_processing_latency_report_interval_s)
-                for route, tracker in self._max_processing_latency_trackers.items():
+                for route, tracker in list(
+                    self._max_processing_latency_trackers.items()
+                ):
                     max_latency = tracker.get_max()
                     self._max_processing_latency_gauge.set(
                         max_latency, tags={"route": route}
