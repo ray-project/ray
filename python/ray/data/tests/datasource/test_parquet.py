@@ -780,7 +780,9 @@ def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
     assert in_memory_table.equals(on_disk_table)
 
 
-def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
+def test_parquet_write_error_save_mode_simple_write(
+    ray_start_regular_shared, local_path
+):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
     os.mkdir(path)
@@ -798,6 +800,21 @@ def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
     on_disk_table = pq.read_table(path)
 
     assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_error_save_mode_concurrent_write(
+    ray_start_regular_shared, local_path
+):
+    path = os.path.join(local_path, "test_parquet_dir")
+    ds = ray.data.range(1000, override_num_blocks=4)
+    # Should succeed, data should not exist before write
+    ds.write_parquet(path, mode="error")
+    # Verify that data was written correctly
+    assert ray.data.read_parquet(path).count() == 1000
+
+    with pytest.raises(ValueError, match="already exists"):
+        ds.write_parquet(path, mode="error")
+    shutil.rmtree(local_path)
 
 
 def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
