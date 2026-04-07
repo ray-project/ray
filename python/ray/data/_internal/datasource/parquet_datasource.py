@@ -915,14 +915,17 @@ def _has_susceptible_nested_types(schema: "pyarrow.Schema") -> bool:
     """
     import pyarrow as pa
 
+    # is_string_view / is_binary_view only exist in PyArrow >= 16.0
+    _has_view_types = hasattr(pa.types, "is_string_view")
+
     def _is_variable_length(t):
         return (
             pa.types.is_string(t)
             or pa.types.is_binary(t)
             or pa.types.is_large_string(t)
             or pa.types.is_large_binary(t)
-            or pa.types.is_string_view(t)
-            or pa.types.is_binary_view(t)
+            or (_has_view_types and pa.types.is_string_view(t))
+            or (_has_view_types and pa.types.is_binary_view(t))
         )
 
     def _is_nested(t):
@@ -1083,6 +1086,20 @@ def _iter_batches_with_nested_fallback(
         use_threads=use_threads,
         **iter_kwargs,
     ):
+        # pq.ParquetFile.iter_batches() doesn't accept a schema arg, so
+        # batches come back with the file's physical schema.  Align to the
+        # unified dataset schema to match the normal (scanner) path which
+        # handles type promotion and missing-column filling automatically.
+        if schema is not None:
+            from ray.data._internal.arrow_ops.transform_pyarrow import (
+                _align_struct_fields,
+            )
+
+            table = pa.Table.from_batches([batch])
+            table = _align_struct_fields([table], schema)[0]
+            table = table.cast(schema)
+            batch = table.to_batches()[0] if table.num_rows > 0 else batch
+
         # Row-level filter still needed since row-group pruning only
         # skips entire row groups that can't match.
         if filter_expr is not None:
