@@ -298,6 +298,10 @@ class LongPollHost:
         # Map object_key -> timestamp when notify_changed was called
         # Used to track latency for propagating updates to clients
         self._notify_timestamps: Dict[KeyType, float] = {}
+        # Aggregate count of pending clients per namespace tag. Needed because
+        # multiple keys can map to the same low-cardinality namespace tag, so
+        # we must track the total rather than setting per-key counts.
+        self._pending_clients_by_namespace: DefaultDict[str, int] = defaultdict(int)
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
         self.transmission_counter = metrics.Counter(
@@ -317,6 +321,10 @@ class LongPollHost:
             return len(self.notifier_events[key])
         else:
             return sum(len(events) for events in self.notifier_events.values())
+
+    def _get_pending_clients_by_namespace(self, namespace_tag: str) -> int:
+        """Used for testing. Returns the aggregate pending client count."""
+        return self._pending_clients_by_namespace.get(namespace_tag, 0)
 
     def _count_send(
         self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]
@@ -396,10 +404,12 @@ class LongPollHost:
             # asyncio Event.
             self.notifier_events[key].add(event)
 
-            # Update pending clients gauge for this key
+            # Update aggregate pending clients gauge for this namespace
+            namespace_tag = _get_metric_namespace_tag(key)
+            self._pending_clients_by_namespace[namespace_tag] += 1
             self.pending_clients_gauge.set(
-                len(self.notifier_events[key]),
-                tags={"namespace": _get_metric_namespace_tag(key)},
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
             )
 
             task = get_or_create_event_loop().create_task(event.wait())
@@ -418,10 +428,12 @@ class LongPollHost:
                 event = async_task_to_events[task]
                 key = async_task_to_watched_keys[task]
                 self.notifier_events[key].remove(event)
-                # Update pending clients gauge after removing
+                # Update aggregate pending clients gauge after removing
+                namespace_tag = _get_metric_namespace_tag(key)
+                self._pending_clients_by_namespace[namespace_tag] -= 1
                 self.pending_clients_gauge.set(
-                    len(self.notifier_events[key]),
-                    tags={"namespace": _get_metric_namespace_tag(key)},
+                    self._pending_clients_by_namespace[namespace_tag],
+                    tags={"namespace": namespace_tag},
                 )
             except KeyError:
                 # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
@@ -561,10 +573,14 @@ class LongPollHost:
 
             events_to_notify = self.notifier_events.pop(object_key, set())
             if events_to_notify:
-                # Update pending clients gauge (now 0 for this key since we popped all)
+                # Decrement aggregate count by the number of events popped
+                namespace_tag = _get_metric_namespace_tag(object_key)
+                self._pending_clients_by_namespace[namespace_tag] -= len(
+                    events_to_notify
+                )
                 self.pending_clients_gauge.set(
-                    0,
-                    tags={"namespace": _get_metric_namespace_tag(object_key)},
+                    self._pending_clients_by_namespace[namespace_tag],
+                    tags={"namespace": namespace_tag},
                 )
             for event in events_to_notify:
                 event.set()

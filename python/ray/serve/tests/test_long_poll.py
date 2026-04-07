@@ -346,5 +346,58 @@ def test_get_metric_namespace_tag():
     assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
 
 
+@pytest.mark.asyncio
+async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
+    """Test that pending_clients_by_namespace correctly aggregates across keys.
+
+    When multiple keys share a namespace tag (e.g., two DEPLOYMENT_CONFIG keys
+    for different deployments), the gauge must reflect the total pending clients
+    for the namespace, not just the last key's count.
+    See https://github.com/ray-project/ray/issues/62299.
+    """
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+
+    key_a = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
+    key_b = (LongPollNamespace.DEPLOYMENT_CONFIG, "app2:deploy2")
+
+    # Notify initial values so the keys exist
+    ray.get(host.notify_changed.remote({key_a: "v1", key_b: "v2"}))
+
+    # Subscribe to both keys — this should register 2 pending clients
+    # for the DEPLOYMENT_CONFIG namespace
+    ref = host.listen_for_change.remote({key_a: -1, key_b: -1})
+    result = ray.get(ref)
+    assert key_a in result and key_b in result
+
+    # Now subscribe with up-to-date snapshot IDs so we actually block
+    snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+    ref = host.listen_for_change.remote(snapshot_ids)
+
+    # The pending clients count for DEPLOYMENT_CONFIG should be 2
+    # (one event per key). We can't read the gauge directly, but we
+    # verify the internal tracking counter.
+    counter = ray.get(
+        host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")
+    )
+    assert counter == 2, f"Expected 2 pending clients, got {counter}"
+
+    # Notify one key — should decrement by 1, not set to 0
+    ray.get(host.notify_changed.remote({key_a: "v1_updated"}))
+
+    # Wait for the listen_for_change to return
+    result2 = ray.get(ref)
+    assert key_a in result2
+
+    # After notification, the counter should have been decremented
+    counter_after = ray.get(
+        host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")
+    )
+    # Counter should be 0 now (both events cleaned up: one by notify_changed,
+    # one by the not_done cleanup in listen_for_change)
+    assert counter_after == 0, f"Expected 0 pending clients, got {counter_after}"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
