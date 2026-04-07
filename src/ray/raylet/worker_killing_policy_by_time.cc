@@ -94,9 +94,12 @@ TimeBasedWorkerKillingPolicy::Policy(
       std::back_inserter(sorted_workers),
       [threshold = idle_worker_killing_memory_threshold_bytes_,
        &process_memory_snapshot](const std::shared_ptr<WorkerInterface> &worker) -> bool {
-        int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-            process_memory_snapshot, worker->GetProcess().GetId());
-        return !worker->GetGrantedLeaseId().IsNil() || used_memory >= threshold;
+        if (worker->GetGrantedLeaseId().IsNil()) {
+          int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+              process_memory_snapshot, worker->GetProcess().GetId());
+          return used_memory >= threshold;
+        }
+        return true;
       });
 
   // Sort by:
