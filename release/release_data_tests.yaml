@@ -621,7 +621,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
