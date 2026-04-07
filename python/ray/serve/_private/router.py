@@ -9,6 +9,7 @@ from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -1263,25 +1264,108 @@ class AsyncioRouter:
         *request_args,
         **request_kwargs,
     ) -> List[ReplicaResult]:
-        """Send a request to all current replicas and return all results.
+        """Send a request to all running replicas in parallel.
 
-        This is a fan-out operation: the same request is dispatched to every
-        replica and the list of ReplicaResults is returned to the caller.
+        Bypasses the normal load-balancing path and sends the request
+        directly to every replica. Waits for the request router to be
+        initialized so the replica set is populated.
         """
+        # Propagate tracing context, matching assign_request behavior.
+        if is_span_recording():
+            propagate_context = create_propagated_context()
+            request_meta.tracing_context = propagate_context
+        else:
+            request_meta.tracing_context = None
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
         await self._request_router_initialized.wait()
 
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        replicas: List[RunningReplica] = list(
+            self.request_router.curr_replicas.values()
+        )
+        if not replicas:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        # Resolve arguments (e.g. DeploymentResponse objects) before sending.
         pr = PendingRequest(
             args=list(request_args),
-            kwargs=request_kwargs,
+            kwargs=dict(request_kwargs),
             metadata=request_meta,
         )
-        if not pr.resolved:
-            await self._resolve_request_arguments(pr)
+        await self._resolve_request_arguments(pr)
 
-        return [
-            replica.try_send_request(pr, with_rejection=False)
-            for replica in self.request_router.curr_replicas.values()
-        ]
+        results: List[ReplicaResult] = []
+        for replica in replicas:
+            replica_pr = PendingRequest(
+                args=list(pr.args),
+                kwargs=dict(pr.kwargs),
+                metadata=replace(
+                    request_meta,
+                    internal_request_id=generate_request_id(),
+                ),
+            )
+            replica_pr.resolved = True
+            try:
+                result = replica.try_send_request(replica_pr, with_rejection=False)
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Skip this replica and continue broadcasting to healthy replicas.
+                self.request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                continue
+            except ActorUnavailableError:
+                # Replica is temporarily unavailable. Invalidate the cache entry
+                # and continue broadcasting to other replicas.
+                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
+
+            # Proactively update the queue length cache.
+            self.request_router.on_send_request(replica.replica_id)
+
+            # Track running requests and register callback for completion
+            # handling, matching the pattern in _route_and_send_request_once.
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                self._metrics_manager.inc_num_running_requests_for_replica(
+                    replica.replica_id
+                )
+            # NOTE: add_done_callback fires from a C++ worker thread (for
+            # actor ObjectRefs) or a gRPC callback thread.
+            # _process_finished_request and decrement_queue_len_cache both
+            # access shared router state that is not thread-safe, so we
+            # schedule them on the router's event loop.
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                replica_pr.metadata.internal_request_id,
+                replica.actor_id,
+            )
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
+            result.add_done_callback(
+                lambda _, rid=replica.replica_id: (
+                    self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        rid,
+                    )
+                )
+            )
+
+            results.append(result)
+
+        if not results:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        return results
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
