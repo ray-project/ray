@@ -67,6 +67,20 @@ HTTP_PROXY_TIMEOUT = 60
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
+#: Max processing latency metric configuration.
+#: Rolling window duration for calculating max processing latency (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S", "60")
+)
+#: Interval for reporting max processing latency metric (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS", "6")
+)
+
 
 # If you are wondering why we are using histogram buckets, please refer to
 # https://prometheus.io/docs/practices/histograms/
