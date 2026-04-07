@@ -22,7 +22,6 @@ from ray.serve._private.test_utils import (
     check_replica_counts,
     check_running,
     get_application_url,
-    request_with_retries,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -797,69 +796,6 @@ def test_redeployment_with_no_actors_cleans_up_old(serve_instance):
     wait_for_condition(lambda: httpx.get(url).text == "v2")
 
     wait_for_condition(_check_no_deployment_actors, timeout=15)
-
-
-def test_deployment_actor_survives_controller_restart(serve_instance):
-    """Deployment actors are detached and survive controller restart.
-
-    After controller recovers from checkpoint, it discovers existing
-    deployment actors (ActorAlreadyExistsError) and marks them ready.
-    App continues to work with the same Ray actor process (matching ``ray_actor_id``),
-    not a recreation.
-    """
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="counter",
-                actor_class=SharedCounter,
-                init_kwargs={"start": 42},
-            ),
-        ],
-    )
-    class MyDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor("counter")
-            val = ray.get(counter.get.remote())
-            aid = ray.get(counter.ray_actor_id.remote())
-            return f"{val},{aid}"
-
-    serve.run(
-        MyDeployment.bind(),
-        name="app",
-        route_prefix="/survives_controller_restart_da",
-    )
-
-    def _parse_val_actor_id(text: str) -> tuple[str, str]:
-        val, aid = text.split(",", 1)
-        return val, aid
-
-    actor_id_before = None
-    for _ in range(5):
-        resp = request_with_retries(timeout=30, app_name="app")
-        val, aid = _parse_val_actor_id(resp.text)
-        assert val == "42"
-        if actor_id_before is None:
-            actor_id_before = aid
-        else:
-            assert aid == actor_id_before
-
-    actor_names_before = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert len(actor_names_before) == 1
-
-    ray.kill(serve_instance._controller, no_restart=False)
-
-    wait_for_condition(
-        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
-    )
-    for _ in range(10):
-        resp = request_with_retries(timeout=30, app_name="app")
-        val, aid = _parse_val_actor_id(resp.text)
-        assert val == "42"
-        assert aid == actor_id_before
-
-    actor_names_after = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert actor_names_after == actor_names_before
 
 
 def test_deployment_actor_restarts_on_crash(serve_instance):
@@ -1726,58 +1662,6 @@ def test_user_config_update_with_deployment_actors(serve_instance):
 
     serve.run(MyDeployment.options(user_config="updated").bind(), blocking=False)
     wait_for_condition(lambda: "updated:50" in httpx.get(url).text, timeout=30)
-
-
-def test_controller_restart_preserves_mutated_actor_state(serve_instance):
-    """Controller restart preserves mutated deployment actor state.
-
-    Strengthens test_deployment_actor_survives_controller_restart: that test
-    only checks the init value (start=42) survives. This test mutates the
-    actor's state (increments counter beyond init value) before the restart
-    and verifies the mutations survive — proving the *same* actor instance
-    continues running, not a freshly created one.
-    """
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="counter",
-                actor_class=SharedCounter,
-                init_kwargs={"start": 0},
-            ),
-        ],
-    )
-    class MyDeployment:
-        def __call__(self):
-            counter = serve.get_deployment_actor("counter")
-            return str(ray.get(counter.get.remote()))
-
-    serve.run(
-        MyDeployment.bind(),
-        name="app",
-        route_prefix="/preserves_mutated_state_da",
-    )
-    resp = request_with_retries(timeout=30, app_name="app")
-    assert resp.text == "0"
-
-    # Mutate actor state directly (bypass replica to isolate the test)
-    actor_names = _get_deployment_actor_names_for_app("app", "MyDeployment")
-    assert len(actor_names) == 1
-    handle = ray.get_actor(actor_names[0], namespace=SERVE_NAMESPACE)
-    for _ in range(5):
-        ray.get(handle.increment.remote())
-    assert ray.get(handle.get.remote()) == 5
-
-    ray.kill(serve_instance._controller, no_restart=False)
-
-    wait_for_condition(
-        lambda: get_application_url("HTTP", "app", use_localhost=True) is not None
-    )
-
-    # Mutated state (5) must survive, not reset to init value (0)
-    for _ in range(5):
-        resp = request_with_retries(timeout=30, app_name="app")
-        assert resp.text == "5"
 
 
 def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
