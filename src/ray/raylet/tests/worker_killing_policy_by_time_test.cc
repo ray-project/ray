@@ -36,14 +36,11 @@ class WorkerKillingPolicyByTimeTest : public ::testing::Test {
 
   static constexpr int64_t TOTAL_SYSTEM_MEMORY_BYTES = 2000;
   static constexpr int64_t KILL_BUFFER_BYTES = 100;
-  // The threshold calculation takes the max of the fraction and min_memory_free_bytes.
-  // Here we make the threshold 1000 bytes since total - min_memory_free_bytes >
-  // threshold_fraction * total
-  static constexpr float THRESHOLD_FRACTION = 0.1;
-  static constexpr int64_t MIN_MEMORY_FREE_BYTES = 1000;
+  static constexpr int64_t THRESHOLD_BYTES = 1000;
+  static constexpr int64_t IDLE_WORKER_KILLING_THRESHOLD_BYTES = 1000;
 
-  TimeBasedWorkerKillingPolicy policy_ = TimeBasedWorkerKillingPolicy(
-      THRESHOLD_FRACTION, MIN_MEMORY_FREE_BYTES, KILL_BUFFER_BYTES);
+  TimeBasedWorkerKillingPolicy policy_ =
+      TimeBasedWorkerKillingPolicy(THRESHOLD_BYTES, KILL_BUFFER_BYTES);
 
   SystemMemorySnapshot CreateSystemSnapshot(
       int64_t used_bytes, int64_t total_bytes = TOTAL_SYSTEM_MEMORY_BYTES) {
@@ -268,6 +265,61 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill_third =
       policy_.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
   ASSERT_EQ(workers_to_kill_third.size(), 1);
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestBelowMemoryThresholdWorkerWithoutLeaseIsNotKilled) {
+  TimeBasedWorkerKillingPolicy policy(
+      THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> worker_with_lease =
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1001);
+  std::shared_ptr<WorkerInterface> worker_without_lease =
+      CreateWorkerWithNoLease(port_, 1002);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(worker_with_lease);
+  workers.push_back(worker_without_lease);
+
+  // Memory to free: 1200 - 1000 + 100 = 300 bytes.
+  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
+      {{worker_with_lease, 500},
+       {worker_without_lease, IDLE_WORKER_KILLING_THRESHOLD_BYTES - 1}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), worker_with_lease->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest, TestKillingWorkerWithNoLeaseIfMemoryExceeded) {
+  TimeBasedWorkerKillingPolicy policy(
+      THRESHOLD_BYTES, KILL_BUFFER_BYTES, IDLE_WORKER_KILLING_THRESHOLD_BYTES);
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> worker_with_lease =
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1001);
+  std::shared_ptr<WorkerInterface> worker_without_lease =
+      CreateWorkerWithNoLease(port_, 1002);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  workers.push_back(worker_with_lease);
+  workers.push_back(worker_without_lease);
+
+  // Memory to free: 1200 - 1000 + 100 = 300 bytes.
+  SystemMemorySnapshot system_snapshot = CreateSystemSnapshot(1200);
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot(
+      {{worker_with_lease, 50},
+       {worker_without_lease, IDLE_WORKER_KILLING_THRESHOLD_BYTES + 1}});
+
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(workers, process_snapshot, system_snapshot);
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), worker_without_lease->WorkerId());
 }
 
 }  // namespace raylet
