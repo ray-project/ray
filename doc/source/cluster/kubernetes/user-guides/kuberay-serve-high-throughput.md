@@ -117,8 +117,8 @@ HEAD_POD=$(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[0].met
 WORKER_POD=$(kubectl get pods -l ray.io/node-type=worker -o jsonpath='{.items[0].metadata.name}')
 
 # Check for haproxy process
-kubectl exec -it $HEAD_POD -- pgrep haproxy
-kubectl exec -it $WORKER_POD -- pgrep haproxy
+kubectl exec $HEAD_POD -- pgrep haproxy
+kubectl exec $WORKER_POD -- pgrep haproxy
 ```
 
 If the commands return a process ID, HAProxy is running successfully. If no ID
