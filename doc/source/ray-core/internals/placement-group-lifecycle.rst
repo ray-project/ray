@@ -35,7 +35,7 @@ Creating a placement group
 Python / Cython side
 ~~~~~~~~~~~~~~~~~~~~
 
-Placement group creation on the python side is **synchronous** — the Python thread blocks until the GCS responds. This helps ensure that the GCS has at least stored the placement group into the ``gcs_table_storage`` backend table and thus will be fault tolerant.
+Placement group creation on the Python side is **synchronous** — the Python thread blocks until the GCS responds. This helps ensure that the GCS has at least stored the placement group into the ``gcs_table_storage`` backend table and thus will be fault tolerant.
 
 The entry point for placement group creation is the `placement_group() <https://github.com/ray-project/ray/blob/3ee7c9d6df4b098fa74df2d089342621cd7a7d2c/python/ray/util/placement_group.py#L126>`__ function in ``python/ray/util/placement_group.py``. This function:
 
