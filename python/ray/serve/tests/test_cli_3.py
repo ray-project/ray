@@ -223,6 +223,9 @@ class TestRun:
             p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
 
+        # After the `serve run` process exits, detached Serve actors (proxy,
+        # replicas) may still be alive briefly while the controller's
+        # graceful_shutdown runs asynchronously. Retry instead of checking once.
         def deployments_not_reachable():
             try:
                 httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
