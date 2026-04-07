@@ -763,6 +763,18 @@ cdef prepare_args_and_increment_put_refs(
                 put_arg_id)
         raise e
 
+# Profiling: module-level counters for submit_task timing, split by map/reduce.
+# "large" = reduce-like (many args), "small" = map-like (few args).
+_submit_prof_large_count = 0
+_submit_prof_large_prepare_ms = 0.0
+_submit_prof_large_cpp_ms = 0.0
+_submit_prof_large_total_args = 0
+_submit_prof_small_count = 0
+_submit_prof_small_prepare_ms = 0.0
+_submit_prof_small_cpp_ms = 0.0
+_submit_prof_small_total_args = 0
+_SUBMIT_PROF_LARGE_THRESHOLD = 100  # args >= 100 is "reduce-like"
+
 cdef prepare_args_internal(
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
@@ -3539,6 +3551,8 @@ cdef class CoreWorker:
             call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
+            _submit_t0 = time.monotonic()
+
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
@@ -3563,6 +3577,8 @@ cdef class CoreWorker:
 
             current_c_task_id = current_task.native()
 
+            _prepare_t1 = time.monotonic()
+
             with nogil:
                 return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                     ray_function, args_vector, task_options,
@@ -3573,6 +3589,55 @@ cdef class CoreWorker:
                     call_site,
                     current_c_task_id,
                 )
+
+            _submit_t2 = time.monotonic()
+
+            # Profiling: submit_task timing, split by map (small) vs reduce (large).
+            # _prepare_ms = Python-side work (prepare_resources/labels/args + CTaskOptions)
+            # _cpp_ms = C++ SubmitTask only (with nogil block)
+            global _submit_prof_large_count, _submit_prof_large_prepare_ms
+            global _submit_prof_large_cpp_ms, _submit_prof_large_total_args
+            global _submit_prof_small_count, _submit_prof_small_prepare_ms
+            global _submit_prof_small_cpp_ms, _submit_prof_small_total_args
+            _n_args = len(args) if args else 0
+            _prepare_ms = (_prepare_t1 - _submit_t0) * 1000
+            _cpp_ms = (_submit_t2 - _prepare_t1) * 1000
+            if _n_args >= _SUBMIT_PROF_LARGE_THRESHOLD:
+                _submit_prof_large_count += 1
+                _submit_prof_large_prepare_ms += _prepare_ms
+                _submit_prof_large_cpp_ms += _cpp_ms
+                _submit_prof_large_total_args += _n_args
+                if _submit_prof_large_count % 200 == 0:
+                    logging.warning(
+                        "[PROFILING] submit_task_large: calls=%d "
+                        "prepare_avg_ms=%.2f cpp_avg_ms=%.2f "
+                        "total_avg_ms=%.2f avg_args=%.0f this_args=%d",
+                        _submit_prof_large_count,
+                        _submit_prof_large_prepare_ms / _submit_prof_large_count,
+                        _submit_prof_large_cpp_ms / _submit_prof_large_count,
+                        (_submit_prof_large_prepare_ms + _submit_prof_large_cpp_ms)
+                        / _submit_prof_large_count,
+                        _submit_prof_large_total_args / _submit_prof_large_count,
+                        _n_args,
+                    )
+            else:
+                _submit_prof_small_count += 1
+                _submit_prof_small_prepare_ms += _prepare_ms
+                _submit_prof_small_cpp_ms += _cpp_ms
+                _submit_prof_small_total_args += _n_args
+                if _submit_prof_small_count % 500 == 0:
+                    logging.warning(
+                        "[PROFILING] submit_task_small: calls=%d "
+                        "prepare_avg_ms=%.2f cpp_avg_ms=%.2f "
+                        "total_avg_ms=%.2f avg_args=%.0f this_args=%d",
+                        _submit_prof_small_count,
+                        _submit_prof_small_prepare_ms / _submit_prof_small_count,
+                        _submit_prof_small_cpp_ms / _submit_prof_small_count,
+                        (_submit_prof_small_prepare_ms + _submit_prof_small_cpp_ms)
+                        / _submit_prof_small_count,
+                        _submit_prof_small_total_args / _submit_prof_small_count,
+                        _n_args,
+                    )
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local

@@ -17,6 +17,7 @@ The shuffle has up to three stages:
 
 import functools
 import logging
+import math
 import time
 import typing
 from collections import defaultdict, deque
@@ -71,6 +72,22 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
+
+# Minimum memory bucket size (128 MB). Values below this are not bucketed.
+_MIN_MEMORY_BUCKET_BYTES = 128 * 1024 * 1024
+
+
+def _bucket_memory(nbytes: int) -> int:
+    """Round memory request up to the next power of 2.
+
+    This reduces the number of distinct SchedulingClasses that Ray creates,
+    which in turn shrinks ReportWorkerBacklog overhead and improves worker
+    lease reuse.
+    """
+    if nbytes <= _MIN_MEMORY_BUCKET_BYTES:
+        return _MIN_MEMORY_BUCKET_BYTES
+    return 1 << math.ceil(math.log2(nbytes))
+
 
 BlockTransformer = Callable[[Block], Block]
 
@@ -432,7 +449,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         # allocation is the partition shards from table.take() (~1x input).
         # Request 2x to account for hash arrays and serialization overhead.
         if estimated_bytes > 0 and len(block_refs) > 1:
-            shuffle_task_resources["memory"] = estimated_bytes * 2
+            shuffle_task_resources["memory"] = _bucket_memory(estimated_bytes * 2)
 
         map_refs = _shuffle_map.options(
             **shuffle_task_resources,
@@ -655,7 +672,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             estimated_bytes = self._estimate_partition_bytes(partition_id)
             reduce_resources = {"num_cpus": 1}
             if estimated_bytes > 0:
-                reduce_resources["memory"] = estimated_bytes
+                reduce_resources["memory"] = _bucket_memory(estimated_bytes)
 
             block_gen = _shuffle_reduce.options(
                 **reduce_resources,

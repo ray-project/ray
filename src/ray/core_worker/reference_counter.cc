@@ -1485,8 +1485,9 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
 
 void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
                                                     const NodeID &node_id) {
-  it->second.locations.erase(node_id);
-  PushToLocationSubscribers(it);
+  if (it->second.locations.erase(node_id) > 0) {
+    PushToLocationSubscribers(it);
+  }
 }
 
 void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &object_id,
@@ -1694,7 +1695,18 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
   FillObjectInformationInternal(it, object_locations_msg);
 
+  // Profiling: location publish stats with timing.
+  static std::atomic<int64_t> publish_calls_{0};
+  static std::atomic<int64_t> publish_total_us_{0};
+  auto pub_start = absl::Now();
   object_info_publisher_->Publish(std::move(pub_message));
+  publish_total_us_ += absl::ToInt64Microseconds(absl::Now() - pub_start);
+  auto calls = ++publish_calls_;
+  if (calls % 100000 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] PushToLocationSubscribers: total_calls=" << calls
+                     << " publish_total_ms=" << (publish_total_us_.load() / 1000)
+                     << " ref_table_size=" << object_id_refs_.size();
+  }
 }
 
 void ReferenceCounter::FillObjectInformation(

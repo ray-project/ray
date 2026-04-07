@@ -35,64 +35,134 @@ namespace core {
 void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  auto submit_time = absl::Now();
+  int num_deps = task_spec.NumArgs();
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
-    task_manager_.MarkDependenciesResolved(task_spec.TaskId());
-    if (!status.ok()) {
-      // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
-      // logical race conditions here where the task is cancelled right before the
-      // task is retried. Task cancellation might remove the task from the submissible
-      // task queue, while the task retry here expects that the task must be in the
-      // submissible task queue.
-      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      bool will_retry = task_manager_.FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-      if (!will_retry) {
-        absl::MutexLock lock(&mu_);
-        cancelled_tasks_.erase(task_spec.TaskId());
-      }
-      return;
-    }
-    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-
-    absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
-      task_manager_.FailPendingTask(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
-      return;
-    }
-
-    task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-        current_sys_time_ms());
-    // Note that the dependencies in the task spec are mutated to only contain
-    // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       task_spec.GetDependencyIds(),
-                                       task_spec.GetRuntimeEnvHash());
-    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
-    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
-    scheduling_key_entry.task_queue.push_back(std::move(task_spec));
-
-    if (!scheduling_key_entry.AllWorkersBusy()) {
-      // There are idle workers, so we don't need more
-      // workers.
-      for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-        auto iter = worker_to_lease_entry_.find(active_worker_addr);
-        RAY_CHECK(iter != worker_to_lease_entry_.end());
-        auto &lease_entry = iter->second;
-        if (!lease_entry.is_busy) {
-          OnWorkerIdle(active_worker_addr,
-                       scheduling_key,
-                       /*was_error*/ false,
-                       /*error_detail*/ "",
-                       /*worker_exiting*/ false,
-                       lease_entry.assigned_resources);
-          break;
+  resolver_.ResolveDependencies(
+      task_spec, [this, task_spec, submit_time, num_deps](Status status) mutable {
+        task_manager_.MarkDependenciesResolved(task_spec.TaskId());
+        if (!status.ok()) {
+          // TODO(https://github.com/ray-project/ray/issues/54871): There is a potential
+          // logical race conditions here where the task is cancelled right before the
+          // task is retried. Task cancellation might remove the task from the submissible
+          // task queue, while the task retry here expects that the task must be in the
+          // submissible task queue.
+          RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
+          bool will_retry = task_manager_.FailOrRetryPendingTask(
+              task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+          if (!will_retry) {
+            absl::MutexLock lock(&mu_);
+            cancelled_tasks_.erase(task_spec.TaskId());
+          }
+          return;
         }
-      }
-    }
-    RequestNewWorkerIfNeeded(scheduling_key);
-  });
+        RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+
+        absl::MutexLock lock(&mu_);
+        if (cancelled_tasks_.erase(task_spec.TaskId()) > 0) {
+          task_manager_.FailPendingTask(task_spec.TaskId(),
+                                        rpc::ErrorType::TASK_CANCELLED);
+          return;
+        }
+
+        // Profiling: time from SubmitTask call to deps resolved (I/O queue + dep
+        // resolution).
+        static std::atomic<int64_t> submit_to_ready_calls_{0};
+        static std::atomic<int64_t> submit_to_ready_total_us_{0};
+        static std::atomic<int64_t> submit_to_ready_large_calls_{0};
+        static std::atomic<int64_t> submit_to_ready_large_total_us_{0};
+        auto resolve_latency_us = absl::ToInt64Microseconds(absl::Now() - submit_time);
+        if (num_deps >= 100) {
+          submit_to_ready_large_total_us_ += resolve_latency_us;
+          auto lc = ++submit_to_ready_large_calls_;
+          if (lc % 200 == 0) {
+            RAY_LOG(WARNING) << "[PROFILING] SubmitToReady_large: calls=" << lc
+                             << " avg_us=" << (submit_to_ready_large_total_us_ / lc)
+                             << " this_us=" << resolve_latency_us
+                             << " num_deps=" << num_deps;
+          }
+        } else {
+          submit_to_ready_total_us_ += resolve_latency_us;
+          auto sc = ++submit_to_ready_calls_;
+          if (sc % 500 == 0) {
+            RAY_LOG(WARNING) << "[PROFILING] SubmitToReady_small: calls=" << sc
+                             << " avg_us=" << (submit_to_ready_total_us_ / sc)
+                             << " this_us=" << resolve_latency_us
+                             << " num_deps=" << num_deps;
+          }
+        }
+
+        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+            current_sys_time_ms());
+        // Note that the dependencies in the task spec are mutated to only contain
+        // plasma dependencies after ResolveDependencies finishes.
+        const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                           task_spec.GetDependencyIds(),
+                                           task_spec.GetRuntimeEnvHash());
+        // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
+        auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+        scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
+        auto old_backlog = scheduling_key_entry.BacklogSize();
+        scheduling_key_entry.task_queue.push_back(std::move(task_spec));
+        // Keep class_backlog_ lease_spec in sync.
+        class_backlog_[std::get<0>(scheduling_key)].lease_spec =
+            scheduling_key_entry.lease_spec;
+        OnBacklogChanged(scheduling_key, old_backlog, scheduling_key_entry.BacklogSize());
+
+        if (!scheduling_key_entry.AllWorkersBusy()) {
+          // There are idle workers, so we don't need more
+          // workers.
+          for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
+            auto iter = worker_to_lease_entry_.find(active_worker_addr);
+            RAY_CHECK(iter != worker_to_lease_entry_.end());
+            auto &lease_entry = iter->second;
+            if (!lease_entry.is_busy) {
+              OnWorkerIdle(active_worker_addr,
+                           scheduling_key,
+                           /*was_error*/ false,
+                           /*error_detail*/ "",
+                           /*worker_exiting*/ false,
+                           lease_entry.assigned_resources);
+              break;
+            }
+          }
+        }
+        RequestNewWorkerIfNeeded(scheduling_key);
+
+        // Profiling: lease management stats.
+        static std::atomic<int64_t> tasks_queued_{0};
+        static std::atomic<int64_t> max_sched_keys_{0};
+        auto queued = ++tasks_queued_;
+        int64_t num_keys = scheduling_key_entries_.size();
+        int64_t prev_max = max_sched_keys_.load();
+        while (num_keys > prev_max &&
+               !max_sched_keys_.compare_exchange_weak(prev_max, num_keys)) {
+        }
+        if (queued % 500 == 0) {
+          // Only compute unique classes when logging (avoid per-call traversal).
+          absl::flat_hash_set<SchedulingClass> unique_classes;
+          for (const auto &entry : scheduling_key_entries_) {
+            unique_classes.insert(std::get<0>(entry.first));
+          }
+          RAY_LOG(WARNING) << "[PROFILING] TaskQueued: total=" << queued
+                           << " scheduling_keys=" << num_keys
+                           << " scheduling_classes=" << unique_classes.size()
+                           << " peak_keys=" << max_sched_keys_.load();
+        }
+      });
+
+  // Profiling: measure ResolveDependencies call time (includes synchronous setup;
+  // for tasks with no deps, the callback fires synchronously inside this call).
+  static std::atomic<int64_t> resolve_setup_calls_{0};
+  static std::atomic<int64_t> resolve_setup_total_us_{0};
+  auto setup_us = absl::ToInt64Microseconds(absl::Now() - submit_time);
+  resolve_setup_total_us_ += setup_us;
+  auto sc = ++resolve_setup_calls_;
+  if (sc % 500 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] ResolveSetup: calls=" << sc
+                     << " avg_us=" << (resolve_setup_total_us_ / sc)
+                     << " this_us=" << setup_us << " num_deps=" << num_deps;
+  }
 }
 
 void NormalTaskSubmitter::AddWorkerLeaseClient(
@@ -146,6 +216,10 @@ void NormalTaskSubmitter::OnWorkerIdle(
     const std::string &error_detail,
     bool worker_exiting,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  // Profiling: shared counters for worker reuse vs return.
+  static std::atomic<int64_t> worker_returned_{0};
+  static std::atomic<int64_t> worker_reused_{0};
+
   if (!worker_to_lease_entry_.contains(addr)) {
     return;
   }
@@ -163,6 +237,16 @@ void NormalTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks to do.
     if (!lease_entry.is_busy) {
+      // Profiling: worker return (not reused).
+      auto returned = ++worker_returned_;
+      if (returned % 200 == 0) {
+        RAY_LOG(WARNING) << "[PROFILING] WorkerLease: returned=" << returned
+                         << " reused=" << worker_reused_.load() << " reuse_rate="
+                         << (worker_reused_.load() * 100 /
+                             std::max(static_cast<int64_t>(1),
+                                      returned + worker_reused_.load()))
+                         << "%";
+      }
       ReturnWorkerLease(addr, was_error, error_detail, worker_exiting, scheduling_key);
     }
   } else {
@@ -173,6 +257,14 @@ void NormalTaskSubmitter::OnWorkerIdle(
       current_queue.pop_front();
 
       lease_entry.is_busy = true;
+
+      // Profiling: worker reuse counter.
+      {
+        auto reused = ++worker_reused_;
+        if (reused % 500 == 0) {
+          RAY_LOG(WARNING) << "[PROFILING] WorkerReuse: reused=" << reused;
+        }
+      }
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
@@ -231,35 +323,94 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
   }
 }
 
+void NormalTaskSubmitter::OnBacklogChanged(const SchedulingKey &key,
+                                           int64_t old_backlog,
+                                           int64_t new_backlog) {
+  if (old_backlog == new_backlog) return;
+  auto sc = std::get<0>(key);
+  auto &entry = class_backlog_[sc];
+  entry.total_backlog += (new_backlog - old_backlog);
+  // lease_spec is kept up-to-date by the caller (set on first insert or
+  // updated when scheduling_key_entry.lease_spec changes).
+  backlog_dirty_ = true;
+}
+
 void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
   ReportWorkerBacklogInternal();
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
-  absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
-  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
-    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
-    if (backlogs.find(scheduling_class) == backlogs.end()) {
-      backlogs[scheduling_class].first = scheduling_key_and_entry.second.lease_spec;
-      backlogs[scheduling_class].second = 0;
+  auto backlog_start = absl::Now();
+  heartbeat_count_++;
+
+  bool full_sync = (heartbeat_count_ % kFullSyncInterval == 0);
+
+  if (full_sync) {
+    // Rebuild class_backlog_ from scratch as safety net.
+    class_backlog_.clear();
+    for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
+      const SchedulingClass scheduling_class =
+          std::get<0>(scheduling_key_and_entry.first);
+      auto &cb = class_backlog_[scheduling_class];
+      cb.lease_spec = scheduling_key_and_entry.second.lease_spec;
+      cb.total_backlog += scheduling_key_and_entry.second.BacklogSize();
+      scheduling_key_and_entry.second.last_reported_backlog_size =
+          scheduling_key_and_entry.second.BacklogSize();
     }
-    // We report backlog size per scheduling class not per scheduling key
-    // so we need to aggregate backlog sizes of different scheduling keys
-    // with the same scheduling class
-    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
-    scheduling_key_and_entry.second.last_reported_backlog_size =
-        scheduling_key_and_entry.second.BacklogSize();
+    backlog_dirty_ = true;  // force send after full sync
+  } else if (!backlog_dirty_) {
+    // Nothing changed since last report, skip entirely.
+    static std::atomic<int64_t> skipped_calls_{0};
+    auto skipped = ++skipped_calls_;
+    if (skipped % 20 == 0) {
+      RAY_LOG(WARNING) << "[PROFILING] ReportWorkerBacklog: skipped=" << skipped
+                       << " (not dirty)";
+    }
+    return;
   }
 
+  auto backlog_traverse_done = absl::Now();
+
+  // Build report from pre-aggregated class_backlog_ (O(#classes)).
   std::vector<rpc::WorkerBacklogReport> backlog_reports;
-  for (const auto &backlog : backlogs) {
+  for (const auto &[sc, cb] : class_backlog_) {
+    if (cb.total_backlog <= 0 && !full_sync) continue;
     rpc::WorkerBacklogReport backlog_report;
-    backlog_report.mutable_lease_spec()->CopyFrom(backlog.second.first.GetMessage());
-    backlog_report.set_backlog_size(backlog.second.second);
+    backlog_report.mutable_lease_spec()->CopyFrom(cb.lease_spec.GetMessage());
+    backlog_report.set_backlog_size(std::max(static_cast<int64_t>(0), cb.total_backlog));
     backlog_reports.emplace_back(backlog_report);
   }
+  auto backlog_build_done = absl::Now();
+
   local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
+  backlog_dirty_ = false;
+  auto backlog_rpc_done = absl::Now();
+
+  // Profiling: backlog reporting timing with sub-breakdown.
+  static std::atomic<int64_t> backlog_calls_{0};
+  static std::atomic<int64_t> backlog_traverse_us_{0};
+  static std::atomic<int64_t> backlog_build_us_{0};
+  static std::atomic<int64_t> backlog_rpc_us_{0};
+  static std::atomic<int64_t> backlog_total_us_{0};
+  auto traverse_us = absl::ToInt64Microseconds(backlog_traverse_done - backlog_start);
+  auto build_us = absl::ToInt64Microseconds(backlog_build_done - backlog_traverse_done);
+  auto rpc_us = absl::ToInt64Microseconds(backlog_rpc_done - backlog_build_done);
+  auto elapsed = absl::ToInt64Microseconds(backlog_rpc_done - backlog_start);
+  backlog_traverse_us_ += traverse_us;
+  backlog_build_us_ += build_us;
+  backlog_rpc_us_ += rpc_us;
+  backlog_total_us_ += elapsed;
+  auto calls = ++backlog_calls_;
+  if (calls % 20 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] ReportWorkerBacklog: calls=" << calls
+                     << " traverse_avg_us=" << (backlog_traverse_us_ / calls)
+                     << " build_avg_us=" << (backlog_build_us_ / calls)
+                     << " rpc_avg_us=" << (backlog_rpc_us_ / calls)
+                     << " total_avg_us=" << (backlog_total_us_ / calls)
+                     << " class_backlog_size=" << class_backlog_.size()
+                     << " full_sync=" << full_sync;
+  }
 }
 
 void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
@@ -316,6 +467,14 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // Counter for generating unique lease IDs.
   static uint32_t lease_id_counter = 0;
   const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
+
+  // Profiling: lease request count.
+  static std::atomic<int64_t> lease_requests_{0};
+  auto req_count = ++lease_requests_;
+  if (req_count % 500 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] RequestWorkerLease: total_requests=" << req_count
+                     << " scheduling_keys=" << scheduling_key_entries_.size();
+  }
   rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
   lease_spec_msg.set_lease_id(lease_id.Binary());
   const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));
@@ -355,7 +514,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           auto &sched_entry = scheduling_key_entries_[scheduling_key];
           auto raylet_lease_client =
               raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+          auto old_backlog = sched_entry.BacklogSize();
           sched_entry.pending_lease_requests.erase(lease_id);
+          OnBacklogChanged(scheduling_key, old_backlog, sched_entry.BacklogSize());
 
           if (status.ok()) {
             if (reply.canceled()) {
@@ -397,8 +558,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                                  ", name=",
                                  function_or_actor_name));
 
-                tasks_to_fail = std::move(sched_entry.task_queue);
-                sched_entry.task_queue.clear();
+                {
+                  auto old_bl = sched_entry.BacklogSize();
+                  tasks_to_fail = std::move(sched_entry.task_queue);
+                  sched_entry.task_queue.clear();
+                  OnBacklogChanged(scheduling_key, old_bl, sched_entry.BacklogSize());
+                }
                 if (sched_entry.CanDelete()) {
                   scheduling_key_entries_.erase(scheduling_key);
                 }
@@ -478,8 +643,12 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                << "because the raylet is "
                   "unavailable (crashed).";
             error_info.set_error_message(ss.str());
-            tasks_to_fail = std::move(sched_entry.task_queue);
-            sched_entry.task_queue.clear();
+            {
+              auto old_bl = sched_entry.BacklogSize();
+              tasks_to_fail = std::move(sched_entry.task_queue);
+              sched_entry.task_queue.clear();
+              OnBacklogChanged(scheduling_key, old_bl, sched_entry.BacklogSize());
+            }
             if (sched_entry.CanDelete()) {
               scheduling_key_entries_.erase(scheduling_key);
             }
@@ -495,7 +664,11 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
       },
       task_queue.size(),
       is_selected_based_on_locality);
-  scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
+  {
+    auto old_backlog = scheduling_key_entry.BacklogSize();
+    scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
+    OnBacklogChanged(scheduling_key, old_backlog, scheduling_key_entry.BacklogSize());
+  }
   ReportWorkerBacklogIfNeeded(scheduling_key);
 
   // Lease more workers if there are still pending tasks and

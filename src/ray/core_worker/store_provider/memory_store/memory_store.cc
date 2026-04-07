@@ -141,14 +141,28 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
+  // Profiling: track exists vs pending.
+  static std::atomic<int64_t> getasync_exists_{0};
+  static std::atomic<int64_t> getasync_pending_{0};
+
   absl::MutexLock lock(&mu_);
   auto iter = objects_.find(object_id);
   if (iter == objects_.end()) {
     object_async_get_requests_[object_id].push_back(std::move(callback));
+    auto pending = ++getasync_pending_;
+    if (pending % 50000 == 0) {
+      RAY_LOG(WARNING) << "[PROFILING] GetAsync: exists=" << getasync_exists_.load()
+                       << " pending=" << pending;
+    }
     return;
   }
   auto &object_ptr = iter->second;
   object_ptr->SetAccessed();
+  auto exists = ++getasync_exists_;
+  if (exists % 50000 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] GetAsync: exists=" << exists
+                     << " pending=" << getasync_pending_.load();
+  }
   io_context_.post(
       [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
       "CoreWorkerMemoryStore.GetAsync.Callback");
@@ -207,6 +221,14 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
       auto &get_requests = object_request_iter->second;
       for (auto &get_request : get_requests) {
         get_request->Set(object_id, object_entry);
+      }
+      // Profiling: count how many Put() calls wake up a pending sync waiter.
+      // This means the waiter was blocked waiting for this specific Put.
+      static std::atomic<int64_t> put_wakeup_count_{0};
+      auto wc = ++put_wakeup_count_;
+      if (wc % 500 == 0) {
+        RAY_LOG(WARNING) << "[PROFILING] PutWakesSyncWaiter: count=" << wc
+                         << " waiters=" << get_requests.size();
       }
     }
 
@@ -294,10 +316,34 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       }
     }
 
+    // Profiling: track how many objects are immediately ready vs need to wait.
+    static std::atomic<int64_t> getimpl_calls_{0};
+    static std::atomic<int64_t> getimpl_total_requested_{0};
+    static std::atomic<int64_t> getimpl_total_found_{0};
+    static std::atomic<int64_t> getimpl_total_remaining_{0};
+    static std::atomic<int64_t> getimpl_immediate_returns_{0};
+    getimpl_calls_++;
+    getimpl_total_requested_ += object_ids.size();
+    getimpl_total_found_ += num_found;
+    getimpl_total_remaining_ += remaining_ids.size();
+
     // Return if all the objects are obtained, or any existing objects are known to have
     // exception.
     if (remaining_ids.empty() || num_found >= num_objects ||
         existing_objects_has_exception) {
+      auto imm = ++getimpl_immediate_returns_;
+      if (imm % 500 == 0) {
+        RAY_LOG(WARNING) << "[PROFILING] GetImpl: calls=" << getimpl_calls_.load()
+                         << " immediate=" << imm << " avg_requested="
+                         << (getimpl_total_requested_.load() /
+                             std::max(static_cast<int64_t>(1), getimpl_calls_.load()))
+                         << " avg_found="
+                         << (getimpl_total_found_.load() /
+                             std::max(static_cast<int64_t>(1), getimpl_calls_.load()))
+                         << " avg_remaining="
+                         << (getimpl_total_remaining_.load() /
+                             std::max(static_cast<int64_t>(1), getimpl_calls_.load()));
+      }
       return Status::OK();
     }
 
@@ -333,6 +379,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
+  auto cv_wait_start = absl::Now();
   while (!timed_out && signal_status.ok() &&
          !(done = get_request->Wait(iteration_timeout))) {
     if (check_signals_) {
@@ -343,6 +390,22 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       remaining_timeout -= iteration_timeout;
       iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       timed_out = remaining_timeout <= 0;
+    }
+  }
+
+  // Profiling: log when GetImpl had to actually wait (not immediate).
+  {
+    static std::atomic<int64_t> waited_calls_{0};
+    static std::atomic<int64_t> waited_total_us_{0};
+    auto cv_wait_us = absl::ToInt64Microseconds(absl::Now() - cv_wait_start);
+    waited_total_us_ += cv_wait_us;
+    auto wc = ++waited_calls_;
+    if (wc % 500 == 0) {
+      RAY_LOG(WARNING) << "[PROFILING] GetImpl.Wait: waited_calls=" << wc
+                       << " avg_wait_us=" << (waited_total_us_ / wc)
+                       << " this_wait_us=" << cv_wait_us
+                       << " found_before_wait=" << num_found << " needed=" << num_objects
+                       << " done=" << done << " timed_out=" << timed_out;
     }
   }
 

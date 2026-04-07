@@ -553,11 +553,14 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
                                              const NodeID &worker_node_id,
                                              bool store_in_plasma) {
   bool direct_return = false;
+  auto htr_start = absl::Now();
   reference_counter_.UpdateObjectSize(object_id, return_object.size());
-  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
-                 << return_object.size();
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
+  auto htr_size_done = absl::Now();
+
+  RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
+                 << return_object.size();
 
   if (return_object.in_plasma()) {
     // NOTE(swang): We need to add the location of the object before marking
@@ -604,6 +607,8 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
       direct_return = true;
     }
   }
+  auto htr_put_done = absl::Now();
+
   if (return_object.has_direct_transport_metadata()) {
     set_direct_transport_metadata_(object_id, return_object.direct_transport_metadata());
   }
@@ -617,6 +622,36 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
     }
     reference_counter_.AddNestedObjectIds(object_id, nested_ids, owner_address);
   }
+
+  // Profiling: per-object HandleTaskReturn timing with sub-breakdown.
+  static std::atomic<int64_t> htr_count_{0};
+  static std::atomic<int64_t> htr_total_us_{0};
+  static std::atomic<int64_t> htr_size_us_{0};
+  static std::atomic<int64_t> htr_put_us_{0};
+  static std::atomic<int64_t> htr_post_us_{0};
+  static std::atomic<int64_t> htr_in_plasma_count_{0};
+  static std::atomic<int64_t> htr_inline_count_{0};
+  auto htr_end = absl::Now();
+  htr_total_us_ += absl::ToInt64Microseconds(htr_end - htr_start);
+  htr_size_us_ += absl::ToInt64Microseconds(htr_size_done - htr_start);
+  htr_put_us_ += absl::ToInt64Microseconds(htr_put_done - htr_size_done);
+  htr_post_us_ += absl::ToInt64Microseconds(htr_end - htr_put_done);
+  if (return_object.in_plasma()) {
+    htr_in_plasma_count_++;
+  } else {
+    htr_inline_count_++;
+  }
+  auto count = ++htr_count_;
+  if (count % 50000 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] HandleTaskReturn: count=" << count
+                     << " avg_us=" << (htr_total_us_ / count)
+                     << " size_avg_us=" << (htr_size_us_ / count)
+                     << " put_avg_us=" << (htr_put_us_ / count)
+                     << " post_avg_us=" << (htr_post_us_ / count)
+                     << " in_plasma=" << htr_in_plasma_count_.load()
+                     << " inline=" << htr_inline_count_.load();
+  }
+
   return direct_return;
 }
 
@@ -911,6 +946,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr,
                                       bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
+  auto cpt_start = absl::Now();
 
   bool first_execution = false;
   const auto store_in_plasma_ids =
@@ -980,9 +1016,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  auto cpt_phase_a_end = absl::Now();
+
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
+  int64_t lineage_bytes_snapshot = 0;  // For profiling log (read under lock).
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1074,7 +1113,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     } else {
       submissible_tasks_.erase(it);
     }
+    lineage_bytes_snapshot = total_lineage_footprint_bytes_;
   }
+
+  auto cpt_phase_b_end = absl::Now();
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
   // We handle this logic here because the lock shouldn't be held while calling
@@ -1125,11 +1167,57 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
+  // C starts right after B (streaming gen gap is negligible for non-streaming tasks,
+  // and included in C for streaming tasks).
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
+  auto cpt_phase_c_end = absl::Now();
+
   if (min_lineage_bytes_to_evict > 0) {
     // Evict at least half of the current lineage.
     auto bytes_evicted = reference_counter_.EvictLineage(min_lineage_bytes_to_evict);
     RAY_LOG(INFO) << "Evicted " << bytes_evicted / 1e6 << "MB of task lineage.";
+  }
+  auto cpt_phase_d_end = absl::Now();
+
+  // Profiling: CPT phase breakdown.
+  static std::atomic<int64_t> cpt_count_{0};
+  static std::atomic<int64_t> cpt_a_total_us_{0};
+  static std::atomic<int64_t> cpt_b_total_us_{0};
+  static std::atomic<int64_t> cpt_c_total_us_{0};
+  static std::atomic<int64_t> cpt_d_total_us_{0};
+  static std::atomic<int64_t> cpt_full_total_us_{0};
+  static std::atomic<int64_t> cpt_full_max_us_{0};
+
+  int64_t a_us = absl::ToInt64Microseconds(cpt_phase_a_end - cpt_start);
+  int64_t b_us = absl::ToInt64Microseconds(cpt_phase_b_end - cpt_phase_a_end);
+  int64_t c_us = absl::ToInt64Microseconds(cpt_phase_c_end - cpt_phase_b_end);
+  int64_t d_us = absl::ToInt64Microseconds(cpt_phase_d_end - cpt_phase_c_end);
+  int64_t full_us = absl::ToInt64Microseconds(cpt_phase_d_end - cpt_start);
+  cpt_a_total_us_ += a_us;
+  cpt_b_total_us_ += b_us;
+  cpt_c_total_us_ += c_us;
+  cpt_d_total_us_ += d_us;
+  cpt_full_total_us_ += full_us;
+  // Relaxed max update (not perfectly atomic but good enough for profiling).
+  int64_t prev_max = cpt_full_max_us_.load();
+  while (full_us > prev_max &&
+         !cpt_full_max_us_.compare_exchange_weak(prev_max, full_us)) {
+  }
+  static std::atomic<int64_t> cpt_total_returns_{0};
+  int num_returns = reply.return_objects_size() + reply.dynamic_return_objects_size();
+  cpt_total_returns_ += num_returns;
+  auto count = ++cpt_count_;
+  if (count % 500 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] CPT: count=" << count
+                     << " returns_avg=" << (cpt_total_returns_ / count)
+                     << " A_avg_us=" << (cpt_a_total_us_ / count)
+                     << " B_avg_us=" << (cpt_b_total_us_ / count)
+                     << " C_avg_us=" << (cpt_c_total_us_ / count)
+                     << " D_avg_us=" << (cpt_d_total_us_ / count)
+                     << " full_avg_us=" << (cpt_full_total_us_ / count)
+                     << " full_max_us=" << cpt_full_max_us_.load()
+                     << " lineage_bytes=" << lineage_bytes_snapshot
+                     << " ref_table_size=" << reference_counter_.NumObjectIDsInScope();
   }
 
   ShutdownIfNeeded();

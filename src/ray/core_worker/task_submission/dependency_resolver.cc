@@ -112,6 +112,17 @@ void LocalDependencyResolver::ResolveDependencies(
       }
     }
   }
+  // Profiling: dep resolution stats.
+  static std::atomic<int64_t> resolve_calls_{0};
+  static std::atomic<int64_t> resolve_total_deps_{0};
+  auto call_num = ++resolve_calls_;
+  resolve_total_deps_ += local_dependency_ids.size();
+  if (call_num % 200 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] ResolveDependencies: calls=" << call_num
+                     << " total_deps=" << resolve_total_deps_.load()
+                     << " this_deps=" << local_dependency_ids.size();
+  }
+
   if (local_dependency_ids.empty() && actor_dependency_ids.empty()) {
     on_dependencies_resolved(Status::OK());
     return;
@@ -131,44 +142,62 @@ void LocalDependencyResolver::ResolveDependencies(
   }
 
   for (const auto &obj_id : local_dependency_ids) {
-    in_memory_store_.GetAsync(
-        obj_id, [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
-          RAY_CHECK(obj != nullptr);
+    auto on_object_ready = [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
+      RAY_CHECK(obj != nullptr);
 
-          std::unique_ptr<TaskState> resolved_task_state = nullptr;
-          std::vector<ObjectID> inlined_dependency_ids;
-          std::vector<ObjectID> contained_ids;
-          {
-            absl::MutexLock lock(&mu_);
+      std::unique_ptr<TaskState> resolved_task_state = nullptr;
+      std::vector<ObjectID> inlined_dependency_ids;
+      std::vector<ObjectID> contained_ids;
+      {
+        absl::MutexLock lock(&mu_);
 
-            auto it = pending_tasks_.find(task_id);
-            // The dependency resolution for the task has been cancelled.
-            if (it == pending_tasks_.end()) {
-              return;
-            }
-            auto &state = it->second;
-            state->local_dependencies[obj_id] = std::move(obj);
-            if (--state->obj_dependencies_remaining == 0) {
-              InlineDependencies(state->local_dependencies,
-                                 state->task,
-                                 &inlined_dependency_ids,
-                                 &contained_ids,
-                                 tensor_transport_getter_);
-              if (state->actor_dependencies_remaining == 0) {
-                resolved_task_state = std::move(state);
-                pending_tasks_.erase(it);
-              }
-            }
+        auto it = pending_tasks_.find(task_id);
+        // The dependency resolution for the task has been cancelled.
+        if (it == pending_tasks_.end()) {
+          return;
+        }
+        auto &state = it->second;
+        state->local_dependencies[obj_id] = std::move(obj);
+        if (--state->obj_dependencies_remaining == 0) {
+          InlineDependencies(state->local_dependencies,
+                             state->task,
+                             &inlined_dependency_ids,
+                             &contained_ids,
+                             tensor_transport_getter_);
+          if (state->actor_dependencies_remaining == 0) {
+            resolved_task_state = std::move(state);
+            pending_tasks_.erase(it);
           }
+        }
+      }
 
-          if (!inlined_dependency_ids.empty()) {
-            task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids,
-                                                    contained_ids);
-          }
-          if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
-          }
-        });
+      if (!inlined_dependency_ids.empty()) {
+        task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
+      }
+      if (resolved_task_state) {
+        resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
+      }
+    };
+
+    // Fast path: if the object already exists in the memory store, invoke the
+    // callback synchronously instead of posting to io_context_. This avoids
+    // queueing behind heartbeat/pubsub events on the I/O thread, which can add
+    // over 1s of delay for tasks with many dependencies (e.g. reduce tasks
+    // with 760 deps in shuffle).
+    static std::atomic<int64_t> fast_path_hits_{0};
+    static std::atomic<int64_t> fast_path_misses_{0};
+    auto existing = in_memory_store_.GetIfExists(obj_id);
+    if (existing) {
+      auto hits = ++fast_path_hits_;
+      if (hits % 50000 == 0) {
+        RAY_LOG(WARNING) << "[PROFILING] DepResolver fast path: hits=" << hits
+                         << " misses=" << fast_path_misses_.load();
+      }
+      on_object_ready(std::move(existing));
+    } else {
+      ++fast_path_misses_;
+      in_memory_store_.GetAsync(obj_id, std::move(on_object_ready));
+    }
   }
 
   for (const auto &actor_id : actor_dependency_ids) {

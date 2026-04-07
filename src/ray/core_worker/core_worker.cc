@@ -793,6 +793,8 @@ void CoreWorker::ExitIfParentRayletDies() {
 }
 
 void CoreWorker::InternalHeartbeat() {
+  auto hb_start = absl::Now();
+
   // Retry tasks.
   std::vector<TaskToRetry> tasks_to_resubmit;
   {
@@ -817,10 +819,14 @@ void CoreWorker::InternalHeartbeat() {
     }
   }
 
+  auto hb_retry_done = absl::Now();
+
   // Check timeout tasks that are waiting for death info.
   if (actor_task_submitter_ != nullptr) {
     actor_task_submitter_->CheckTimeoutTasks();
   }
+
+  auto hb_timeout_done = absl::Now();
 
   // Periodically report the latest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
@@ -828,12 +834,34 @@ void CoreWorker::InternalHeartbeat() {
   // are lost or reordered.
   normal_task_submitter_->ReportWorkerBacklog();
 
+  auto hb_backlog_done = absl::Now();
+
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
   // to the result and prevent normal result deletion from handling.
   // See also: https://github.com/ray-project/ray/issues/14485
   if (options_.worker_type == WorkerType::DRIVER && options_.interactive) {
     memory_store_->NotifyUnhandledErrors();
+  }
+
+  // Profiling: heartbeat sub-timing.
+  static std::atomic<int64_t> hb_calls_{0};
+  static std::atomic<int64_t> hb_retry_us_{0};
+  static std::atomic<int64_t> hb_timeout_us_{0};
+  static std::atomic<int64_t> hb_backlog_us_{0};
+  static std::atomic<int64_t> hb_full_us_{0};
+  hb_retry_us_ += absl::ToInt64Microseconds(hb_retry_done - hb_start);
+  hb_timeout_us_ += absl::ToInt64Microseconds(hb_timeout_done - hb_retry_done);
+  hb_backlog_us_ += absl::ToInt64Microseconds(hb_backlog_done - hb_timeout_done);
+  auto full_us = absl::ToInt64Microseconds(absl::Now() - hb_start);
+  hb_full_us_ += full_us;
+  auto calls = ++hb_calls_;
+  if (calls % 20 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] Heartbeat: calls=" << calls
+                     << " retry_avg_us=" << (hb_retry_us_ / calls)
+                     << " timeout_avg_us=" << (hb_timeout_us_ / calls)
+                     << " backlog_avg_us=" << (hb_backlog_us_ / calls)
+                     << " full_avg_us=" << (hb_full_us_ / calls);
   }
 }
 
@@ -1482,6 +1510,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         *worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_WAIT);
   }
 
+  auto wait_start = absl::Now();
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -1527,6 +1556,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     }
   }
 
+  auto wait_setup_done = absl::Now();
   int64_t start_time = current_time_ms();
   absl::flat_hash_set<ObjectID> ready, plasma_object_ids;
   ready.reserve(num_objects);
@@ -1578,6 +1608,24 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
     if (ready.find(ids[i]) != ready.end()) {
       results->at(i) = true;
     }
+  }
+
+  // Profiling: ray.wait sub-timing with setup vs actual wait.
+  static std::atomic<int64_t> wait_calls_{0};
+  static std::atomic<int64_t> wait_total_us_{0};
+  static std::atomic<int64_t> wait_setup_us_{0};
+  auto wait_end = absl::Now();
+  auto wait_elapsed = absl::ToInt64Microseconds(wait_end - wait_start);
+  auto setup_elapsed = absl::ToInt64Microseconds(wait_setup_done - wait_start);
+  wait_total_us_ += wait_elapsed;
+  wait_setup_us_ += setup_elapsed;
+  auto calls = ++wait_calls_;
+  if (calls % 50 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] ray.wait: calls=" << calls
+                     << " avg_us=" << (wait_total_us_ / calls)
+                     << " setup_avg_us=" << (wait_setup_us_ / calls)
+                     << " this_us=" << wait_elapsed << " this_setup_us=" << setup_elapsed
+                     << " num_ids=" << ids.size() << " num_ready=" << ready.size();
   }
 
   return Status::OK();
@@ -3814,6 +3862,13 @@ void CoreWorker::ProcessSubscribeObjectLocations(
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
+  }
+
+  // Profiling: count only valid (correctly-routed) subscribe requests.
+  static std::atomic<int64_t> subscribe_count_{0};
+  auto sub_count = ++subscribe_count_;
+  if (sub_count % 50000 == 0) {
+    RAY_LOG(WARNING) << "[PROFILING] OwnerSubscribe: total=" << sub_count;
   }
 
   // Publish the first object location snapshot when subscribed for the first time.

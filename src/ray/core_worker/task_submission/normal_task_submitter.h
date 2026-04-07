@@ -358,6 +358,24 @@ class NormalTaskSubmitter {
   absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_
       ABSL_GUARDED_BY(mu_);
 
+  // Incrementally maintained per-scheduling-class backlog, mirroring the
+  // aggregation that ReportWorkerBacklogInternal used to compute on every call.
+  struct ClassBacklogEntry {
+    LeaseSpecification lease_spec;
+    int64_t total_backlog = 0;
+  };
+  absl::flat_hash_map<SchedulingClass, ClassBacklogEntry> class_backlog_
+      ABSL_GUARDED_BY(mu_);
+  bool backlog_dirty_ ABSL_GUARDED_BY(mu_) = false;
+  int64_t heartbeat_count_ ABSL_GUARDED_BY(mu_) = 0;
+  // Full resync every N heartbeats as safety net.
+  static constexpr int64_t kFullSyncInterval = 10;
+
+  // Update class_backlog_ after a mutation that changed a key's BacklogSize.
+  void OnBacklogChanged(const SchedulingKey &key,
+                        int64_t old_backlog,
+                        int64_t new_backlog) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Tasks that were cancelled while being resolved.
   absl::flat_hash_set<TaskID> cancelled_tasks_ ABSL_GUARDED_BY(mu_);
 
