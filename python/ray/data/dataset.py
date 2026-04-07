@@ -3146,7 +3146,6 @@ class Dataset:
 
             Sort first so the first row is deterministic.
 
-            >>> import numpy as np
             >>> classes = {0: 'Setosa', 1: 'Versicolor', 2: 'Virginica'}
             >>> def preprocessor(df, classes):
             ...     df["variety"] = df["target"].map(classes)
@@ -3154,7 +3153,7 @@ class Dataset:
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
             >>> train_ds.sort("sepal length (cm)").take(1)  # doctest: +ELLIPSIS
-            [{'sepal length (cm)': np.float64(4.3), ..., 'variety': 'Setosa'}]
+            [{'sepal length (cm)': ..., 'variety': 'Setosa'}]
 
         Time complexity: O(dataset size / parallelism)
 
