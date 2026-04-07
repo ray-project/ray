@@ -584,43 +584,23 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
-    def _get_token_tracker(self):
-        """Get or create the TokenTracker actor handle (cached)."""
-        tracker = getattr(self, "_token_tracker", None)
-        if tracker is None:
-            try:
-                from token_tracker import get_or_create_token_tracker
-
-                tracker = get_or_create_token_tracker()
-                self._token_tracker = tracker
-            except Exception:
-                pass
-        return tracker
+    # TokenTracker removed — probing replicas directly for queue length
+    # is simpler and uses existing Ray Serve infrastructure.
 
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
     ) -> Tuple[str, int, str]:
-        """Pick a replica and return (host, port, replica_id).
+        """Pick a replica via P2C with probing and return (host, port, rid).
 
-        Args:
-            model_id: The model to route to.
+        Uses power-of-two-choices: pick 2 random replicas, probe their
+        actual queue lengths, route to the lighter one.
 
-        Implements router queue threshold: when all replicas exceed
-        ``ROUTER_QUEUE_THRESHOLD_FRACTION × max_num_seqs`` ongoing
-        requests, the handler holds the response until one drops below.
-        The Lua coroutine yields while waiting, HAProxy naturally holds
-        the request.
-
-        Like Dynamo's ``router_queue_threshold`` (a fraction of
-        ``max_num_batched_tokens``), but using ongoing request count as a
-        proxy for engine load — correct because each decode request costs
-        ~1 token per step regardless of ISL.
-
-        Returns:
-            Tuple of (host, port, replica_unique_id).
+        In the direct-ingress path the response streams directly from the
+        replica through HAProxy to the client, bypassing the ingress.
+        This means the normal done-callback that decrements the P2C cache
+        never fires. We solve this by probing replicas for their actual
+        ``num_ongoing_requests`` on every routing decision.
         """
-        import os
-
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -630,108 +610,41 @@ class OpenAiIngress(DeploymentProtocol):
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        # Enable the queue length cache so on_send_request increments
-        # are visible to subsequent choose_replicas() calls.
-        if not request_router._use_replica_queue_len_cache:
-            request_router._use_replica_queue_len_cache = True
-
-        # Cache the filtered replica list.
-        cache_key = "_di_replicas_" + base_model_id
-        cached = getattr(self, cache_key, None)
-        curr = request_router.curr_replicas
-        if cached is None or cached[0] != len(curr):
-            replicas = [
-                r for r in curr.values() if r.direct_ingress_endpoint is not None
-            ]
-            cached = (len(curr), replicas)
-            setattr(self, cache_key, cached)
-        direct_ingress_replicas = cached[1]
-
+        # Get direct-ingress-enabled replicas from the request router.
+        direct_ingress_replicas = [
+            r
+            for r in request_router.curr_replicas.values()
+            if r.direct_ingress_endpoint is not None
+        ]
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
-        # Router queue threshold as a fraction of max_num_seqs.
-        # e.g. 0.5 with max_num_seqs=256 → threshold=128 requests/replica.
-        # 0 = disabled (use choose_replicas only).
-        queue_threshold = getattr(self, "_queue_threshold", None)
-        if queue_threshold is None:
-            frac = float(os.environ.get("ROUTER_QUEUE_THRESHOLD_FRACTION", "0"))
-            if frac > 0:
-                llm_config = self._llm_configs.get(base_model_id)
-                max_num_seqs = 256
-                if llm_config and llm_config.engine_kwargs:
-                    max_num_seqs = llm_config.engine_kwargs.get("max_num_seqs", 256)
-                queue_threshold = int(frac * max_num_seqs)
-                logger.info(
-                    f"Router queue threshold: {queue_threshold} "
-                    f"requests/replica (fraction={frac}, "
-                    f"max_num_seqs={max_num_seqs})"
-                )
-            else:
-                queue_threshold = 0
-            self._queue_threshold = queue_threshold
-
-        tracker = self._get_token_tracker() if queue_threshold > 0 else None
-
-        if tracker is not None and queue_threshold > 0:
-            # Queue loop: hold until a replica is below threshold.
-            while True:
-                try:
-                    loads = await tracker.get_loads.remote()
-                except Exception:
-                    break  # tracker unavailable, fall through
-
-                # Find least-loaded replica.
-                best_load = float("inf")
-                best_replica = None
-                for r in direct_ingress_replicas:
-                    rid = r.replica_id.unique_id
-                    load = loads.get(rid, 0)
-                    if load < best_load:
-                        best_load = load
-                        best_replica = r
-
-                if best_replica is not None and best_load < queue_threshold:
-                    endpoint = best_replica.direct_ingress_endpoint
-                    rid = best_replica.replica_id.unique_id
-                    tracker.add.remote(rid, 1)
-                    request_router.on_send_request(best_replica.replica_id)
-                    return (*endpoint, rid)
-
-                # All at/above threshold — wait 10ms and retry.
-                await asyncio.sleep(0.01)
-
-        # Default path: use choose_replicas (round-robin or P2C).
-        # P2C returns 2 replicas in one tier — pick the one with the
-        # lower cached queue length for load-aware routing.
+        # P2C: pick 2 random candidates (one tier from choose_replicas).
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
             pending_request=None,
         )
-        for tier in replica_tiers:
-            eligible = [r for r in tier if r.direct_ingress_endpoint is not None]
-            if not eligible:
-                continue
-            if len(eligible) == 1:
-                best = eligible[0]
-            else:
-                # Pick the replica with the lower cached queue length.
-                best = min(
-                    eligible,
-                    key=lambda r: (
-                        request_router.replica_queue_len_cache.get(r.replica_id) or 0
-                    ),
-                )
-            request_router.on_send_request(best.replica_id)
-            rid = best.replica_id.unique_id
-            if tracker is not None:
-                tracker.add.remote(rid, 1)
-            return (*best.direct_ingress_endpoint, rid)
+        if not replica_tiers or not replica_tiers[0]:
+            raise RuntimeError(f"P2C returned no candidates for {model_id}")
+        candidates = [
+            r for r in replica_tiers[0] if r.direct_ingress_endpoint is not None
+        ]
+        if not candidates:
+            raise RuntimeError(
+                f"P2C candidates have no direct-ingress endpoints for {model_id}"
+            )
 
-        idx = self._direct_ingress_rr_counter % len(direct_ingress_replicas)
-        self._direct_ingress_rr_counter += 1
-        r = direct_ingress_replicas[idx]
-        return (*r.direct_ingress_endpoint, r.replica_id.unique_id)
+        # Probe each candidate for its actual queue length.
+        probed: dict = {}
+        for r in candidates:
+            try:
+                probed[r] = await r.get_queue_len(deadline_s=0.5)
+            except Exception:
+                probed[r] = float("inf")
+
+        # Route to the least-loaded candidate.
+        best = min(candidates, key=lambda r: probed.get(r, float("inf")))
+        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
 
     async def _get_response(
         self,

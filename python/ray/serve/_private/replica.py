@@ -2092,20 +2092,6 @@ class Replica:
                 is_direct_ingress=True,
             )
 
-            # Token tracker for router queue threshold signaling.
-            _token_tracker = [None]
-            _replica_uid = self._replica_id.unique_id
-
-            def _get_tracker():
-                if _token_tracker[0] is None:
-                    try:
-                        _token_tracker[0] = ray.get_actor(
-                            "_llm_token_tracker", namespace="serve"
-                        )
-                    except Exception:
-                        pass
-                return _token_tracker[0]
-
             async def _counting_mw(scope, receive, send):
                 if scope["type"] == "http":
                     metrics_mgr.inc_num_ongoing_requests(_di_metadata)
@@ -2113,9 +2099,6 @@ class Replica:
                         await inner_app(scope, receive, send)
                     finally:
                         metrics_mgr.dec_num_ongoing_requests(_di_metadata)
-                        tracker = _get_tracker()
-                        if tracker is not None:
-                            tracker.remove.remote(_replica_uid, 1)
                 else:
                     await inner_app(scope, receive, send)
 
