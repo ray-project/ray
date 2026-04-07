@@ -45,7 +45,13 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self._capacity_queue_actor_name: str = "capacity_queue"
         self._capacity_queue_full_name: Optional[str] = None
 
-        # Tokens confirmed by _choose_replica_for_request. Released when the
+        # Tokens acquired but not yet accepted by the replica (pending the
+        # rejection protocol handshake).  On rejection the token is
+        # intentionally leaked so the CQ's in_flight stays elevated, teaching
+        # it that the replica is busy.
+        self._pending_tokens: Dict[str, str] = {}
+
+        # Tokens whose replica accepted the request.  Released when the
         # request completes or is cancelled.
         self._acquired_tokens: Dict[str, str] = {}
 
@@ -128,6 +134,13 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         """
         internal_request_id = pending_request.metadata.internal_request_id
 
+        # On retry (replica rejected), drop the old pending token WITHOUT
+        # releasing it. The leaked token keeps in_flight elevated on the CQ,
+        # teaching it that the replica is busy. The TTL reaper eventually
+        # reclaims it.
+        if is_retry:
+            self._pending_tokens.pop(internal_request_id, None)
+
         # Wait for at least one replica.
         while len(self._replicas) == 0:
             self._replicas_updated_event.clear()
@@ -183,7 +196,10 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 rid = self._uid_to_replica_id.get(acquired_replica_id)
                 replica = self._replicas.get(rid) if rid is not None else None
                 if replica is not None:
-                    self._acquired_tokens[internal_request_id] = acquired_replica_id
+                    # Store as pending until on_request_routed confirms
+                    # acceptance. If the replica rejects, the token is
+                    # intentionally NOT released.
+                    self._pending_tokens[internal_request_id] = acquired_replica_id
                     acquired_replica_id = None
                     fault_attempt = 0
                     capacity_depleted_attempt = 0
@@ -203,7 +219,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 await self._replicas_updated_event.wait()
         except asyncio.CancelledError:
             # If cancelled after acquiring a token but before storing it in
-            # _acquired_tokens, release it to avoid leaking capacity.
+            # _pending_tokens, release it to avoid leaking capacity.
             if acquired_replica_id is not None:
                 self._safe_release(acquired_replica_id)
             raise
@@ -230,15 +246,29 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ):
-        pass
+        """Promote a pending token to acquired once the replica accepts.
+
+        Only called when the rejection protocol is active and the replica
+        accepts. On rejection this is NOT called, so the token stays in
+        _pending_tokens and is intentionally leaked on retry to teach the
+        CQ that the replica is busy.
+        """
+        rid = pending_request.metadata.internal_request_id
+        token = self._pending_tokens.pop(rid, None)
+        if token is not None:
+            self._acquired_tokens[rid] = token
 
     def on_request_completed(
         self,
         replica_id: ReplicaID,
         internal_request_id: str,
     ):
-        """Release the capacity token when a request completes."""
+        """
+        Release the capacity token when a request completes.
+        """
         token = self._acquired_tokens.pop(internal_request_id, None)
+        if token is None:
+            token = self._pending_tokens.pop(internal_request_id, None)
         if token is not None:
             self._safe_release(token)
 
@@ -248,6 +278,8 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     ):
         """Release the capacity token when a request is cancelled."""
         token = self._acquired_tokens.pop(internal_request_id, None)
+        if token is None:
+            token = self._pending_tokens.pop(internal_request_id, None)
         if token is not None:
             self._safe_release(token)
 

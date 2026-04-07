@@ -10,6 +10,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
 from ray.serve._private.test_utils import check_running
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
+from ray.serve.context import _get_internal_replica_context
 from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
 )
@@ -48,8 +49,6 @@ def _deploy_capacity_queue_app(
     )
     class App:
         def __init__(self):
-            from ray.serve.context import _get_internal_replica_context
-
             context = _get_internal_replica_context()
             self.replica_id = context.replica_id
             self.unique_id = context.replica_id.unique_id
@@ -93,8 +92,6 @@ def _deploy_blocking_capacity_queue_app(
     )
     class BlockingApp:
         def __init__(self):
-            from ray.serve.context import _get_internal_replica_context
-
             context = _get_internal_replica_context()
             self.unique_id = context.replica_id.unique_id
 
@@ -333,8 +330,6 @@ class TestCapacityQueueRouterFailures:
         )
         class TtlApp:
             def __init__(self):
-                from ray.serve.context import _get_internal_replica_context
-
                 context = _get_internal_replica_context()
                 self.unique_id = context.replica_id.unique_id
 
@@ -399,8 +394,6 @@ class TestCapacityQueueRouterFailures:
         )
         class CrashApp:
             def __init__(self):
-                from ray.serve.context import _get_internal_replica_context
-
                 context = _get_internal_replica_context()
                 self.unique_id = context.replica_id.unique_id
 
@@ -600,8 +593,6 @@ class TestCapacityQueueRouterFailures:
         )
         class ConvergeApp:
             def __init__(self):
-                from ray.serve.context import _get_internal_replica_context
-
                 context = _get_internal_replica_context()
                 self.unique_id = context.replica_id.unique_id
 
@@ -725,8 +716,6 @@ class TestCapacityQueueRouterFailures:
         )
         class DepletedApp:
             def __init__(self):
-                from ray.serve.context import _get_internal_replica_context
-
                 context = _get_internal_replica_context()
                 self.unique_id = context.replica_id.unique_id
 
@@ -770,6 +759,105 @@ class TestCapacityQueueRouterFailures:
 
         # The waiting request should complete once capacity is available.
         result = waiting_ref.result(timeout_s=15)
+        assert isinstance(result, str)
+
+        ray.kill(signal)
+
+    def test_rejection_teaches_cq_after_restart(self, serve_instance):
+        """
+        After a CQ restart, rejected tokens are NOT released back to the
+        CQ, so in_flight stays elevated and the CQ learns the replica is busy.
+        """
+        signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
+        signal = SignalActor.options(name=signal_name).remote()
+
+        @serve.deployment(
+            deployment_actors=[
+                DeploymentActorConfig(
+                    name="capacity_queue",
+                    actor_class=CapacityQueue,
+                    init_kwargs={
+                        "acquire_timeout_s": 0.5,
+                        "token_ttl_s": 5,
+                        "deployment_id_name": "RejectApp",
+                        "deployment_id_app": "default",
+                    },
+                    actor_options={"num_cpus": 0},
+                ),
+            ],
+            request_router_config=RequestRouterConfig(
+                request_router_class=(
+                    "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
+                ),
+            ),
+            num_replicas=1,
+            max_ongoing_requests=2,
+            ray_actor_options={"num_cpus": 0},
+        )
+        class RejectApp:
+            def __init__(self):
+                context = _get_internal_replica_context()
+                self.unique_id = context.replica_id.unique_id
+
+            async def __call__(self, block: bool = False):
+                if block:
+                    sig = ray.get_actor(signal_name)
+                    await sig.wait.remote()
+                return self.unique_id
+
+        handle = serve.run(RejectApp.bind())
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == 1,
+            timeout=15,
+        )
+
+        # Step 1: Saturate the replica — 2/2 slots occupied.
+        blocking_refs = [handle.remote(block=True) for _ in range(2)]
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).total_in_flight == 2,
+            timeout=10,
+        )
+
+        # Step 2: Kill the CQ. It restarts with in_flight=0.
+        ray.kill(queue)
+
+        def _new_queue_ready():
+            q = _find_capacity_queue_handle()
+            if q is None:
+                return False
+            stats = ray.get(q.get_stats.remote())
+            return stats.num_replicas == 1
+
+        wait_for_condition(_new_queue_ready, timeout=30)
+
+        new_queue = _find_capacity_queue_handle()
+        stale_stats = ray.get(new_queue.get_stats.remote())
+        assert stale_stats.total_in_flight == 0  # Stale: thinks replica is idle
+
+        # Step 3: Send a non-blocking request. The stale CQ issues a token,
+        # the replica rejects (full), the router retries. The rejected token
+        # is NOT released, so the CQ's in_flight ratchets up.
+        new_ref = handle.remote(block=False)
+
+        # Step 4: The CQ should have learned — in_flight > 0 because the
+        # rejected token was not released.
+        def _cq_learned():
+            stats = ray.get(new_queue.get_stats.remote())
+            return stats.total_in_flight > 0
+
+        wait_for_condition(_cq_learned, timeout=15)
+
+        # Step 5: Release the blockers so all requests complete.
+        ray.get(signal.send.remote())
+        for ref in blocking_refs:
+            try:
+                ref.result(timeout_s=15)
+            except Exception:
+                pass
+        result = new_ref.result(timeout_s=15)
         assert isinstance(result, str)
 
         ray.kill(signal)
