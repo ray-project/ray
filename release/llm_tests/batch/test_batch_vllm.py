@@ -3,7 +3,7 @@ import logging
 import time
 import os
 import signal
-import subprocess
+import pynvml
 
 import pytest
 
@@ -60,14 +60,21 @@ def _kill_gpu_processes():
     Kill all processes occupying GPUs, particularly for
     cleaning GPU processes created by vLLM's ``mp`` executor.
     """
-    pids = subprocess.run(
-        ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
-        capture_output=True,
-        text=True,
-    ).stdout.split()
+    pids = set()
+    try:
+        pynvml.nvmlInit()
+        device_count = pynvml.nvmlDeviceGetCount()
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+                pids.add(proc.pid)
+        pynvml.nvmlShutdown()
+    except Exception:
+        pass
+
     for pid in pids:
         try:
-            os.kill(int(pid), signal.SIGKILL)
+            os.kill(pid, signal.SIGKILL)
         except (ProcessLookupError, ValueError):
             pass
 
