@@ -190,9 +190,11 @@ class GrpcDeployment:
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
     async def grpc_call(self, user_message):
+        await asyncio.sleep(5 / 1000)  # 5ms
         return serve_pb2.ModelOutput(output=9)
 
     async def call_with_string(self, user_message):
+        await asyncio.sleep(5 / 1000)  # 5ms
         return serve_pb2.ModelOutput(output=9)
 
 
@@ -203,10 +205,12 @@ class GrpcModelComp:
         self._child = child
 
     async def grpc_call(self, user_message):
+        await asyncio.sleep(5 / 1000)  # 5ms
         await self._child.remote()
         return serve_pb2.ModelOutput(output=9)
 
     async def call_with_string(self, user_message):
+        await asyncio.sleep(5 / 1000)  # 5ms
         await self._child.remote()
         return serve_pb2.ModelOutput(output=9)
 
