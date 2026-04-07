@@ -1075,7 +1075,10 @@ def _iter_batches_with_nested_fallback(
     )
 
     for batch in pf.iter_batches(
-        batch_size=fallback_batch_size, columns=read_columns, **iter_kwargs
+        batch_size=fallback_batch_size,
+        columns=read_columns,
+        use_threads=use_threads,
+        **iter_kwargs,
     ):
         # Row-level filter still needed since row-group pruning only
         # skips entire row groups that can't match.
