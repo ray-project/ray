@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -17,9 +17,8 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    import pyarrow
 
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +48,14 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(base_dataset, n, locality_hints)
 
-        return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
-        ]
+        return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]
 
     def __init__(
         self,
-        base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
     ):
-        self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
@@ -100,7 +95,6 @@ class StreamSplitDataIterator(DataIterator):
                         schema=block_ref_and_md.schema,
                     )
 
-        self._base_dataset._plan._run_index += 1
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, False, None
@@ -117,19 +111,19 @@ class StreamSplitDataIterator(DataIterator):
         )
         return summary.to_string()
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self) -> Optional["Schema"]:
         """Implements DataIterator."""
-        return self._base_dataset.schema()
+        return ray.get(self._coord_actor.get_dataset_schema.remote())
 
     def get_context(self) -> DataContext:
-        return self._base_dataset.context
+        return ray.get(self._coord_actor.get_dataset_context.remote())
 
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
+        return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
 
 @ray.remote(num_cpus=0)
@@ -157,6 +151,8 @@ class SplitCoordinator:
         self._n = n
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+        self._dataset_state_lock = threading.Lock()
+        self._schema = None
         self._current_executor = None
 
         # Guarded by self._lock.
@@ -174,6 +170,25 @@ class SplitCoordinator:
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+    def get_dataset_context(self) -> DataContext:
+        return self._data_context
+
+    def get_dataset_tag(self, output_split_idx: int) -> str:
+        return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
+
+    def get_dataset_schema(self):
+        with self._dataset_state_lock:
+            if self._schema is not None:
+                return self._schema
+            if self._current_executor is not None and self._current_executor.is_alive():
+                raise RuntimeError(
+                    "Cannot call schema() during active dataset execution. "
+                    "Call schema() before or after iterating over the dataset, or call "
+                    "schema() directly on the source Dataset object."
+                )
+            self._schema = self._base_dataset.schema()
+            return self._schema
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
@@ -215,15 +230,8 @@ class SplitCoordinator:
                     plan = self._base_dataset._plan
                     # Re-execute dataset
                     self._current_executor = plan.create_executor()
-                    # NOTE: We pass dataset.context (the original, uncopied context)
-                    #       rather than self._data_context (the deep copy used for
-                    #       process isolation) because the planner adds callbacks
-                    #       (e.g. checkpoint) to the original context during
-                    #       _get_execution_dag. Using self._data_context would cause
-                    #       those callbacks to be silently missed.
-                    # TODO: Fix this by having Planner.plan() return callbacks explicitly
                     self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, plan, self._base_dataset.context
+                        self._current_executor, plan
                     )
 
                 except Exception as e:
@@ -373,9 +381,15 @@ class SplitCoordinator:
         # Advance to the next epoch
         self._try_start_new_epoch(starting_epoch)
 
-        assert self._output_iterator is not None
-        assert (
-            self._cur_epoch == starting_epoch + 1
-        ), f"Expected current epoch to be {starting_epoch + 1} (got {self._cur_epoch})"
+        if self._output_iterator is None:
+            raise ValueError(
+                "Invalid iterator: output iterator is not initialized. "
+                "This may indicate too many concurrent consumers."
+            )
+        if self._cur_epoch != starting_epoch + 1:
+            raise ValueError(
+                f"Invalid iterator: too many concurrent consumers detected. "
+                f"Expected epoch {starting_epoch + 1}, got {self._cur_epoch}."
+            )
 
         return self._cur_epoch
