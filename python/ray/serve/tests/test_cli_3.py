@@ -11,7 +11,6 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
-import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -221,26 +220,18 @@ class TestRun:
         )
 
         for _ in range(number_of_kill_signals):
-            p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+            p.send_signal(signal.SIGINT)
+            # Mimic realistic human Ctrl-C timing. Without a gap, two
+            # back-to-back SIGINTs can land before the KeyboardInterrupt
+            # handler in `serve run` has a chance to run, aborting the
+            # process before graceful shutdown begins.
+            time.sleep(0.1)
         p.wait()
 
-        # With a single SIGINT the `serve run` handler calls serve.shutdown()
-        # before exiting.  With two rapid SIGINTs the second one may abort
-        # the process mid-shutdown, leaving detached Serve actors (proxy,
-        # replicas) still alive.  Explicitly shut down from the test process
-        # to guarantee cleanup in both cases.
-        ray.init(address="auto", namespace="serve")
-        serve.shutdown()
-        ray.shutdown()
+        with pytest.raises(httpx.HTTPError):
+            httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
 
-        def deployments_not_reachable():
-            try:
-                httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
-                return False
-            except httpx.HTTPError:
-                return True
-
-        wait_for_condition(deployments_not_reachable, timeout=15)
+        # wait_for_condition(deployments_not_reachable, timeout=15)
         print("Kill successful! Deployments are not reachable over HTTP.")
 
         print('Running node at import path "ray.serve.tests.test_cli_3.parrot_node".')
@@ -257,10 +248,7 @@ class TestRun:
 
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
-        wait_for_condition(
-            lambda: ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG,
-            timeout=15,
-        )
+        assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
         print("Kill successful! Deployment is not reachable over HTTP.")
 
     @pytest.mark.skipif(
