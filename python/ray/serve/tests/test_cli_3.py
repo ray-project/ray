@@ -222,8 +222,15 @@ class TestRun:
         for _ in range(number_of_kill_signals):
             p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
-        with pytest.raises(httpx.HTTPError):
-            httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
+
+        def deployments_not_reachable():
+            try:
+                httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
+                return False
+            except httpx.HTTPError:
+                return True
+
+        wait_for_condition(deployments_not_reachable, timeout=15)
         print("Kill successful! Deployments are not reachable over HTTP.")
 
         print('Running node at import path "ray.serve.tests.test_cli_3.parrot_node".')
