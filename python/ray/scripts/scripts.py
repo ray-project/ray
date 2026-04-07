@@ -99,12 +99,13 @@ def _log_unexpected_subprocess_exit_details(
     except Exception as e:
         cli_logger.warning("Failed to write process exit log: {}", e)
 
-    try:
-        process_types = sorted({str(t) for t, _p in unexpected_deceased})
-        for process_type in process_types:
-            exit_codes = sorted(exit_codes_by_process_type[process_type])
-            exit_codes_display = ", ".join(exit_codes)
-            for fname in (f"{process_type}.err", f"{process_type}.out"):
+    process_types = sorted({str(t) for t, _p in unexpected_deceased})
+    for process_type in process_types:
+        exit_codes = sorted(exit_codes_by_process_type[process_type])
+        exit_codes_display = ", ".join(exit_codes)
+        for fname in (f"{process_type}.err", f"{process_type}.out"):
+            began_tail_output = False
+            try:
                 fpath = os.path.join(logs_dir, fname)
                 if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
                     continue
@@ -114,16 +115,19 @@ def _log_unexpected_subprocess_exit_details(
                     fname,
                     exit_codes_display,
                 )
+                began_tail_output = True
                 cli_logger.newline()
                 cli_logger.error("{}", _tail_file(fpath))
-                cli_logger.newline()
-                cli_logger.error(
-                    "----- END {} tail (exit code(s)={}) -----",
-                    fname,
-                    exit_codes_display,
-                )
-    except Exception as e:
-        cli_logger.error("Failed to tail process logs: {}", e)
+            except Exception as e:
+                cli_logger.error("Failed to tail process log {}: {}", fname, e)
+            finally:
+                if began_tail_output:
+                    cli_logger.newline()
+                    cli_logger.error(
+                        "----- END {} tail (exit code(s)={}) -----",
+                        fname,
+                        exit_codes_display,
+                    )
 
 
 def _check_ray_version(gcs_client):
