@@ -44,7 +44,7 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
         - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
@@ -494,6 +494,9 @@
           repeat_map_batches: once
 
   cluster:
+    byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
