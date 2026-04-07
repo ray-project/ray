@@ -9,6 +9,7 @@ from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
+from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -75,7 +76,11 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.types import ObjectRef
 from ray.util import metrics
 
@@ -508,6 +513,11 @@ class RouterMetricsManager:
 
 
 class Router(ABC):
+    @property
+    def event_loop(self) -> Optional[AbstractEventLoop]:
+        """The event loop the router runs on, or None (e.g. local testing)."""
+        return getattr(self, "_asyncio_loop", None)
+
     @abstractmethod
     def running_replicas_populated(self) -> bool:
         pass
@@ -519,6 +529,15 @@ class Router(ABC):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
         pass
 
     @abstractmethod
@@ -853,7 +872,14 @@ class AsyncioRouter:
         replica_id: ReplicaID,
         replica_actor_id: Optional[ray.ActorID],
         actor_died_error: ActorDiedError,
-    ) -> None:
+    ) -> bool:
+        """Handle an ActorDiedError from a replica request.
+
+        Returns True if the error is from this replica (i.e., this replica
+        died and should be retried on another replica). Returns False if the
+        error is from an upstream dependency (i.e., this replica is healthy
+        but the request failed due to a bad input).
+        """
         # Only mark the replica as dead if the ActorDiedError refers to this
         # replica. With chained DeploymentResponses, the error may come from
         # an upstream deployment that was passed as an object ref to this
@@ -877,6 +903,7 @@ class AsyncioRouter:
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
             )
+            return True
         else:
             # Error from upstream dependency, not from this replica.
             logger.debug(
@@ -884,6 +911,18 @@ class AsyncioRouter:
                 f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
                 "Replica remains in rotation."
             )
+            return False
+
+    def _make_upstream_crash_error(self, e: ActorDiedError) -> RayServeException:
+        """Surface a clear Serve error while preserving Ray's actor death details."""
+        msg = (
+            f"Request to deployment '{self.deployment_id.name}' failed because "
+            f"an upstream actor died before finishing a dependent task. "
+            f"Ray reported:\n{e}"
+        )
+        wrapped = RayServeException(msg)
+        wrapped.__cause__ = e
+        return wrapped
 
     async def _route_and_send_request_once(
         self,
@@ -982,7 +1021,22 @@ class AsyncioRouter:
             raise
         except ActorDiedError as e:
             if replica is not None:
-                self._handle_actor_died_error(replica.replica_id, replica.actor_id, e)
+                is_from_this_replica = self._handle_actor_died_error(
+                    replica.replica_id, replica.actor_id, e
+                )
+                if not is_from_this_replica and callback_registered:
+                    # Error from an upstream dependency during request
+                    # execution (e.g., a chained DeploymentResponse whose
+                    # source actor died). The request was already accepted
+                    # by this (healthy) replica, but the input is
+                    # permanently failed — retrying with another replica
+                    # won't help. Propagate immediately so the caller gets
+                    # a fast error.
+                    raise self._make_upstream_crash_error(e)
+            elif not pr.resolved:
+                # ActorDiedError during argument resolution — same upstream
+                # cause as above, caught before a replica was even chosen.
+                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -1117,6 +1171,115 @@ class AsyncioRouter:
                         )
                     if exc:
                         set_span_exception(exc, escaped=True)
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Send a request to all running replicas in parallel.
+
+        Bypasses the normal load-balancing path and sends the request
+        directly to every replica. Waits for the request router to be
+        initialized so the replica set is populated.
+        """
+        # Propagate tracing context, matching assign_request behavior.
+        if is_span_recording():
+            propagate_context = create_propagated_context()
+            request_meta.tracing_context = propagate_context
+        else:
+            request_meta.tracing_context = None
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        await self._request_router_initialized.wait()
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        replicas: List[RunningReplica] = list(
+            self.request_router.curr_replicas.values()
+        )
+        if not replicas:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        # Resolve arguments (e.g. DeploymentResponse objects) before sending.
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=dict(request_kwargs),
+            metadata=request_meta,
+        )
+        await self._resolve_request_arguments(pr)
+
+        results: List[ReplicaResult] = []
+        for replica in replicas:
+            replica_pr = PendingRequest(
+                args=list(pr.args),
+                kwargs=dict(pr.kwargs),
+                metadata=replace(
+                    request_meta,
+                    internal_request_id=generate_request_id(),
+                ),
+            )
+            replica_pr.resolved = True
+            try:
+                result = replica.try_send_request(replica_pr, with_rejection=False)
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Skip this replica and continue broadcasting to healthy replicas.
+                self.request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                continue
+            except ActorUnavailableError:
+                # Replica is temporarily unavailable. Invalidate the cache entry
+                # and continue broadcasting to other replicas.
+                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
+
+            # Proactively update the queue length cache.
+            self.request_router.on_send_request(replica.replica_id)
+
+            # Track running requests and register callback for completion
+            # handling, matching the pattern in _route_and_send_request_once.
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                self._metrics_manager.inc_num_running_requests_for_replica(
+                    replica.replica_id
+                )
+            # NOTE: add_done_callback fires from a C++ worker thread (for
+            # actor ObjectRefs) or a gRPC callback thread.
+            # _process_finished_request and decrement_queue_len_cache both
+            # access shared router state that is not thread-safe, so we
+            # schedule them on the router's event loop.
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                replica_pr.metadata.internal_request_id,
+                replica.actor_id,
+            )
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
+            result.add_done_callback(
+                lambda _, rid=replica.replica_id: (
+                    self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        rid,
+                    )
+                )
+            )
+
+            results.append(result)
+
+        if not results:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        return results
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
@@ -1262,6 +1425,16 @@ class SingletonThreadRouter(Router):
         self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
+        )
+
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
@@ -1378,6 +1551,16 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
         )
 
     def shutdown(self) -> asyncio.Future:
