@@ -9,6 +9,8 @@ from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
+from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -516,6 +518,11 @@ class RouterMetricsManager:
 
 
 class Router(ABC):
+    @property
+    def event_loop(self) -> Optional[AbstractEventLoop]:
+        """The event loop the router runs on, or None (e.g. local testing)."""
+        return getattr(self, "_asyncio_loop", None)
+
     @abstractmethod
     def running_replicas_populated(self) -> bool:
         pass
@@ -527,6 +534,15 @@ class Router(ABC):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
         pass
 
     @abstractmethod
@@ -1387,6 +1403,16 @@ class SingletonThreadRouter(Router):
         self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
+        )
+
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
@@ -1503,6 +1529,16 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
         )
 
     def shutdown(self) -> asyncio.Future:
