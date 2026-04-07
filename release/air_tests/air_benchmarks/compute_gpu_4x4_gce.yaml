@@ -4,6 +4,9 @@ zones:
 
 head_node:
     instance_type: n1-standard-64-nvidia-tesla-t4-4
+    resources:
+        CPU: 64
+        GPU: 4
 
 worker_nodes:
     - instance_type: n1-standard-64-nvidia-tesla-t4-4

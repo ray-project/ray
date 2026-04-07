@@ -2,6 +2,9 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 head_node:
     instance_type: g4dn.12xlarge
+    resources:
+        CPU: 48
+        GPU: 4
 
 worker_nodes:
     - instance_type: g4dn.12xlarge
