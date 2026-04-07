@@ -9,6 +9,7 @@ from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
+from ray.llm._internal.common.placement import PlacementGroupConfig
 from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
@@ -232,6 +233,7 @@ class VLLMEngineConfig(BaseModelExtended):
             "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
         ),
     )
+
     placement_group_config: Optional[Dict[str, Any]] = Field(
         default=None,
         description=(
@@ -424,7 +426,19 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
         if self.placement_group_config:
-            # placement_group_config is validated dict; extract bundles
+            # Check if bundle_per_worker is specified inside placement_group_config
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                # Expand bundle_per_worker to num_devices bundles
+                bundles = []
+                for _ in range(self.num_devices):
+                    bundle = bundle_per_worker.copy()
+                    if self.accelerator_type and self.use_gpu:
+                        bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                    bundles.append(bundle)
+                return bundles
+
+            # Otherwise use explicit bundles list
             bundles = []
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
@@ -446,8 +460,14 @@ class VLLMEngineConfig(BaseModelExtended):
         if isinstance(self.use_cpu, bool) and self.use_cpu:
             return False
 
-        # Check placement_group_config bundles for explicit GPU specification
+        # Check placement_group_config for explicit GPU specification
         if self.placement_group_config:
+            # Check bundle_per_worker inside placement_group_config
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                return bundle_per_worker.get("GPU", 0) > 0
+
+            # Check bundles list
             bundles = self.placement_group_config.get("bundles", [])
             if bundles:
                 # If any bundle has GPU > 0, we use GPU
@@ -517,6 +537,15 @@ class VLLMEngineConfig(BaseModelExtended):
         if not placement_group_config:
             return None
 
+        # Check bundle_per_worker first
+        bundle_per_worker = placement_group_config.get("bundle_per_worker")
+        if bundle_per_worker:
+            gpu_value = bundle_per_worker.get("GPU", 0)
+            if 0 < gpu_value < 1:
+                return gpu_value
+            return None
+
+        # Fall back to bundles list
         bundles = placement_group_config.get("bundles") or []
 
         for bundle in bundles:

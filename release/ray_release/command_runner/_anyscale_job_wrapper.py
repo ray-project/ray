@@ -111,20 +111,20 @@ def run_storage_cp(source: str, target: str):
         return False
 
 
-def collect_metrics(time_taken: float) -> bool:
+def collect_metrics(start_time: float, time_taken: float) -> bool:
     if "METRICS_OUTPUT_JSON" not in os.environ:
         return False
 
     # Timeout is the time the test took divided by 200
     # (~7 minutes for a 24h test) but no less than 90s
     # and no more than 900s
-    metrics_timeout = max(90, min((time.time() - time_taken) / 200, 900))
+    metrics_timeout = max(90, min(time_taken / 200, 900))
     try:
         subprocess.run(
             [
                 "python",
                 "prometheus_metrics.py",
-                str(time_taken),
+                str(start_time),
                 "--path",
                 os.environ["METRICS_OUTPUT_JSON"],
             ],
@@ -233,6 +233,65 @@ def run_prepare_commands(
     return prepare_passed, prepare_return_codes, prepare_time_taken
 
 
+def run_oom_check():
+    return_code = 0
+    try:
+        metrics_path = os.environ.get("METRICS_OUTPUT_JSON", None)
+        if metrics_path and Path(metrics_path).exists():
+            with open(metrics_path, "r") as f:
+                metrics = json.load(f)
+            oom_kills = metrics.get("worker_oom_kills")
+            if oom_kills is None:
+                logger.error("Could not retrieve 'worker_oom_kills' from metrics file")
+                return_code = 1
+            elif oom_kills:
+                logger.error(
+                    "Test failed: OOM worker kills detected. " f"Details: {oom_kills}"
+                )
+                return_code = 1
+            unexpected_failures = metrics.get("unexpected_worker_failures")
+            if unexpected_failures is None:
+                logger.error(
+                    "Could not retrieve 'unexpected_worker_failures' from metrics file"
+                )
+                return_code = 1
+            elif unexpected_failures:
+                logger.error(
+                    "Test failed: Unexpected worker failures detected "
+                    "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+                    f"Details: {unexpected_failures}"
+                )
+                return_code = 1
+        else:
+            logger.error(
+                f"RAYTEST_FAIL_ON_WORKER_OOM is set to 1, but no metrics file found at path: {metrics_path}"
+            )
+            return_code = 1
+    except (OSError, json.JSONDecodeError, AttributeError) as e:
+        logger.exception(f"Error during OOM check: {e}")
+        return_code = 1
+    return return_code
+
+
+def run_dead_node_check():
+    # Connect to the cluster and check for dead nodes
+    import ray
+
+    return_code = 0
+    try:
+        ray.init(address="auto")  # Connect to the local cluster
+        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        if dead_nodes:
+            logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
+            return_code = 1
+    except Exception as e:
+        logger.error(f"Error during dead node check: {e}")
+        return_code = 1
+    finally:
+        ray.shutdown()  # Disconnect from the cluster
+    return return_code
+
+
 def main(
     test_workload: str,
     test_workload_timeout: float,
@@ -281,6 +340,7 @@ def main(
     if prepare_passed:
         logger.info("### Starting entrypoint ###")
         command_start_time = time.monotonic()
+        workload_start_unix_time = time.time()
         return_code = run_bash_command(test_workload, test_workload_timeout)
         workload_time_taken = time.monotonic() - command_start_time
 
@@ -297,18 +357,31 @@ def main(
                 f"Time taken: {workload_time_taken}"
             )
 
+        test_fail_on_dead_nodes = os.environ.get("RAYTEST_FAIL_ON_DEAD_NODES") == "1"
+
+        if return_code == 0 and test_fail_on_dead_nodes:
+            return_code = run_dead_node_check()
+
         # Upload results.json
         uploaded_results = run_storage_cp(
             os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
         )
 
         # Collect prometheus metrics
-        collected_metrics = collect_metrics(workload_time_taken)
+        collected_metrics = collect_metrics(
+            workload_start_unix_time, workload_time_taken
+        )
         if collected_metrics:
             # Upload prometheus metrics
             uploaded_metrics = run_storage_cp(
                 os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
+
+        test_fail_on_worker_oom = os.environ.get("RAYTEST_FAIL_ON_WORKER_OOM") == "1"
+
+        # Fail if any OOM kills occurred
+        if return_code == 0 and test_fail_on_worker_oom:
+            return_code = run_oom_check()
 
         uploaded_artifact = run_storage_cp(
             artifact_path,
