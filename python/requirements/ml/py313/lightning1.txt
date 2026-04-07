@@ -1,2 +1,2 @@
 pytorch-lightning==1.8.6
-numpy<2.0
+numpy==1.26.4
