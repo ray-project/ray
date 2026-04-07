@@ -37,18 +37,17 @@ class GcsHealthCheckServiceTest : public ::testing::Test {
   void SetUp() override {
     // Create a GrpcServer with the default gRPC health check disabled,
     // mimicking how GcsServer is constructed.
-    server_ = std::make_unique<rpc::GrpcServer>(
-        "TestHealthCheckServer",
-        /*port=*/0,
-        /*listen_to_localhost_only=*/true,
-        /*num_threads=*/1,
-        /*keepalive_time_ms=*/7200000,
-        /*auth_token=*/nullptr,
-        /*enable_default_health_check_service=*/false);
+    server_ =
+        std::make_unique<rpc::GrpcServer>("TestHealthCheckServer",
+                                          /*port=*/0,
+                                          /*listen_to_localhost_only=*/true,
+                                          /*num_threads=*/1,
+                                          /*keepalive_time_ms=*/7200000,
+                                          /*auth_token=*/nullptr,
+                                          /*enable_default_health_check_service=*/false);
 
     // Register the custom health check service on our io_context.
-    server_->RegisterService(
-        std::make_unique<rpc::HealthCheckGrpcService>(io_context_));
+    server_->RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(io_context_));
     server_->Run();
 
     // Start running the io_context in a background thread.
@@ -59,9 +58,8 @@ class GcsHealthCheckServiceTest : public ::testing::Test {
     });
 
     // Create a channel to the server.
-    auto channel = grpc::CreateChannel(
-        "localhost:" + std::to_string(server_->GetPort()),
-        grpc::InsecureChannelCredentials());
+    auto channel = grpc::CreateChannel("localhost:" + std::to_string(server_->GetPort()),
+                                       grpc::InsecureChannelCredentials());
     stub_ = grpc::health::v1::Health::NewStub(channel);
   }
 
@@ -81,8 +79,7 @@ class GcsHealthCheckServiceTest : public ::testing::Test {
     context.set_deadline(std::chrono::system_clock::now() + timeout);
     auto status = stub_->Check(&context, request, &response);
     if (status.ok()) {
-      EXPECT_EQ(response.status(),
-                grpc::health::v1::HealthCheckResponse::SERVING);
+      EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
     }
     return status;
   }
