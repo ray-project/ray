@@ -1057,9 +1057,12 @@ def _iter_batches_with_nested_fallback(
     safe = _get_safe_batch_size_for_nested_types(pf)
     fallback_batch_size = min(batch_size, safe) if batch_size else safe
 
-    # Use fragment.subset(filter=) for row-group-level predicate
-    # pushdown via Parquet statistics (metadata only, no data read).
+    # Respect the fragment's existing row-group subset (e.g. when the
+    # fragment was created via fragment.subset(row_group_ids=[...])).
+    # Then narrow further with filter-based predicate pushdown.
     iter_kwargs: Dict[str, Any] = {}
+    if fragment.row_groups is not None:
+        iter_kwargs["row_groups"] = [rg.id for rg in fragment.row_groups]
     if filter_expr is not None:
         pruned = fragment.subset(filter=filter_expr)
         if pruned.row_groups is not None:
