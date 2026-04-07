@@ -135,7 +135,7 @@ a maximum concurrency of 300:
 ### Total Output Throughput (Tokens Per Second) - Higher is better
 
 | Configuration | 2 Replicas | 4 Replicas |
-| :--- | :--- | :--- | :--- |
+| --- | --- | --- |
 | Non-Optimized | 355 | 573 |
 | **Optimized** | 358 | 756 |
 | **Optimization Gain** | **+1%** | **+32%** |
@@ -143,7 +143,7 @@ a maximum concurrency of 300:
 ### Median Time to First Token (ms) - Lower is better
 
 | Configuration | 2 Replicas | 4 Replicas |
-| :--- | :--- | :--- | :--- |
+| --- | --- | --- |
 | Non-Optimized | 2710 | 3721 |
 | **Optimized** | 1143 | 1225 |
 | **Latency Reduction** | **-58%** | **-67%** |
