@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <fstream>
 #include <future>
 #include <memory>
 #include <string>
@@ -2904,6 +2905,23 @@ Status CoreWorker::ExecuteTask(
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
+  // --- karticam: memory instrumentation around UDF execution ---
+  auto read_rss_mb = []() -> double {
+#ifdef __linux__
+    std::ifstream statm("/proc/self/statm");
+    if (statm.is_open()) {
+      long pages = 0;
+      statm >> pages;  // first field = total VM (skip)
+      statm >> pages;  // second field = RSS in pages
+      return pages * sysconf(_SC_PAGESIZE) / 1e6;
+    }
+#endif
+    return -1.0;
+  };
+  double rss_before = read_rss_mb();
+  RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+      << "(karticam) [MEM-BEFORE-UDF] rss_mb=" << rss_before;
+
   Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2929,6 +2947,11 @@ Status CoreWorker::ExecuteTask(
       /*generator_backpressure_num_objects=*/
       task_spec.GeneratorBackpressureNumObjects(),
       /*tensor_transport=*/task_spec.TensorTransport());
+
+  double rss_after = read_rss_mb();
+  RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+      << "(karticam) [MEM-AFTER-UDF] rss_mb=" << rss_after
+      << " delta_mb=" << (rss_after - rss_before);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to

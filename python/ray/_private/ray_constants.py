@@ -271,7 +271,7 @@ MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 # Enable log deduplication.
-RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", False)
 
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
