@@ -13,7 +13,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
 )
@@ -798,10 +797,11 @@ class _ActorPool(AutoscalingActorPool):
             ActorHandle, _ActorRank
         ] = heapdict()
 
-        # ACTIVE node -> ALIVE actors.
-        self._alive_node_to_actor_map: DefaultDict[
-            NodeIdStr, Set[ActorHandle]
-        ] = defaultdict(set)
+        # ACTIVE node -> per-node heap of ALIVE actors ranked by num_tasks_in_flight.
+        # Peek gives the least-busy actor on each node in O(1).
+        self._alive_node_to_actor_heap: DefaultDict[
+            NodeIdStr, heapdict[ActorHandle, _ActorRank]
+        ] = defaultdict(heapdict)
 
     @property
     def map_worker_cls_name(self) -> str:
@@ -876,7 +876,7 @@ class _ActorPool(AutoscalingActorPool):
 
     @override
     def refresh_actor_state(self):
-        self._alive_node_to_actor_map.clear()
+        self._alive_node_to_actor_heap.clear()
         for actor in self._running_actors:
             self._update_running_actor_state(actor)
 
@@ -890,9 +890,11 @@ class _ActorPool(AutoscalingActorPool):
             self._num_active_actors += 1
 
         assert actor in self._alive_actors_to_in_flight_tasks_heap
-        self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
-            state.num_tasks_in_flight
-        )
+        rank = _ActorRank(state.num_tasks_in_flight)
+        self._alive_actors_to_in_flight_tasks_heap[actor] = rank
+        node_heap = self._alive_node_to_actor_heap.get(state.actor_location)
+        if node_heap is not None and actor in node_heap:
+            node_heap[actor] = rank
 
     @override
     def get_actor_location(self, actor: ActorHandle) -> NodeIdStr:
@@ -942,7 +944,7 @@ class _ActorPool(AutoscalingActorPool):
         )
         # NOTE: We assume any actor that goes from pending to running is ALIVE
         self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(0)
-        self._alive_node_to_actor_map[actor_location].add(actor)
+        self._alive_node_to_actor_heap[actor_location][actor] = _ActorRank(0)
         return actor
 
     @override
@@ -1009,9 +1011,11 @@ class _ActorPool(AutoscalingActorPool):
             self._num_active_actors -= 1
 
         if actor in self._alive_actors_to_in_flight_tasks_heap:
-            self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
-                state.num_tasks_in_flight
-            )
+            rank = _ActorRank(state.num_tasks_in_flight)
+            self._alive_actors_to_in_flight_tasks_heap[actor] = rank
+            node_heap = self._alive_node_to_actor_heap.get(state.actor_location)
+            if node_heap is not None and actor in node_heap:
+                node_heap[actor] = rank
 
     # === End of overriding methods of AutoscalingActorPool ===
 
@@ -1093,14 +1097,18 @@ class _ActorPool(AutoscalingActorPool):
         """
         if not (state.is_restarting or died):
             node_id = state.actor_location
-            self._alive_node_to_actor_map[node_id].add(actor)
+            rank = _ActorRank(state.num_tasks_in_flight)
+            self._alive_node_to_actor_heap[node_id][actor] = rank
             if actor not in self._alive_actors_to_in_flight_tasks_heap:
                 assert state.num_tasks_in_flight <= self.max_tasks_in_flight_per_actor()
-                self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(
-                    state.num_tasks_in_flight
-                )
-        elif actor in self._alive_actors_to_in_flight_tasks_heap:
-            del self._alive_actors_to_in_flight_tasks_heap[actor]
+                self._alive_actors_to_in_flight_tasks_heap[actor] = rank
+        else:
+            if actor in self._alive_actors_to_in_flight_tasks_heap:
+                del self._alive_actors_to_in_flight_tasks_heap[actor]
+            node_id = state.actor_location
+            node_heap = self._alive_node_to_actor_heap.get(node_id)
+            if node_heap is not None and actor in node_heap:
+                del node_heap[actor]
 
     def _add_pending_actor(self, actor: ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -1207,19 +1215,18 @@ class _ActorPool(AutoscalingActorPool):
             del self._alive_actors_to_in_flight_tasks_heap[actor]
 
         node_id = actor_state.actor_location
-        if node_id in self._alive_node_to_actor_map:
-            self._alive_node_to_actor_map[node_id].discard(actor)
+        node_heap = self._alive_node_to_actor_heap.get(node_id)
+        if node_heap is not None and actor in node_heap:
+            del node_heap[actor]
 
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
 
     def _find_actor_with_locality(self, bundle: RefBundle) -> Optional[ActorHandle]:
-        """Exhaustively search all alive actors on preferred nodes for the best match.
+        """Find the least-busy alive actor on the preferred node with the most data.
 
-        Iterates over every node where the bundle's data resides and every alive
-        actor on those nodes, collecting candidates that still have task capacity.
-        Returns the best candidate ranked by (locality, busyness), or None if no
-        actor on a preferred node has capacity.
+        Preferred nodes are visited in descending order of bytes on-node.
+        For each node, the per-node heap gives the least-busy actor in O(1).
 
         Args:
             bundle: The bundle to find an actor for.
@@ -1231,29 +1238,16 @@ class _ActorPool(AutoscalingActorPool):
         if not preferred_locs:
             return None
 
-        # Scan every alive actor across all preferred nodes (exhaustive search).
-        # We collect all candidates rather than short-circuiting so we can pick
-        # the globally best (locality, busyness) pair.
-        actor_ranks = []
+        max_tasks = self.max_tasks_in_flight_per_actor()
 
-        # TODO(Justin): This can optimized further to node_id -> heap[actor, num_tasks_in_flight]
-        # 1. Get the node with the most bytes the bundle has
-        # 2. Pick the best actor (least num_tasks_in_flight) on that node
-        for node_id, total_bytes in preferred_locs.items():
-            if node_id not in self._alive_node_to_actor_map:
+        for node_id, _total_bytes in sorted(
+            preferred_locs.items(), key=lambda item: (-item[1], item[0])
+        ):
+            node_heap = self._alive_node_to_actor_heap.get(node_id)
+            if not node_heap:
                 continue
-            for actor in self._alive_node_to_actor_map[node_id]:
-                num_tasks_in_flight = self._running_actors[actor].num_tasks_in_flight
-                if num_tasks_in_flight >= self.max_tasks_in_flight_per_actor():
-                    continue
-                # Negate total_bytes so that more data on-node = lower rank = preferred.
-                locality_rank = -total_bytes
-                busyness_rank = num_tasks_in_flight
-                actor_ranks.append((actor, locality_rank, busyness_rank))
+            actor, rank = node_heap.peekitem()
+            if rank < max_tasks:
+                return actor
 
-        if not actor_ranks:
-            return None
-
-        # Pick the best candidate: prefer highest locality (most data on-node),
-        # breaking ties by fewest tasks in flight.
-        return min(actor_ranks, key=lambda x: (x[1], x[2]))[0]
+        return None
