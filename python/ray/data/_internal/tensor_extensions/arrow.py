@@ -363,6 +363,7 @@ def _convert_to_pyarrow_native_array(
     """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
     Arrow's natively supported types (ie no custom extension types)"""
 
+    pa_type = None
     try:
         # NOTE: Python's `datetime` only supports precision up to us and could
         #       inadvertently lose precision when handling Pandas `Timestamp` type.
