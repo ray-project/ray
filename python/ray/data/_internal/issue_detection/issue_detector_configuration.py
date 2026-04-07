@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 from typing import List, Type
 
 from ray.data._internal.issue_detection.detectors import (
-    HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
     HashShuffleAggregatorIssueDetector,
     HashShuffleAggregatorIssueDetectorConfig,
