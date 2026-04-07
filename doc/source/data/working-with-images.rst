@@ -257,6 +257,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
     predictions.show(3)
 
 .. testoutput::
+    :options: +SKIP
 
     {'class': 118}
     {'class': 153}

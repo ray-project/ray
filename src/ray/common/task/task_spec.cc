@@ -568,6 +568,16 @@ std::string TaskSpecification::DebugString() const {
     }
   }
 
+  stream << ", dependencies={";
+  const auto dependencies = GetDependencyIds();
+  for (size_t i = 0; i < dependencies.size(); ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << dependencies[i];
+  }
+  stream << "}";
+
   return stream.str();
 }
 
