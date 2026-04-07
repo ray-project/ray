@@ -1107,11 +1107,13 @@ def _iter_batches_with_nested_fallback(
         _align_struct_fields,
     )
 
-    # Build a sub-schema covering only the columns we actually read,
-    # so schema alignment doesn't pad with unneeded null columns.
-    if schema is not None and read_columns is not None:
+    # Build a sub-schema covering only the output columns, so schema
+    # alignment doesn't pad with unneeded null columns.  This is scoped
+    # to `columns` (not `read_columns`) because filter-referenced columns
+    # may not appear in schema — they must survive until after filtering.
+    if schema is not None and columns is not None:
         align_schema = pa.schema(
-            [schema.field(c) for c in read_columns if schema.get_field_index(c) != -1]
+            [schema.field(c) for c in columns if schema.get_field_index(c) != -1]
         )
     else:
         align_schema = schema
@@ -1124,6 +1126,17 @@ def _iter_batches_with_nested_fallback(
     ):
         table = pa.Table.from_batches([batch])
 
+        # Row-level filter runs on the physical schema before alignment
+        # so that filter-referenced columns outside the output projection
+        # (and possibly outside the target schema) are still present.
+        if filter_expr is not None:
+            table = table.filter(filter_expr)
+
+        # Project down to the requested columns, dropping any
+        # filter-only columns before the (potentially expensive) align.
+        if columns is not None:
+            table = table.select(columns)
+
         # pq.ParquetFile.iter_batches() doesn't accept a schema arg, so
         # batches come back with the file's physical schema.  Align to the
         # unified dataset schema to match the normal (scanner) path which
@@ -1131,15 +1144,6 @@ def _iter_batches_with_nested_fallback(
         if align_schema is not None:
             table = _align_struct_fields([table], align_schema)[0]
             table = table.cast(align_schema)
-
-        # Row-level filter still needed since row-group pruning only
-        # skips entire row groups that can't match.
-        if filter_expr is not None:
-            table = table.filter(filter_expr)
-
-        # Project down to the requested columns.
-        if columns is not None:
-            table = table.select(columns)
 
         yield from table.to_batches()
 
