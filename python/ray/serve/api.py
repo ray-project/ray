@@ -193,8 +193,7 @@ def get_deployment_actor(actor_name: str):
             deployment_actors list).
 
     Returns:
-        A Ray ``ActorHandle`` to the live actor registered under the deterministic
-        name Serve uses for this deployment, app, and replica ``code_version``.
+        Ray ActorHandle to the deployment-scoped actor.
 
     Raises:
         RayServeException: If not called from within a replica, or if the
