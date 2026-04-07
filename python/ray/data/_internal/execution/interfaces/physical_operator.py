@@ -419,6 +419,7 @@ class PhysicalOperator(Operator):
         self._logical_operators: List[LogicalOperator] = []
         self._data_context = data_context
         self._id = str(uuid.uuid4())
+        self._logged_has_completed = False
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
 
@@ -594,12 +595,25 @@ class PhysicalOperator(Operator):
         # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
-        return (
+        completed = (
             self.has_execution_finished()
             and internal_output_queue_num_blocks == 0
             # TODO following check is redundant; remove
             and not self.has_next()
         )
+        if completed and not self._logged_has_completed:
+            logger.warning(
+                "RayDataActorPoolDebug %s",
+                {
+                    "event": "operator_has_completed",
+                    "operator_id": self.id,
+                    "operator_name": self.name,
+                    "num_active_tasks": self.num_active_tasks(),
+                    "inputs_complete": self._inputs_complete,
+                },
+            )
+            self._logged_has_completed = True
+        return completed
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -825,6 +839,15 @@ class PhysicalOperator(Operator):
 
         # Mark operator as shut down
         self._shutdown = True
+        logger.warning(
+            "RayDataActorPoolDebug %s",
+            {
+                "event": "physical_operator_shutdown",
+                "operator_id": self.id,
+                "operator_name": self.name,
+                "force": force,
+            },
+        )
         # Time shutdown sequence duration
         with timer.timer():
             self._do_shutdown(force)

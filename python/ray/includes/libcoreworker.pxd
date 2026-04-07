@@ -125,6 +125,7 @@ cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" no
         int32_t num_actors
         size_t backlog_size
         int32_t total_in_flight
+        int32_t waiting_for_actor_retries
 
     cdef cppclass CActorPoolManager "ray::core::ActorPoolManager":
         CActorPoolID RegisterPool(

@@ -4968,6 +4968,7 @@ cdef class CoreWorker:
             "num_actors": c_stats.num_actors,
             "backlog_size": c_stats.backlog_size,
             "total_in_flight": c_stats.total_in_flight,
+            "waiting_for_actor_retries": c_stats.waiting_for_actor_retries,
         }
 
     def has_pool(self, ActorPoolID pool_id):

@@ -102,8 +102,8 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
   pools_[pool_id] = std::move(pool_info);
   work_queues_[pool_id] = std::move(work_queue);
 
-  RAY_LOG(INFO) << "Registered actor pool " << pool_id << " with "
-                << initial_actors.size() << " actors";
+  RAY_LOG(INFO) << "ActorPoolDebug register-pool "
+                << PoolStateDebugString(pool_id, pools_[pool_id], /*backlog_size=*/0);
 
   return pool_id;
 }
@@ -125,7 +125,7 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
   CleanupTrackedWorkItemsForPool(pool_id);
   pools_.erase(it);
 
-  RAY_LOG(INFO) << "Unregistered actor pool " << pool_id;
+  RAY_LOG(INFO) << "ActorPoolDebug unregister-pool pool_id=" << pool_id;
 }
 
 void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
@@ -152,7 +152,12 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
       .num_tasks_in_flight = 0, .location = location, .is_alive = true};
   actor_to_pool_[actor_id] = pool_id;
 
-  RAY_LOG(DEBUG) << "Added actor " << actor_id << " to pool " << pool_id;
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug add-actor actor_id=" << actor_id
+                  << " location=" << location << " "
+                  << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
+  }
 
   DrainWorkQueue(pool_id);
 }
@@ -176,7 +181,11 @@ void ActorPoolManager::RemoveActorFromPool(const ActorPoolID &pool_id,
   pool_info.actor_states.erase(actor_id);
   actor_to_pool_.erase(actor_id);
 
-  RAY_LOG(DEBUG) << "Removed actor " << actor_id << " from pool " << pool_id;
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug remove-actor actor_id=" << actor_id << " "
+                  << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
+  }
 }
 
 std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
@@ -269,6 +278,8 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
     total_in_flight += state.num_tasks_in_flight;
   }
   stats.total_in_flight = total_in_flight;
+  stats.waiting_for_actor_retries =
+      static_cast<int32_t>(pool_info.waiting_for_actor_retry_task_ids.size());
 
   return stats;
 }
@@ -345,6 +356,43 @@ int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
   }
 
   return state_it->second.num_tasks_in_flight;
+}
+
+void ActorPoolManager::MarkRetryWaitingForActor(const ActorPoolID &pool_id,
+                                                const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return;
+  }
+
+  pool_it->second.waiting_for_actor_retry_task_ids.insert(task_id);
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug retry-waiting-for-actor task_id=" << task_id << " "
+                  << PoolStateDebugString(
+                         pool_id, pool_it->second, wq_it->second->Size());
+  }
+}
+
+void ActorPoolManager::ClearRetryWaitingForActor(const ActorPoolID &pool_id,
+                                                 const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return;
+  }
+
+  pool_it->second.waiting_for_actor_retry_task_ids.erase(task_id);
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it != work_queues_.end()) {
+    RAY_LOG(INFO) << "ActorPoolDebug retry-no-longer-waiting-for-actor task_id="
+                  << task_id << " "
+                  << PoolStateDebugString(
+                         pool_id, pool_it->second, wq_it->second->Size());
+  }
 }
 
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
@@ -517,9 +565,7 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
 
   auto &pool_info = pool_it->second;
 
-  // Prefer alive actors with available capacity. For retries we can require
-  // available capacity to avoid concentrating a burst of retries onto a single
-  // surviving actor.
+  // Prefer alive actors with available capacity.
   std::vector<ActorID> candidates;
   std::vector<ActorID> alive_actors;
   for (const auto &actor_id : pool_info.actor_ids) {
@@ -544,8 +590,7 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
   }
 
   // Fall back to all alive actors when normal submissions have exhausted the
-  // configured per-actor limit. Retries use require_available_capacity=true so
-  // they will wait for real capacity instead of over-subscribing a healthy actor.
+  // configured per-actor limit.
   if (candidates.empty() && !require_available_capacity) {
     // If exclusion filtered out all candidates, fall back to the full
     // alive set (including the excluded actor).  This handles single-actor
@@ -554,7 +599,11 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
   }
 
   if (candidates.empty()) {
-    RAY_LOG(DEBUG) << "No alive actors in pool " << pool_id;
+    RAY_LOG(INFO) << "ActorPoolDebug select-actor-none pool_id=" << pool_id
+                  << " exclude_actor_id=" << exclude_actor_id
+                  << " require_available_capacity=" << require_available_capacity
+                  << " arg_count=" << arg_ids.size() << " "
+                  << PoolStateDebugString(pool_id, pool_info, /*backlog_size=*/0);
     return ActorID::Nil();
   }
 

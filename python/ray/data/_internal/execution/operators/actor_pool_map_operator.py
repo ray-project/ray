@@ -221,6 +221,7 @@ class ActorPoolMapOperator(MapOperator):
                 },
                 actor_options=self._ray_remote_args,
                 operator_id=self.id,
+                operator_name=self.name,
                 _enable_actor_pool_on_exit_hook=getattr(
                     self.data_context, "_enable_actor_pool_on_exit_hook", False
                 ),
@@ -406,11 +407,39 @@ class ActorPoolMapOperator(MapOperator):
         to running state.
         """
         pending_refs = self._actor_pool.get_pending_actor_refs()
+        logger.warning(
+            "RayDataActorPoolDebug %s",
+            {
+                "event": "register_pending_actor_callbacks",
+                "operator_id": self.id,
+                "operator_name": self.name,
+                "pending_ref_count": len(pending_refs),
+                "pending_refs": [ref.hex() for ref in pending_refs],
+            },
+        )
         for res_ref in pending_refs:
 
             def _task_done_callback(ref):
+                logger.warning(
+                    "RayDataActorPoolDebug %s",
+                    {
+                        "event": "pending_actor_callback_fired",
+                        "operator_id": self.id,
+                        "operator_name": self.name,
+                        "ready_ref": ref.hex(),
+                    },
+                )
                 has_actor = self._actor_pool.pending_to_running(ref)
                 if not has_actor:
+                    logger.warning(
+                        "RayDataActorPoolDebug %s",
+                        {
+                            "event": "pending_actor_callback_no_actor",
+                            "operator_id": self.id,
+                            "operator_name": self.name,
+                            "ready_ref": ref.hex(),
+                        },
+                    )
                     return
 
             self._submit_metadata_task(
@@ -544,6 +573,31 @@ class ActorPoolMapOperator(MapOperator):
             self._submit_data_task(gen, bundle, _task_done_callback)
             num_submitted += 1
 
+            pool_running = self._actor_pool.num_running_actors()
+            max_in_flight = self._actor_pool.max_tasks_in_flight_per_actor()
+            nominal_capacity = pool_running * max_in_flight
+            active_data_tasks = len(self._data_tasks)
+            pool_in_flight = self._actor_pool.num_tasks_in_flight()
+            if nominal_capacity > 0 and (
+                active_data_tasks > nominal_capacity
+                or pool_in_flight > nominal_capacity
+            ):
+                logger.warning(
+                    "RayDataActorPoolDebug %s",
+                    {
+                        "event": "schedule_via_pool_capacity_mismatch",
+                        "operator_id": self.id,
+                        "operator_name": self.name,
+                        "active_data_tasks": active_data_tasks,
+                        "pool_tasks_in_flight": pool_in_flight,
+                        "pool_running_actors": pool_running,
+                        "max_tasks_in_flight_per_actor": max_in_flight,
+                        "nominal_capacity": nominal_capacity,
+                        "bundle_queue_blocks": self._bundle_queue.num_blocks(),
+                        "bundle_queue_bundles": self._bundle_queue.num_bundles(),
+                    },
+                )
+
         return num_submitted
 
     def _refresh_actor_cls(self):
@@ -585,6 +639,16 @@ class ActorPoolMapOperator(MapOperator):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
         super().all_inputs_done()
+        logger.warning(
+            "RayDataActorPoolDebug %s",
+            {
+                "event": "operator_all_inputs_done",
+                "operator_id": self.id,
+                "operator_name": self.name,
+                "active_tasks": self.num_active_tasks(),
+                "actor_info": self.get_actor_info()._asdict(),
+            },
+        )
 
         if self._metrics.num_inputs_received < self._actor_pool.min_size():
             warnings.warn(
@@ -610,10 +674,30 @@ class ActorPoolMapOperator(MapOperator):
             self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def _do_shutdown(self, force: bool = False):
+        logger.warning(
+            "RayDataActorPoolDebug %s",
+            {
+                "event": "operator_shutdown_begin",
+                "operator_id": self.id,
+                "operator_name": self.name,
+                "force": force,
+                "active_tasks": self.num_active_tasks(),
+                "actor_info": self.get_actor_info()._asdict(),
+            },
+        )
         self._actor_pool.shutdown(force=force)
         # NOTE: It's critical for Actor Pool to release actors before calling into
         #       the base method that will attempt to cancel and join pending.
         super()._do_shutdown(force)
+        logger.warning(
+            "RayDataActorPoolDebug %s",
+            {
+                "event": "operator_shutdown_end",
+                "operator_id": self.id,
+                "operator_name": self.name,
+                "force": force,
+            },
+        )
 
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
