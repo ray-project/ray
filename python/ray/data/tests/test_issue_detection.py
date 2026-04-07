@@ -92,7 +92,6 @@ class TestHangingExecutionIssueDetector:
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
-    @pytest.mark.skip(reason="Skipping until hanging issue detection is non-blocking")
     @patch(
         "ray.data._internal.execution.interfaces.op_runtime_metrics.TaskDurationStats"
     )
@@ -113,8 +112,10 @@ class TestHangingExecutionIssueDetector:
         mock_stats.mean.return_value = mocked_mean
         mock_stats.stddev.return_value = mocked_stddev
 
-        # Set a short issue detection interval for testing
+        # Explicitly enable hanging detection for this test
         ctx = DataContext.get_current()
+        if HangingExecutionIssueDetector not in ctx.issue_detectors_config.detectors:
+            ctx.issue_detectors_config.detectors.append(HangingExecutionIssueDetector)
         detector_cfg = ctx.issue_detectors_config.hanging_detector_config
         detector_cfg.detection_time_interval_s = 0.00
 
