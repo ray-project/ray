@@ -587,20 +587,35 @@ class OpenAiIngress(DeploymentProtocol):
     # TokenTracker removed — probing replicas directly for queue length
     # is simpler and uses existing Ray Serve infrastructure.
 
+    async def _start_load_poller(self, replicas):
+        """Background task: poll all replica queue lengths periodically."""
+        import asyncio
+
+        while True:
+            for r in replicas:
+                try:
+                    load = await r.get_queue_len(deadline_s=0.5)
+                    self._di_load_cache[r.replica_id] = load
+                except Exception:
+                    pass
+            await asyncio.sleep(0.05)  # 50ms poll interval
+
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
     ) -> Tuple[str, int, str]:
-        """Pick a replica via P2C with probing and return (host, port, rid).
+        """Pick a replica via P2C with background-polled load and return
+        (host, port, rid).
 
-        Uses power-of-two-choices: pick 2 random replicas, probe their
-        actual queue lengths, route to the lighter one.
+        Uses power-of-two-choices: pick 2 random replicas, compare their
+        cached queue lengths (refreshed every 50ms by background poller),
+        route to the lighter one.
 
-        In the direct-ingress path the response streams directly from the
-        replica through HAProxy to the client, bypassing the ingress.
-        This means the normal done-callback that decrements the P2C cache
-        never fires. We solve this by probing replicas for their actual
-        ``num_ongoing_requests`` on every routing decision.
+        No per-request RPCs — routing decisions use cached load data,
+        keeping the routing path fast and preserving request delivery
+        timing patterns.
         """
+        import asyncio
+
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -619,7 +634,14 @@ class OpenAiIngress(DeploymentProtocol):
         if not direct_ingress_replicas:
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
-        # P2C: pick 2 random candidates (one tier from choose_replicas).
+        # Start background load poller on first call.
+        if not hasattr(self, "_di_load_cache"):
+            self._di_load_cache = {}
+            asyncio.get_event_loop().create_task(
+                self._start_load_poller(direct_ingress_replicas)
+            )
+
+        # P2C: pick 2 random candidates.
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
             pending_request=None,
@@ -634,16 +656,11 @@ class OpenAiIngress(DeploymentProtocol):
                 f"P2C candidates have no direct-ingress endpoints for {model_id}"
             )
 
-        # Probe each candidate for its actual queue length.
-        probed: dict = {}
-        for r in candidates:
-            try:
-                probed[r] = await r.get_queue_len(deadline_s=0.5)
-            except Exception:
-                probed[r] = float("inf")
-
-        # Route to the least-loaded candidate.
-        best = min(candidates, key=lambda r: probed.get(r, float("inf")))
+        # Compare using background-polled cache (no per-request RPC).
+        best = min(
+            candidates,
+            key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
+        )
         return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
 
     async def _get_response(
