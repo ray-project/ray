@@ -542,6 +542,13 @@ class ParquetDatasource(Datasource):
             if self._predicate_expr is not None
             else None
         )
+        filter_columns = None
+        if self._predicate_expr is not None:
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                get_column_references,
+            )
+
+            filter_columns = get_column_references(self._predicate_expr)
 
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
@@ -593,6 +600,7 @@ class ParquetDatasource(Datasource):
                         include_paths,
                         partitioning,
                         filter_expr,
+                        filter_columns,
                     ),
                     meta,
                     schema=target_schema,
@@ -847,6 +855,7 @@ def read_fragments(
     include_paths: bool,
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
+    filter_columns: Optional[List[str]] = None,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -869,6 +878,7 @@ def read_fragments(
                 partitioning=partitioning,
                 include_path=include_paths,
                 filter_expr=filter_expr,
+                filter_columns=filter_columns,
                 batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
@@ -1019,6 +1029,7 @@ def _iter_batches_with_nested_fallback(
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
     use_threads: bool = False,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
+    filter_columns: Optional[List[str]] = None,
 ) -> Iterable["pyarrow.RecordBatch"]:
     """Iterate over batches from a fragment, using the fallback reader when
     the fragment has nested column types with row groups exceeding Arrow's
@@ -1049,36 +1060,61 @@ def _iter_batches_with_nested_fallback(
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    logger.warning(
-        "Using pyarrow.parquet row-level batched reader for '%s' due to "
-        "Arrow nested type chunking limitation (ARROW-5030). Consider "
-        "writing Parquet files with smaller row group sizes to avoid this.",
-        fragment.path,
-    )
+    if log_once("parquet_nested_fallback"):
+        logger.warning(
+            "Using pyarrow.parquet row-level batched reader for '%s' due to "
+            "Arrow nested type chunking limitation (ARROW-5030). Consider "
+            "writing Parquet files with smaller row group sizes to avoid this.",
+            fragment.path,
+        )
 
     pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
     safe = _get_safe_batch_size_for_nested_types(pf)
     fallback_batch_size = min(batch_size, safe) if batch_size else safe
 
-    # Respect the fragment's existing row-group subset (e.g. when the
-    # fragment was created via fragment.subset(row_group_ids=[...])).
-    # Then narrow further with filter-based predicate pushdown.
+    # Determine which row groups to read.  fragment.subset(filter=)
+    # already respects the fragment's existing row-group subset, so a
+    # single subset call handles both the original constraint and
+    # filter-based predicate pushdown.
     iter_kwargs: Dict[str, Any] = {}
-    if fragment.row_groups is not None:
-        iter_kwargs["row_groups"] = [rg.id for rg in fragment.row_groups]
+    subset = fragment
     if filter_expr is not None:
-        pruned = fragment.subset(filter=filter_expr)
-        if pruned.row_groups is not None:
-            iter_kwargs["row_groups"] = [rg.id for rg in pruned.row_groups]
+        subset = fragment.subset(filter=filter_expr)
+    if subset.row_groups is not None:
+        iter_kwargs["row_groups"] = [rg.id for rg in subset.row_groups]
 
     # When both columns (projection) and filter_expr are set, the filter
     # may reference columns outside the projection.  PyArrow's scanner
     # handles this internally in the normal path, but pf.iter_batches
-    # does not.  Read all columns so the filter can evaluate, then project
-    # down to the requested columns afterward.
-    read_columns = (
-        None if (filter_expr is not None and columns is not None) else columns
+    # does not.  Read the union of projected and filter-referenced columns
+    # so the filter can evaluate, then project down afterward.
+    if filter_expr is not None and columns is not None:
+        if filter_columns is not None:
+            read_columns = list(dict.fromkeys(columns + filter_columns))
+        else:
+            # filter_columns unknown — must read all columns so the
+            # filter can evaluate against any column it references.
+            logger.debug(
+                "filter_columns not provided; reading all columns from "
+                "'%s' so the filter expression can be evaluated.",
+                fragment.path,
+            )
+            read_columns = None
+    else:
+        read_columns = columns
+
+    from ray.data._internal.arrow_ops.transform_pyarrow import (
+        _align_struct_fields,
     )
+
+    # Build a sub-schema covering only the columns we actually read,
+    # so schema alignment doesn't pad with unneeded null columns.
+    if schema is not None and read_columns is not None:
+        align_schema = pa.schema(
+            [schema.field(c) for c in read_columns if schema.get_field_index(c) != -1]
+        )
+    else:
+        align_schema = schema
 
     for batch in pf.iter_batches(
         batch_size=fallback_batch_size,
@@ -1086,29 +1122,26 @@ def _iter_batches_with_nested_fallback(
         use_threads=use_threads,
         **iter_kwargs,
     ):
+        table = pa.Table.from_batches([batch])
+
         # pq.ParquetFile.iter_batches() doesn't accept a schema arg, so
         # batches come back with the file's physical schema.  Align to the
         # unified dataset schema to match the normal (scanner) path which
         # handles type promotion and missing-column filling automatically.
-        if schema is not None:
-            from ray.data._internal.arrow_ops.transform_pyarrow import (
-                _align_struct_fields,
-            )
-
-            table = pa.Table.from_batches([batch])
-            table = _align_struct_fields([table], schema)[0]
-            table = table.cast(schema)
-            batch = table.to_batches()[0] if table.num_rows > 0 else batch
+        if align_schema is not None:
+            table = _align_struct_fields([table], align_schema)[0]
+            table = table.cast(align_schema)
 
         # Row-level filter still needed since row-group pruning only
         # skips entire row groups that can't match.
         if filter_expr is not None:
-            table = pa.Table.from_batches([batch]).filter(filter_expr)
-            if columns is not None:
-                table = table.select(columns)
-            yield from table.to_batches()
-        else:
-            yield batch
+            table = table.filter(filter_expr)
+
+        # Project down to the requested columns.
+        if columns is not None:
+            table = table.select(columns)
+
+        yield from table.to_batches()
 
 
 def _read_batches_from(
@@ -1120,6 +1153,7 @@ def _read_batches_from(
     partition_columns: Optional[List[str]],
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
+    filter_columns: Optional[List[str]] = None,
     batch_size: Optional[int] = None,
     include_path: bool = False,
     use_threads: bool = False,
@@ -1145,6 +1179,9 @@ def _read_batches_from(
             if filter_expr is None
             else filter_expr & filter_from_kwargs
         )
+        # Cannot determine columns from an opaque PyArrow filter expression,
+        # so invalidate filter_columns to fall back to reading all columns.
+        filter_columns = None
     # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
@@ -1196,6 +1233,7 @@ def _read_batches_from(
                 fragment,
                 columns=data_columns,
                 filter_expr=filter_expr,
+                filter_columns=filter_columns,
                 schema=schema,
                 batch_size=batch_size,
                 use_threads=use_threads,
