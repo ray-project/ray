@@ -7,7 +7,7 @@ across a range(N) -> map_batches(1000 actors) -> consume pipeline.
 import argparse
 
 import ray
-from benchmark import Benchmark, OperatorStatsTracker
+from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
 
 BLOCKS_PER_WORKER: int = 10
 TARGET_BLOCK_SIZE_BYTES: int = 128 * 1024 * 1024  # 128 MiB
@@ -69,6 +69,7 @@ def main(args: argparse.Namespace):
         for bundle in ds.iter_internal_ref_bundles():
             total_rows += bundle.num_rows()
         metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
         assert total_rows == num_rows
         metrics["num_blocks"] = num_blocks
         metrics["num_rows"] = num_rows

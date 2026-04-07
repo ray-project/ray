@@ -12,7 +12,7 @@ from pybase64 import b64decode
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
-from benchmark import Benchmark, OperatorStatsTracker
+from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
 
 
 INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
@@ -75,7 +75,9 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(OUTPUT_PREFIX)
         )
-        return OperatorStatsTracker.collect()
+        metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()

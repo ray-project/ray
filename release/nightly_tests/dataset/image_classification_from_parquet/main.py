@@ -5,7 +5,12 @@ from typing import Dict
 
 import numpy as np
 import torch
-from benchmark import Benchmark, BenchmarkMetric, OperatorStatsTracker
+from benchmark import (
+    Benchmark,
+    BenchmarkMetric,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+)
 from torchvision.models import ResNet50_Weights, resnet50
 
 import ray
@@ -135,6 +140,7 @@ def main(args):
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
     }
     results.update(OperatorStatsTracker.collect())
+    results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results
 
