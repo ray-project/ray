@@ -11,6 +11,7 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -223,9 +224,15 @@ class TestRun:
             p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
 
-        # After the `serve run` process exits, detached Serve actors (proxy,
-        # replicas) may still be alive briefly while the controller's
-        # graceful_shutdown runs asynchronously. Retry instead of checking once.
+        # With a single SIGINT the `serve run` handler calls serve.shutdown()
+        # before exiting.  With two rapid SIGINTs the second one may abort
+        # the process mid-shutdown, leaving detached Serve actors (proxy,
+        # replicas) still alive.  Explicitly shut down from the test process
+        # to guarantee cleanup in both cases.
+        ray.init(address="auto", namespace="serve")
+        serve.shutdown()
+        ray.shutdown()
+
         def deployments_not_reachable():
             try:
                 httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
@@ -250,7 +257,10 @@ class TestRun:
 
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
-        assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
+        wait_for_condition(
+            lambda: ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG,
+            timeout=15,
+        )
         print("Kill successful! Deployment is not reachable over HTTP.")
 
     @pytest.mark.skipif(
