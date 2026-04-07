@@ -1,7 +1,7 @@
 .. _placement-group-lifecycle:
 
-Placement Groups Lifecycle
-==========================
+Placement Group Lifecycle
+=========================
 
 This doc will talk about the lifecycle of a placement group in Ray Core, such as how placement groups are created, the two-phase commit schedule, and execution. First of all, what is a placement group? It is a way to schedule a group of bundles of resources atomically across some number of nodes. For more details it's better to first read up on the outside docs for `Placement Groups <https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html>`__.
 The following code is an example of calling a placement group with internals based on Ray 2.54.
@@ -82,7 +82,7 @@ The RPC response goes back to the CoreWorker **before** scheduling completes. Th
 Scheduling a placement group
 ----------------------------
 
-The placement group follows a simulation + **two-phase commit** protocol: the GCS first simulates where bundles should go, then prepares (locks) resources on each raylet, and finally commits them. The placement group transitions through several states during this process, defined in `PlacementGroupTableData <https://github.com/ray-project/ray/blob/3ee7c9d6df4b098fa74df2d089342621cd7a7d2c/src/ray/protobuf/gcs.proto#L632>`__. Placement groups follow these states as they get scheduled on the placement group granularity. For example, if a node goes down with a bundle of placment group i, then placement group i state goes from created -> rescheduling. However, when it is the placement group's turn to get off the pending queue, it only schedules any unplaced bundles.
+The placement group follows a simulation + **two-phase commit** protocol: the GCS first simulates where bundles should go, then prepares (locks) resources on each raylet, and finally commits them. The placement group transitions through several states during this process, defined in `PlacementGroupTableData <https://github.com/ray-project/ray/blob/3ee7c9d6df4b098fa74df2d089342621cd7a7d2c/src/ray/protobuf/gcs.proto#L632>`__. Placement groups follow these states as they get scheduled on the placement group granularity. For example, if a node goes down with a bundle of placment group i, then placement group i state goes from created -> rescheduling. However, when it is the placement group's turn to get off the pending queue, it only schedules any unplaced bundles. At any state, if remove placement group is invoked and it is deleted from the table, each state will return its current resources and remove the placement group. 
 
 .. code-block:: text
 
