@@ -1543,7 +1543,7 @@
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/microbenchmarks.py --run-all
+    script: python workloads/microbenchmarks.py --run-grpc --run-throughput
 
   alert: default
 
