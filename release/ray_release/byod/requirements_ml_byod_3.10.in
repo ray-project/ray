@@ -8,7 +8,7 @@ cmake
 crc32c
 datasets
 decord
-deepspeed>=0.12.3
+deepspeed==0.17.2
 diffusers==0.12.1
 evaluate
 fairscale
@@ -41,8 +41,8 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-triton==2.3.0
-torch==2.3.0
+triton==3.3.0
+torch==2.7.0
 torchaudio
 torchmetrics
 torchtext

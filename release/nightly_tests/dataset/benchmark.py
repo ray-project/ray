@@ -2,16 +2,96 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Dict, Union
-
-from ray.data.dataset import Dataset
-from typing import Any
-
-
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any, Callable, Dict, Optional, Union
 
-import pyarrow as pa
-import pandas as pd
+import ray
+from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+
+def _get_spilled_bytes_total() -> float:
+    """Get the total number of spilled bytes across the cluster."""
+    memory_info = get_memory_info_reply(
+        get_state_from_address(ray.get_runtime_context().gcs_address)
+    )
+    return memory_info.store_stats.spilled_bytes_total
+
+
+def _bytes_to_gb(b: float) -> float:
+    return round(b / (1024**3), 4)
+
+
+class OperatorStatsTracker(ExecutionCallback):
+    """Records per-operator start time and duration.
+
+    Tracks when each operator first submits a task (start) and when it
+    completes (duration = completion time - start time).
+
+    Uses class-level state because the planner instantiates callback classes
+    with ``cls()``, so callers can't hold a reference to the instance.
+
+    Usage::
+
+        ctx = ray.data.DataContext.get_current()
+        ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
+        # ... run pipeline ...
+
+        metrics = OperatorStatsTracker.collect()
+    """
+
+    _op_start: Dict[str, float] = {}
+    _op_end: Dict[str, Optional[float]] = {}
+    _start_time: float = 0
+
+    def before_execution_starts(self, executor: "StreamingExecutor"):
+        cls = type(self)
+        cls._start_time = executor._start_time
+        cls._op_start.clear()
+        cls._op_end.clear()
+
+    def on_execution_step(self, executor: "StreamingExecutor"):
+        cls = type(self)
+        if executor._topology is None:
+            return
+        for i, op in enumerate(executor._topology):
+            op_key = f"{op.name}_{i}"
+            if op_key not in cls._op_start and op.metrics.num_tasks_submitted > 0:
+                cls._op_start[op_key] = time.perf_counter()
+                cls._op_end[op_key] = None
+            if (
+                op_key in cls._op_start
+                and cls._op_end[op_key] is None
+                and op.has_completed()
+            ):
+                cls._op_end[op_key] = time.perf_counter()
+
+    @classmethod
+    def collect(cls) -> Dict[str, Any]:
+        stats: Dict[str, Dict[str, Any]] = {}
+        now_wall = time.time()
+        now_perf = time.perf_counter()
+        for key, start in cls._op_start.items():
+            end = cls._op_end.get(key)
+            duration_s = round(end - start, 2) if end is not None else None
+            start_dt = cls._make_readable_timestamp(ts=now_wall - (now_perf - start))
+            stats[key] = {
+                "start": start_dt,
+                "duration_s": duration_s,
+            }
+
+        seconds_since_start = now_perf - cls._start_time
+        start_time = cls._make_readable_timestamp(ts=now_wall - seconds_since_start)
+        return {"start_time": start_time, "op_stats": stats}
+
+    @classmethod
+    def _make_readable_timestamp(cls, ts: float) -> str:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
 
 class BenchmarkMetric(Enum):
@@ -19,6 +99,7 @@ class BenchmarkMetric(Enum):
     NUM_ROWS = "num_rows"
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
+    OBJECT_STORE_SPILLED_TOTAL_GB = "object_store_spilled_total_gb"
 
 
 class Benchmark:
@@ -52,85 +133,6 @@ class Benchmark:
     def __init__(self):
         self.result = {}
 
-    def run_materialize_ds(
-        self,
-        name: str,
-        fn: Callable[..., Dataset],
-        *fn_args,
-        **fn_kwargs,
-    ):
-        """Run a benchmark on materializing a Ray Dataset. ``fn`` is expected to
-        return the Dataset which is to be materialized. Runtime and throughput
-        are automatically calculated and reported."""
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        output_ds = fn(*fn_args, **fn_kwargs)
-        output_ds.materialize()
-        duration = time.perf_counter() - start_time
-
-        # TODO(chengsu): Record more metrics based on dataset stats.
-        num_rows = output_ds.count()
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: num_rows,
-            BenchmarkMetric.THROUGHPUT.value: num_rows / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
-    def run_iterate_ds(
-        self,
-        name: str,
-        dataset: Any,
-    ):
-        """Run a benchmark iterating over a dataset. Runtime and throughput
-        are automatically calculated and reported. Supported dataset types are:
-        - Ray Dataset (`ray.data.Dataset`)
-        - iterator over Ray Dataset (`ray.data.iterator._IterableFromIterator` from
-            `.iter_batches()`,`.iter_torch_batches()`, `.iter_tf_batches()`)
-        - Torch DataLoader (`torch.utils.data.DataLoader`)
-        - TensorFlow Dataset (`tf.data.Dataset`)
-        """
-        # Import TF/Torch within this method, as not all benchmarks
-        # will use/install these libraries.
-        import tensorflow as tf
-        import torch
-
-        gc.collect()
-
-        print(f"Running case: {name}")
-        start_time = time.perf_counter()
-        record_count = 0
-        ds_iterator = iter(dataset)
-        for batch in ds_iterator:
-            # Unwrap list to get the underlying batch format.
-            if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                batch = batch[0]
-
-            # Get the batch size for various batch formats.
-            if isinstance(batch, dict):
-                feature_lengths = {k: len(batch[k]) for k in batch}
-                batch_size = max(feature_lengths.values())
-            elif isinstance(batch, (pa.Table, pd.DataFrame)):
-                batch_size = len(batch)
-            elif isinstance(batch, torch.Tensor):
-                batch_size = batch.size(dim=0)
-            elif isinstance(batch, tf.Tensor):
-                batch_size = batch.shape.as_list()[0]
-            else:
-                raise TypeError(f"Unexpected batch type: {type(batch)}")
-            record_count += batch_size
-
-        duration = time.perf_counter() - start_time
-        self.result[name] = {
-            BenchmarkMetric.RUNTIME.value: duration,
-            BenchmarkMetric.NUM_ROWS.value: record_count,
-            BenchmarkMetric.THROUGHPUT.value: record_count / duration,
-        }
-        print(f"Result of case {name}: {self.result[name]}")
-
     def run_fn(
         self,
         name: str,
@@ -151,12 +153,17 @@ class Benchmark:
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
+        start_spilled_bytes = _get_spilled_bytes_total()
         fn_output = fn(*fn_args, **fn_kwargs)
         assert fn_output is None or isinstance(fn_output, dict), fn_output
         duration = time.perf_counter() - start_time
+        spilled_bytes_total = _get_spilled_bytes_total() - start_spilled_bytes
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
+            BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
+                spilled_bytes_total
+            ),
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():

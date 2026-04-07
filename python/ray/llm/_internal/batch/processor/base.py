@@ -289,7 +289,7 @@ class OfflineProcessorConfig(ProcessorConfig):
         return values
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Processor:
     """A processor is composed of a preprocess stage, followed by one or more
     processing stages, and finally a postprocess stage. We use processor as a
