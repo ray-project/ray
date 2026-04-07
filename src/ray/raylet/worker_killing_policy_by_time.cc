@@ -86,8 +86,18 @@ TimeBasedWorkerKillingPolicy::Policy(
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
-  std::vector<std::shared_ptr<WorkerInterface>> sorted_workers(workers.begin(),
-                                                               workers.end());
+  std::vector<std::shared_ptr<WorkerInterface>> sorted_workers;
+  // Filter workers without lease that are too small to be considered for killing.
+  std::copy_if(
+      workers.begin(),
+      workers.end(),
+      std::back_inserter(sorted_workers),
+      [threshold = idle_worker_killing_memory_threshold_bytes_,
+       &process_memory_snapshot](const std::shared_ptr<WorkerInterface> &worker) -> bool {
+        int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+            process_memory_snapshot, worker->GetProcess().GetId());
+        return !worker->GetGrantedLeaseId().IsNil() || used_memory >= threshold;
+      });
 
   // Sort by:
   // 1. Workers without granted lease larger than idle worker killing memory threshold
@@ -97,22 +107,13 @@ TimeBasedWorkerKillingPolicy::Policy(
   std::sort(
       sorted_workers.begin(),
       sorted_workers.end(),
-      [this, process_memory_snapshot](
-          const std::shared_ptr<WorkerInterface> &left,
-          const std::shared_ptr<WorkerInterface> &right) -> bool {
+      [](const std::shared_ptr<WorkerInterface> &left,
+         const std::shared_ptr<WorkerInterface> &right) -> bool {
         if (left->GetGrantedLeaseId().IsNil() && !right->GetGrantedLeaseId().IsNil()) {
-          int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-              process_memory_snapshot, left->GetProcess().GetId());
-          if (used_memory > idle_worker_killing_memory_threshold_bytes_) {
-            return true;
-          }
+          return true;
         }
-        if (!left->GetGrantedLeaseId().IsNil() && right->GetGrantedLeaseId().IsNil()) {
-          int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
-              process_memory_snapshot, right->GetProcess().GetId());
-          if (used_memory > idle_worker_killing_memory_threshold_bytes_) {
-            return false;
-          }
+        if (right->GetGrantedLeaseId().IsNil() && !left->GetGrantedLeaseId().IsNil()) {
+          return false;
         }
 
         if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
