@@ -42,6 +42,12 @@ def _deploy_capacity_queue_app(
             request_router_class=(
                 "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
             ),
+            request_router_kwargs={
+                "capacity_queue_actor_name": "capacity_queue",
+            },
+            initial_backoff_s=0.01,
+            backoff_multiplier=2.0,
+            max_backoff_s=0.1,
         ),
         num_replicas=num_replicas,
         max_ongoing_requests=max_ongoing_requests,
@@ -85,6 +91,12 @@ def _deploy_blocking_capacity_queue_app(
             request_router_class=(
                 "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
             ),
+            request_router_kwargs={
+                "capacity_queue_actor_name": "capacity_queue",
+            },
+            initial_backoff_s=0.01,
+            backoff_multiplier=2.0,
+            max_backoff_s=0.1,
         ),
         num_replicas=num_replicas,
         max_ongoing_requests=max_ongoing_requests,
@@ -323,6 +335,9 @@ class TestCapacityQueueRouterFailures:
                 request_router_class=(
                     "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
+                request_router_kwargs={
+                    "capacity_queue_actor_name": "capacity_queue",
+                },
             ),
             num_replicas=1,
             max_ongoing_requests=3,
@@ -387,6 +402,9 @@ class TestCapacityQueueRouterFailures:
                 request_router_class=(
                     "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
+                request_router_kwargs={
+                    "capacity_queue_actor_name": "capacity_queue",
+                },
             ),
             num_replicas=2,
             max_ongoing_requests=2,
@@ -586,6 +604,9 @@ class TestCapacityQueueRouterFailures:
                 request_router_class=(
                     "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
+                request_router_kwargs={
+                    "capacity_queue_actor_name": "capacity_queue",
+                },
             ),
             num_replicas=1,
             max_ongoing_requests=max_ongoing,
@@ -709,6 +730,9 @@ class TestCapacityQueueRouterFailures:
                 request_router_class=(
                     "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
+                request_router_kwargs={
+                    "capacity_queue_actor_name": "capacity_queue",
+                },
             ),
             num_replicas=1,
             max_ongoing_requests=2,
@@ -789,6 +813,9 @@ class TestCapacityQueueRouterFailures:
                 request_router_class=(
                     "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
                 ),
+                request_router_kwargs={
+                    "capacity_queue_actor_name": "capacity_queue",
+                },
             ),
             num_replicas=1,
             max_ongoing_requests=2,

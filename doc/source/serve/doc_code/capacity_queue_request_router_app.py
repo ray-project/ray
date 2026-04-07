@@ -31,6 +31,15 @@ from ray.serve.experimental.capacity_queue import (
         request_router_class=(
             "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
         ),
+        request_router_kwargs={
+            "capacity_queue_actor_name": "capacity_queue",
+            # Fall back to Pow2 after this many consecutive CapacityQueue faults.
+            "max_fault_retries": 3,
+        },
+        # Backoff between retries when the CapacityQueue is unavailable or capacity is exhausted.
+        initial_backoff_s=0.05,
+        backoff_multiplier=2.0,
+        max_backoff_s=1.0,
     ),
     num_replicas=3,
     max_ongoing_requests=5,

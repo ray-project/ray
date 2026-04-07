@@ -1,6 +1,5 @@
 # flake8: noqa
 
-# __begin_define_capacity_queue_router__
 import asyncio
 import logging
 from typing import Dict, List, Optional
@@ -27,6 +26,9 @@ from ray.serve.request_router import (
 logger = logging.getLogger("ray.serve")
 
 
+DEFAULT_MAX_FAULT_RETRIES = 3
+
+
 class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     """Custom request router that uses a CapacityQueue deployment actor.
 
@@ -42,16 +44,16 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._capacity_queue = None
-        self._capacity_queue_actor_name: str = "capacity_queue"
+        self._capacity_queue_actor_name: Optional[str] = None
         self._capacity_queue_full_name: Optional[str] = None
 
         # Tokens acquired but not yet accepted by the replica (pending the
-        # rejection protocol handshake).  On rejection the token is
+        # rejection protocol handshake). On rejection the token is
         # intentionally leaked so the CQ's in_flight stays elevated, teaching
         # it that the replica is busy.
         self._pending_tokens: Dict[str, str] = {}
 
-        # Tokens whose replica accepted the request.  Released when the
+        # Tokens whose replica accepted the request. Released when the
         # request completes or is cancelled.
         self._acquired_tokens: Dict[str, str] = {}
 
@@ -60,11 +62,20 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self._uid_to_replica_id: Dict[str, ReplicaID] = {}
 
     def initialize_state(self, **kwargs):
-        if "capacity_queue_actor_name" in kwargs:
-            self._capacity_queue_actor_name = kwargs["capacity_queue_actor_name"]
+        if "capacity_queue_actor_name" not in kwargs:
+            raise ValueError(
+                "CapacityQueueRouter requires 'capacity_queue_actor_name' in "
+                "request_router_kwargs."
+            )
+        self._capacity_queue_actor_name = kwargs["capacity_queue_actor_name"]
+        self._max_fault_retries = kwargs.get(
+            "max_fault_retries", DEFAULT_MAX_FAULT_RETRIES
+        )
 
     def _try_discover_capacity_queue(self) -> bool:
         """Try to discover the CapacityQueue deployment actor.
+
+        TODO (jeffreywang): Find a better way to discover the CapacityQueue actor.
 
         Returns True if discovered, False otherwise (does not raise).
         """
@@ -113,11 +124,6 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         except RayActorError:
             self._capacity_queue = None
 
-    # After this many consecutive CQ faults (actor dead, discovery failure,
-    # unexpected errors), fall back to Pow2 for this request.  Capacity
-    # exhaustion (CQ returns None) does NOT count — that's normal backpressure.
-    MAX_FAULT_RETRIES = 3
-
     async def _choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
@@ -152,7 +158,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         try:
             while True:
                 # Too many consecutive faults — fall back to Pow2.
-                if fault_attempt >= self.MAX_FAULT_RETRIES:
+                if fault_attempt >= self._max_fault_retries:
                     return await super()._choose_replica_for_request(
                         pending_request, is_retry=is_retry
                     )
@@ -174,11 +180,20 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         ray.cancel(acquire_ref)
                     raise
                 except RayActorError:
+                    logger.warning(
+                        "Lost connection to CapacityQueue actor: "
+                        f"{self._capacity_queue_full_name}."
+                    )
                     self._capacity_queue = None
                     await self._backoff(fault_attempt)
                     fault_attempt += 1
                     continue
                 except Exception:
+                    logger.warning(
+                        "Unexpected error acquiring from CapacityQueue: "
+                        f"{self._capacity_queue_full_name}.",
+                        exc_info=True,
+                    )
                     await self._backoff(fault_attempt)
                     fault_attempt += 1
                     continue
@@ -210,6 +225,10 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 # a new replica before the local router does. Without waiting,
                 # the CQ fast path creates a hot loop returning the same unknown
                 # replica.
+                logger.debug(
+                    f"CapacityQueue returned unknown replica {acquired_replica_id}; "
+                    "releasing token and waiting for replica update."
+                )
                 self._safe_release(acquired_replica_id)
                 acquired_replica_id = None
 
@@ -282,6 +301,3 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             token = self._pending_tokens.pop(internal_request_id, None)
         if token is not None:
             self._safe_release(token)
-
-
-# __end_define_capacity_queue_router__

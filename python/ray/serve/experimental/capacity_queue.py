@@ -1,6 +1,5 @@
 # flake8: noqa
 
-# __begin_define_capacity_queue__
 import asyncio
 import logging
 import random
@@ -44,23 +43,16 @@ class ReplicaCapacityInfo:
 
 @ray.remote(num_cpus=0)
 class CapacityQueue:
-    """Global capacity manager using least-loaded replica selection.
+    """Centralized capacity manager that routes requests to the least-loaded replica.
 
-    This actor tracks capacity per replica and routes requests to the replica
-    with the fewest in-flight requests. Routers acquire tokens to route requests,
-    and release them when requests complete.
+    A Ray actor that tracks per-replica in-flight counts and hands out capacity
+    tokens. Routers call ``acquire()`` to get a replica_id, route to it, then
+    call ``release()`` when done. If no capacity is available, acquire blocks
+    until ``acquire_timeout_s`` expires (returns None).
 
-    Key properties:
-    - Zero rejections: A token guarantees the replica has capacity
-    - Least-loaded distribution: Requests go to the least loaded replica
-    - Backpressure: If no capacity is available, routers wait
-    - Self-healing after restart: A restarted queue has no knowledge of
-      pre-crash in-flight counts, so it may temporarily over-provision
-      capacity beyond max_ongoing_requests. This is self-healing:
-      (1) replicas enforce their own max_ongoing_requests limit and reject
-      excess requests, causing the router to retry via the queue, and
-      (2) when token_ttl_s is configured, the TTL reaper auto-reclaims
-      tokens that were never released, bounding the convergence window.
+    Replica membership is kept in sync via long-poll subscription to the Serve
+    controller. After a crash/restart, CapacityQueue may temporarily over-provision;
+    this self-heals because replicas enforce their own limits and reject excess.
     """
 
     def __init__(
@@ -128,14 +120,17 @@ class CapacityQueue:
                 while timestamps and (now - timestamps[0]) > self._token_ttl_s:
                     timestamps.popleft()
                     if replica_id in self._replicas:
-                        self._replicas[replica_id].in_flight = max(
-                            0, self._replicas[replica_id].in_flight - 1
-                        )
+                        self._decrement_in_flight(replica_id)
                         reclaimed += 1
             if reclaimed > 0:
                 self._total_ttl_reclaims += reclaimed
                 logger.info(f"TTL reaper reclaimed {reclaimed} expired token(s).")
                 self._fulfill_waiters()
+
+    def _decrement_in_flight(self, replica_id: str) -> None:
+        """Decrement in-flight count for a replica, clamping at zero."""
+        info = self._replicas[replica_id]
+        info.in_flight = max(0, info.in_flight - 1)
 
     def register_replica(self, replica_id: str, capacity: int) -> None:
         """Register a replica with its capacity.
@@ -149,14 +144,23 @@ class CapacityQueue:
             max_capacity=capacity,
             in_flight=0,
         )
+        logger.debug(
+            f"Registered replica {replica_id} with capacity {capacity}. "
+            f"Total replicas: {len(self._replicas)}."
+        )
         self._fulfill_waiters()
 
     def unregister_replica(self, replica_id: str) -> None:
         """Unregister a replica and remove its capacity."""
         if replica_id not in self._replicas:
             return
-        self._replicas.pop(replica_id)
+        info = self._replicas.pop(replica_id)
         self._in_flight_timestamps.pop(replica_id, None)
+        logger.debug(
+            f"Unregistered replica {replica_id} "
+            f"(had {info.in_flight}/{info.max_capacity} in-flight). "
+            f"Total replicas: {len(self._replicas)}."
+        )
 
     def _update_deployment_targets(
         self, deployment_target_info: DeploymentTargetInfo
@@ -254,11 +258,10 @@ class CapacityQueue:
         self._total_releases += 1
 
         if replica_id not in self._replicas:
+            logger.warning(f"Release called for unknown replica {replica_id}.")
             return
 
-        self._replicas[replica_id].in_flight = max(
-            0, self._replicas[replica_id].in_flight - 1
-        )
+        self._decrement_in_flight(replica_id)
         # Remove the oldest timestamp for this replica.
         if replica_id in self._in_flight_timestamps:
             ts = self._in_flight_timestamps[replica_id]
@@ -324,6 +327,3 @@ class CapacityQueue:
             rid: (info.in_flight, info.max_capacity)
             for rid, info in self._replicas.items()
         }
-
-
-# __end_define_capacity_queue__

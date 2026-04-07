@@ -161,7 +161,7 @@ replicas and use it in the routing policy.
 
 
 (capacity-queue-request-router)=
-## Define a centralized capacity queue request router
+## Experimental: Define a centralized capacity queue request router
 
 In the previous examples the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
 replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router.
@@ -172,9 +172,9 @@ before forwarding a request. This way, each token guarantees the target replica 
 
 This example demonstrates how we can implement such routing policy. The example has three pieces:
 
-1. A **`CapacityQueue`** actor that tracks per-replica capacity and hands out
+1. An importable **`CapacityQueue`** actor that tracks per-replica capacity and hands out
    tokens using a least-loaded selection strategy.
-2. A **`CapacityQueueRouter`** custom request router that acquires a token before
+2. An importable **`CapacityQueueRouter`** custom request router that acquires a token before
    routing and releases it when the request completes. Remember that in a real application, we can have multiple replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas. The centralized `CapacityQueue` actor is meant to keep their local information synchronized with reality.
 3. A **deployment** that ties them together using a
    [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for
@@ -182,65 +182,11 @@ This example demonstrates how we can implement such routing policy. The example 
    [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
    for the router.
 
-### Define the CapacityQueue deployment actor
-
-Create a file `capacity_queue_request_router.py` with the `CapacityQueue` class.
-This `@ray.remote` class will be managed by the Serve controller as a
-[deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) — one
-actor instance shared across all replicas of the deployment whose lifecycle is tied to the lifecycle of the deployment (not replicas):
-
-```{literalinclude} /../../python/ray/serve/experimental/capacity_queue.py
-:start-after: __begin_define_capacity_queue__
-:end-before: __end_define_capacity_queue__
-:language: python
-```
-
-The key methods are:
-
-- **`_update_deployment_targets`** — called automatically by the long-poll
-  subscription when the controller adds or removes replicas.  It diffs the current
-  set of registered replicas against the update and registers/unregisters as
-  needed, so the queue always reflects exactly the live replicas.
-- **`acquire`** — returns the `replica_id` of the least-loaded replica with
-  available capacity (fast path), or waits until capacity frees up (slow path).
-  Returns `None` on timeout.
-- **`release`** — called when a request completes (or fails) to return the
-  capacity token.  The `in_flight` counter is clamped to zero so a double-release
-  cannot inflate capacity.
-
-### Define the CapacityQueueRouter
-
-In a separate file, define the custom router.  It overrides
-`_choose_replica_for_request`
-to acquire a token instead of using the default power-of-two-choices algorithm,
-and uses [`on_request_completed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_completed.rst)
-to release the token when the request finishes:
-
-```{literalinclude} /../../python/ray/serve/experimental/capacity_queue_router.py
-:start-after: __begin_define_capacity_queue_router__
-:end-before: __end_define_capacity_queue_router__
-:language: python
-```
-
-Notable details:
-
-- **Direct routing** — overrides `_choose_replica_for_request` to acquire tokens
-  directly from the CQ actor, bypassing the routing-task retry loop entirely.
-  This avoids event-loop starvation under high concurrency.
-- **Fault tolerance** — retries CQ failures with exponential backoff, then
-  falls back to power-of-two-choices if the CQ remains unavailable.
-- **Discovery** — the router finds the deployment actor by listing named actors
-  in the Serve namespace and matching the deployment-actor naming prefix.  The
-  handle is cached after the first lookup.
-- **Cancellation safety** — if a request is cancelled after a token has been
-  acquired but before it is sent, the token is released back to the queue.
-
 (deploy-app-with-capacity-queue-router)=
 ### Deploy an app with the capacity queue router
 
-The deployment wires the pieces together: a `DeploymentActorConfig` for the queue
-(including the deployment name so the queue can subscribe to replica updates) and
-a `RequestRouterConfig` pointing at the custom router:
+The deployment wires the pieces together: a `DeploymentActorConfig` for the capacity queue
+and a `RequestRouterConfig` pointing at the custom router:
 
 ```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
 :start-after: __begin_deploy_app_with_capacity_queue_router__
@@ -251,20 +197,20 @@ a `RequestRouterConfig` pointing at the custom router:
 When the app starts:
 
 1. The Serve controller creates the `CapacityQueue` deployment actor **before**
-   any replicas start.  The queue subscribes to replica updates via long poll.
-2. As the controller starts replicas, it sends deployment-target updates.  The
+   any replicas start. `CapacityQueue` subscribes to replica updates via long poll.
+2. As the controller starts replicas, it sends deployment-target updates. The
    queue's long-poll callback automatically registers each replica with its
-   `max_ongoing_requests` capacity — and unregisters replicas that are removed
+   `max_ongoing_requests` capacity and unregisters replicas that are removed
    during scale-down or crash recovery.
-3. The `CapacityQueueRouter` running in each proxy discovers the deployment actor,
-   acquires a token for every incoming request, and routes to the replica
+3. The `CapacityQueueRouter` running in each proxy discovers the singleton `CapacityQueue`
+   deployment actor, acquires a token for every incoming request, and routes to the replica
    identified by the token.
-4. When the request completes, `on_request_completed` fires and the token is
+4. When the request completes, `CapacityQueueRouter.on_request_completed` fires and the token is
    released back to the queue.
 
 Because the queue is a deployment actor, the controller handles its lifecycle
 automatically — health checks, cleanup on app deletion, and versioning during
-rolling updates are all managed for you.
+rolling updates.
 
 ### Fault tolerance
 
@@ -274,12 +220,14 @@ The `CapacityQueueRouter` handles failures gracefully:
   errors, the router retries with exponential backoff and falls back to
   power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures.
   Requests never raise exceptions due to queue issues.
-- **Capacity exhausted** — when all replicas are at capacity, the queue
-  returns `None`. The router backs off and retries until capacity frees up.
+- **Capacity exhausted** — when all replicas are at capacity, the router
+  backs off and retries until capacity frees up.
 - **Queue restart** — a restarted queue has no knowledge of pre-crash
   in-flight counts and may temporarily over-provision. This self-heals:
-  replicas reject excess requests, and `token_ttl_s` (if configured)
-  auto-reclaims leaked tokens.
+  replicas reject excess requests, and the router does not release rejected
+  tokens intentionally, ratcheting up `in_flight` on the queue until it
+  matches reality. `token_ttl_s` (if configured) auto-reclaims any
+  remaining leaked tokens.
 - **Replica death** — the controller sends a long-poll update, the queue
   unregisters the dead replica, and tokens are only issued for live replicas.
 
