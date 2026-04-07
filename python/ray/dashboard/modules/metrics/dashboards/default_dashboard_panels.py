@@ -112,6 +112,24 @@ OVERVIEW_AND_HEALTH_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=65,
+        title="Unexpected System Level Worker Failures",
+        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly. "
+        "This typically indicates the worker process unexpectedly failed due to "
+        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code). "
+        "Note that this metric only includes OOM kills from the kernel and does not "
+        "include OOM kills from Ray's memory monitor. "
+        "If errors of this type is encountered when the node is under memory pressure, "
+        "The failures are likely OOM kills.",
+        unit="failures",
+        targets=[
+            Target(
+                expr='sum(ray_node_manager_unexpected_worker_failure_total{{instance=~"$Instance", {global_filters}}}) by (Type, Name, instance)',
+                legend="Unexpected worker failure: {{Name}}, {{Type}}, {{instance}}",
+            ),
+        ],
+    ),
 ]
 
 RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
