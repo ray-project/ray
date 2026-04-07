@@ -1276,7 +1276,9 @@ def test_agent_log_auto_increment(ray_start_cluster):
 
     def verify_logs_present():
         dashboard_logs = sorted(glob(os.path.join(logs_dir, "dashboard_agent*.log")))
-        runtime_env_logs = sorted(glob(os.path.join(logs_dir, "runtime_env_agent*.log")))
+        runtime_env_logs = sorted(
+            glob(os.path.join(logs_dir, "runtime_env_agent*.log"))
+        )
 
         dashboard_log_names = [os.path.basename(p) for p in dashboard_logs]
         runtime_env_log_names = [os.path.basename(p) for p in runtime_env_logs]
@@ -1289,6 +1291,7 @@ def test_agent_log_auto_increment(ray_start_cluster):
         return True
 
     from ray._common.test_utils import wait_for_condition
+
     wait_for_condition(verify_logs_present, timeout=15)
 
 
