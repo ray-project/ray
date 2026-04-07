@@ -18,7 +18,8 @@ from ray.serve.experimental.capacity_queue import (
 def _deploy_capacity_queue_app(
     num_replicas: int = 3,
     max_ongoing_requests: int = 5,
-    acquire_timeout_s: float = 30.0,
+    acquire_timeout_s: float = 0.5,
+    token_ttl_s: float = 5,
 ):
     """Deploy a simple app with CapacityQueue deployment actor and CapacityQueueRouter."""
 
@@ -29,6 +30,7 @@ def _deploy_capacity_queue_app(
                 actor_class=CapacityQueue,
                 init_kwargs={
                     "acquire_timeout_s": acquire_timeout_s,
+                    "token_ttl_s": token_ttl_s,
                     "deployment_id_name": "App",
                     "deployment_id_app": "default",
                 },
@@ -72,7 +74,8 @@ def _deploy_blocking_capacity_queue_app(
                 name="capacity_queue",
                 actor_class=CapacityQueue,
                 init_kwargs={
-                    "acquire_timeout_s": 30.0,
+                    "acquire_timeout_s": 0.5,
+                    "token_ttl_s": 5,
                     "deployment_id_name": "BlockingApp",
                     "deployment_id_app": "default",
                 },
@@ -311,7 +314,7 @@ class TestCapacityQueueRouterFailures:
                     name="capacity_queue",
                     actor_class=CapacityQueue,
                     init_kwargs={
-                        "acquire_timeout_s": 30.0,
+                        "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
                         "deployment_id_name": "TtlApp",
                         "deployment_id_app": "default",
@@ -377,7 +380,8 @@ class TestCapacityQueueRouterFailures:
                     name="capacity_queue",
                     actor_class=CapacityQueue,
                     init_kwargs={
-                        "acquire_timeout_s": 30.0,
+                        "acquire_timeout_s": 0.5,
+                        "token_ttl_s": 5,
                         "deployment_id_name": "CrashApp",
                         "deployment_id_app": "default",
                     },
@@ -491,18 +495,9 @@ class TestCapacityQueueRouterFailures:
         wait_for_condition(_queue_used, timeout=10)
 
     def test_capacity_queue_restarts_with_full_capacity(self, serve_instance):
-        """After a queue restart, it bootstraps with full capacity even though
+        """
+        After a queue restart, it bootstraps with full capacity even though
         replicas may have in-flight requests from before the crash.
-
-        The restarted queue does not know about pre-crash in-flight counts, so
-        it may temporarily over-provision capacity beyond max_ongoing_requests.
-        This is self-healing through two mechanisms:
-        1. Replicas enforce their own max_ongoing_requests limit and reject
-           excess requests, causing the router to retry via the queue.
-        2. When token_ttl_s is configured, the TTL reaper auto-reclaims
-           tokens that were never released, bounding the convergence window.
-        As pre-crash requests complete and call release(), the queue's view
-        converges back to reality.
         """
         signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
         signal = SignalActor.options(name=signal_name).remote()
@@ -586,7 +581,7 @@ class TestCapacityQueueRouterFailures:
                     name="capacity_queue",
                     actor_class=CapacityQueue,
                     init_kwargs={
-                        "acquire_timeout_s": 30.0,
+                        "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
                         "deployment_id_name": "ConvergeApp",
                         "deployment_id_app": "default",
@@ -680,7 +675,7 @@ class TestCapacityQueueRouterFailures:
             info = ray.get(new_queue.get_replica_in_flight.remote())
             if len(info) != 1:
                 return False
-            for rid, (in_flight, max_cap) in info.items():
+            for in_flight, max_cap in info.values():
                 if max_cap - in_flight != max_ongoing:
                     return False
             return True
@@ -694,6 +689,88 @@ class TestCapacityQueueRouterFailures:
                 in_flight == 0
             ), f"Replica {rid}: expected converged in_flight=0, got {in_flight}"
             assert max_cap - in_flight == max_ongoing
+
+        ray.kill(signal)
+
+    def test_capacity_depleted_backoff_and_recovery(self, serve_instance):
+        """
+        When all replicas are at capacity, the router backs off and
+        retries until capacity frees up.
+        """
+        signal_name = f"block_signal_{uuid.uuid4().hex[:8]}"
+        signal = SignalActor.options(name=signal_name).remote()
+
+        @serve.deployment(
+            deployment_actors=[
+                DeploymentActorConfig(
+                    name="capacity_queue",
+                    actor_class=CapacityQueue,
+                    init_kwargs={
+                        "acquire_timeout_s": 0.5,
+                        "token_ttl_s": 5,
+                        "deployment_id_name": "DepletedApp",
+                        "deployment_id_app": "default",
+                    },
+                    actor_options={"num_cpus": 0},
+                ),
+            ],
+            request_router_config=RequestRouterConfig(
+                request_router_class=(
+                    "ray.serve.experimental.capacity_queue_router:CapacityQueueRouter"
+                ),
+            ),
+            num_replicas=1,
+            max_ongoing_requests=2,
+            ray_actor_options={"num_cpus": 0},
+        )
+        class DepletedApp:
+            def __init__(self):
+                from ray.serve.context import _get_internal_replica_context
+
+                context = _get_internal_replica_context()
+                self.unique_id = context.replica_id.unique_id
+
+            async def __call__(self, block: bool = False):
+                if block:
+                    sig = ray.get_actor(signal_name)
+                    await sig.wait.remote()
+                return self.unique_id
+
+        handle = serve.run(DepletedApp.bind())
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == 1,
+            timeout=10,
+        )
+
+        # Fill both slots with blocking requests.
+        blocking_refs = [handle.remote(block=True) for _ in range(2)]
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).total_in_flight == 2,
+            timeout=10,
+        )
+
+        # Send a third request — will be blocked waiting for capacity.
+        waiting_ref = handle.remote(block=False)
+
+        # Wait for at least one CQ timeout — proves the router hit the
+        # depleted path and backed off (total_timeouts is 0 before this
+        # since the blocking requests were acquired via the fast path).
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).total_timeouts >= 1,
+            timeout=30,
+        )
+
+        # Release the blockers so capacity frees up.
+        ray.get(signal.send.remote())
+        for ref in blocking_refs:
+            ref.result(timeout_s=15)
+
+        # The waiting request should complete once capacity is available.
+        result = waiting_ref.result(timeout_s=15)
+        assert isinstance(result, str)
 
         ray.kill(signal)
 

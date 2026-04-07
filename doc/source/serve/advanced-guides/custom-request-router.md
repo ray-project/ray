@@ -224,8 +224,11 @@ to release the token when the request finishes:
 
 Notable details:
 
-- **`supports_rejection_protocol`** returns `False` — a token already guarantees
-  capacity, so the rejection handshake is skipped.
+- **Direct routing** — overrides `_choose_replica_for_request` to acquire tokens
+  directly from the CQ actor, bypassing the routing-task retry loop entirely.
+  This avoids event-loop starvation under high concurrency.
+- **Fault tolerance** — retries CQ failures with exponential backoff, then
+  falls back to power-of-two-choices if the CQ remains unavailable.
 - **Discovery** — the router finds the deployment actor by listing named actors
   in the Serve namespace and matching the deployment-actor naming prefix.  The
   handle is cached after the first lookup.
@@ -268,13 +271,15 @@ rolling updates are all managed for you.
 The `CapacityQueueRouter` handles failures gracefully:
 
 - **Queue unavailable** — if the queue actor is dead, not yet discovered, or
-  times out, the router falls back to standard power-of-two-choices routing.
-  Requests are never blocked by queue issues.
+  errors, the router retries with exponential backoff and falls back to
+  power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures.
+  Requests never raise exceptions due to queue issues.
+- **Capacity exhausted** — when all replicas are at capacity, the queue
+  returns `None`. The router backs off and retries until capacity frees up.
 - **Queue restart** — a restarted queue has no knowledge of pre-crash
-  in-flight counts. Tokens issued for saturated replicas get rejected by the
-  replica, and the unreleased tokens teach the queue the correct state.
-  Configure `token_ttl_s` on the `CapacityQueue` to automatically reclaim
-  leaked tokens and speed up convergence.
+  in-flight counts and may temporarily over-provision. This self-heals:
+  replicas reject excess requests, and `token_ttl_s` (if configured)
+  auto-reclaims leaked tokens.
 - **Replica death** — the controller sends a long-poll update, the queue
   unregisters the dead replica, and tokens are only issued for live replicas.
 

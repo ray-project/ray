@@ -54,14 +54,21 @@ class CapacityQueue:
     - Zero rejections: A token guarantees the replica has capacity
     - Least-loaded distribution: Requests go to the least loaded replica
     - Backpressure: If no capacity is available, routers wait
+    - Self-healing after restart: A restarted queue has no knowledge of
+      pre-crash in-flight counts, so it may temporarily over-provision
+      capacity beyond max_ongoing_requests. This is self-healing:
+      (1) replicas enforce their own max_ongoing_requests limit and reject
+      excess requests, causing the router to retry via the queue, and
+      (2) when token_ttl_s is configured, the TTL reaper auto-reclaims
+      tokens that were never released, bounding the convergence window.
     """
 
     def __init__(
         self,
-        acquire_timeout_s: float = 30.0,
-        token_ttl_s: Optional[float] = None,
-        deployment_id_name: str = "",
-        deployment_id_app: str = "",
+        acquire_timeout_s: float,
+        token_ttl_s: Optional[float],
+        deployment_id_name: str,
+        deployment_id_app: str,
         _enable_long_poll: bool = True,
     ):
         self._acquire_timeout_s = acquire_timeout_s

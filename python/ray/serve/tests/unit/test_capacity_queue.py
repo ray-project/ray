@@ -16,10 +16,16 @@ def _get_raw_class():
     return CapacityQueue.__ray_actor_class__
 
 
-def _create_queue(acquire_timeout_s=30.0):
+def _create_queue(acquire_timeout_s=30.0, token_ttl_s=None):
     """Create a CapacityQueue instance for local testing (no Ray)."""
     raw_class = _get_raw_class()
-    return raw_class(acquire_timeout_s=acquire_timeout_s, _enable_long_poll=False)
+    return raw_class(
+        acquire_timeout_s=acquire_timeout_s,
+        token_ttl_s=token_ttl_s,
+        deployment_id_name="",
+        deployment_id_app="",
+        _enable_long_poll=False,
+    )
 
 
 class TestCapacityQueueStats:
@@ -605,11 +611,7 @@ class TestTokenTTL:
     @pytest.mark.asyncio
     async def test_expired_token_reclaimed(self):
         """Tokens exceeding the TTL are automatically reclaimed."""
-        queue = _get_raw_class()(
-            acquire_timeout_s=30.0,
-            token_ttl_s=0.2,
-            _enable_long_poll=False,
-        )
+        queue = _create_queue(token_ttl_s=0.2)
         queue.register_replica("replica1", 2)
 
         # Acquire a token (never release it).
@@ -628,11 +630,7 @@ class TestTokenTTL:
     @pytest.mark.asyncio
     async def test_ttl_does_not_reclaim_released_tokens(self):
         """Properly released tokens are not double-reclaimed by the reaper."""
-        queue = _get_raw_class()(
-            acquire_timeout_s=30.0,
-            token_ttl_s=0.2,
-            _enable_long_poll=False,
-        )
+        queue = _create_queue(token_ttl_s=0.2)
         queue.register_replica("replica1", 2)
 
         r = await queue.acquire()
@@ -650,11 +648,7 @@ class TestTokenTTL:
     @pytest.mark.asyncio
     async def test_ttl_reclaim_wakes_waiters(self):
         """Reclaimed capacity from TTL should wake blocked waiters."""
-        queue = _get_raw_class()(
-            acquire_timeout_s=30.0,
-            token_ttl_s=0.2,
-            _enable_long_poll=False,
-        )
+        queue = _create_queue(token_ttl_s=0.2)
         queue.register_replica("replica1", 1)
 
         # Exhaust capacity.

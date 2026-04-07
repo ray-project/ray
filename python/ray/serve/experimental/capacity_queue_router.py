@@ -33,27 +33,25 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     Acquires capacity tokens from a centralized CapacityQueue before routing
     requests. Each token guarantees the target replica has capacity.
 
-    If the queue is unavailable (dead, not yet discovered, or times out),
-    falls back to the standard power-of-two-choices algorithm so that
-    routing is never blocked by queue issues.
+    If the capacity queue is unavailable (dead, not yet discovered, or times out),
+    the router retries with exponential backoff up to MAX_FAULT_RETRIES times,
+    then falls back to the standard power-of-two-choices algorithm for that
+    request.
     """
-
-    # Short timeout for token acquisition — if the queue doesn't respond
-    # quickly, fall back to power-of-two-choices rather than blocking.
-    ACQUIRE_TIMEOUT_S = 3.0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._capacity_queue = None
         self._capacity_queue_actor_name: str = "capacity_queue"
+        self._capacity_queue_full_name: Optional[str] = None
 
-        # Tokens acquired in choose_replicas but not yet confirmed by
-        # on_request_routed. Released on retry/backoff or cancellation.
-        self._pending_tokens: Dict[str, str] = {}
+        # Tokens confirmed by _choose_replica_for_request. Released when the
+        # request completes or is cancelled.
+        self._acquired_tokens: Dict[str, str] = {}
 
-        # Tokens confirmed by on_request_routed. Released when the request
-        # completes or is cancelled.
-        self._confirmed_tokens: Dict[str, str] = {}
+        # Reverse index: unique_id string -> ReplicaID for O(1) lookup.
+        # Rebuilt by update_replicas whenever the replica set changes.
+        self._uid_to_replica_id: Dict[str, ReplicaID] = {}
 
     def initialize_state(self, **kwargs):
         if "capacity_queue_actor_name" in kwargs:
@@ -64,6 +62,16 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         Returns True if discovered, False otherwise (does not raise).
         """
+        if self._capacity_queue_full_name is not None:
+            try:
+                self._capacity_queue = ray.get_actor(
+                    self._capacity_queue_full_name, namespace=SERVE_NAMESPACE
+                )
+                return True
+            except Exception:
+                pass
+            return False
+
         prefix = (
             f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}"
             f"{self._deployment_id.app_name}::"
@@ -80,10 +88,15 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                         self._capacity_queue = ray.get_actor(
                             name, namespace=SERVE_NAMESPACE
                         )
+                        self._capacity_queue_full_name = name
                         return True
         except Exception:
             pass
         return False
+
+    def update_replicas(self, replicas: List[RunningReplica]):
+        super().update_replicas(replicas)
+        self._uid_to_replica_id = {rid.unique_id: rid for rid in self._replicas}
 
     def _safe_release(self, replica_id: str) -> None:
         """Release a token, handling queue actor death."""
@@ -94,98 +107,122 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         except RayActorError:
             self._capacity_queue = None
 
-    async def _try_acquire_token(
-        self,
-        candidate_replicas: List[RunningReplica],
-        pending_request: Optional[PendingRequest],
-    ) -> Optional[RunningReplica]:
-        """Try to acquire a token from the capacity queue.
+    # After this many consecutive CQ faults (actor dead, discovery failure,
+    # unexpected errors), fall back to Pow2 for this request.  Capacity
+    # exhaustion (CQ returns None) does NOT count — that's normal backpressure.
+    MAX_FAULT_RETRIES = 3
 
-        Returns the matched RunningReplica if successful, None if the queue
-        is unavailable, times out, or returns an unknown replica.
+    async def _choose_replica_for_request(
+        self, pending_request: PendingRequest, *, is_retry: bool = False
+    ) -> RunningReplica:
+        """Choose a replica by acquiring a token from the capacity queue.
+
+        This overrides the base-class method to bypass the routing-task
+        machinery (choose_replicas -> probe -> retry loop). The CQ acquire
+        runs directly in the caller's coroutine so the event loop stays
+        responsive.
+
+        On transient CQ faults (actor death, discovery failure), retries with
+        exponential backoff up to MAX_FAULT_RETRIES times, then falls back to
+        power-of-two-choices for this request.
         """
-        if self._capacity_queue is None:
-            if not self._try_discover_capacity_queue():
-                return None
+        internal_request_id = pending_request.metadata.internal_request_id
 
-        acquire_ref = None
+        # Wait for at least one replica.
+        while len(self._replicas) == 0:
+            self._replicas_updated_event.clear()
+            await self._replicas_updated_event.wait()
+
+        fault_attempt = 0
+        capacity_depleted_attempt = 0
+        acquired_replica_id = None
         try:
-            acquire_ref = self._capacity_queue.acquire.remote(
-                timeout_s=self.ACQUIRE_TIMEOUT_S,
-            )
-            acquired_replica_id = await asyncio.wait_for(
-                acquire_ref,
-                timeout=self.ACQUIRE_TIMEOUT_S + 1,
-            )
+            while True:
+                # Too many consecutive faults — fall back to Pow2.
+                if fault_attempt >= self.MAX_FAULT_RETRIES:
+                    return await super()._choose_replica_for_request(
+                        pending_request, is_retry=is_retry
+                    )
+
+                # Discover the CQ actor if we don't have a handle.
+                if self._capacity_queue is None:
+                    if not self._try_discover_capacity_queue():
+                        await self._backoff(fault_attempt)
+                        fault_attempt += 1
+                        continue
+
+                # Acquire a token from the CQ.
+                acquire_ref = None
+                try:
+                    acquire_ref = self._capacity_queue.acquire.remote()
+                    acquired_replica_id = await acquire_ref
+                except asyncio.CancelledError:
+                    if acquire_ref is not None:
+                        ray.cancel(acquire_ref)
+                    raise
+                except RayActorError:
+                    self._capacity_queue = None
+                    await self._backoff(fault_attempt)
+                    fault_attempt += 1
+                    continue
+                except Exception:
+                    await self._backoff(fault_attempt)
+                    fault_attempt += 1
+                    continue
+
+                # CQ returned None — capacity exhausted. This is normal
+                # backpressure, not a fault, so it doesn't increment
+                # fault_attempt or trigger Pow2 fallback. Apply backoff
+                # to avoid a hot loop when acquire_timeout_s is low.
+                if acquired_replica_id is None:
+                    await self._backoff(capacity_depleted_attempt)
+                    capacity_depleted_attempt += 1
+                    continue
+
+                # O(1) lookup via reverse index.
+                rid = self._uid_to_replica_id.get(acquired_replica_id)
+                replica = self._replicas.get(rid) if rid is not None else None
+                if replica is not None:
+                    self._acquired_tokens[internal_request_id] = acquired_replica_id
+                    acquired_replica_id = None
+                    fault_attempt = 0
+                    capacity_depleted_attempt = 0
+                    return replica
+
+                # Replica not found — release token and wait for replica update.
+                # This happens during replica transitions when the CQ knows about
+                # a new replica before the local router does. Without waiting,
+                # the CQ fast path creates a hot loop returning the same unknown
+                # replica.
+                self._safe_release(acquired_replica_id)
+                acquired_replica_id = None
+
+                # Wait for the router's local replica state to be updated via long polling.
+                # This ensures we don't create a hot loop when the queue is ahead of us.
+                self._replicas_updated_event.clear()
+                await self._replicas_updated_event.wait()
         except asyncio.CancelledError:
-            if acquire_ref is not None:
-                ray.cancel(acquire_ref)
+            # If cancelled after acquiring a token but before storing it in
+            # _acquired_tokens, release it to avoid leaking capacity.
+            if acquired_replica_id is not None:
+                self._safe_release(acquired_replica_id)
             raise
-        except RayActorError:
-            self._capacity_queue = None
-            return None
-        except Exception:
-            return None
-
-        if acquired_replica_id is None:
-            return None
-
-        # Find matching replica in the candidate list.
-        for replica in candidate_replicas:
-            if replica.replica_id.unique_id == acquired_replica_id:
-                if pending_request is not None:
-                    rid = pending_request.metadata.internal_request_id
-                    self._pending_tokens[rid] = acquired_replica_id
-                return replica
-
-        # Replica not in local candidate list — release and fall back.
-        self._safe_release(acquired_replica_id)
-        return None
 
     async def choose_replicas(
         self,
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        """Choose replicas using the capacity queue with power-of-two-choices fallback.
+        """Pow2 candidate selection — no CQ calls.
 
-        1. Try to acquire a token from the CapacityQueue.
-        2. If successful, return the token-guaranteed replica as the sole candidate.
-        3. If the queue is unavailable or times out, fall back to power-of-two-choices.
-
-        On retry (previous token-chosen replica rejected): do NOT release the
-        old token. The rejection means that replica is genuinely at capacity,
-        so keeping the queue's in_flight elevated teaches it the correct state.
-        Then acquire a fresh token — the queue will pick a different replica
-        because the rejected one now has higher in_flight.
+        Only reached when _choose_replica_for_request falls back to the
+        base class after MAX_FAULT_RETRIES consecutive CQ faults.
         """
-        # Get power-of-two-choices fallback first (same pattern as
-        # PrefixCacheAffinityRouter).
-        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
+        return await PowerOfTwoChoicesRequestRouter.choose_replicas(
             self,
             candidate_replicas=candidate_replicas,
             pending_request=pending_request,
         )
-
-        # Can only track tokens when we have a request ID.
-        if pending_request is None:
-            return fallback_replicas
-
-        # If this request already has a pending token from a previous
-        # choose_replicas call, the token-chosen replica rejected. Do NOT
-        # release — keeping in_flight elevated teaches the queue that the
-        # replica is saturated. Just discard our reference.
-        rid = pending_request.metadata.internal_request_id
-        self._pending_tokens.pop(rid, None)
-
-        matched_replica = await self._try_acquire_token(
-            candidate_replicas,
-            pending_request,
-        )
-        if matched_replica is not None:
-            return [[matched_replica]]
-
-        return fallback_replicas
 
     def on_request_routed(
         self,
@@ -193,11 +230,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ):
-        """Promote a pending token to confirmed once the replica accepts."""
-        rid = pending_request.metadata.internal_request_id
-        token = self._pending_tokens.pop(rid, None)
-        if token is not None:
-            self._confirmed_tokens[rid] = token
+        pass
 
     def on_request_completed(
         self,
@@ -205,7 +238,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         internal_request_id: str,
     ):
         """Release the capacity token when a request completes."""
-        token = self._confirmed_tokens.pop(internal_request_id, None)
+        token = self._acquired_tokens.pop(internal_request_id, None)
         if token is not None:
             self._safe_release(token)
 
@@ -214,9 +247,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         internal_request_id: str,
     ):
         """Release the capacity token when a request is cancelled."""
-        token = self._pending_tokens.pop(internal_request_id, None)
-        if token is None:
-            token = self._confirmed_tokens.pop(internal_request_id, None)
+        token = self._acquired_tokens.pop(internal_request_id, None)
         if token is not None:
             self._safe_release(token)
 

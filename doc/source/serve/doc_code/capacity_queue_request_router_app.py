@@ -17,7 +17,8 @@ from ray.serve.experimental.capacity_queue import (
             name="capacity_queue",
             actor_class=CapacityQueue,
             init_kwargs={
-                "acquire_timeout_s": 30.0,
+                "acquire_timeout_s": 0.5,
+                "token_ttl_s": 5,
                 # The queue subscribes to controller updates for this deployment
                 # so it automatically registers/unregisters replicas.
                 "deployment_id_name": "CapacityQueueApp",
