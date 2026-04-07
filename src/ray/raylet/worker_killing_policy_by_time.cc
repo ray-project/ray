@@ -103,10 +103,11 @@ TimeBasedWorkerKillingPolicy::Policy(
       });
 
   // Sort by:
-  // 1. Workers without granted lease larger than idle worker killing memory threshold
-  // first
-  // 2. Retriable tasks next
-  // 3. Most recent last (newest granted lease time)
+  // 1. First, we prioritize killing workers without granted lease larger
+  // than idle worker killing memory threshold. Note that workers without
+  // granted lease under the threshold are not considered for killing.
+  // 2. From there, we prioritize killing workers with leases and are retriable.
+  // 3. Lastly, we tiebreak by the newest worker based on the newest granted lease time.
   std::sort(
       sorted_workers.begin(),
       sorted_workers.end(),
