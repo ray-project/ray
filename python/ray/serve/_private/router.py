@@ -1259,6 +1259,32 @@ class AsyncioRouter:
         self._selection_dispatch_gap_ms.observe(gap_ms)
         selection._mark_dispatched()
 
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Send a request to all current replicas and return all results.
+
+        This is a fan-out operation: the same request is dispatched to every
+        replica and the list of ReplicaResults is returned to the caller.
+        """
+        await self._request_router_initialized.wait()
+
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=request_meta,
+        )
+        if not pr.resolved:
+            await self._resolve_request_arguments(pr)
+
+        return [
+            replica.try_send_request(pr, with_rejection=False)
+            for replica in self.request_router.curr_replicas.values()
+        ]
+
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
