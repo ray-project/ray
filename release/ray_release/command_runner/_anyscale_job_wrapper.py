@@ -284,10 +284,12 @@ def run_dead_node_check():
         unexpected_termination = common_pb2.NodeDeathInfo.Reason.Value(
             "UNEXPECTED_TERMINATION"
         )
+        unspecified = common_pb2.NodeDeathInfo.Reason.Value("UNSPECIFIED")
         dead_nodes = [
             node["NodeID"]
             for node in ray.nodes()
-            if not node["Alive"] and node.get("DeathReason") == unexpected_termination
+            if not node["Alive"]
+            and node.get("DeathReason") in [unexpected_termination, unspecified]
         ]
         if dead_nodes:
             logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
