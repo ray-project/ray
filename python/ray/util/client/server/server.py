@@ -25,6 +25,7 @@ from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._raylet import GcsClient
 from ray.job_config import JobConfig
@@ -128,6 +129,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+                # Reconstruct LoggingConfig from dict after InitRequest ray_init_kwargs is parsed from JSON on the server.
+                if "logging_config" in extra_kwargs and isinstance(
+                    extra_kwargs["logging_config"], dict
+                ):
+                    extra_kwargs["logging_config"] = LoggingConfig.from_dict(
+                        extra_kwargs["logging_config"]
+                    )
                 try:
                     self.ray_connect_handler(job_config, **extra_kwargs)
                 except Exception as e:
@@ -264,6 +272,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
                 ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
+                ctx.worker_id = ray._common.utils.hex_to_binary(rtc.get_worker_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group

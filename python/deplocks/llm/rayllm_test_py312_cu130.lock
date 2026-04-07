@@ -3017,20 +3017,20 @@ ninja==1.13.0 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   flashinfer-python
     #   vllm
-nixl==0.10.1 \
-    --hash=sha256:616465673dae5180d296525a03237af4cd5f2c00c3228d185bc06dbe621509b7
+nixl==1.0.0 \
+    --hash=sha256:d4f2944e592358e53607276cdb4cc9d0827e11d5d6a8737edf020a134c3dca60
     # via -r python/requirements/llm/llm-requirements.txt
-nixl-cu12==0.10.1 \
-    --hash=sha256:0bb1b3532f95c2f376e21008e91e8ec5791304a29af19e75d29fd1bcc754c9bc \
-    --hash=sha256:15376c1527c68d77fff5c6bb7cf7466a16dae0ab3bb32de152a602ba9edaaa9d \
-    --hash=sha256:26e59f9841985cf5b547202865036f84ae6dc23184789446fe5833e7499e21a9 \
-    --hash=sha256:277cde28bc45f706df689ed399327d0cce5432382606a5fc1d19fc470fcc57b4 \
-    --hash=sha256:3dde565c9d6e1d5af139a4dca240e902d5dbb32ea622acb31cdca3fb25cb859f \
-    --hash=sha256:48d3d9cc882edaa0a323d0ddfed39e0864b873ef1fa56e774c5a793629bcf083 \
-    --hash=sha256:685a0b8c5cdaa9cdbd826ea54cf46b4b3e46b016ee73a919cd2cf489402c56fd \
-    --hash=sha256:7641bc2bd3aeeefcf2ea3a3fd9f940f54a62d985ce2426dde6b3860d0edce13e \
-    --hash=sha256:b4712c6e0f18f57fee34cd970faac01480f0caf12da33d4a40ef4e9096a4caf7 \
-    --hash=sha256:ba46837abee8e06c8d86bd9b2cd7dab8c3d1e8407e04d52e6db3a9b137478c4b
+nixl-cu12==1.0.0 \
+    --hash=sha256:4fee0d052e0905b5507d5a6a656bcbd302ced4c4dd3456f17a81b5ea6d4e7a0d \
+    --hash=sha256:585dccc8dbfe84f82ae092646f9ef891170bd7b4fc4721f98b45f5b7de1df601 \
+    --hash=sha256:60938a5f85d6e51cb4c02452edab31d549854a1bd661be30999696a44875ff69 \
+    --hash=sha256:8435786378e6c6481499b019454e51a4bf6f09d98729ab2607ded36cf9ac2b20 \
+    --hash=sha256:8d8907bc9d568a7e6f48fe723eb155c6365bddf2054f7845fcc6b1e97bc23069 \
+    --hash=sha256:a1d2fca137cd0917ec6b0e3c981bef20c5e40ab400333c57546a13c4d51e984e \
+    --hash=sha256:bea43a55eff35f2fd930eb258ed22ec949d1a0bd77b693ce22623854a463172e \
+    --hash=sha256:bec0d3c5dc3d37a7f85769a73b55eea40df0933e193de317b5b0ed0d5dba8edd \
+    --hash=sha256:d4347c489c930fc4c2f35693be14dd6c54f7d094639b29564f477396bad664ab \
+    --hash=sha256:f9a79b190bc627225452f4e168ba082f3670d3629490d882a95935a92161210d
     # via nixl
 notebook-shim==0.2.3 \
     --hash=sha256:a83496a43341c1674b093bfcebf0fe8e74cbe7eda5fd2bbc56f8e39e1486c0c7 \
