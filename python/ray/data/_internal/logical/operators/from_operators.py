@@ -65,7 +65,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
             ],
         )
         object.__setattr__(self, "_name", self.__class__.__name__)
-        object.__setattr__(self, "_input_dependencies", [])
         object.__setattr__(self, "_num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:

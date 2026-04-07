@@ -28,7 +28,6 @@ class Count(LogicalOperator):
         assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
-        object.__setattr__(self, "_num_outputs", None)
 
     @property
     def num_outputs(self) -> Optional[int]:
