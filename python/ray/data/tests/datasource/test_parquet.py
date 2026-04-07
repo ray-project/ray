@@ -2825,6 +2825,46 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     assert total_rows == num_rows
 
 
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """When only non-nested columns are requested from a file that also contains
+    large nested columns, the fallback reader should NOT be triggered because the
+    selected columns do not contain susceptible nested types.
+    """
+    from unittest.mock import patch
+
+    from ray.data._internal.datasource.parquet_datasource import (
+        _needs_nested_type_fallback,
+    )
+
+    data_dir, file_path, num_rows, _ = nested_parquet_exceeding_2gb
+
+    # Verify that the fallback IS needed when all columns are considered.
+    import pyarrow.dataset as pds
+
+    fragment = pds.dataset(file_path, format="parquet").get_fragments()[0]
+    assert _needs_nested_type_fallback(fragment) is True
+    # But NOT needed when only the flat "id" column is requested.
+    assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
+
+    # End-to-end: reading only "id" should use the normal scanner path, not
+    # the fallback.  Patch to detect whether fallback is invoked.
+    with patch(
+        "ray.data._internal.datasource.parquet_datasource"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe:
+        ds = ray.data.read_parquet(data_dir, columns=["id"])
+        total_rows = 0
+        for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
+            total_rows += batch.num_rows
+            assert batch.column_names == ["id"]
+        assert total_rows == num_rows
+        # The fallback batch-size helper should never have been called.
+        mock_safe.assert_not_called()
+
+
 if __name__ == "__main__":
     import sys
 

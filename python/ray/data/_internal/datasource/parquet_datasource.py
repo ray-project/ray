@@ -973,19 +973,40 @@ def _has_susceptible_nested_types(schema: "pyarrow.Schema") -> bool:
 
 def _row_group_uncompressed_size(
     rg_meta: "pyarrow.parquet.RowGroupMetaData",
+    column_indices: Optional[List[int]] = None,
 ) -> int:
-    """Total uncompressed byte size of all columns in a row group.
+    """Total uncompressed byte size of columns in a row group.
+
+    When *column_indices* is ``None`` all columns are summed, otherwise only
+    the listed (leaf-level) column indices are included.
 
     NOTE: We intentionally avoid ``rg_meta.total_byte_size`` because it can
     return the *compressed* size for some files (apache/arrow#48138).
     """
-    return sum(
-        rg_meta.column(i).total_uncompressed_size for i in range(rg_meta.num_columns)
-    )
+    indices = range(rg_meta.num_columns) if column_indices is None else column_indices
+    return sum(rg_meta.column(i).total_uncompressed_size for i in indices)
+
+
+def _resolve_leaf_column_indices(
+    metadata: "pyarrow.parquet.FileMetaData",
+    columns: List[str],
+) -> List[int]:
+    """Map top-level column names to Parquet metadata leaf column indices.
+
+    Parquet metadata enumerates *leaf* columns (nested types are flattened),
+    and each leaf's ``path_in_schema`` starts with the top-level field name.
+    """
+    col_set = set(columns)
+    return [
+        i
+        for i in range(metadata.num_columns)
+        if metadata.row_group(0).column(i).path_in_schema.split(".")[0] in col_set
+    ]
 
 
 def _get_safe_batch_size_for_nested_types(
     pf: "pyarrow.parquet.ParquetFile",
+    column_indices: Optional[List[int]] = None,
 ) -> int:
     """Compute a batch size that keeps each batch under Arrow's ~2GB nested-type
     chunking threshold.
@@ -998,24 +1019,47 @@ def _get_safe_batch_size_for_nested_types(
         rg_meta = pf.metadata.row_group(rg_idx)
         if rg_meta.num_rows == 0:
             continue
-        bytes_per_row = _row_group_uncompressed_size(rg_meta) / rg_meta.num_rows
+        bytes_per_row = (
+            _row_group_uncompressed_size(rg_meta, column_indices) / rg_meta.num_rows
+        )
         rg_safe = max(int(_ARROW_CHUNK_LIMIT // bytes_per_row // 2), 1)
         safe_batch_size = min(safe_batch_size, rg_safe)
     return safe_batch_size
 
 
-def _needs_nested_type_fallback(fragment: "ParquetFileFragment") -> bool:
+def _needs_nested_type_fallback(
+    fragment: "ParquetFileFragment",
+    columns: Optional[List[str]] = None,
+) -> bool:
     """Check if a fragment requires the fallback reader for nested types.
 
-    Returns True if the fragment's schema has nested types AND any row group
-    has uncompressed data exceeding Arrow's ~2GB chunking threshold.
+    Returns True if the *requested* columns (or all columns when ``columns``
+    is ``None``) contain nested types AND any row group has uncompressed data
+    exceeding Arrow's ~2GB chunking threshold.
     This is a metadata-only check (no data read).
     """
-    if not _has_susceptible_nested_types(fragment.physical_schema):
+    import pyarrow as pa
+
+    physical_schema = fragment.physical_schema
+    if columns is not None:
+        physical_schema = pa.schema(
+            [
+                physical_schema.field(c)
+                for c in columns
+                if physical_schema.get_field_index(c) != -1
+            ]
+        )
+    if not _has_susceptible_nested_types(physical_schema):
         return False
     metadata = fragment.metadata
+    column_indices = (
+        _resolve_leaf_column_indices(metadata, columns)
+        if columns is not None and metadata.num_row_groups > 0
+        else None
+    )
     return any(
-        _row_group_uncompressed_size(metadata.row_group(rg_idx)) >= _ARROW_CHUNK_LIMIT
+        _row_group_uncompressed_size(metadata.row_group(rg_idx), column_indices)
+        >= _ARROW_CHUNK_LIMIT
         for rg_idx in range(metadata.num_row_groups)
     )
 
@@ -1046,7 +1090,17 @@ def _iter_batches_with_nested_fallback(
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
 
-    if not _needs_nested_type_fallback(fragment):
+    # Determine the columns that will actually be read from the file.
+    # When a filter references columns outside the projection, we must read
+    # the union (read_columns) for correct evaluation, but the *fallback*
+    # decision and batch-size calculation should consider all columns that
+    # will be decoded — i.e. the union of projected + filter columns.
+    if filter_expr is not None and columns is not None and filter_columns is not None:
+        all_read_columns = list(dict.fromkeys(columns + filter_columns))
+    else:
+        all_read_columns = columns  # None means "all columns"
+
+    if not _needs_nested_type_fallback(fragment, all_read_columns):
         # filter is pushed down to the scanner here
         yield from fragment.to_batches(
             columns=columns,
@@ -1069,7 +1123,13 @@ def _iter_batches_with_nested_fallback(
         )
 
     pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
-    safe = _get_safe_batch_size_for_nested_types(pf)
+    # Scope batch-size calculation to only the columns being decoded.
+    leaf_indices = (
+        _resolve_leaf_column_indices(pf.metadata, all_read_columns)
+        if all_read_columns is not None and pf.metadata.num_row_groups > 0
+        else None
+    )
+    safe = _get_safe_batch_size_for_nested_types(pf, leaf_indices)
     fallback_batch_size = min(batch_size, safe) if batch_size else safe
 
     # Determine which row groups to read.  fragment.subset(filter=)
