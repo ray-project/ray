@@ -34,12 +34,10 @@
 namespace ray {
 namespace rpc {
 
-void GrpcServer::Init() {
+void GrpcServer::Init(bool enable_default_health_check_service) {
   RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
-  // Enable built in health check implemented by gRPC:
-  //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
-  grpc::EnableDefaultHealthCheckService(true);
+  grpc::EnableDefaultHealthCheckService(enable_default_health_check_service);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   grpc::channelz::experimental::InitChannelzService();
 }
@@ -127,16 +125,8 @@ void GrpcServer::Run() {
   for (int i = 0; i < num_threads_; i++) {
     cqs_[i] = builder.AddCompletionQueue();
   }
-  // If a custom health check service was registered, temporarily disable the default
-  // gRPC health check so it doesn't conflict. The global flag is restored after building.
-  if (disable_default_health_check_) {
-    grpc::EnableDefaultHealthCheckService(false);
-  }
   // Build and start server.
   server_ = builder.BuildAndStart();
-  if (disable_default_health_check_) {
-    grpc::EnableDefaultHealthCheckService(true);
-  }
 
   RAY_CHECK(server_)
       << "Failed to start the grpc server. The specified port is " << specified_port
