@@ -217,7 +217,10 @@ class KubeRayIPPRProvider:
                 logger.info(f"Pod {ippr_status.cloud_instance_id} resized successfully")
             except Exception as e:
                 logger.error(
-                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}"
+                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}. "
+                    "If this persists, check GCS (e.g. Head/GCS logs and Raylet reachability) "
+                    "and Kubernetes (e.g. API errors, pod events, ray.io/ippr-status) for "
+                    "related request failures."
                 )
 
     def get_ippr_specs(self) -> IPPRSpecs:
