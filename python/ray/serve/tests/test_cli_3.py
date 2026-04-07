@@ -231,7 +231,6 @@ class TestRun:
         with pytest.raises(httpx.HTTPError):
             httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
 
-        # wait_for_condition(deployments_not_reachable, timeout=15)
         print("Kill successful! Deployments are not reachable over HTTP.")
 
         print('Running node at import path "ray.serve.tests.test_cli_3.parrot_node".')
