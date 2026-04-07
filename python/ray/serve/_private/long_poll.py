@@ -70,6 +70,22 @@ UpdateStateCallable = Callable[[Any], None]
 KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 
 
+def _get_metric_namespace_tag(key: KeyType) -> str:
+    """Extract the namespace string from a long poll key for metric tags.
+
+    For tuple keys like (LongPollNamespace.DEPLOYMENT_CONFIG, "deployment_name"),
+    returns just the namespace name (e.g., "DEPLOYMENT_CONFIG") to avoid
+    high-cardinality metric labels that would otherwise include per-deployment
+    identifiers.
+    """
+    if isinstance(key, tuple):
+        return key[0].name if isinstance(key[0], LongPollNamespace) else str(key[0])
+    elif isinstance(key, LongPollNamespace):
+        return key.name
+    else:
+        return str(key)
+
+
 class LongPollState(Enum):
     TIME_OUT = auto()
 
@@ -223,8 +239,7 @@ class LongPollClient:
             return
 
         logger.debug(
-            f"LongPollClient {self} received updates for keys: "
-            f"{list(updates.keys())}.",
+            f"LongPollClient {self} received updates for keys: {list(updates.keys())}.",
             extra={"log_to_stderr": False},
         )
         if not updates:  # no updates, no callbacks to run, just poll again
@@ -236,7 +251,8 @@ class LongPollClient:
             # Record end-to-end latency from controller to client
             latency_ms = (receive_time - update.notify_timestamp) * 1000
             self.long_poll_latency_histogram.observe(
-                latency_ms, tags={"namespace": str(key)}
+                latency_ms,
+                tags={"namespace": _get_metric_namespace_tag(key)},
             )
 
             self.snapshot_ids[key] = update.snapshot_id
@@ -321,7 +337,8 @@ class LongPollHost:
             data = timeout_or_data
             for key in data.keys():
                 self.transmission_counter.inc(
-                    value=1, tags={"namespace_or_state": str(key)}
+                    value=1,
+                    tags={"namespace_or_state": _get_metric_namespace_tag(key)},
                 )
 
     async def listen_for_change(
@@ -381,7 +398,8 @@ class LongPollHost:
 
             # Update pending clients gauge for this key
             self.pending_clients_gauge.set(
-                len(self.notifier_events[key]), tags={"namespace": str(key)}
+                len(self.notifier_events[key]),
+                tags={"namespace": _get_metric_namespace_tag(key)},
             )
 
             task = get_or_create_event_loop().create_task(event.wait())
@@ -402,7 +420,8 @@ class LongPollHost:
                 self.notifier_events[key].remove(event)
                 # Update pending clients gauge after removing
                 self.pending_clients_gauge.set(
-                    len(self.notifier_events[key]), tags={"namespace": str(key)}
+                    len(self.notifier_events[key]),
+                    tags={"namespace": _get_metric_namespace_tag(key)},
                 )
             except KeyError:
                 # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
@@ -543,6 +562,9 @@ class LongPollHost:
             events_to_notify = self.notifier_events.pop(object_key, set())
             if events_to_notify:
                 # Update pending clients gauge (now 0 for this key since we popped all)
-                self.pending_clients_gauge.set(0, tags={"namespace": str(object_key)})
+                self.pending_clients_gauge.set(
+                    0,
+                    tags={"namespace": _get_metric_namespace_tag(object_key)},
+                )
             for event in events_to_notify:
                 event.set()

@@ -22,6 +22,7 @@ from ray.serve._private.long_poll import (
     LongPollNamespace,
     LongPollState,
     UpdatedObject,
+    _get_metric_namespace_tag,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo as DeploymentTargetInfoProto,
@@ -291,6 +292,50 @@ def test_listen_for_change_java_timeout_returns_empty_result(serve_instance):
     )
 
     assert len(timeout_result.updated_objects) == 0
+
+
+def test_get_metric_namespace_tag():
+    """Test that _get_metric_namespace_tag extracts low-cardinality namespace strings.
+
+    This is critical for avoiding metric cardinality explosion when there are
+    many serve apps. See https://github.com/ray-project/ray/issues/62299.
+    """
+    # String keys pass through unchanged
+    assert _get_metric_namespace_tag("test_key") == "test_key"
+    assert _get_metric_namespace_tag("key_1") == "key_1"
+
+    # LongPollNamespace enum keys return just the name
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
+        == "DEPLOYMENT_TARGETS"
+    )
+    assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
+
+    # Tuple keys extract only the namespace, discarding the per-deployment identifier
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+        )
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
+        )
+        == "DEPLOYMENT_TARGETS"
+    )
+
+    # Tuple keys with long deployment identifiers (the real-world case)
+    long_key = (
+        LongPollNamespace.DEPLOYMENT_CONFIG,
+        "Deployment(name='model', app='workday:perf-test-model-00005:"
+        "key-value-v1:baked-in:global:global:1')",
+    )
+    assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
 
 
 if __name__ == "__main__":
