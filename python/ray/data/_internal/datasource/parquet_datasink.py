@@ -16,17 +16,6 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-# Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
-# `pyarrow.dataset.write_dataset` function.
-# Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
-EXISTING_DATA_BEHAVIOR_MAP = {
-    SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
-    SaveMode.IGNORE: "overwrite_or_ignore",
-    SaveMode.ERROR: "error",
-}
-
 FILE_FORMAT = "parquet"
 
 # These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
@@ -278,9 +267,8 @@ class ParquetDatasink(_FileDatasink):
 
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
-            self.mode, "overwrite_or_ignore"
-        )
+        # We set this to "overwrite_or_ignore", to avoid the race condition seen in parallel writes when this is set to "error". The driver already handles the save mode check in on_write_start.
+        existing_data_behavior = "overwrite_or_ignore"
 
         (
             min_rows_per_group,
@@ -294,6 +282,7 @@ class ParquetDatasink(_FileDatasink):
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
+        # Note that the driver already handles the save mode logic, checking if the directory exists and raising an error if it does on SaveMode.ERROR
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
