@@ -727,7 +727,7 @@ class SearchSpaceTest(unittest.TestCase):
         bohb_config.add_hyperparameters(
             [
                 ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
-                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4, q=2),
+                ConfigSpace.UniformIntegerHyperparameter("b/x", lower=0, upper=4),
                 ConfigSpace.UniformFloatHyperparameter(
                     "b/z", lower=1e-4, upper=1e-2, log=True
                 ),
@@ -774,7 +774,13 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
+            "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
+            "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
 
         config = self.config.copy()
@@ -1193,18 +1199,18 @@ class SearchSpaceTest(unittest.TestCase):
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
 
         def optuna_define_by_run_with_constants(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return {"constant": 1}
 
         def optuna_define_by_run_invalid(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
-            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_int("b/x", 0, 5, step=2)
             ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
             return 1
 
