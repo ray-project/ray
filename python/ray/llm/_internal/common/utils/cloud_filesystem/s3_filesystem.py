@@ -12,12 +12,10 @@ from typing import Any, List, Optional, Union
 try:
     import boto3
     from botocore import UNSIGNED
-    from botocore.client import BaseClient
     from botocore.config import Config
 except ImportError:
     boto3 = None  # type: ignore[assignment]
     UNSIGNED = None  # type: ignore[assignment]
-    BaseClient = None  # type: ignore[assignment]
     Config = None  # type: ignore[assignment]
 
 from ray.llm._internal.common.observability.logging import get_logger
@@ -113,6 +111,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             File contents as string or bytes, or None if file doesn't exist
         """
+        _check_boto3()
         try:
             bucket, key, is_anonymous = S3FileSystem._parse_s3_uri(object_uri)
             s3_client = S3FileSystem._get_s3_client(anonymous=is_anonymous)
@@ -137,6 +136,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             List of subfolder names (without trailing slashes)
         """
+        _check_boto3()
         try:
             bucket, prefix, is_anonymous = S3FileSystem._parse_s3_uri(folder_uri)
 
