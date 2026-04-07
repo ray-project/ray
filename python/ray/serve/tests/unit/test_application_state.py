@@ -1,9 +1,12 @@
+import math
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
+import cloudpickle
 import pytest
+from pydantic import ValidationError
 
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
@@ -36,7 +39,11 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentActorConfig,
+    GangSchedulingConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1561,6 +1568,288 @@ class TestOverrideDeploymentInfo:
             {"bundles": [{"CPU": 1}]}
         ]
 
+    def test_override_gang_scheduling_config(self, info):
+        """Test gang_scheduling_config dict is converted to GangSchedulingConfig."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=4,
+                    gang_scheduling_config={
+                        "gang_size": 2,
+                        "gang_placement_strategy": "SPREAD",
+                    },
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        gang_config = updated_info.deployment_config.gang_scheduling_config
+        assert isinstance(gang_config, GangSchedulingConfig)
+        assert gang_config.gang_size == 2
+        assert gang_config.gang_placement_strategy.value == "SPREAD"
+        assert updated_info.deployment_config.num_replicas == 4
+
+    def test_override_num_replicas_rejects_invalid_gang_multiple(self):
+        """Test that changing num_replicas to a value not divisible by the
+        existing gang_size is rejected."""
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=4,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=5,
+                )
+            ],
+        )
+
+        with pytest.raises(ValidationError, match="must be a multiple of gang_size"):
+            override_deployment_info({"A": initial_info}, config)
+
+    def test_override_deployment_info_injects_serialized_deployment_actors(self):
+        """Config-only deployment actors: serialized bytes from build task are
+        injected into deployment config via override_deployment_info.
+        """
+        # Minimal actor class for serialization (must be at module level for pickle)
+        class _TestActorForSerialization:
+            pass
+
+        serialized = cloudpickle.dumps(_TestActorForSerialization)
+        deployment_to_serialized = {"A": {"counter": serialized}}
+
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    deployment_actors=[
+                        {
+                            "name": "counter",
+                            "actor_class": "test.module:SomeActor",
+                            "init_kwargs": {"start": 0},
+                        },
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=deployment_to_serialized,
+        )
+        updated_info = updated_infos["A"]
+        assert updated_info.deployment_config.deployment_actors is not None
+        assert len(updated_info.deployment_config.deployment_actors) == 1
+        actor_cfg = updated_info.deployment_config.deployment_actors[0]
+        assert actor_cfg.name == "counter"
+        assert actor_cfg._serialized_actor_class == serialized
+        # Can deserialize and get the class
+        resolved = actor_cfg.get_actor_class()
+        assert resolved.__name__ == "_TestActorForSerialization"
+
+    def test_override_deployment_info_deployment_actors_no_serialized_provided(self):
+        """When deployment has deployment_actors but no serialized bytes provided,
+        override still succeeds (actor_class stays as import path string).
+        """
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="counter",
+                        actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+                        init_kwargs={"start": 0},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=2,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=None,
+        )
+        updated_info = updated_infos["A"]
+        assert updated_info.deployment_config.deployment_actors is not None
+        assert len(updated_info.deployment_config.deployment_actors) == 1
+        assert updated_info.deployment_config.deployment_actors[0].name == "counter"
+        assert updated_info.deployment_config.num_replicas == 2
+
+    def test_override_deployment_info_deployment_actors_partial_match(self):
+        """Only actor names present in serialized map get _serialized_actor_class."""
+
+        class _Actor1:
+            pass
+
+        class _Actor2:
+            pass
+
+        serialized_1 = cloudpickle.dumps(_Actor1)
+        deployment_to_serialized = {"A": {"actor1": serialized_1}}
+
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="actor1",
+                        actor_class="test:Actor1",
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="actor2",
+                        actor_class="test:Actor2",
+                        init_kwargs={},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    deployment_actors=[
+                        {
+                            "name": "actor1",
+                            "actor_class": "test:Actor1",
+                            "init_kwargs": {},
+                        },
+                        {
+                            "name": "actor2",
+                            "actor_class": "test:Actor2",
+                            "init_kwargs": {},
+                        },
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=deployment_to_serialized,
+        )
+        updated_info = updated_infos["A"]
+        actors = updated_info.deployment_config.deployment_actors
+        assert actors[0]._serialized_actor_class == serialized_1
+        assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
+
+
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_config_extracts_deployment_actor_classes(check_obj_ref_ready_nowait):
+    """When config has deployment_actors (dict format), they are extracted and
+    passed to build_serve_application as deployment_to_deployment_actor_classes.
+    """
+    with patch(
+        "ray.serve._private.application_state.build_serve_application"
+    ) as mock_build:
+        mock_build.options.return_value.remote.return_value = Mock()
+
+        kv_store = MockKVStore()
+        deployment_state_manager = MockDeploymentStateManager(kv_store)
+        app_state_manager = ApplicationStateManager(
+            deployment_state_manager,
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+
+        app_config = ServeApplicationSchema(
+            name="test_app",
+            import_path="test.import.path",
+            route_prefix="/",
+            deployments=[
+                DeploymentSchema(
+                    name="MyDeployment",
+                    deployment_actors=[
+                        {
+                            "name": "counter",
+                            "actor_class": "ray.serve.tests.test_deployment_actors:SharedCounter",
+                            "init_kwargs": {"start": 0},
+                        },
+                        {
+                            "name": "cache",
+                            "actor_class": "ray.serve.tests.test_deployment_actors:SharedCache",
+                            "init_kwargs": {},
+                        },
+                    ],
+                ),
+            ],
+        )
+        app_state_manager.apply_app_configs([app_config])
+        app_state = app_state_manager._application_states["test_app"]
+        assert app_state.status == ApplicationStatus.DEPLOYING
+
+        check_obj_ref_ready_nowait.return_value = False
+        app_state.update()
+
+        mock_build.options.return_value.remote.assert_called_once()
+        call_kwargs = mock_build.options.return_value.remote.call_args
+        # deployment_to_deployment_actor_classes is the 9th positional arg (index 8)
+        deployment_to_deployment_actor_classes = call_kwargs[0][8]
+        assert deployment_to_deployment_actor_classes == {
+            "MyDeployment": {
+                "counter": "ray.serve.tests.test_deployment_actors:SharedCounter",
+                "cache": "ray.serve.tests.test_deployment_actors:SharedCache",
+            },
+        }
+
 
 class TestAutoscale:
     def test_autoscale(self, mocked_application_state_manager):
@@ -1902,6 +2191,8 @@ class TestAutoscale:
         timestamp_offset = current_time - 0.1
 
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            r1 = ReplicaID(unique_id="replica_1", deployment_id=d1_id)
+            r2 = ReplicaID(unique_id="replica_2", deployment_id=d1_id)
             d1_handle_report = HandleMetricReport(
                 deployment_id=d1_id,
                 handle_id="random",
@@ -1911,18 +2202,14 @@ class TestAutoscale:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        ReplicaID(unique_id="replica_1", deployment_id=d1_id): 3,
-                        ReplicaID(unique_id="replica_2", deployment_id=d1_id): 3,
+                        r1.to_full_id_str(): 3,
+                        r2.to_full_id_str(): 3,
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        ReplicaID(unique_id="replica_1", deployment_id=d1_id): [
-                            TimeStampedValue(timestamp_offset, 3)
-                        ],
-                        ReplicaID(unique_id="replica_2", deployment_id=d1_id): [
-                            TimeStampedValue(timestamp_offset, 3)
-                        ],
+                        r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
+                        r2.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
                     }
                 },
                 timestamp=time.time(),
@@ -2547,6 +2834,8 @@ class TestAutoscale:
     ):
         """Record metrics using handle-based reporting."""
         # d1: Load based on d1_load parameter
+        d1_r1 = ReplicaID(unique_id="replica_1", deployment_id=d1_id)
+        d1_r2 = ReplicaID(unique_id="replica_2", deployment_id=d1_id)
         d1_handle_report = HandleMetricReport(
             deployment_id=d1_id,
             handle_id="random",
@@ -2556,16 +2845,16 @@ class TestAutoscale:
             aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_1", deployment_id=d1_id): d1_load,
-                    ReplicaID(unique_id="replica_2", deployment_id=d1_id): d1_load,
+                    d1_r1.to_full_id_str(): d1_load,
+                    d1_r2.to_full_id_str(): d1_load,
                 }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_1", deployment_id=d1_id): [
+                    d1_r1.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d1_load)
                     ],
-                    ReplicaID(unique_id="replica_2", deployment_id=d1_id): [
+                    d1_r2.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d1_load)
                     ],
                 }
@@ -2575,6 +2864,8 @@ class TestAutoscale:
         asm.record_request_metrics_for_handle(d1_handle_report)
 
         # d2: Load based on d2_load parameter
+        d2_r3 = ReplicaID(unique_id="replica_3", deployment_id=d2_id)
+        d2_r4 = ReplicaID(unique_id="replica_4", deployment_id=d2_id)
         d2_handle_report = HandleMetricReport(
             deployment_id=d2_id,
             handle_id="random",
@@ -2584,16 +2875,16 @@ class TestAutoscale:
             aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_3", deployment_id=d2_id): d2_load,
-                    ReplicaID(unique_id="replica_4", deployment_id=d2_id): d2_load,
+                    d2_r3.to_full_id_str(): d2_load,
+                    d2_r4.to_full_id_str(): d2_load,
                 }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_3", deployment_id=d2_id): [
+                    d2_r3.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d2_load)
                     ],
-                    ReplicaID(unique_id="replica_4", deployment_id=d2_id): [
+                    d2_r4.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d2_load)
                     ],
                 }
@@ -3449,14 +3740,23 @@ class TestApplicationLevelAutoscaling:
     def test_app_level_autoscaling_with_decorator_applies_delays(
         self, mocked_application_state_manager
     ):
-        """Test that apply_app_level_autoscaling_config applies delay logic for an app-level policy."""
+        """Delay logic uses wall-clock time in _apply_delay_logic, not iteration count.
+
+        Autoscale() runs in a tight test loop, so real time between calls is ~0.
+        We patch ``ray.serve.autoscaling_policy.time`` so each policy evaluation
+        advances a fake clock by CONTROL_LOOP_INTERVAL_S (matching controller cadence).
+
+        Wait counts use math.ceil(delay / interval): int() undercounts when
+        float division yields 5.999... for 0.6/0.1, and wall-clock needs enough
+        ticks that elapsed >= delay_s. Fake times use tick/ticks_per_second (not
+        tick * interval) so timestamp subtraction stays exact in IEEE 754.
+        """
 
         (
             app_state_manager,
             deployment_state_manager,
             _,
         ) = mocked_application_state_manager
-        # Create deployments for the policy
         deployments = [
             DeploymentSchema(
                 name="d1",
@@ -3472,25 +3772,22 @@ class TestApplicationLevelAutoscaling:
             )
         ]
 
-        # Create app config but override to use the decorated app-level policy.
         app_config = self._create_app_config(deployments=deployments)
         app_config.autoscaling_policy = {
             "policy_function": "ray.serve.tests.unit.test_application_state:app_level_policy_with_decorator"
         }
 
-        # Deploy app and register deployments with autoscaling manager.
         _ = self._deploy_app_with_mocks(app_state_manager, app_config)
         asm = self._register_deployments(app_state_manager, app_config)
 
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
-        # Get the delay values from the deployment config
         upscale_delay_s = deployments[0].autoscaling_config["upscale_delay_s"]
-        wait_periods_upscale = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
         downscale_delay_s = deployments[0].autoscaling_config["downscale_delay_s"]
-        wait_periods_downscale = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        ticks_per_second = round(1.0 / CONTROL_LOOP_INTERVAL_S)
+        wait_ticks_before_upscale = math.ceil(upscale_delay_s * ticks_per_second)
+        wait_ticks_before_downscale = math.ceil(downscale_delay_s * ticks_per_second)
 
-        # Create replicas so autoscaling runs.
         d1_replicas = [
             ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
         ]
@@ -3498,29 +3795,33 @@ class TestApplicationLevelAutoscaling:
 
         app_state = app_state_manager._application_states["test_app"]
 
-        for _ in range(wait_periods_upscale):
+        fake_tick = [0]
+
+        def _advance_time():
+            t = fake_tick[0] / ticks_per_second
+            fake_tick[0] += 1
+            return t
+
+        with patch("ray.serve.autoscaling_policy.time") as mock_time:
+            mock_time.time = _advance_time
+
+            for _ in range(wait_ticks_before_upscale):
+                app_state.autoscale()
+                assert deployment_state_manager._scaling_decisions[d1_id] == 1
+
             app_state.autoscale()
-            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
-            assert current_replicas == 1
+            assert deployment_state_manager._scaling_decisions[d1_id] == 5
 
-        app_state.autoscale()
-        # Count the number of replicas are 5 now
-        assert d1_id in deployment_state_manager._scaling_decisions
-        assert deployment_state_manager._scaling_decisions[d1_id] == 5
+            deployment_state_manager.deployment_infos[
+                d1_id
+            ].deployment_config.num_replicas = 5
 
-        # Set the number of replicas to 5 so the policy can scale down to 1
-        deployment_state_manager.deployment_infos[
-            d1_id
-        ].deployment_config.num_replicas = 5
+            for _ in range(wait_ticks_before_downscale):
+                app_state.autoscale()
+                assert deployment_state_manager._scaling_decisions[d1_id] == 5
 
-        # Scale down to 1
-        for _ in range(wait_periods_downscale):
             app_state.autoscale()
-            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
-            assert current_replicas == 5
-        app_state.autoscale()
-        assert d1_id in deployment_state_manager._scaling_decisions
-        assert deployment_state_manager._scaling_decisions[d1_id] == 1
+            assert deployment_state_manager._scaling_decisions[d1_id] == 1
 
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):

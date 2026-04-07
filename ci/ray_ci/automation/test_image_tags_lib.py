@@ -19,6 +19,7 @@ class TestFormatPlatformTag:
         ("platform", "expected"),
         [
             ("cpu", "-cpu"),
+            ("tpu", "-tpu"),
             ("cu11.7.1-cudnn8", "-cu117"),
             ("cu11.8.0-cudnn8", "-cu118"),
             ("cu12.1.1-cudnn8", "-cu121"),
@@ -98,6 +99,11 @@ class TestGetPlatformSuffixes:
         assert "-cu121" in suffixes
         assert "-gpu" in suffixes
         assert "" in suffixes
+
+    def test_tpu_no_aliases(self):
+        """TPU gets no aliases."""
+        assert get_platform_suffixes("tpu", "ray") == ["-tpu"]
+        assert get_platform_suffixes("tpu", "ray-extra") == ["-tpu"]
 
     def test_non_gpu_platform_cuda_no_aliases(self):
         """Non-GPU_PLATFORM CUDA versions get no aliases."""

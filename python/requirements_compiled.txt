@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 
 absl-py==1.4.0
     # via
@@ -134,7 +134,7 @@ async-generator==1.10
     # via -r python/requirements/test-requirements.txt
 async-lru==2.0.5
     # via jupyterlab
-async-timeout==4.0.3
+async-timeout==5.0.1
     # via redis
 attrs==25.1.0
     # via
@@ -377,6 +377,8 @@ configspace==0.7.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
+confluent-kafka==2.13.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 contextlib2==21.6.0
     # via ml-collections
 contourpy==1.1.1
@@ -433,7 +435,7 @@ decorator==5.1.1
     #   tensorflow-probability
 decord==0.6.0
     # via -r python/requirements/ml/data-test-requirements.txt
-deepspeed==0.12.3
+deepspeed==0.17.2
     # via -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
     # via
@@ -486,6 +488,8 @@ docutils==0.19
     #   sphinx
 dulwich==0.21.6
     # via comet-ml
+einops==0.8.2
+    # via deepspeed
 entrypoints==0.4
     # via nbconvert
 et-xmlfile==1.1.0
@@ -500,7 +504,7 @@ evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
-execnet==2.1.1
+execnet==2.1.2
     # via pytest-shutil
 executing==2.0.1
     # via stack-data
@@ -596,7 +600,7 @@ fugue-sql-antlr==0.2.0
     # via fugue
 future==1.0.0
     # via -r python/requirements/ml/tune-requirements.txt
-gast==0.6.0
+gast==0.7.0
     # via
     #   tensorflow
     #   tensorflow-probability
@@ -970,8 +974,6 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
-kafka-python==2.2.15
-    # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.7
@@ -984,6 +986,10 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
+lance-namespace==0.4.5
+    # via pylance
+lance-namespace-urllib3-client==0.4.5
+    # via lance-namespace
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==18.1.1
@@ -1086,7 +1092,7 @@ monotonic==1.6
     # via
     #   gsutil
     #   segment-analytics-python
-more-itertools==10.7.0
+more-itertools==11.0.1
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
@@ -1111,6 +1117,7 @@ msgpack==1.1.2
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements/test-requirements.txt
+    #   deepspeed
     #   distributed
     #   msgpack-numpy
     #   ray
@@ -1285,7 +1292,7 @@ numpy==1.26.4
     #   webdataset
     #   xgboost
     #   zoopt
-nvidia-nccl-cu12==2.20.5
+nvidia-nccl-cu12==2.26.2
     # via xgboost
 oauth2client==4.1.3
     # via
@@ -1294,7 +1301,7 @@ oauth2client==4.1.3
     #   google-apitools
 oauthlib==3.2.2
     # via requests-oauthlib
-onnx==1.15.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+onnx==1.16.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
 onnxruntime==1.18.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-requirements.txt
@@ -1587,7 +1594,7 @@ py-cpuinfo==9.0.0
     # via deepspeed
 py-partiql-parser==0.6.3
     # via moto
-py-spy==0.4.0 ; python_version < "3.12"
+py-spy==0.4.1 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
@@ -1632,6 +1639,7 @@ pydantic==2.12.4
     #   deepspeed
     #   fastapi
     #   gradio
+    #   lance-namespace-urllib3-client
     #   mlflow-skinny
     #   pyiceberg
     #   taskiq
@@ -1664,7 +1672,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==0.22.0
+pylance==1.0.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
@@ -1674,8 +1682,6 @@ pymunk==6.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pynacl==1.5.0
     # via paramiko
-pynvml==11.5.0
-    # via deepspeed
 pyopengl==3.1.7
     # via
     #   dm-control
@@ -1788,6 +1794,7 @@ python-dateutil==2.8.2
     #   holidays
     #   jupyter-client
     #   kubernetes
+    #   lance-namespace-urllib3-client
     #   matplotlib
     #   moto
     #   openlineage-python
@@ -1939,7 +1946,7 @@ responses==0.25.8
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-restrictedpython==8.0
+restrictedpython==8.1
     # via aim
 retry-decorator==1.1.1
     # via
@@ -2044,7 +2051,7 @@ sentry-sdk==2.10.0
     # via
     #   comet-ml
     #   wandb
-serpent==1.41
+serpent==1.42
     # via
     #   hpbandster
     #   pyro4
@@ -2163,7 +2170,7 @@ strictyaml==1.7.3
     # via pyiceberg
 supersuit==3.9.3
     # via -r python/requirements/ml/rllib-test-requirements.txt
-sympy==1.13.1
+sympy==1.13.3
     # via
     #   cfn-lint
     #   onnxruntime
@@ -2263,7 +2270,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.3.0
+torch==2.7.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2301,7 +2308,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.18.0
+torchvision==0.22.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
@@ -2403,6 +2410,7 @@ typing-extensions==4.15.0
     #   graphene
     #   gymnasium
     #   huggingface-hub
+    #   lance-namespace-urllib3-client
     #   lightning-utilities
     #   mlflow-skinny
     #   mypy
@@ -2452,6 +2460,7 @@ urllib3==1.26.19
     #   docker
     #   dulwich
     #   kubernetes
+    #   lance-namespace-urllib3-client
     #   requests
     #   responses
     #   semgrep
@@ -2468,7 +2477,7 @@ uvicorn==0.22.0
     #   aim
     #   gradio
     #   mlflow-skinny
-uvloop==0.21.0
+uvloop==0.22.1
     # via pymars
     # via
     #   nsx-policy-python-sdk

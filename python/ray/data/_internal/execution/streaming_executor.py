@@ -1,5 +1,4 @@
 import logging
-import math
 import threading
 import time
 import typing
@@ -17,7 +16,6 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
     Executor,
     OutputIterator,
     PhysicalOperator,
@@ -44,7 +42,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.metadata_exporter import (
+    Topology as TopologyMetadata,
+    sanitize_for_struct,
+)
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
@@ -52,6 +53,7 @@ from ray.data._internal.operator_schema_exporter import (
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
@@ -62,6 +64,10 @@ logger = logging.getLogger(__name__)
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
+
+# Maximum string/sequence length for DataContext logging. Set high to avoid truncation
+# while still protecting against pathological cases.
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
@@ -121,45 +127,15 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-        self._initialize_metrics_gauges()
-
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
-
-    def _initialize_metrics_gauges(self) -> None:
-        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
 
-        self._cpu_budget_gauge: Gauge = Gauge(
-            "data_cpu_budget",
-            "Budget (CPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._gpu_budget_gauge: Gauge = Gauge(
-            "data_gpu_budget",
-            "Budget (GPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._memory_budget_gauge: Gauge = Gauge(
-            "data_memory_budget",
-            "Budget (Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._osm_budget_gauge: Gauge = Gauge(
-            "data_object_store_memory_budget",
-            "Budget (Object Store Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._max_bytes_to_read_gauge: Gauge = Gauge(
-            "data_max_bytes_to_read",
-            description="Maximum bytes to read from streaming generator buffer.",
-            tag_keys=("dataset", "operator"),
-        )
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self,
@@ -173,7 +149,11 @@ class StreamingExecutor(Executor, threading.Thread):
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
 
-        self._callbacks = callbacks if callbacks is not None else []
+        if callbacks is not None:
+            self._callbacks = callbacks
+        else:
+            self._callbacks = []
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
@@ -188,7 +168,17 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
-            logger.debug("Execution config: %s", self._options)
+            # Log the full DataContext for traceability
+            if logger.isEnabledFor(logging.DEBUG) and log_once(
+                f"ray_data_log_context_{self._dataset_id}"
+            ):
+                logger.debug(
+                    f"Data Context for dataset {self._dataset_id}:\n%s",
+                    sanitize_for_struct(
+                        self._data_context,
+                        truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
+                    ),
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
@@ -376,48 +366,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._sched_loop_duration_s.set(
             sched_loop_duration, tags={"dataset": self._dataset_id}
         )
-        for i, op in enumerate(self._topology):
-            tags = {
-                "dataset": self._dataset_id,
-                "operator": self._get_operator_id(op, i),
-            }
-            self._update_budget_metrics(op, tags)
-            self._update_max_bytes_to_read_metric(op, tags)
-
-    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self._resource_manager.get_budget(op)
-        if budget is None:
-            cpu_budget = 0
-            gpu_budget = 0
-            memory_budget = 0
-            object_store_memory_budget = 0
-        else:
-            # Convert inf to -1 to represent unlimited budget in metrics
-            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
-            object_store_memory_budget = (
-                -1
-                if math.isinf(budget.object_store_memory)
-                else budget.object_store_memory
-            )
-
-        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-        self._memory_budget_gauge.set(memory_budget, tags=tags)
-        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
-
-    def _update_max_bytes_to_read_metric(
-        self, op: PhysicalOperator, tags: Dict[str, str]
-    ):
-        if self._resource_manager.op_resource_allocator_enabled():
-            resource_allocator = self._resource_manager.op_resource_allocator
-            output_budget_bytes = resource_allocator.get_output_budget(op)
-            if output_budget_bytes is not None:
-                if math.isinf(output_budget_bytes):
-                    # Convert inf to -1 to represent unlimited bytes to read
-                    output_budget_bytes = -1
-                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -521,7 +469,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._export_operator_schema(op)
 
             # Log metrics of newly completed operators.
-            if op.has_completed() and not self._has_op_completed[op]:
+            if not op.has_completed():
+                op.refresh_state()
+            elif not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
@@ -675,57 +625,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-
-def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid DAGs.
-
-    It checks if the sum of min actor pool sizes are larger than the resource
-    limit, as well as other unsupported resource configurations.
-
-    This should be called prior to creating the topology from the DAG.
-
-    Args:
-        dag: The DAG to validate.
-        limits: The limits to validate against.
-    """
-
-    seen = set()
-
-    def walk(op):
-        seen.add(op)
-        for parent in op.input_dependencies:
-            if parent not in seen:
-                yield from walk(parent)
-        yield op
-
-    base_usage = ExecutionResources(cpu=1)
-    for op in walk(dag):
-        min_resource_usage, _ = op.min_max_resource_requirements()
-        base_usage = base_usage.add(min_resource_usage)
-
-    if not base_usage.satisfies_limit(limits):
-        error_message = (
-            "The current cluster doesn't have the required resources to execute your "
-            "Dataset pipeline:\n"
-        )
-        if base_usage.cpu > limits.cpu:
-            error_message += (
-                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
-                f"only has {limits.cpu}.\n"
-            )
-        if base_usage.gpu > limits.gpu:
-            error_message += (
-                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
-                f"only has {limits.gpu}.\n"
-            )
-        if base_usage.object_store_memory > limits.object_store_memory:
-            error_message += (
-                f"- Your application needs {base_usage.object_store_memory}B object "
-                f"store memory, but your cluster only has "
-                f"{limits.object_store_memory}B.\n"
-            )
-        raise ValueError(error_message.strip())
 
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:

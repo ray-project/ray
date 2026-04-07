@@ -4,10 +4,10 @@ from copy import deepcopy
 from typing import Dict, Optional
 
 import pytest
+from pydantic import BaseModel
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayActorError
 from ray.serve import Application
@@ -945,6 +945,7 @@ class TestInitialReplicasHandling:
             wait_for_condition(
                 check_expected_num_replicas,
                 deployment_to_num_replicas={deployment_name: num_replicas},
+                timeout=30,
             )
 
     def test_initial_replicas_scales_up_and_down(
@@ -996,6 +997,7 @@ class TestInitialReplicasHandling:
             wait_for_condition(
                 check_expected_num_replicas,
                 deployment_to_num_replicas={deployment_name: num_replicas},
+                timeout=30,
             )
 
     def test_initial_replicas_zero(
@@ -1111,6 +1113,7 @@ class TestInitialReplicasHandling:
                 )
             },
             app_name="app1",
+            timeout=30,
         )
         wait_for_condition(
             check_expected_num_replicas,
@@ -1120,6 +1123,7 @@ class TestInitialReplicasHandling:
                 )
             },
             app_name="app2",
+            timeout=30,
         )
 
 

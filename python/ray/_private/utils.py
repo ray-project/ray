@@ -196,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
@@ -699,7 +699,7 @@ def check_oversized_function(
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    return threading.current_thread().name == "MainThread"
 
 
 def detect_fate_sharing_support_win32():

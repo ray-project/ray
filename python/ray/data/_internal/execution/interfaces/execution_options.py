@@ -34,8 +34,8 @@ class ExecutionResources:
         #       digit, hence we round the values here up to it
         self._cpu: Optional[float] = safe_round(cpu, 5)
         self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory)
-        self._memory: Optional[float] = safe_round(memory)
+        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
+        self._memory: Optional[float] = safe_round(memory, 0)
 
     @classmethod
     def from_resource_dict(
@@ -298,8 +298,9 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             Note,
-            - If using Ray Data with Ray Train, training resources will be
-            automatically excluded.
+            - If using Ray Data with Ray Train, training resources are
+            automatically reserved and you don't need to set exclude_resources
+            for them.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
         preserve_order: Set this to preserve the ordering between blocks processed by
@@ -410,7 +411,7 @@ def safe_round(
 ) -> Optional[float]:
     if value is None:
         return None
-    elif math.isinf(value):
+    elif ndigits is None or math.isinf(value):
         return value
     else:
         return round(value, ndigits)

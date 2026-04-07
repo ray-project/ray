@@ -79,7 +79,6 @@ from ray.rllib.utils.typing import (
     RLModuleSpecType,
     SampleBatchType,
 )
-from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
@@ -472,7 +471,6 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.offline_data_class = None
-        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -577,8 +575,6 @@ class AlgorithmConfig(_Config):
         self.checkpoint_trainable_policies_only = False
 
         # `self.debugging()`
-        self.logger_creator = None
-        self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
@@ -661,9 +657,6 @@ class AlgorithmConfig(_Config):
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
-        self.min_time_s_per_reporting = DEPRECATED_VALUE
-        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
-        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self._disable_execution_plan_api = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
@@ -972,7 +965,6 @@ class AlgorithmConfig(_Config):
     def build_algo(
         self,
         env: Optional[Union[str, EnvType]] = None,
-        logger_creator: Optional[Callable[[], Logger]] = None,
         use_copy: bool = True,
     ) -> "Algorithm":
         """Builds an Algorithm from this AlgorithmConfig (or a copy thereof).
@@ -983,8 +975,6 @@ class AlgorithmConfig(_Config):
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv"), or an Env
                 class directly. Note that this arg can also be specified via
                 the "env" key in `config`.
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             use_copy: Whether to deepcopy `self` and pass the copy to the Algorithm
                 (instead of `self`) as config. This is useful in case you would like to
                 recycle the same AlgorithmConfig over and over, e.g. in a test case, in
@@ -997,8 +987,6 @@ class AlgorithmConfig(_Config):
             self.env = env
             if self.evaluation_config is not None:
                 self.evaluation_config["env"] = env
-        if logger_creator is not None:
-            self.logger_creator = logger_creator
 
         algo_class = self.algo_class
         if isinstance(self.algo_class, str):
@@ -1006,7 +994,6 @@ class AlgorithmConfig(_Config):
 
         return algo_class(
             config=self if not use_copy else copy.deepcopy(self),
-            logger_creator=self.logger_creator,
         )
 
     def build_env_to_module_connector(
@@ -3785,8 +3772,6 @@ class AlgorithmConfig(_Config):
     def debugging(
         self,
         *,
-        logger_creator: Optional[Callable[[], Logger]] = NotProvided,
-        logger_config: Optional[dict] = NotProvided,
         log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
@@ -3795,10 +3780,6 @@ class AlgorithmConfig(_Config):
         """Sets the config's debugging settings.
 
         Args:
-            logger_creator: Callable that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
-            logger_config: Define logger-specific configuration to be used inside Logger
-                Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 also periodically prints out summaries of relevant internal dataflow
@@ -3813,10 +3794,6 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if logger_creator is not NotProvided:
-            self.logger_creator = logger_creator
-        if logger_config is not NotProvided:
-            self.logger_config = logger_config
         if log_level is not NotProvided:
             self.log_level = log_level
         if log_sys_usage is not NotProvided:
