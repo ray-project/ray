@@ -2994,33 +2994,57 @@ Status CoreWorker::ExecuteTask(
   {
     std::ifstream smaps("/proc/self/smaps");
     if (smaps.is_open()) {
-      std::unordered_map<std::string, long> priv_dirty_by_name;
+      // Per-mapping tracking: each mapping gets its own entry with address range
+      struct MappingInfo {
+        std::string addr_range;
+        std::string name;
+        std::string perms;
+        long priv_dirty = 0;
+        long priv_clean = 0;
+        long shared_dirty = 0;
+        long shared_clean = 0;
+        long size = 0;
+        long rss = 0;
+      };
+      std::vector<MappingInfo> mappings;
       long total_priv_dirty = 0, total_priv_clean = 0;
       long total_shared_dirty = 0, total_shared_clean = 0;
-      std::string current_name;
       std::string line;
       while (std::getline(smaps, line)) {
-        // Header line: "7f1234-7f5678 r-xp 00000 08:01 12345 /path/to/lib.so"
         if (!line.empty() && !std::isspace(line[0]) && line.size() > 2 &&
             line.find('-') < line.find(' ')) {
+          mappings.emplace_back();
+          auto &m = mappings.back();
+          auto space1 = line.find(' ');
+          m.addr_range = line.substr(0, space1);
+          auto space2 = line.find(' ', space1 + 1);
+          m.perms = line.substr(space1 + 1, space2 - space1 - 1);
           int spaces = 0;
           size_t pos = 0;
           for (; pos < line.size() && spaces < 5; ++pos) {
             if (line[pos] == ' ') spaces++;
           }
           while (pos < line.size() && line[pos] == ' ') pos++;
-          current_name = (pos < line.size()) ? line.substr(pos) : "[anonymous]";
-        } else {
+          m.name = (pos < line.size()) ? line.substr(pos) : "[anonymous]";
+        } else if (!mappings.empty()) {
+          auto &m = mappings.back();
           long val = 0;
           if (sscanf(line.c_str(), "Private_Dirty: %ld kB", &val) == 1) {
+            m.priv_dirty = val;
             total_priv_dirty += val;
-            if (val > 0) priv_dirty_by_name[current_name] += val;
           } else if (sscanf(line.c_str(), "Private_Clean: %ld kB", &val) == 1) {
+            m.priv_clean = val;
             total_priv_clean += val;
           } else if (sscanf(line.c_str(), "Shared_Dirty: %ld kB", &val) == 1) {
+            m.shared_dirty = val;
             total_shared_dirty += val;
           } else if (sscanf(line.c_str(), "Shared_Clean: %ld kB", &val) == 1) {
+            m.shared_clean = val;
             total_shared_clean += val;
+          } else if (sscanf(line.c_str(), "Size: %ld kB", &val) == 1) {
+            m.size = val;
+          } else if (sscanf(line.c_str(), "Rss: %ld kB", &val) == 1) {
+            m.rss = val;
           }
         }
       }
@@ -3032,18 +3056,22 @@ Status CoreWorker::ExecuteTask(
           << "shared_dirty=" << total_shared_dirty / 1e3 << "MB "
           << "shared_clean=" << total_shared_clean / 1e3 << "MB";
 
-      // Private_Dirty breakdown by mapping (sorted by size desc)
-      std::vector<std::pair<std::string, long>> sorted_entries(priv_dirty_by_name.begin(),
-                                                               priv_dirty_by_name.end());
-      std::sort(sorted_entries.begin(),
-                sorted_entries.end(),
-                [](const auto &a, const auto &b) { return a.second > b.second; });
-      std::ostringstream oss;
-      oss << "(karticam) [PRIV-DIRTY-BREAKDOWN] ";
-      for (const auto &entry : sorted_entries) {
-        oss << entry.first << "=" << entry.second / 1e3 << "MB | ";
+      // Log every mapping with Private_Dirty > 0, sorted by priv_dirty desc
+      std::sort(mappings.begin(), mappings.end(), [](const auto &a, const auto &b) {
+        return a.priv_dirty > b.priv_dirty;
+      });
+      for (const auto &m : mappings) {
+        if (m.priv_dirty <= 0) break;
+        RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+            << "(karticam) [MAPPING] " << m.addr_range << " " << m.perms
+            << " size=" << m.size / 1e3 << "MB"
+            << " rss=" << m.rss / 1e3 << "MB"
+            << " priv_dirty=" << m.priv_dirty / 1e3 << "MB"
+            << " priv_clean=" << m.priv_clean / 1e3 << "MB"
+            << " shared_dirty=" << m.shared_dirty / 1e3 << "MB"
+            << " shared_clean=" << m.shared_clean / 1e3 << "MB"
+            << " name=" << m.name;
       }
-      RAY_LOG(INFO).WithField("task_name", task_spec.GetName()) << oss.str();
     }
   }
 #endif
