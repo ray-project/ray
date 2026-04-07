@@ -2761,24 +2761,19 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     This triggers ARROW-5030 / ArrowNotImplementedError when read via the
     Arrow Dataset Scanner (fragment.to_batches).
     """
-    import random
-    import string
-
     tmp_path = tmp_path_factory.mktemp("nested_parquet")
 
     num_rows = 2500
     items_per_row = 10
-    payload_size = 100_000  # 100KB per list item -> ~2.5GB total nested data
+    payload_size = 50_000  # os.urandom bytes -> 100KB hex string per item
 
     ids = list(range(num_rows))
     nested_data = [
         [
             {
                 "key": f"item_{i}_{j}",
-                "payload": "".join(
-                    random.choices(string.ascii_letters + string.digits, k=payload_size)
-                ),
-                "value": random.randint(0, 10000),
+                "payload": os.urandom(payload_size).hex(),
+                "value": j,
             }
             for j in range(items_per_row)
         ]
@@ -2809,6 +2804,7 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     return str(tmp_path), file_path, num_rows, schema
 
 
+@pytest.mark.timeout(300)
 def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     shutdown_only, nested_parquet_exceeding_2gb
 ):
