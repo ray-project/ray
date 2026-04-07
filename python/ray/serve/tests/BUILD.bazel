@@ -84,7 +84,6 @@ py_test_module_list(
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_serve_with_tracing.py",
-        "test_util.py",
         "test_websockets.py",
     ],
     tags = [
@@ -113,6 +112,7 @@ py_test_module_list(
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
         "test_deployment_topology.py",
         "test_failure.py",
         "test_failure_2.py",
@@ -141,6 +141,7 @@ py_test_module_list(
         "test_streaming_response.py",
         "test_task_consumer_autoscaling.py",
         "test_task_processor.py",
+        "test_util.py",
     ],
     tags = [
         "exclusive",
@@ -205,7 +206,6 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_fastapi.py",
-        "test_gang_scheduling.py",
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",
@@ -218,6 +218,24 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Don't run gang scheduling tests on Windows
+py_test_module_list(
+    size = "enormous",
+    files = [
+        "test_gang_scheduling.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
         "team:serve",
     ],
     deps = [
@@ -467,6 +485,46 @@ py_test_module_list_with_env_variants(
     ],
 )
 
+# Test autoscaling with streaming and unary configurations.
+# Regression test for https://github.com/ray-project/ray/issues/61551
+AUTOSCALING_ENV_VARIANTS = {
+    "env_overrides": {
+        "env": {
+            "RAY_SERVE_LOG_TO_STDERR": "0",
+            "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
+            "RAY_SERVE_USE_GRPC_BY_DEFAULT": "1",
+        },
+        "name_suffix": "_env_overrides",
+    },
+    "throughput_optimized": {
+        "env": {
+            "RAY_SERVE_THROUGHPUT_OPTIMIZED": "1",
+        },
+        "name_suffix": "_throughput_optimized",
+    },
+}
+
+py_test_module_list_with_env_variants(
+    size = "large",
+    args = [
+        "-k",
+        "TestAutoscalingWithRejection",
+    ],
+    env_variants = AUTOSCALING_ENV_VARIANTS,
+    files = [
+        "test_autoscaling_policy.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Test feature flag for task events.
 py_test_module_list(
     size = "small",
@@ -540,6 +598,7 @@ py_test_module_list(
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_deployment_scheduler.py",
+        "test_deployment_scheduler_downscale.py",
         "test_gang_scheduling.py",
         "test_standalone_2.py",
     ],
