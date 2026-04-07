@@ -12,7 +12,7 @@ from pybase64 import b64decode
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
-from benchmark import Benchmark
+from benchmark import Benchmark, OperatorStatsTracker
 
 
 INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
@@ -59,6 +59,9 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
     def benchmark_fn():
         (
             ray.data.read_json(INPUT_PREFIX, lines=True)
@@ -72,6 +75,7 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(OUTPUT_PREFIX)
         )
+        return OperatorStatsTracker.collect()
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -136,6 +140,6 @@ class Infer:
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
     args = parse_args()
     main(args)
