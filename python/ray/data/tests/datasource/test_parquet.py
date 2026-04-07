@@ -2806,7 +2806,7 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
 
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_type_arrow_not_implemented_fallback(
-    shutdown_only, nested_parquet_exceeding_2gb
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
 ):
     """Test that read_parquet succeeds on Parquet files with nested column types
     whose data exceeds Arrow's ~2GB chunking threshold, by falling back to
@@ -2816,8 +2816,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
     """
     data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
-
-    ray.init()
     ds = ray.data.read_parquet(data_dir)
     total_rows = 0
     for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):

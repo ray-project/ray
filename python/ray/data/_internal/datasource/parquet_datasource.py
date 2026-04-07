@@ -904,6 +904,36 @@ def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
     return coerced
 
 
+def _has_nested_types(schema: "pyarrow.Schema") -> bool:
+    """Check if a schema contains any nested column types (list, struct, map)
+    that are susceptible to Arrow's chunked array limitation (ARROW-5030)."""
+    import pyarrow as pa
+
+    def _is_nested(t):
+        return (
+            pa.types.is_list(t)
+            or pa.types.is_large_list(t)
+            or pa.types.is_struct(t)
+            or pa.types.is_map(t)
+            or pa.types.is_fixed_size_list(t)
+        )
+
+    return any(_is_nested(field.type) for field in schema)
+
+
+def _row_group_uncompressed_size(
+    rg_meta: "pyarrow.parquet.RowGroupMetaData",
+) -> int:
+    """Total uncompressed byte size of all columns in a row group.
+
+    NOTE: We intentionally avoid ``rg_meta.total_byte_size`` because it can
+    return the *compressed* size for some files (apache/arrow#48138).
+    """
+    return sum(
+        rg_meta.column(i).total_uncompressed_size for i in range(rg_meta.num_columns)
+    )
+
+
 def _get_safe_batch_size_for_nested_types(
     pf: "pyarrow.parquet.ParquetFile",
 ) -> int:
@@ -918,14 +948,26 @@ def _get_safe_batch_size_for_nested_types(
         rg_meta = pf.metadata.row_group(rg_idx)
         if rg_meta.num_rows == 0:
             continue
-        total_uncompressed = sum(
-            rg_meta.column(i).total_uncompressed_size
-            for i in range(rg_meta.num_columns)
-        )
-        bytes_per_row = total_uncompressed / rg_meta.num_rows
+        bytes_per_row = _row_group_uncompressed_size(rg_meta) / rg_meta.num_rows
         rg_safe = max(int(_ARROW_CHUNK_LIMIT // bytes_per_row // 2), 1)
         safe_batch_size = min(safe_batch_size, rg_safe)
     return safe_batch_size
+
+
+def _needs_nested_type_fallback(fragment: "ParquetFileFragment") -> bool:
+    """Check if a fragment requires the fallback reader for nested types.
+
+    Returns True if the fragment's schema has nested types AND any row group
+    has uncompressed data exceeding Arrow's ~2GB chunking threshold.
+    This is a metadata-only check (no data read).
+    """
+    if not _has_nested_types(fragment.physical_schema):
+        return False
+    metadata = fragment.metadata
+    return any(
+        _row_group_uncompressed_size(metadata.row_group(rg_idx)) >= _ARROW_CHUNK_LIMIT
+        for rg_idx in range(metadata.num_row_groups)
+    )
 
 
 def _iter_batches_with_nested_fallback(
@@ -938,21 +980,22 @@ def _iter_batches_with_nested_fallback(
     use_threads: bool = False,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
 ) -> Iterable["pyarrow.RecordBatch"]:
-    """Iterate over batches from a fragment, falling back to
-    pq.ParquetFile.iter_batches if the Arrow Dataset Scanner raises
-    ArrowNotImplementedError for nested column types exceeding the ~2GB
-    chunking threshold (ARROW-5030).
+    """Iterate over batches from a fragment, using the fallback reader when
+    the fragment has nested column types with row groups exceeding Arrow's
+    ~2GB chunking threshold (ARROW-5030).
 
-    In the happy path, ``filter_expr`` is pushed down to the scanner. In the
-    fallback path, it is applied post-read since ``pq.ParquetFile.iter_batches``
-    does not support predicate pushdown.
+    The reading strategy is chosen upfront based on schema and metadata to
+    avoid mid-stream fallback that could duplicate already-yielded batches.
+
+    In the normal path, ``filter_expr`` is pushed down to the scanner. In the
+    fallback path, row-group-level predicate pushdown is applied via
+    ``fragment.subset(filter=)`` and row-level filtering is done post-read.
     """
-    import pyarrow as pa
-
     to_batches_kwargs = dict(to_batches_kwargs or {})
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
-    try:
+
+    if not _needs_nested_type_fallback(fragment):
         # filter is pushed down to the scanner here
         yield from fragment.to_batches(
             columns=columns,
@@ -961,45 +1004,40 @@ def _iter_batches_with_nested_fallback(
             use_threads=use_threads,
             **to_batches_kwargs,
         )
-    except pa.lib.ArrowNotImplementedError as e:
-        if (
-            "Nested data conversions not implemented for chunked array outputs"
-            not in str(e)
-        ):
-            raise
+        return
 
-        import pyarrow.parquet as pq
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
-        logger.warning(
-            "Falling back to pyarrow.parquet row-level batched reader for "
-            "'%s' due to Arrow nested type chunking limitation "
-            "(ARROW-5030). Consider writing Parquet files with smaller "
-            "row group sizes to avoid this.",
-            fragment.path,
-        )
+    logger.warning(
+        "Using pyarrow.parquet row-level batched reader for '%s' due to "
+        "Arrow nested type chunking limitation (ARROW-5030). Consider "
+        "writing Parquet files with smaller row group sizes to avoid this.",
+        fragment.path,
+    )
 
-        pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
-        safe = _get_safe_batch_size_for_nested_types(pf)
-        fallback_batch_size = min(batch_size, safe) if batch_size else safe
+    pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
+    safe = _get_safe_batch_size_for_nested_types(pf)
+    fallback_batch_size = min(batch_size, safe) if batch_size else safe
 
-        # Use fragment.subset(filter=) for row-group-level predicate
-        # pushdown via Parquet statistics (metadata only, no data read).
-        iter_kwargs: Dict[str, Any] = {}
+    # Use fragment.subset(filter=) for row-group-level predicate
+    # pushdown via Parquet statistics (metadata only, no data read).
+    iter_kwargs: Dict[str, Any] = {}
+    if filter_expr is not None:
+        pruned = fragment.subset(filter=filter_expr)
+        if pruned.row_groups is not None:
+            iter_kwargs["row_groups"] = [rg.id for rg in pruned.row_groups]
+
+    for batch in pf.iter_batches(
+        batch_size=fallback_batch_size, columns=columns, **iter_kwargs
+    ):
+        # Row-level filter still needed since row-group pruning only
+        # skips entire row groups that can't match.
         if filter_expr is not None:
-            pruned = fragment.subset(filter=filter_expr)
-            if pruned.row_groups is not None:
-                iter_kwargs["row_groups"] = [rg.id for rg in pruned.row_groups]
-
-        for batch in pf.iter_batches(
-            batch_size=fallback_batch_size, columns=columns, **iter_kwargs
-        ):
-            # Row-level filter still needed since row-group pruning only
-            # skips entire row groups that can't match.
-            if filter_expr is not None:
-                table = pa.Table.from_batches([batch]).filter(filter_expr)
-                yield from table.to_batches()
-            else:
-                yield batch
+            table = pa.Table.from_batches([batch]).filter(filter_expr)
+            yield from table.to_batches()
+        else:
+            yield batch
 
 
 def _read_batches_from(
