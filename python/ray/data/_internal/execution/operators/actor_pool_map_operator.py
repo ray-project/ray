@@ -2,7 +2,7 @@ import logging
 import time
 import uuid
 import warnings
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -646,7 +646,7 @@ class ActorPoolMapOperator(MapOperator):
                 "operator_id": self.id,
                 "operator_name": self.name,
                 "active_tasks": self.num_active_tasks(),
-                "actor_info": self.get_actor_info()._asdict(),
+                "actor_info": asdict(self.get_actor_info()),
             },
         )
 
@@ -682,7 +682,7 @@ class ActorPoolMapOperator(MapOperator):
                 "operator_name": self.name,
                 "force": force,
                 "active_tasks": self.num_active_tasks(),
-                "actor_info": self.get_actor_info()._asdict(),
+                "actor_info": asdict(self.get_actor_info()),
             },
         )
         self._actor_pool.shutdown(force=force)
