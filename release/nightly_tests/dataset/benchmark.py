@@ -119,7 +119,7 @@ class RuntimeEnvSetupTracker:
     def collect() -> List[Dict[str, Any]]:
         try:
             groups: Dict[str, List[float]] = {}
-            for env in list_runtime_envs():
+            for env in list_runtime_envs(limit=1000):
                 if env.creation_time_ms is None:
                     continue
                 label = "+".join(sorted(env.runtime_env.keys()))
