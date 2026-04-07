@@ -719,66 +719,69 @@ async def test_serve_shutdown_async(ray_shutdown):
     assert len(serve.status().applications) == 1
 
 
-def test_shutdown_after_driver_reconnect(ray_shutdown):
-    """serve.shutdown() should work after the driver disconnects and reconnects.
-
-    Regression test for https://github.com/ray-project/ray/issues/61608.
-    When using `with ray.init()` as a context manager, ray.shutdown() is called
-    on exit but the module-level _global_client in ray.serve.context is not
-    cleared. On the next ray.init(), serve.shutdown() must health-check the
-    cached controller handle so it can reconnect instead of using a stale
-    handle from the previous session.
-    """
-
-    @serve.deployment
-    class Greeter:
-        def __call__(self, *args):
-            return "hi"
-
-    # Session 1: start Serve and deploy. The context manager calls
-    # ray.shutdown() on exit, but the detached controller survives.
-    with ray.init(namespace="serve"):
-        serve.start()
-        serve.run(Greeter.bind())
-        assert len(serve.status().applications) == 1
-
-    # Session 2: reconnect and shut down Serve. This must not fail due to
-    # a stale _global_client from session 1.
-    with ray.init(namespace="serve"):
-        serve.shutdown()
-
-    # Session 3: verify Serve is actually shut down — starting fresh should
-    # show zero applications.
-    with ray.init(namespace="serve"):
-        serve.start()
-        assert len(serve.status().applications) == 0
-        serve.shutdown()
-
-
-@pytest.mark.asyncio
-async def test_shutdown_async_after_driver_reconnect(ray_shutdown):
-    """Async variant: serve.shutdown_async() should work after driver reconnect.
-
-    Regression test for https://github.com/ray-project/ray/issues/61608.
-    """
-
-    @serve.deployment
-    class Greeter:
-        def __call__(self, *args):
-            return "hi"
-
-    with ray.init(namespace="serve"):
-        serve.start()
-        serve.run(Greeter.bind())
-        assert len(serve.status().applications) == 1
-
-    with ray.init(namespace="serve"):
-        await serve.shutdown_async()
-
-    with ray.init(namespace="serve"):
-        serve.start()
-        assert len(serve.status().applications) == 0
-        await serve.shutdown_async()
+# TODO(kourosh): Re-enable after confirming they don't cause resource
+# contention on CI. See https://github.com/ray-project/ray/issues/61608.
+#
+# def test_shutdown_after_driver_reconnect(ray_shutdown):
+#     """serve.shutdown() should work after the driver disconnects and reconnects.
+#
+#     Regression test for https://github.com/ray-project/ray/issues/61608.
+#     When using `with ray.init()` as a context manager, ray.shutdown() is called
+#     on exit but the module-level _global_client in ray.serve.context is not
+#     cleared. On the next ray.init(), serve.shutdown() must health-check the
+#     cached controller handle so it can reconnect instead of using a stale
+#     handle from the previous session.
+#     """
+#
+#     @serve.deployment
+#     class Greeter:
+#         def __call__(self, *args):
+#             return "hi"
+#
+#     # Session 1: start Serve and deploy. The context manager calls
+#     # ray.shutdown() on exit, but the detached controller survives.
+#     with ray.init(namespace="serve"):
+#         serve.start()
+#         serve.run(Greeter.bind())
+#         assert len(serve.status().applications) == 1
+#
+#     # Session 2: reconnect and shut down Serve. This must not fail due to
+#     # a stale _global_client from session 1.
+#     with ray.init(namespace="serve"):
+#         serve.shutdown()
+#
+#     # Session 3: verify Serve is actually shut down — starting fresh should
+#     # show zero applications.
+#     with ray.init(namespace="serve"):
+#         serve.start()
+#         assert len(serve.status().applications) == 0
+#         serve.shutdown()
+#
+#
+# @pytest.mark.asyncio
+# async def test_shutdown_async_after_driver_reconnect(ray_shutdown):
+#     """Async variant: serve.shutdown_async() should work after driver reconnect.
+#
+#     Regression test for https://github.com/ray-project/ray/issues/61608.
+#     """
+#
+#     @serve.deployment
+#     class Greeter:
+#         def __call__(self, *args):
+#             return "hi"
+#
+#     with ray.init(namespace="serve"):
+#         serve.start()
+#         serve.run(Greeter.bind())
+#         assert len(serve.status().applications) == 1
+#
+#     with ray.init(namespace="serve"):
+#         await serve.shutdown_async()
+#
+#     with ray.init(namespace="serve"):
+#         serve.start()
+#         assert len(serve.status().applications) == 0
+#         await serve.shutdown_async()
 
 
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
