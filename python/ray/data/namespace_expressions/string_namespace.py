@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, List, Literal, Tuple, Union
 
 import pyarrow
 import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
-from ray.data.expressions import _create_pyarrow_compute_udf
+from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr, PyArrowComputeUDFExpr
+    from ray.data.expressions import Expr, PyArrowComputeUDFExpr, UDFExpr
 
 
 def _create_str_udf(
@@ -374,3 +376,125 @@ class _StringNamespace:
         return _create_str_udf(pc_func, DataType.string())(
             self._expr, width=width, padding=fillchar
         )
+
+    def jq(self, filter_expr: str) -> "UDFExpr":
+        """Apply a jq-style filter expression to JSON strings.
+
+        Parses each string as JSON and extracts values using a jq-like path
+        expression. The result is returned as a JSON-encoded string (scalars
+        like strings and numbers are returned as their JSON representation).
+
+        Supported syntax:
+            - Field access: ``.name``, ``.user.email``
+            - Array indexing: ``.[0]``, ``.items[1]``
+            - Chained paths: ``.items[0].name``
+
+        Args:
+            filter_expr: A jq-style filter expression starting with ``.``.
+
+        Returns:
+            Expression that extracts the value from each JSON string.
+
+        Example:
+            >>> from ray.data.expressions import col  # doctest: +SKIP
+            >>> col("data").str.jq(".name")  # doctest: +SKIP
+            >>> col("data").str.jq(".items[0].name")  # doctest: +SKIP
+        """
+        steps = _parse_jq_filter(filter_expr)
+
+        @pyarrow_udf(return_dtype=DataType.string())
+        def _jq_filter(arr: pyarrow.Array) -> pyarrow.Array:
+            results: List[Union[str, None]] = []
+            for val in arr.to_pylist():
+                if val is None:
+                    results.append(None)
+                    continue
+                try:
+                    obj = json.loads(val)
+                    obj = _apply_jq_steps(obj, steps)
+                    if obj is None:
+                        results.append(None)
+                    elif isinstance(obj, str):
+                        results.append(obj)
+                    else:
+                        results.append(json.dumps(obj, ensure_ascii=False))
+                except (json.JSONDecodeError, TypeError):
+                    results.append(None)
+            return pyarrow.array(results, type=pyarrow.string())
+
+        return _jq_filter(self._expr)
+
+
+_JQ_TOKEN_RE = re.compile(
+    r"""
+    \.(\w+)       # .fieldName
+    | \[(\d+)\]   # [index]
+    """,
+    re.VERBOSE,
+)
+
+
+def _parse_jq_filter(
+    expr: str,
+) -> List[Tuple[str, Union[str, int]]]:
+    """Parse a jq filter like ``.foo.bar[0].baz`` into a list of steps.
+
+    Returns a list of ``("field", name)`` or ``("index", int)`` tuples.
+
+    Raises:
+        ValueError: If the expression is empty or cannot be fully parsed.
+    """
+    expr = expr.strip()
+    if not expr.startswith("."):
+        raise ValueError(f"jq filter must start with '.', got: {expr!r}")
+
+    steps: List[Tuple[str, Union[str, int]]] = []
+    pos = 0
+    # Skip the leading dot if it's just the identity '.'
+    if expr == ".":
+        return steps
+
+    for m in _JQ_TOKEN_RE.finditer(expr):
+        if m.start() < pos:
+            continue
+        # Ensure there are no gaps (unparsed characters)
+        if m.start() != pos and not (pos == 0 and m.start() == 0):
+            gap = expr[pos : m.start()]
+            if gap not in ("", "."):
+                raise ValueError(f"Unsupported jq syntax at position {pos}: {expr!r}")
+        pos = m.end()
+        field, index = m.group(1), m.group(2)
+        if field is not None:
+            steps.append(("field", field))
+        else:
+            steps.append(("index", int(index)))
+
+    if pos < len(expr):
+        raise ValueError(f"Unsupported jq syntax at position {pos}: {expr!r}")
+
+    if not steps:
+        raise ValueError(f"Empty jq filter: {expr!r}")
+
+    return steps
+
+
+def _apply_jq_steps(obj: Any, steps: List[Tuple[str, Union[str, int]]]) -> Any:
+    """Traverse *obj* according to the parsed jq steps.
+
+    Returns ``None`` if any step fails (missing key, out-of-bounds index, or
+    type mismatch).
+    """
+    for kind, key in steps:
+        if obj is None:
+            return None
+        if kind == "field":
+            if isinstance(obj, dict):
+                obj = obj.get(key)
+            else:
+                return None
+        elif kind == "index":
+            if isinstance(obj, list) and -len(obj) <= key < len(obj):
+                obj = obj[key]
+            else:
+                return None
+    return obj
