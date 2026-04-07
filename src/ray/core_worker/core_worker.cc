@@ -15,9 +15,11 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -2906,21 +2908,53 @@ Status CoreWorker::ExecuteTask(
   }
 
   // --- karticam: memory instrumentation around UDF execution ---
-  auto read_rss_mb = []() -> double {
+  struct MemInfo {
+    double rss_mb = -1.0;
+    double uss_mb = -1.0;
+    double shared_mb = -1.0;
+  };
+  auto read_mem = []() -> MemInfo {
+    MemInfo info;
 #ifdef __linux__
-    std::ifstream statm("/proc/self/statm");
-    if (statm.is_open()) {
-      long pages = 0;
-      statm >> pages;  // first field = total VM (skip)
-      statm >> pages;  // second field = RSS in pages
-      return pages * sysconf(_SC_PAGESIZE) / 1e6;
+    // RSS from /proc/self/statm (fast)
+    {
+      std::ifstream statm("/proc/self/statm");
+      if (statm.is_open()) {
+        long pages = 0;
+        statm >> pages;  // total VM (skip)
+        statm >> pages;  // RSS in pages
+        info.rss_mb = pages * sysconf(_SC_PAGESIZE) / 1e6;
+      }
+    }
+    // USS from /proc/self/smaps_rollup (slower but accurate)
+    {
+      std::ifstream smaps("/proc/self/smaps_rollup");
+      if (smaps.is_open()) {
+        std::string line;
+        double private_clean = 0, private_dirty = 0, shared_clean = 0, shared_dirty = 0;
+        while (std::getline(smaps, line)) {
+          long val = 0;
+          if (sscanf(line.c_str(), "Private_Clean: %ld kB", &val) == 1) {
+            private_clean = val / 1e3;
+          } else if (sscanf(line.c_str(), "Private_Dirty: %ld kB", &val) == 1) {
+            private_dirty = val / 1e3;
+          } else if (sscanf(line.c_str(), "Shared_Clean: %ld kB", &val) == 1) {
+            shared_clean = val / 1e3;
+          } else if (sscanf(line.c_str(), "Shared_Dirty: %ld kB", &val) == 1) {
+            shared_dirty = val / 1e3;
+          }
+        }
+        info.uss_mb = private_clean + private_dirty;
+        info.shared_mb = shared_clean + shared_dirty;
+      }
     }
 #endif
-    return -1.0;
+    return info;
   };
-  double rss_before = read_rss_mb();
+  auto mem_before = read_mem();
   RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
-      << "(karticam) [MEM-BEFORE-UDF] rss_mb=" << rss_before;
+      << "(karticam) [MEM-BEFORE-UDF] rss_mb=" << mem_before.rss_mb
+      << " uss_mb=" << mem_before.uss_mb << " shared_mb=" << mem_before.shared_mb;
 
   Status status = options_.task_execution_callback(
       task_spec.CallerAddress(),
@@ -2948,10 +2982,71 @@ Status CoreWorker::ExecuteTask(
       task_spec.GeneratorBackpressureNumObjects(),
       /*tensor_transport=*/task_spec.TensorTransport());
 
-  double rss_after = read_rss_mb();
+  auto mem_after = read_mem();
   RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
-      << "(karticam) [MEM-AFTER-UDF] rss_mb=" << rss_after
-      << " delta_mb=" << (rss_after - rss_before);
+      << "(karticam) [MEM-AFTER-UDF] rss_mb=" << mem_after.rss_mb
+      << " uss_mb=" << mem_after.uss_mb << " shared_mb=" << mem_after.shared_mb
+      << " rss_delta_mb=" << (mem_after.rss_mb - mem_before.rss_mb)
+      << " uss_delta_mb=" << (mem_after.uss_mb - mem_before.uss_mb);
+
+  // --- karticam: memory breakdown by mapping from /proc/self/smaps ---
+#ifdef __linux__
+  {
+    std::ifstream smaps("/proc/self/smaps");
+    if (smaps.is_open()) {
+      std::unordered_map<std::string, long> priv_dirty_by_name;
+      long total_priv_dirty = 0, total_priv_clean = 0;
+      long total_shared_dirty = 0, total_shared_clean = 0;
+      std::string current_name;
+      std::string line;
+      while (std::getline(smaps, line)) {
+        // Header line: "7f1234-7f5678 r-xp 00000 08:01 12345 /path/to/lib.so"
+        if (!line.empty() && !std::isspace(line[0]) && line.size() > 2 &&
+            line.find('-') < line.find(' ')) {
+          int spaces = 0;
+          size_t pos = 0;
+          for (; pos < line.size() && spaces < 5; ++pos) {
+            if (line[pos] == ' ') spaces++;
+          }
+          while (pos < line.size() && line[pos] == ' ') pos++;
+          current_name = (pos < line.size()) ? line.substr(pos) : "[anonymous]";
+        } else {
+          long val = 0;
+          if (sscanf(line.c_str(), "Private_Dirty: %ld kB", &val) == 1) {
+            total_priv_dirty += val;
+            if (val > 0) priv_dirty_by_name[current_name] += val;
+          } else if (sscanf(line.c_str(), "Private_Clean: %ld kB", &val) == 1) {
+            total_priv_clean += val;
+          } else if (sscanf(line.c_str(), "Shared_Dirty: %ld kB", &val) == 1) {
+            total_shared_dirty += val;
+          } else if (sscanf(line.c_str(), "Shared_Clean: %ld kB", &val) == 1) {
+            total_shared_clean += val;
+          }
+        }
+      }
+
+      RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
+          << "(karticam) [MEM-TOTALS] "
+          << "private_dirty=" << total_priv_dirty / 1e3 << "MB "
+          << "private_clean=" << total_priv_clean / 1e3 << "MB "
+          << "shared_dirty=" << total_shared_dirty / 1e3 << "MB "
+          << "shared_clean=" << total_shared_clean / 1e3 << "MB";
+
+      // Private_Dirty breakdown by mapping (sorted by size desc)
+      std::vector<std::pair<std::string, long>> sorted_entries(priv_dirty_by_name.begin(),
+                                                               priv_dirty_by_name.end());
+      std::sort(sorted_entries.begin(),
+                sorted_entries.end(),
+                [](const auto &a, const auto &b) { return a.second > b.second; });
+      std::ostringstream oss;
+      oss << "(karticam) [PRIV-DIRTY-BREAKDOWN] ";
+      for (const auto &entry : sorted_entries) {
+        oss << entry.first << "=" << entry.second / 1e3 << "MB | ";
+      }
+      RAY_LOG(INFO).WithField("task_name", task_spec.GetName()) << oss.str();
+    }
+  }
+#endif
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
