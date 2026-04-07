@@ -20,8 +20,7 @@ cover the following:
 - Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
-- Define a centralized capacity queue request router
-- Deploy an app with the capacity queue router
+- Experimental: Define a centralized capacity queue request router
 
 
 (simple-uniform-request-router)=
@@ -163,7 +162,7 @@ replicas and use it in the routing policy.
 (capacity-queue-request-router)=
 ## Experimental: Define a centralized capacity queue request router
 
-In the previous examples the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
+In the previous examples, the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
 replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router.
 Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same
 replica, causing transient load imbalance or triggering rejections and retries. For some applications this can result in lower throughput. A
@@ -175,12 +174,13 @@ This example demonstrates how we can implement such routing policy. The example 
 1. An importable **`CapacityQueue`** actor that tracks per-replica capacity and hands out
    tokens using a least-loaded selection strategy.
 2. An importable **`CapacityQueueRouter`** custom request router that acquires a token before
-   routing and releases it when the request completes. Remember that in a real application, we can have multiple replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas. The centralized `CapacityQueue` actor is meant to keep their local information synchronized with reality.
+   routing and releases it when the request completes. In a real application, we can have multiple
+   replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas.
+   The centralized `CapacityQueue` actor is meant to keep their local information synchronized with
+   reality.
 3. A **deployment** that ties them together using a
-   [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for
-   the queue and a
-   [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst)
-   for the router.
+   [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for the queue and a
+   [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) for the router.
 
 (deploy-app-with-capacity-queue-router)=
 ### Deploy an app with the capacity queue router
