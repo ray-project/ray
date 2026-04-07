@@ -92,8 +92,8 @@ def _log_unexpected_subprocess_exit_details(
             exit_codes_by_process_type.setdefault(str(process_type), set()).add(rc_str)
             lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
     try:
-        file_msg = (
-            "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(lines_for_file)
+        file_msg = "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(
+            lines_for_file
         )
         process_exit_logger.error("%s", file_msg)
     except Exception as e:
