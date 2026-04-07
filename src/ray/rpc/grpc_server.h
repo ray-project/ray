@@ -97,11 +97,16 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other interfaces.
-  /// \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
+  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
-  /// \param[in] auth_token Authentication token that clients must present when making RPCs to the server. If nullptr, no authentication token is required.
-  /// \param[in] enable_default_health_check_service If true, enables gRPC's default health check service handler. This health check is effectively a no-op that runs on a gRPC internal thread. Server implementations can override it by defining a handler for `grpc::health::v1::Health`, for example to check the health of a boost::asio event loop.
+  /// \param[in] auth_token Authentication token that clients must present when making
+  /// RPCs to the server. If nullptr, no authentication token is required. \param[in]
+  /// enable_default_health_check_service If true, enables gRPC's default health check
+  /// service handler. This health check is effectively a no-op that runs on a gRPC
+  /// internal thread. Server implementations can override it by defining a handler for
+  /// `grpc::health::v1::Health`, for example to check the health of a boost::asio event
+  /// loop.
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
