@@ -337,6 +337,14 @@ def test_get_metric_namespace_tag():
     )
     assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
 
+    # All LongPollNamespace enum values should work, both bare and in tuples
+    for ns in LongPollNamespace:
+        assert _get_metric_namespace_tag(ns) == ns.name
+        assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
+
+    # Defensive: tuple with non-enum first element falls back to str()
+    assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
