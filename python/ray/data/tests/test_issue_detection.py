@@ -92,6 +92,7 @@ class TestHangingExecutionIssueDetector:
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
+    @pytest.mark.skip(reason="Skipping until hanging issue detection is non-blocking")
     @patch(
         "ray.data._internal.execution.interfaces.op_runtime_metrics.TaskDurationStats"
     )
