@@ -1604,15 +1604,15 @@ def test_max_processing_latency_metric(metrics_start_shutdown):
             assert slow_value >= 0, f"Slow max latency should be >= 0, got {slow_value}"
 
             # /fast sleeps 100ms, /slow sleeps 800ms.
-            assert fast_value >= 80, (
-                f"Fast route max should be >= 80ms with 100ms sleep, got {fast_value}"
-            )
-            assert slow_value >= 600, (
-                f"Slow route max should be >= 600ms with 800ms sleep, got {slow_value}"
-            )
-            assert slow_value > fast_value, (
-                f"Slow route ({slow_value}ms) should exceed fast route ({fast_value}ms)"
-            )
+            assert (
+                fast_value >= 80
+            ), f"Fast route max should be >= 80ms with 100ms sleep, got {fast_value}"
+            assert (
+                slow_value >= 600
+            ), f"Slow route max should be >= 600ms with 800ms sleep, got {slow_value}"
+            assert (
+                slow_value > fast_value
+            ), f"Slow route ({slow_value}ms) should exceed fast route ({fast_value}ms)"
             return True
 
         wait_for_condition(check_per_route_values, timeout=30)

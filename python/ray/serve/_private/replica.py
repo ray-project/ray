@@ -779,7 +779,7 @@ class ReplicaMetricsManager:
     def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
         """Update max_ongoing_requests when deployment config changes."""
         self._max_ongoing_requests = max_ongoing_requests
-    
+
     async def _report_max_processing_latency_forever(self) -> None:
         """Background task to emit max processing latency gauge continuously."""
         consecutive_errors = 0
@@ -788,11 +788,15 @@ class ReplicaMetricsManager:
                 await asyncio.sleep(self._max_processing_latency_report_interval_s)
                 for route, tracker in self._max_processing_latency_trackers.items():
                     max_latency = tracker.get_max()
-                    self._max_processing_latency_gauge.set(max_latency, tags={"route": route})
+                    self._max_processing_latency_gauge.set(
+                        max_latency, tags={"route": route}
+                    )
 
                 consecutive_errors = 0
             except Exception:
-                logger.exception("Unexpected error reporting max processing latency metrics.")
+                logger.exception(
+                    "Unexpected error reporting max processing latency metrics."
+                )
 
                 # Exponential backoff starting at 1s and capping at 10s.
                 backoff_time_s = min(10, 2**consecutive_errors)
