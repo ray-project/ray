@@ -1,15 +1,20 @@
 import gc
 import json
+import logging
+import math
 import os
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.util.state import list_runtime_envs
+
+logger = logging.getLogger(__name__)
 
 
 def _get_spilled_bytes_total() -> float:
@@ -85,13 +90,57 @@ class OperatorStatsTracker(ExecutionCallback):
 
         seconds_since_start = now_perf - cls._start_time
         start_time = cls._make_readable_timestamp(ts=now_wall - seconds_since_start)
-        return {"start_time": start_time, "op_stats": stats}
+
+        return {
+            "execution_loop_start_time": start_time,
+            "op_stats": stats,
+        }
 
     @classmethod
     def _make_readable_timestamp(cls, ts: float) -> str:
         return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
+
+
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
+
+    Usage::
+
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
+    """
+
+    @staticmethod
+    def collect() -> List[Dict[str, Any]]:
+        try:
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs(limit=1000):
+                if env.creation_time_ms is None:
+                    continue
+                label = "+".join(sorted(env.runtime_env.keys()))
+                groups.setdefault(label, []).append(env.creation_time_ms)
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for label, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            results.append(
+                {
+                    "runtime_env_type": label,
+                    "count": len(times),
+                    "mean_creation_time_ms": round(mean, 2),
+                    "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+                }
+            )
+        return results
 
 
 class BenchmarkMetric(Enum):
