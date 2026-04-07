@@ -238,10 +238,22 @@ class ArrowConversionError(Exception):
 
     MAX_DATA_STR_LEN = 200
 
-    def __init__(self, data_str: str):
+    def __init__(
+        self,
+        data_str: str,
+        column_name: Optional[str] = None,
+        pa_type: Optional["pa.DataType"] = None,
+    ):
         if len(data_str) > self.MAX_DATA_STR_LEN:
             data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
-        message = f"Error converting data to Arrow: {data_str}"
+        if column_name is not None:
+            type_info = f" (target type: {pa_type})" if pa_type is not None else ""
+            message = (
+                f"Error converting column '{column_name}'{type_info}"
+                f" to Arrow: {data_str}"
+            )
+        else:
+            message = f"Error converting data to Arrow: {data_str}"
         super().__init__(message)
 
 
@@ -397,7 +409,9 @@ def _convert_to_pyarrow_native_array(
 
         return pa.array(column_values, type=pa_type)
     except Exception as e:
-        raise ArrowConversionError(str(column_values)) from e
+        raise ArrowConversionError(
+            str(column_values), column_name=column_name, pa_type=pa_type
+        ) from e
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(
