@@ -350,7 +350,9 @@ ray_cc_library(
     hdrs = [
         "grpc_services.h",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
