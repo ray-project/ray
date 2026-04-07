@@ -904,10 +904,26 @@ def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
     return coerced
 
 
-def _has_nested_types(schema: "pyarrow.Schema") -> bool:
-    """Check if a schema contains any nested column types (list, struct, map)
-    that are susceptible to Arrow's chunked array limitation (ARROW-5030)."""
+def _has_susceptible_nested_types(schema: "pyarrow.Schema") -> bool:
+    """Check if a schema contains nested column types wrapping variable-length
+    leaves that are susceptible to Arrow's chunked array limitation (ARROW-5030).
+
+    The error only occurs when a nested container (list, struct, map) contains
+    a variable-length leaf (string, binary, and their large/view variants) whose
+    data exceeds ~2GB in a single row group. Fixed-width leaves (int, float,
+    bool, etc.) never trigger chunking.
+    """
     import pyarrow as pa
+
+    def _is_variable_length(t):
+        return (
+            pa.types.is_string(t)
+            or pa.types.is_binary(t)
+            or pa.types.is_large_string(t)
+            or pa.types.is_large_binary(t)
+            or pa.types.is_string_view(t)
+            or pa.types.is_binary_view(t)
+        )
 
     def _is_nested(t):
         return (
@@ -918,7 +934,28 @@ def _has_nested_types(schema: "pyarrow.Schema") -> bool:
             or pa.types.is_fixed_size_list(t)
         )
 
-    return any(_is_nested(field.type) for field in schema)
+    def _nested_contains_variable_length(t):
+        """Recursively check if a nested type contains a variable-length leaf."""
+        if _is_variable_length(t):
+            return True
+        if (
+            pa.types.is_list(t)
+            or pa.types.is_large_list(t)
+            or pa.types.is_fixed_size_list(t)
+        ):
+            return _nested_contains_variable_length(t.value_type)
+        if pa.types.is_struct(t):
+            return any(_nested_contains_variable_length(f.type) for f in t)
+        if pa.types.is_map(t):
+            return _nested_contains_variable_length(
+                t.key_type
+            ) or _nested_contains_variable_length(t.item_type)
+        return False
+
+    return any(
+        _is_nested(field.type) and _nested_contains_variable_length(field.type)
+        for field in schema
+    )
 
 
 def _row_group_uncompressed_size(
@@ -961,7 +998,7 @@ def _needs_nested_type_fallback(fragment: "ParquetFileFragment") -> bool:
     has uncompressed data exceeding Arrow's ~2GB chunking threshold.
     This is a metadata-only check (no data read).
     """
-    if not _has_nested_types(fragment.physical_schema):
+    if not _has_susceptible_nested_types(fragment.physical_schema):
         return False
     metadata = fragment.metadata
     return any(
