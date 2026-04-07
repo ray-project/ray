@@ -1065,13 +1065,24 @@ def _iter_batches_with_nested_fallback(
         if pruned.row_groups is not None:
             iter_kwargs["row_groups"] = [rg.id for rg in pruned.row_groups]
 
+    # When both columns (projection) and filter_expr are set, the filter
+    # may reference columns outside the projection.  PyArrow's scanner
+    # handles this internally in the normal path, but pf.iter_batches
+    # does not.  Read all columns so the filter can evaluate, then project
+    # down to the requested columns afterward.
+    read_columns = (
+        None if (filter_expr is not None and columns is not None) else columns
+    )
+
     for batch in pf.iter_batches(
-        batch_size=fallback_batch_size, columns=columns, **iter_kwargs
+        batch_size=fallback_batch_size, columns=read_columns, **iter_kwargs
     ):
         # Row-level filter still needed since row-group pruning only
         # skips entire row groups that can't match.
         if filter_expr is not None:
             table = pa.Table.from_batches([batch]).filter(filter_expr)
+            if columns is not None:
+                table = table.select(columns)
             yield from table.to_batches()
         else:
             yield batch
