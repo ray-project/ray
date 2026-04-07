@@ -36,7 +36,7 @@ namespace raylet {
 class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
   /**
-   * @param threshold_bytes The fraction to indicate max user memory usage.
+   * @param threshold_bytes The maximum memory usage threshold in bytes.
    *        Used to determine the memory threshold to free to.
    * @param kill_buffer_bytes The amount of memory buffer under
    * the memory usage threshold to leave free after killing workers.
@@ -45,7 +45,7 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
 
   /**
    * @brief This constructor should only be used in tests.
-   * @param threshold_bytes The fraction to indicate max user memory usage.
+   * @param threshold_bytes The maximum memory usage threshold in bytes.
    *        Used to determine the memory threshold to free to.
    * @param kill_buffer_bytes The amount of memory buffer under
    * the memory usage threshold to leave free after killing workers.
