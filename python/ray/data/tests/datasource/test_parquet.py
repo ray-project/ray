@@ -814,7 +814,7 @@ def test_parquet_write_error_save_mode_concurrent_write(
 
     with pytest.raises(ValueError, match="already exists"):
         ds.write_parquet(path, mode="error")
-    shutil.rmtree(local_path)
+    shutil.rmtree(path)
 
 
 def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
