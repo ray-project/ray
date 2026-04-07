@@ -7,17 +7,32 @@ for reliable and efficient S3 operations.
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
-import boto3
-from botocore import UNSIGNED
-from botocore.client import BaseClient
-from botocore.config import Config
+try:
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.client import BaseClient
+    from botocore.config import Config
+except ImportError:
+    boto3 = None  # type: ignore[assignment]
+    UNSIGNED = None  # type: ignore[assignment]
+    BaseClient = None  # type: ignore[assignment]
+    Config = None  # type: ignore[assignment]
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_filesystem.base import BaseCloudFileSystem
 
 logger = get_logger(__name__)
+
+
+def _check_boto3() -> None:
+    """Raise a clear error if boto3/botocore are not installed."""
+    if boto3 is None:
+        raise ImportError(
+            "boto3 and botocore are required for S3 operations but are not installed. "
+            "Install them with: pip install boto3"
+        )
 
 
 class S3FileSystem(BaseCloudFileSystem):
@@ -69,6 +84,7 @@ class S3FileSystem(BaseCloudFileSystem):
         Returns:
             boto3 S3 client with connection pooling configured
         """
+        _check_boto3()
         # Configure connection pooling for better concurrent performance
         config = Config(
             max_pool_connections=max_pool_connections,
@@ -186,7 +202,7 @@ class S3FileSystem(BaseCloudFileSystem):
 
     @staticmethod
     def _download_single_file(
-        s3_client: BaseClient, bucket: str, key: str, local_file_path: str
+        s3_client: Any, bucket: str, key: str, local_file_path: str
     ) -> tuple[str, bool]:
         """Download a single file from S3.
 
