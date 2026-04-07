@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -64,7 +65,7 @@ class IActorSubmitQueue {
   virtual void MarkTaskCanceled(const std::string &concurrency_group,
                                 uint64_t sequence_no) = 0;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
-  virtual std::vector<TaskID> ClearAllTasks() = 0;
+  virtual absl::InlinedVector<TaskID, 8> ClearAllTasks() = 0;
   /// Find next task to send.
   /// \return
   ///   - nullopt if no task ready to send

@@ -133,8 +133,8 @@ void SequentialActorSubmitQueue::MarkDependencyResolved(
   }
 }
 
-std::vector<TaskID> SequentialActorSubmitQueue::ClearAllTasks() {
-  std::vector<TaskID> task_ids;
+absl::InlinedVector<TaskID, 8> SequentialActorSubmitQueue::ClearAllTasks() {
+  absl::InlinedVector<TaskID, 8> task_ids;
   for (const auto &[_, requests] : requests_per_group_) {
     for (const auto &[seq_no, spec] : requests) {
       task_ids.push_back(spec.first.TaskId());

@@ -503,7 +503,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusObjectFreedBetweenRequests) {
   EXPECT_EQ("test_data", reply1.object().data());
   EXPECT_EQ("meta", reply1.object().metadata());
 
-  std::vector<ObjectID> objects_to_free = {object_id};
+  absl::InlinedVector<ObjectID, 8> objects_to_free = {object_id};
   memory_store_->Delete(objects_to_free);
 
   std::promise<Status> promise2;
@@ -658,12 +658,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
                                *std::make_shared<ray::observability::FakeGauge>());
 
   // Fake plasma client that records Get calls.
-  std::vector<std::vector<ObjectID>> observed_batches;
+  std::vector<absl::InlinedVector<ObjectID, 8>> observed_batches;
   class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
    public:
-    explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
+    explicit RecordingPlasmaGetClient(
+        std::vector<absl::InlinedVector<ObjectID, 8>> *observed)
         : observed_(observed) {}
-    Status Get(const std::vector<ObjectID> &object_ids,
+    Status Get(const absl::InlinedVector<ObjectID, 8> &object_ids,
                int64_t timeout_ms,
                std::vector<plasma::ObjectBuffer> *object_buffers) override {
       if (observed_ != nullptr) {
@@ -680,7 +681,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
     }
 
    private:
-    std::vector<std::vector<ObjectID>> *observed_;
+    std::vector<absl::InlinedVector<ObjectID, 8>> *observed_;
   };
 
   auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
@@ -695,7 +696,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*get_current_call_site=*/nullptr);
 
   // Build a set of 5 object ids.
-  std::vector<ObjectID> ids;
+  absl::InlinedVector<ObjectID, 8> ids;
   for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
   const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
 
@@ -1153,7 +1154,7 @@ TEST_P(HandleWaitForActorRefDeletedRetriesTest, ActorRefDeletedForRegisteredActo
       });
 
   if (delete_actor_handle) {
-    std::vector<ObjectID> deleted;
+    absl::InlinedVector<ObjectID, 8> deleted;
     // Triggers the send_reply_callback which is stored in the reference counter
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);
@@ -1258,7 +1259,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   ASSERT_FALSE(actor_creator_->IsActorInRegistering(actor_id));
 
   if (delete_actor_handle) {
-    std::vector<ObjectID> deleted;
+    absl::InlinedVector<ObjectID, 8> deleted;
     // Triggers the send_reply_callback which is stored in the reference counter
     reference_counter_->RemoveLocalReference(actor_creation_return_id, &deleted);
     ASSERT_EQ(deleted.size(), 1u);

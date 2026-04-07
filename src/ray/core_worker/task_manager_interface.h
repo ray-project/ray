@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/scheduling_ids.h"
@@ -119,7 +120,7 @@ class TaskManagerInterface {
   /// appopriate error type to propagate for the object if the task was not successfully
   /// resubmitted.
   virtual std::optional<rpc::ErrorType> ResubmitTask(
-      const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
+      const TaskID &task_id, absl::InlinedVector<ObjectID, 8> *task_deps) = 0;
 
   /// Record that the given task is scheduled and wait for execution.
   ///
@@ -140,8 +141,8 @@ class TaskManagerInterface {
   /// task spec, because a serialized copy of the ID was contained in one of
   /// the inlined dependencies.
   virtual void OnTaskDependenciesInlined(
-      const std::vector<ObjectID> &inlined_dependency_ids,
-      const std::vector<ObjectID> &contained_ids) = 0;
+      const absl::InlinedVector<ObjectID, 8> &inlined_dependency_ids,
+      const absl::InlinedVector<ObjectID, 8> &contained_ids) = 0;
 
   /// Record that the given task's dependencies have been created and the task
   /// can now be scheduled for execution.

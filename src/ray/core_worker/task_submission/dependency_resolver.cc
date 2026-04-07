@@ -26,8 +26,8 @@ namespace {
 void InlineDependencies(
     const absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &dependencies,
     TaskSpecification &task,
-    std::vector<ObjectID> *inlined_dependency_ids,
-    std::vector<ObjectID> *contained_ids,
+    absl::InlinedVector<ObjectID, 8> *inlined_dependency_ids,
+    absl::InlinedVector<ObjectID, 8> *contained_ids,
     const TensorTransportGetter &tensor_transport_getter) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
@@ -136,8 +136,8 @@ void LocalDependencyResolver::ResolveDependencies(
           RAY_CHECK(obj != nullptr);
 
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
-          std::vector<ObjectID> inlined_dependency_ids;
-          std::vector<ObjectID> contained_ids;
+          absl::InlinedVector<ObjectID, 8> inlined_dependency_ids;
+          absl::InlinedVector<ObjectID, 8> contained_ids;
           {
             absl::MutexLock lock(&mu_);
 

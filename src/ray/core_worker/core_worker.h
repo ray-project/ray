@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
@@ -401,7 +402,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Return all pending children task ids for a given parent task id.
   /// The parent task id should exist in the current worker.
   /// For debugging and testing only.
-  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &task_id) const;
+  absl::InlinedVector<TaskID, 8> GetPendingChildrenTasks(const TaskID &task_id) const;
 
   /// Get the RPC address of this worker.
   ///

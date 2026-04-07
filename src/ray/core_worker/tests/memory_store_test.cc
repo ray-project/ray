@@ -253,10 +253,10 @@ TEST_F(TestMemoryStoreWait, TestWaitNoWaiting) {
   // Object 2 is in plasma
   // Object 3 is ready in memory store
   // num_objects is 2 (expect 0 and 4 in ready, 1 and 2 in plasma_object_ids)
-  std::vector<ObjectID> object_ids = {ObjectID::FromRandom(),
-                                      ObjectID::FromRandom(),
-                                      ObjectID::FromRandom(),
-                                      ObjectID::FromRandom()};
+  absl::InlinedVector<ObjectID, 8> object_ids = {ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom()};
   absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
   int num_objects = 2;
 
@@ -283,10 +283,10 @@ TEST_F(TestMemoryStoreWait, TestWaitWithWaiting) {
   // Object 2 will be in plasma after wait is called
   // Object 3 will be in ready in memory store after wait is called
   // num_objects is 4 (expect 0 and 3 in ready, 1 and 2 in plasma_object_ids)
-  std::vector<ObjectID> object_ids = {ObjectID::FromRandom(),
-                                      ObjectID::FromRandom(),
-                                      ObjectID::FromRandom(),
-                                      ObjectID::FromRandom()};
+  absl::InlinedVector<ObjectID, 8> object_ids = {ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom(),
+                                                 ObjectID::FromRandom()};
   absl::flat_hash_set<ObjectID> object_ids_set = {object_ids.begin(), object_ids.end()};
   int num_objects = 4;
 

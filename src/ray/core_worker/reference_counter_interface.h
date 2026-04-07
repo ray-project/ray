@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
@@ -75,7 +76,7 @@ class ReferenceCounterInterface {
  protected:
   // Returns the amount of lineage in bytes released.
   using LineageReleasedCallback =
-      std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
+      std::function<int64_t(const ObjectID &, absl::InlinedVector<ObjectID, 8> *)>;
 
  public:
   using ReferenceTableProto =
@@ -106,7 +107,7 @@ class ReferenceCounterInterface {
   /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
   virtual void RemoveLocalReference(const ObjectID &object_id,
-                                    std::vector<ObjectID> *deleted) = 0;
+                                    absl::InlinedVector<ObjectID, 8> *deleted) = 0;
 
   /// Add references for the provided object IDs that correspond to them being
   /// dependencies to a submitted task. If lineage pinning is enabled, then
@@ -120,10 +121,11 @@ class ReferenceCounterInterface {
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   virtual void UpdateSubmittedTaskReferences(
-      const std::vector<ObjectID> &return_ids,
-      const std::vector<ObjectID> &argument_ids_to_add,
-      const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
-      std::vector<ObjectID> *deleted = nullptr) = 0;
+      const absl::InlinedVector<ObjectID, 8> &return_ids,
+      const absl::InlinedVector<ObjectID, 8> &argument_ids_to_add,
+      const absl::InlinedVector<ObjectID, 8> &argument_ids_to_remove =
+          absl::InlinedVector<ObjectID, 8>(),
+      absl::InlinedVector<ObjectID, 8> *deleted = nullptr) = 0;
 
   /// Add references for the object dependencies of a resubmitted task. This
   /// does not increment the arguments' lineage ref counts because we should
@@ -131,7 +133,7 @@ class ReferenceCounterInterface {
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
   virtual void UpdateResubmittedTaskReferences(
-      const std::vector<ObjectID> &argument_ids) = 0;
+      const absl::InlinedVector<ObjectID, 8> &argument_ids) = 0;
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
@@ -148,13 +150,13 @@ class ReferenceCounterInterface {
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   virtual void UpdateFinishedTaskReferences(
-      const std::vector<ObjectID> &return_ids,
+      const absl::InlinedVector<ObjectID, 8> &return_ids,
       const std::vector<ObjectID> &argument_ids,
       bool release_lineage,
       const rpc::Address &worker_addr,
       const ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>
           &borrowed_refs,
-      std::vector<ObjectID> *deleted) = 0;
+      absl::InlinedVector<ObjectID, 8> *deleted) = 0;
 
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local
@@ -185,7 +187,7 @@ class ReferenceCounterInterface {
   /// \param[in] tensor_transport The transport used for the object.
   virtual void AddOwnedObject(
       const ObjectID &object_id,
-      const std::vector<ObjectID> &contained_ids,
+      const absl::InlinedVector<ObjectID, 8> &contained_ids,
       const rpc::Address &owner_address,
       const std::string &call_site,
       const int64_t object_size,
@@ -233,8 +235,8 @@ class ReferenceCounterInterface {
   /// are in scope.
   /// \param[out] deleted Any released object refs that went out of scope. The
   /// object values should be deleted.
-  virtual void TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
-                                   std::vector<ObjectID> *deleted) = 0;
+  virtual void TryReleaseLocalRefs(const absl::InlinedVector<ObjectID, 8> &object_ids,
+                                   absl::InlinedVector<ObjectID, 8> *deleted) = 0;
 
   /// Check if a generator's lineage has gone out of scope. This checks if we
   /// still have entries for the generator ref and all refs returned by the
@@ -409,7 +411,7 @@ class ReferenceCounterInterface {
   virtual void PopAndClearLocalBorrowers(
       const std::vector<ObjectID> &borrowed_ids,
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount> *proto,
-      std::vector<ObjectID> *deleted) = 0;
+      absl::InlinedVector<ObjectID, 8> *deleted) = 0;
 
   /// Mark that this ObjectID contains another ObjectID(s). This should be
   /// called in two cases:

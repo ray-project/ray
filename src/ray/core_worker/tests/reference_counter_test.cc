@@ -458,10 +458,11 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   void HandleSubmittedTaskFinished(
       const ObjectID &return_id,
       const ObjectID &arg_id,
-      const absl::flat_hash_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
+      const absl::flat_hash_map<ObjectID, absl::InlinedVector<ObjectID, 8>>
+          &nested_return_ids = {},
       const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounterInterface::ReferenceTableProto &borrower_refs = empty_refs) {
-    std::vector<ObjectID> arguments;
+    absl::InlinedVector<ObjectID, 8> arguments;
     for (const auto &pair : nested_return_ids) {
       // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
       rc_.AddNestedObjectIds(pair.first, pair.second, address_);
@@ -500,14 +501,14 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   ReferenceCounter rc_;
   absl::flat_hash_map<int, std::function<void()>> borrower_callbacks_;
   int num_requests_ = 0;
-  std::vector<ObjectID> return_ids_;
+  absl::InlinedVector<ObjectID, 8> return_ids_;
   bool failed_ = false;
 };
 
 // Tests basic incrementing/decrementing of direct/submitted task reference counts. An
 // entry should only be removed once both of its reference counts reach zero.
 TEST_F(ReferenceCountTest, TestBasic) {
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
 
   ObjectID id1 = ObjectID::FromRandom();
   ObjectID id2 = ObjectID::FromRandom();
@@ -600,7 +601,7 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id,
                      {},
@@ -2578,7 +2579,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   auto callback = [&](const ObjectID &object_id) { *out_of_scope = true; };
 
   // The object goes out of scope once it has no more refs.
-  std::vector<ObjectID> out;
+  absl::InlinedVector<ObjectID, 8> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id,
                      {},
@@ -2628,13 +2629,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
 
 // Test to make sure that we call the lineage released callback correctly.
 TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
-  std::vector<ObjectID> out;
-  std::vector<ObjectID> lineage_deleted;
+  absl::InlinedVector<ObjectID, 8> out;
+  absl::InlinedVector<ObjectID, 8> lineage_deleted;
 
   ObjectID id = ObjectID::FromRandom();
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         return 0;
       });
@@ -2663,10 +2664,10 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
 // have gone out of scope, but their Reference entry is pinned until the final
 // object goes out of scope.
 TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
-  std::vector<ObjectID> out;
-  std::vector<ObjectID> lineage_deleted;
+  absl::InlinedVector<ObjectID, 8> out;
+  absl::InlinedVector<ObjectID, 8> lineage_deleted;
 
-  std::vector<ObjectID> ids;
+  absl::InlinedVector<ObjectID, 8> ids;
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
@@ -2680,7 +2681,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   }
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         // Simulate releasing objects in downstream_id's lineage.
         size_t i = 0;
@@ -2726,7 +2727,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
 }
 
 TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
-  std::vector<ObjectID> ids;
+  absl::InlinedVector<ObjectID, 8> ids;
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
@@ -2738,9 +2739,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
                        LineageReconstructionEligibility::ELIGIBLE,
                        /*add_local_ref=*/true);
   }
-  std::vector<ObjectID> lineage_deleted;
+  absl::InlinedVector<ObjectID, 8> lineage_deleted;
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         if (object_id == ids[1]) {
           // ID1 depends on ID0.
@@ -2778,8 +2779,8 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
 }
 
 TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
-  std::vector<ObjectID> out;
-  std::vector<ObjectID> lineage_deleted;
+  absl::InlinedVector<ObjectID, 8> out;
+  absl::InlinedVector<ObjectID, 8> lineage_deleted;
 
   ObjectID id = ObjectID::FromRandom();
   rc->AddOwnedObject(id,
@@ -2791,7 +2792,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
                      /*add_local_ref=*/true);
 
   rc->SetReleaseLineageCallback(
-      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+      [&](const ObjectID &object_id, absl::InlinedVector<ObjectID, 8> *ids_to_release) {
         lineage_deleted.push_back(object_id);
         return 0;
       });
@@ -3184,7 +3185,7 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_TRUE(rc->GetOwner(object_id, &added_address));
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
   // Verify it had 1 local reference.
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   rc->RemoveLocalReference(object_id, &deleted);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(deleted.size(), 1);
@@ -3272,7 +3273,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "InMemory"}}]), 150);
 
   // Test 6: Delete objects
-  std::vector<ObjectID> deleted;
+  absl::InlinedVector<ObjectID, 8> deleted;
   rc->RemoveLocalReference(pending_id1, &deleted);
   rc->RecordMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();

@@ -56,7 +56,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   // popped via PopNextTaskToSend.
   void MarkTaskCanceled(const std::string &concurrency_group, uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
-  std::vector<TaskID> ClearAllTasks() override;
+  absl::InlinedVector<TaskID, 8> ClearAllTasks() override;
   /// Find next task to send.
   /// \return
   ///   - nullopt if no task ready to send

@@ -45,14 +45,14 @@ class MockTaskManager : public MockTaskManagerInterface {
  public:
   MockTaskManager() {}
 
-  void AddTask(const TaskID &task_id, std::vector<ObjectID> task_deps) {
+  void AddTask(const TaskID &task_id, absl::InlinedVector<ObjectID, 8> task_deps) {
     task_specs[task_id] = task_deps;
   }
 
   void CancelTask(const TaskID &task_id) { cancelled_tasks.insert(task_id); }
 
-  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
-                                             std::vector<ObjectID> *task_deps) override {
+  std::optional<rpc::ErrorType> ResubmitTask(
+      const TaskID &task_id, absl::InlinedVector<ObjectID, 8> *task_deps) override {
     if (task_specs.find(task_id) == task_specs.end()) {
       return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED;
     }
@@ -67,7 +67,7 @@ class MockTaskManager : public MockTaskManagerInterface {
     return std::nullopt;
   }
 
-  absl::flat_hash_map<TaskID, std::vector<ObjectID>> task_specs;
+  absl::flat_hash_map<TaskID, absl::InlinedVector<ObjectID, 8>> task_specs;
   absl::flat_hash_set<TaskID> cancelled_tasks;
   int num_tasks_resubmitted = 0;
 };
@@ -76,7 +76,7 @@ class MockRayletClient : public rpc::FakeRayletClient {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address,
-      const std::vector<ObjectID> &object_ids,
+      const absl::InlinedVector<ObjectID, 8> &object_ids,
       const ObjectID &generator_id,
       const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
@@ -171,7 +171,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               memory_store_->Put(data, object_id, ref_counter_->HasReference(object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
-        [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
+        [](const ObjectID &, absl::InlinedVector<ObjectID, 8> *args) { return 0; });
   }
 
   void TearDown() override {
@@ -343,8 +343,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
 }
 
 TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
-  std::vector<ObjectID> object_ids;
-  std::vector<ObjectID> dependencies;
+  absl::InlinedVector<ObjectID, 8> object_ids;
+  absl::InlinedVector<ObjectID, 8> dependencies;
   for (int i = 0; i < 3; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     ref_counter_->AddOwnedObject(object_id,
