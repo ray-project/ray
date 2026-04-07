@@ -3153,7 +3153,7 @@ class Dataset:
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
             >>> train_ds.sort("sepal length (cm)").take(1)  # doctest: +ELLIPSIS
-            [{'sepal length (cm)': ..., 'variety': 'Setosa'}]
+            [{'sepal length (cm)': ...4.3..., 'variety': 'Setosa'}]
 
         Time complexity: O(dataset size / parallelism)
 
