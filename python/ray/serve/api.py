@@ -117,7 +117,7 @@ def shutdown():
     """
 
     try:
-        client = _get_global_client(_health_check_controller=True)
+        client = _get_global_client()
     except RayServeException:
         logger.info(
             "Nothing to shut down. There's no Serve application "
@@ -137,7 +137,7 @@ async def shutdown_async():
     """
 
     try:
-        client = _get_global_client(_health_check_controller=True)
+        client = _get_global_client()
     except RayServeException:
         logger.info(
             "Nothing to shut down. There's no Serve application "
