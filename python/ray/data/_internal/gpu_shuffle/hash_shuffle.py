@@ -73,6 +73,7 @@ class GPUShuffleActor:
         columns: Optional[List[str]] = None,
         rmm_pool_size: Union[int, str, None] = None,
         spill_memory_limit: Union[int, str, None] = "auto",
+        should_sort: bool = False,
     ):
         from ray.data._internal.gpu_shuffle.rapidsmpf_backend import (
             BulkRapidsMPFShuffler,
@@ -86,6 +87,8 @@ class GPUShuffleActor:
             spill_memory_limit=spill_memory_limit,
         )
         self._columns = columns
+        self._key_columns = key_columns
+        self._should_sort = should_sort
 
     # ------------------------------------------------------------------
     # UCXX communicator setup
@@ -161,6 +164,8 @@ class GPUShuffleActor:
                 partition, column_names=self._columns
             ).copy(deep=True)
             # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
+            if self._should_sort and len(cdf) > 0:
+                cdf = cdf.sort_values(by=self._key_columns)
             block = cdf.to_arrow(preserve_index=False)
             exec_stats = exec_stats_builder.build()
             stats = yield block
@@ -227,6 +232,7 @@ class GPURankPool:
         rmm_pool_size: Union[int, str, None],
         spill_memory_limit: Union[int, str, None],
         setup_timeout_s: float,
+        should_sort: bool = False,
     ):
         self._nranks = nranks
         self._total_nparts = total_nparts
@@ -235,6 +241,7 @@ class GPURankPool:
         self._rmm_pool_size = rmm_pool_size
         self._spill_memory_limit = spill_memory_limit
         self._setup_timeout_s = setup_timeout_s
+        self._should_sort = should_sort
         self._actors: List[ActorHandle] = []
 
     @property
@@ -274,6 +281,7 @@ class GPURankPool:
                 columns=self._columns,
                 rmm_pool_size=self._rmm_pool_size,
                 spill_memory_limit=self._spill_memory_limit,
+                should_sort=self._should_sort,
             )
             for _ in range(self._nranks)
         ]
@@ -386,6 +394,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         key_columns: Tuple[str, ...],
         columns: Optional[List[str]] = None,
         num_partitions: Optional[int] = None,
+        should_sort: bool = False,
     ):
         nranks = _derive_num_gpu_ranks(data_context)
         target_num_partitions = (
@@ -414,6 +423,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             rmm_pool_size=data_context.gpu_shuffle_rmm_pool_size,
             spill_memory_limit=data_context.gpu_shuffle_spill_memory_limit,
             setup_timeout_s=data_context.gpu_shuffle_setup_timeout_s,
+            should_sort=should_sort,
         )
 
         self._next_block_idx: int = 0

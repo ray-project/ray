@@ -918,7 +918,7 @@ class TestGPURankPoolReal:
         pool.start()
         actor = pool.actors[0]
         # Actor is fully set up by pool.start(); insert_batch should work immediately
-        table = pa.table({"k": [1], "v": [2]})
+        table = pa.table({"id": [1], "v": [2]})
         ray.get(actor.insert_batch.remote(table))
         pool.shutdown(force=True)
 
