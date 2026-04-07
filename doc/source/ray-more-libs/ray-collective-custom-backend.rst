@@ -10,9 +10,9 @@ Overview
 
 Ray collective operations support custom backends through a registration API. You can implement your own backend by:
 
-1. Creating a class that inherits from :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup`
+1. Creating a class that inherits from :py:class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup`
 2. Implementing required collective operations
-3. Registering your backend with :func:`~ray.util.collective.backend_registry.register_collective_backend`
+3. Registering your backend with :py:func:`~ray.util.collective.backend_registry.register_collective_backend`
 
 Creating a Custom Backend
 -------------------------
@@ -20,7 +20,7 @@ Creating a Custom Backend
 Step 1: Define Your Backend Class
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Your backend class must inherit from :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` and implement required methods. See the :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` API reference for the complete list of required methods.
+Your backend class must inherit from :py:class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` and implement required methods. See the :py:class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` API reference for the complete list of required methods.
 
 Here's an example using the ``MockInternalKVGroup`` backend that uses Ray's internal KV store for communication:
 
@@ -43,7 +43,7 @@ Here's an example using the ``MockInternalKVGroup`` backend that uses Ray's inte
 Step 2: Register Your Backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Next, register your collective backend on the driver and the actors participating in the collective group with :func:`~ray.util.collective.backend_registry.register_collective_backend`.
+Next, register your collective backend on the driver and the actors participating in the collective group with :py:func:`~ray.util.collective.backend_registry.register_collective_backend`.
 
 .. code-block:: python
 
@@ -62,12 +62,12 @@ There are **two distinct approaches** to initialize collective groups. **Choose 
 
 .. note::
 
-    Using both :func:`~ray.util.collective.collective.create_collective_group` and :func:`~ray.util.collective.collective.init_collective_group` together for the same group is not supported and will cause errors.
+    Using both :py:func:`~ray.util.collective.collective.create_collective_group` and :py:func:`~ray.util.collective.collective.init_collective_group` together for the same group is not supported and will cause errors.
 
 Approach 1: Driver-Managed (Recommended)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Use :func:`~ray.util.collective.collective.create_collective_group` on the driver to declare the group. Workers do **not** call :func:`~ray.util.collective.collective.init_collective_group` - the group is automatically initialized when workers call collective operations.
+Use :py:func:`~ray.util.collective.collective.create_collective_group` on the driver to declare the group. Workers do **not** call :py:func:`~ray.util.collective.collective.init_collective_group` - the group is automatically initialized when workers call collective operations.
 
 This approach is recommended because it provides a declarative, centralized way to manage collective groups. The driver has full visibility into all participants and can coordinate the initialization process.
 
@@ -128,7 +128,7 @@ This approach is recommended because it provides a declarative, centralized way 
 Approach 2: Worker-Managed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Each worker explicitly calls :func:`~ray.util.collective.collective.init_collective_group` to initialize its group membership. The driver does **not** call :func:`~ray.util.collective.collective.create_collective_group`.
+Each worker explicitly calls :py:func:`~ray.util.collective.collective.init_collective_group` to initialize its group membership. The driver does **not** call :py:func:`~ray.util.collective.collective.create_collective_group`.
 
 This approach provides more control over initialization timing within each worker, which can be useful for advanced scenarios where workers need to perform custom setup before or after group initialization.
 
@@ -265,7 +265,7 @@ The following example demonstrates a complete custom backend implementation usin
 See Also
 --------
 
-- :class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` - Base class for custom backends
-- :func:`~ray.util.collective.backend_registry.register_collective_backend` - Register a custom backend
-- :func:`~ray.util.collective.collective.create_collective_group` - Create a collective group (driver-managed)
-- :func:`~ray.util.collective.collective.init_collective_group` - Initialize a collective group (worker-managed)
+- :py:class:`~ray.util.collective.collective_group.base_collective_group.BaseGroup` - Base class for custom backends
+- :py:func:`~ray.util.collective.backend_registry.register_collective_backend` - Register a custom backend
+- :py:func:`~ray.util.collective.collective.create_collective_group` - Create a collective group (driver-managed)
+- :py:func:`~ray.util.collective.collective.init_collective_group` - Initialize a collective group (worker-managed)
