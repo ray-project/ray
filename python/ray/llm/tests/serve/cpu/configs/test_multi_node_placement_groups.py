@@ -406,5 +406,86 @@ def test_bundle_per_worker_non_fractional_gpu_no_env_var():
     assert "VLLM_RAY_PER_WORKER_GPUS" not in runtime_env.get("env_vars", {})
 
 
+class TestAcceleratorTypeValidation:
+    """Test accelerator_type validation with CPU-only configurations."""
+
+    def test_vllm_engine_config_accelerator_type_with_use_cpu_raises_error(self):
+        """VLLMEngineConfig raises error with accelerator_type and use_cpu=True."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                use_cpu=True,
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(
+        self,
+    ):
+        """VLLMEngineConfig raises error with accelerator_type and CPU-only bundles."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_empty_bundles_raises_error(
+        self,
+    ):
+        """VLLMEngineConfig raises error with accelerator_type and empty bundles."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_bundles_succeeds(self):
+        """Test that VLLMEngineConfig succeeds when accelerator_type is set with GPU bundles."""
+        config = VLLMEngineConfig(
+            model_id="test_model",
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
+        )
+        assert config.accelerator_type == "L4"
+        assert config.use_gpu is True
+
+    def test_vllm_engine_config_accelerator_type_default_uses_gpu(self):
+        """Test that VLLMEngineConfig with accelerator_type and no use_cpu defaults to GPU."""
+        config = VLLMEngineConfig(
+            model_id="test_model",
+            accelerator_type="L4",
+        )
+        assert config.accelerator_type == "L4"
+        assert config.use_gpu is True
+
+    def test_llm_config_accelerator_type_validation_propagates_to_engine_config(self):
+        """Test that LLMConfig's validation catches the error before VLLMEngineConfig."""
+        # This should raise at LLMConfig level, not at VLLMEngineConfig level
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError) as exc_info:
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="test_model",
+                ),
+                accelerator_type="L4",
+                use_cpu=True,
+            )
+        assert (
+            "accelerator_type='L4' cannot be used with CPU-only configurations"
+            in str(exc_info.value)
+        )
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])

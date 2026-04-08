@@ -399,10 +399,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             )
 
         if isinstance(compute_strategy, TaskPoolStrategy):
-            from ray.data._internal.execution.operators.task_pool_map_operator import (
-                TaskPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_task_pool_map_operator_cls,
             )
 
+            TaskPoolMapOperator = get_task_pool_map_operator_cls()
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
@@ -419,10 +420,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
-            from ray.data._internal.execution.operators.actor_pool_map_operator import (
-                ActorPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_actor_pool_map_operator_cls,
             )
 
+            ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
