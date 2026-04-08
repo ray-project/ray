@@ -828,34 +828,18 @@ def test_dataset_stats_basic(
     # Use structured assertions instead of canonicalize string comparison
     stats_summary = mds.get_stats_summary()
 
-    # Find operators across current stats and parents
-    found_read_map = None
-    found_map = None
-    current = stats_summary
-    while current:
-        for op in current.operators_stats:
-            if "ReadRange->MapBatches" in op.operator_name:
-                found_read_map = op
-            elif op.operator_name.startswith("Map("):
-                found_map = op
-        if found_read_map and found_map:
-            break
-        if current.parents:
-            current = current.parents[0]
-        else:
-            break
-
-    assert (
-        found_read_map is not None
-    ), "ReadRange->MapBatches operator not found in stats or parents"
-    assert found_map is not None, "Map operator not found in stats or parents"
+    # Find each pipeline stage via the parent chain
+    map_summary = find_stats_summary_in_parents(stats_summary, r"^Map\(")
+    read_map_summary = find_stats_summary_in_parents(stats_summary, "ReadRange")
 
     # Verify both operators have valid metrics
-    assert_basic_operator_metrics(found_read_map)
-    assert_output_row_count(found_read_map, expected_total=1000)
+    read_map_op = get_operator(read_map_summary, name_pattern="ReadRange->MapBatches")
+    assert_basic_operator_metrics(read_map_op)
+    assert_output_row_count(read_map_op, expected_total=1000)
 
-    assert_basic_operator_metrics(found_map)
-    assert_output_row_count(found_map, expected_total=1000)
+    map_op = get_operator(map_summary, name_pattern=r"^Map\(")
+    assert_basic_operator_metrics(map_op)
+    assert_output_row_count(map_op, expected_total=1000)
 
     # Verify iteration stats are present
     assert_iteration_stats_present(stats_summary)
