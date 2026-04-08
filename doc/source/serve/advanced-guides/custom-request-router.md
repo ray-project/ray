@@ -231,6 +231,51 @@ The `CapacityQueueRouter` handles failures gracefully:
 - **Replica death** — the controller sends a long-poll update, the queue
   unregisters the dead replica, and tokens are only issued for live replicas.
 
+### Usage
+The centralized capacity queue request router could bring performance benefits particularly in a constrained supply deployment, i.e. `max_ongoing_request=1` or `2`.
+
+### Benchmark
+
+#### Benchmark Setup
+- Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. Request router selection is applied to both deployments,
+  controlling how parent replicas are selected by the HTTP proxy and how child replicas are selected by parent's `DeploymentHandle`.
+- Scale: small (8 replicas), medium (32 replicas), large (128 replicas), xlarge (512 replicas).
+- Workload: Replica processing latency is drawn from an exponential distribution with mean 1s and capped at 10s.
+- `max_ongoing_request` is set to `2`.
+- Load generation: Applies closed-loop load generation where the load consistently keeps replicas saturated at `max_ongoing_request` concurrency.
+- Warmup: 10s; metrics within the warmup window are discarded entirely.
+
+#### Benchmark Metrics
+- Throughput: Requests per second, i.e. `num_requests / duration`.
+- Utilization: Measures what fraction of a replica's total processing capacity was consumed by actual work during the experiment.
+  Concretely, `sum(replica_processing_latency_s) / (duration_s * max_ongoing_requests)`. For GPU deployments, utilization serves as
+  an assessment proxy for GPU utilization.
+- Latency: Measures the client-side end-to-end latency, covering the full round-trip --
+  client -> `ParentDeployment` -> `ChildDeployment` -> `ParentDeployment` -> client.
+
+#### Normal Situation
+Under normal (success) situations, `CapacityQueueRouter` yields higher throughput and utilization and lower latency.
+
+```{image} ../images/capacity-queue-router-normal.png
+:align: center
+:width: 800px
+```
+
+#### Fault Situation
+A fault is simulated by killing the `CapacityQueue` router, and upon recovery, `CapacityQueue` converges towards its pre-fault performance.
+
+```{image} ../images/capacity-queue-router-fault.png
+:align: center
+:width: 800px
+```
+
+:::{note}
+If you experience the following error when the `CapacityQueue` actor experiences faults and routing decisions fall back to the power-of-two-choices router,
+set `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` to a higher value.
+
+> Failed to get queue length from Replica(id='...', deployment='ParentDeployment', app='...') within 0.1s.
+
+:::
 
 :::{warning}
 ## Gotchas and limitations
