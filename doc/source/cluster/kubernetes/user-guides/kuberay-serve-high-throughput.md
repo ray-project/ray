@@ -48,7 +48,8 @@ Create a GKE cluster:
 gcloud container clusters create $CLUSTER \
   --project $PROJECT \
   --location $LOCATION \
-  --release-channel rapid
+  --machine-type=e2-standard-16 \
+  --num-nodes=1
 ```
 
 ### 3. Install the KubeRay operator
