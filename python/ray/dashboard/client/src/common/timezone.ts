@@ -9,8 +9,7 @@ const getCurrentUTCOffset = (timeZone: string) => {
     const formatted = formatter.format(date);
     const match = formatted.match(/GMT([+-]\d{1,2}(?::\d{2})?)?/);
     return match ? match[0] : "";
-  } catch (e) {
-    console.warn(`Error getting UTC offset for ${timeZone}:`, e);
+  } catch {
     return "";
   }
 };
