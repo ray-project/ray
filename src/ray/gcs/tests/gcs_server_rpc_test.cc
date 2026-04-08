@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <grpcpp/grpcpp.h>
+
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <grpcpp/grpcpp.h>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -25,8 +25,8 @@
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs/metrics.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
-#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "ray/observability/fake_metric.h"
+#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
 namespace ray {
 
