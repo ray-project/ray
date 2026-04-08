@@ -59,6 +59,31 @@ namespace rpc {
   _RPC_SERVICE_HANDLER(                                        \
       SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, false)
 
+/// Like RPC_SERVICE_HANDLER, but uses HANDLER_TYPE (instead of SERVICE##Handler),
+/// HANDLER_MEMBER (instead of service_handler_), and IO_SERVICE_MEMBER (instead of
+/// main_service_). Lazy cluster auth, metrics on, no grpc peer. For when one
+/// grpc::Service splits RPCs across handler types or io_contexts.
+#define RPC_SERVICE_HANDLER_IO(                                                         \
+    SERVICE, HANDLER, HANDLER_TYPE, MAX_ACTIVE_RPCS, HANDLER_MEMBER, IO_SERVICE_MEMBER) \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory_at(                         \
+      new ServerCallFactoryImpl<SERVICE,                                                \
+                                HANDLER_TYPE,                                           \
+                                HANDLER##Request,                                       \
+                                HANDLER##Reply,                                         \
+                                ClusterIdAuthType::LAZY_AUTH,                           \
+                                false>(service_,                                        \
+                                       &SERVICE::AsyncService::Request##HANDLER,        \
+                                       HANDLER_MEMBER,                                  \
+                                       &HANDLER_TYPE::Handle##HANDLER,                  \
+                                       cq,                                              \
+                                       IO_SERVICE_MEMBER,                               \
+                                       #SERVICE ".grpc_server." #HANDLER,               \
+                                       cluster_id,                                      \
+                                       auth_token,                                      \
+                                       MAX_ACTIVE_RPCS,                                 \
+                                       true));                                          \
+  server_call_factories->emplace_back(std::move(HANDLER##_call_factory_at));
+
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
   _RPC_SERVICE_HANDLER(                                                                \

@@ -96,7 +96,12 @@ void JobInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, ReportJobError, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER_IO(JobInfoGcsService,
+                         ReportJobError,
+                         JobInfoGcsServiceHandler,
+                         max_active_rpcs_per_handler_,
+                         service_handler_,
+                         pubsub_io_service_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler_)
 }
 

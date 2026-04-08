@@ -468,8 +468,11 @@ void GcsServer::InitGcsJobManager(
                                       job_duration_in_seconds_gauge);
   gcs_job_manager_->Initialize(gcs_init_data);
 
+  // ReportJobError is dispatched on pubsub_io_context (same as InternalPubSubGcsService)
+  // so error publish + subscriber long-poll share one event loop.
   rpc_server_.RegisterService(std::make_unique<rpc::JobInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
+      io_context_provider_.GetIOContext<pubsub::GcsPublisher>(),
       *gcs_job_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }

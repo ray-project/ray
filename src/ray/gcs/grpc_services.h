@@ -137,11 +137,13 @@ class InternalPubSubGrpcService : public GrpcService {
 class JobInfoGrpcService : public GrpcService {
  public:
   explicit JobInfoGrpcService(instrumented_io_context &io_service,
+                              instrumented_io_context &pubsub_io_service,
                               JobInfoGcsServiceHandler &handler,
                               int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
         service_handler_(handler),
-        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+        pubsub_io_service_(pubsub_io_service),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -155,6 +157,7 @@ class JobInfoGrpcService : public GrpcService {
  private:
   JobInfoGcsService::AsyncService service_;
   JobInfoGcsServiceHandler &service_handler_;
+  instrumented_io_context &pubsub_io_service_;
   int64_t max_active_rpcs_per_handler_;
 };
 
