@@ -1,11 +1,14 @@
+import os
+import tempfile
 import uuid
+from pathlib import Path
 from typing import Optional
 from unittest.mock import create_autospec
 
 import pytest
 
 import ray
-from ray.train import CheckpointConfig
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
@@ -13,6 +16,10 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2.api.config import RunConfig
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.report_config import CheckpointUploadMode
+from ray.train.v2.api.result import Result
 from ray.train.v2.tests.util import create_dummy_training_reports
 
 
@@ -335,6 +342,82 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
     with pytest.raises(ValueError):
         checkpoint_manager.update_checkpoints_with_metrics(
             {training_reports[0].checkpoint: {"score": 100}}
+        )
+
+
+def test_out_of_band_checkpointing(tmp_path):
+    """Check that the checkpoint manager can handle out of band checkpointing."""
+
+    def write_file(file_path, content: str):
+        os.makedirs(file_path.parent, exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+
+    def train_fn():
+        # save in-band
+        write_file(tmp_path / "epoch-1" / "results.txt", "1")
+        ray.train.report(
+            metrics={"score": 1},
+            checkpoint=Checkpoint(tmp_path / "epoch-1"),
+        )
+        # save in-band with checkpoint dir name
+        write_file(tmp_path / "epoch-2" / "test" / "results.txt", "2")
+        ray.train.report(
+            metrics={"score": 2},
+            checkpoint=Checkpoint(tmp_path / "epoch-2"),
+            checkpoint_dir_name="test",
+        )
+
+        # save out of band with NO_UPLOAD
+        ray.train.report(
+            metrics={"score": 3},
+            checkpoint=Checkpoint(tmp_path / "epoch-3"),
+            checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+        )
+
+        # save out of band with custom checkpoint_upload_fn
+        ray.train.report(
+            metrics={"score": 4},
+            checkpoint=Checkpoint(tmp_path / "epoch-4"),
+            checkpoint_upload_fn=lambda checkpoint, name: checkpoint,
+        )
+        ray.train.report(
+            metrics={"score": 5},
+            checkpoint=Checkpoint(tmp_path / "test" / "epoch-5"),
+            checkpoint_dir_name="test",
+            checkpoint_upload_fn=lambda checkpoint, name: checkpoint,
+        )
+
+        # ensures that all the ray.train.report have finished.
+        ray.train.get_all_reported_checkpoints()
+
+    with tempfile.TemporaryDirectory() as _experiment_dir:
+        experiment_dir = Path(_experiment_dir).resolve()
+
+        data_trainer = DataParallelTrainer(
+            train_fn,
+            run_config=RunConfig(
+                name="test-out-of-band-checkpointing",
+                storage_path=str(experiment_dir),
+                checkpoint_config=CheckpointConfig(num_to_keep=None),  # all
+            ),
+        )
+        results: Result = data_trainer.fit()
+        checkpoints = results.best_checkpoints
+
+        assert checkpoints is not None and len(checkpoints) == 5
+        assert checkpoints[0][1] == {"score": 1}
+        assert checkpoints[1] == (
+            Checkpoint(
+                Path(experiment_dir) / "test-out-of-band-checkpointing" / "test"
+            ),
+            {"score": 2},
+        )
+        assert checkpoints[2] == (Checkpoint(tmp_path / "epoch-3"), {"score": 3})
+        assert checkpoints[3] == (Checkpoint(tmp_path / "epoch-4"), {"score": 4})
+        assert checkpoints[4] == (
+            Checkpoint(tmp_path / "test" / "epoch-5"),
+            {"score": 5},
         )
 
 

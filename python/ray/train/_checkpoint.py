@@ -350,6 +350,16 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
         )
 
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, Checkpoint)
+            and self.path == other.path
+            and type(self.filesystem) is type(other.filesystem)
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.path)
+
 
 def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.

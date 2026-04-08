@@ -534,16 +534,26 @@ class StorageContext:
 
     def extract_checkpoint_dir_name_from_path(self, checkpoint_path: str) -> str:
         """Get the checkpoint name from the checkpoint path.
-        The parent directory of the checkpoint path should be the experiment directory.
+
+        If the checkpoint path is within the experiment directory, then return
+        the checkpoint names (removing the experiment directory path from the
+        checkpoint path). Otherwise, if the checkpoint path is outside the
+        experiment path from using a custom checkpoint upload fn or
+        CHECKPOINT_UPLOAD_MODE.NO_UPLOAD, return the whole checkpoint path.
+
+        Args:
+            checkpoint_path: The checkpoint path
+
+        Returns:
+            The checkpoint name that removes the experiment directory path\.
         """
-        # TODO: Use Pathlib to extract the name when supports at least Python 3.9
-        experiment_fs_path = self.experiment_fs_path + "/"
-        if not checkpoint_path.startswith(experiment_fs_path):
-            raise ValueError(
-                f"Checkpoint path {checkpoint_path} is not under the experiment "
-                f"directory {self.experiment_fs_path}."
-            )
-        return checkpoint_path[len(experiment_fs_path) :]
+        exp_path = Path(self.experiment_fs_path)
+        ckpt_path = Path(checkpoint_path)
+
+        if ckpt_path.is_relative_to(exp_path):
+            return str(ckpt_path.relative_to(exp_path))
+        else:
+            return str(ckpt_path)
 
     def build_checkpoint_path_from_name(self, checkpoint_name: str) -> str:
         """Get the checkpoint path from the checkpoint name.
