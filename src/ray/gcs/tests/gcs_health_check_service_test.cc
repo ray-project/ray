@@ -47,7 +47,8 @@ class GcsHealthCheckServiceTest : public ::testing::Test {
                                           /*enable_default_health_check_service=*/false);
 
     // Register the custom health check service on our io_context.
-    server_->RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(io_context_));
+    server_->RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(io_context_),
+                             /*token_auth=*/false);
     server_->Run();
 
     // Start running the io_context in a background thread.
