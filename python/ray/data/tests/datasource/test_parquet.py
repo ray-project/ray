@@ -2825,6 +2825,10 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     return str(tmp_path), file_path, num_rows, schema
 
 
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -2846,6 +2850,10 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     assert total_rows == num_rows
 
 
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
