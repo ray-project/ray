@@ -123,6 +123,18 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application", "policy_scope"),
         )
 
+        self.autoscaling_target_ongoing_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_target_ongoing_requests",
+            description=(
+                "The configured target number of ongoing requests per replica. "
+                "Combined with serve_autoscaling_total_requests, this can be used "
+                "to compute the expected number of replicas "
+                "(total_requests / target_ongoing_requests) and detect autoscaling "
+                "regressions."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
 
@@ -320,6 +332,9 @@ class DeploymentAutoscalingState:
         self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
         self.autoscaling_policy_execution_time_gauge.set(
             policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
+        )
+        self.autoscaling_target_ongoing_requests_gauge.set(
+            self._config.get_target_ongoing_requests(), tags=tags
         )
 
     def get_decision_num_replicas(
