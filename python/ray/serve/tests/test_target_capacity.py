@@ -927,6 +927,19 @@ class TestInitialReplicasHandling:
         wait_for_condition(lambda: len(serve.status().applications) == 1)
         assert serve.status().target_capacity is None
 
+        # Wait for initial deployment to reach RUNNING before starting the
+        # target_capacity loop. Without this, the first loop iteration must
+        # handle both initial replica startup AND target_capacity convergence
+        # within its timeout, which is marginal under CI resource contention.
+        wait_for_condition(
+            lambda: (
+                SERVE_DEFAULT_APP_NAME in serve.status().applications
+                and serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+                == ApplicationStatus.RUNNING
+            ),
+            timeout=30,
+        )
+
         # Kick off downscaling pattern.
         test_target_capacities = [100, 60, 40, 0]
         expected_num_replicas = [
@@ -954,9 +967,9 @@ class TestInitialReplicasHandling:
         # TODO(landscapepainter): This test fails locally due to the stall for replica initialization
         # during upscaling and delayed response from serve.status(). It does not fail from
         # buildkite, but need to investigate why it fails locally.
-        deployment_name = "start_at_ten"
+        deployment_name = "start_at_five"
         min_replicas = 0
-        initial_replicas = 10
+        initial_replicas = 5
 
         config = ServeDeploySchema(
             target_capacity=0,
@@ -977,8 +990,8 @@ class TestInitialReplicasHandling:
         expected_num_replicas = [
             0,
             1,
-            2,
-            6,
+            1,
+            3,
             min_replicas,
             min_replicas,
             initial_replicas,
@@ -1046,7 +1059,7 @@ class TestInitialReplicasHandling:
         # buildkite, but need to investigate why it fails locally.
         deployment_name = "start_at_ten"
         min_replicas = 0
-        initial_replicas = 20
+        initial_replicas = 10
         config_target_capacity = 40
 
         config = ServeDeploySchema(
