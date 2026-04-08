@@ -343,6 +343,12 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# Address of the Prometheus server (host:port) for fetching autoscaling metrics.
+# Required when AutoscalingConfig.prometheus_metrics is set.
+RAY_SERVE_PROMETHEUS_SERVER_ADDRESS = get_env_str(
+    "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS", None
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"

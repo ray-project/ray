@@ -582,6 +582,11 @@ class ServeController:
             logger.exception("Exception updating deployment state.")
 
         try:
+            await self.autoscaling_state_manager.fetch_prometheus_metrics()
+        except Exception:
+            logger.exception("Exception fetching Prometheus metrics.")
+
+        try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
             asm_duration = time.time() - asm_update_start_time

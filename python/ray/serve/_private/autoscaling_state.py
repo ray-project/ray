@@ -5,6 +5,11 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None
+
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
@@ -20,6 +25,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    RAY_SERVE_PROMETHEUS_SERVER_ADDRESS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -95,6 +101,10 @@ class DeploymentAutoscalingState:
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
+
+        # Cached Prometheus metrics (populated asynchronously).
+        self._cached_prometheus_metrics: Optional[Dict[str, float]] = None
+        self._logged_missing_prom_address: bool = False
 
         self.autoscaling_decision_gauge = metrics.Gauge(
             "serve_autoscaling_desired_replicas",
@@ -385,6 +395,7 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
+            prometheus_metrics=self._get_cached_prometheus_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
             total_pending_async_requests=self._total_pending_async_requests,
@@ -790,6 +801,82 @@ class DeploymentAutoscalingState:
 
         return dict(raw_metrics)
 
+    def _get_cached_prometheus_metrics(self) -> Optional[Dict[str, float]]:
+        """Return the most recently fetched Prometheus metrics from cache.
+
+        This is called synchronously during the autoscaling tick.  The actual
+        HTTP fetch happens asynchronously via ``fetch_prometheus_metrics``,
+        which should be called periodically from the controller's async
+        control loop.
+        """
+        return self._cached_prometheus_metrics
+
+    async def fetch_prometheus_metrics(self) -> None:
+        """Asynchronously fetch Prometheus metrics and cache the results.
+
+        This should be called from the controller's async control loop,
+        NOT from the synchronous autoscaling decision path.
+        """
+        if not self._config or not self._config.prometheus_metrics:
+            self._cached_prometheus_metrics = None
+            return
+
+        if not RAY_SERVE_PROMETHEUS_SERVER_ADDRESS:
+            if not self._logged_missing_prom_address:
+                logger.warning(
+                    "prometheus_metrics is configured for deployment "
+                    f"'{self._deployment_id}' but RAY_SERVE_PROMETHEUS_SERVER_ADDRESS "
+                    "is not set. Skipping Prometheus metric collection."
+                )
+                self._logged_missing_prom_address = True
+            self._cached_prometheus_metrics = None
+            return
+
+        if aiohttp is None:
+            logger.warning(
+                "aiohttp is required for Prometheus metric fetching but is not "
+                "installed. Install it with: pip install aiohttp"
+            )
+            self._cached_prometheus_metrics = None
+            return
+
+        result = {}
+        base_url = f"http://{RAY_SERVE_PROMETHEUS_SERVER_ADDRESS}/api/v1/query"
+        try:
+            async with aiohttp.ClientSession() as session:
+                for metric_name in self._config.prometheus_metrics:
+                    try:
+                        async with session.get(
+                            base_url,
+                            params={"query": metric_name},
+                            timeout=aiohttp.ClientTimeout(total=5),
+                        ) as resp:
+                            resp.raise_for_status()
+                            body = await resp.json()
+                            data = body.get("data", {}).get("result", [])
+                            if data:
+                                result[metric_name] = float(data[0]["value"][1])
+                            else:
+                                logger.debug(
+                                    f"Prometheus metric '{metric_name}' returned "
+                                    f"empty result for deployment "
+                                    f"'{self._deployment_id}'."
+                                )
+                    except Exception:
+                        logger.warning(
+                            f"Failed to fetch Prometheus metric '{metric_name}' "
+                            f"for deployment '{self._deployment_id}'.",
+                            exc_info=True,
+                        )
+        except Exception:
+            logger.warning(
+                f"Failed to create aiohttp session for Prometheus metrics "
+                f"for deployment '{self._deployment_id}'.",
+                exc_info=True,
+            )
+
+        self._cached_prometheus_metrics = result if result else None
+
 
 class ApplicationAutoscalingState:
     """Manages autoscaling for a single application."""
@@ -1065,6 +1152,11 @@ class ApplicationAutoscalingState:
         for dep_state in self._deployment_autoscaling_states.values():
             dep_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
+    async def fetch_prometheus_metrics(self) -> None:
+        """Trigger async Prometheus fetch for all deployments in this app."""
+        for dep_state in self._deployment_autoscaling_states.values():
+            await dep_state.fetch_prometheus_metrics()
+
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -1249,3 +1341,8 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
+
+    async def fetch_prometheus_metrics(self) -> None:
+        """Asynchronously fetch Prometheus metrics for all deployments."""
+        for app_state in self._app_autoscaling_states.values():
+            await app_state.fetch_prometheus_metrics()

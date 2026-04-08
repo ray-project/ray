@@ -92,6 +92,9 @@ class AutoscalingContext:
         current_time: Optional[float],
         config: Optional[Any],
         total_pending_async_requests: int,
+        prometheus_metrics: Optional[
+            Union[Dict[str, float], Callable[[], Dict[str, float]]]
+        ] = None,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -145,6 +148,9 @@ class AutoscalingContext:
         # Async inference task queue length (from QueueMonitor)
         self._total_pending_async_requests = total_pending_async_requests
 
+        # Prometheus metrics fetched by the controller
+        self._prometheus_metrics_value = prometheus_metrics
+
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
@@ -174,6 +180,17 @@ class AutoscalingContext:
         # NOTE: for non-additive aggregation functions, total_running_requests is not
         # accurate, consider this is an approximation.
         return self.total_num_requests - self.total_queued_requests
+
+    @cached_property
+    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
+        """Metrics fetched from a Prometheus server by the controller.
+
+        Returns a dict mapping metric name to its latest scalar value,
+        or None if no Prometheus metrics are configured.
+        """
+        if callable(self._prometheus_metrics_value):
+            return self._prometheus_metrics_value()
+        return self._prometheus_metrics_value
 
     @property
     def total_pending_async_requests(self) -> int:
@@ -613,6 +630,15 @@ class AutoscalingConfig(BaseModel):
     aggregation_function: Union[str, AggregationFunction] = Field(
         default=AggregationFunction.MEAN,
         description="Function used to aggregate metrics across a time window.",
+    )
+
+    prometheus_metrics: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of Prometheus metric names to fetch from a Prometheus server "
+            "and include in the AutoscalingContext. Requires the "
+            "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS environment variable to be set."
+        ),
     )
 
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
