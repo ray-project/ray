@@ -17,6 +17,8 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/id.h"
+
 namespace ray {
 namespace gcs {
 
@@ -32,6 +34,15 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
     gcs_publisher_.GetPublisher().Publish(std::move(msg));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::HandleReportJobError(
+    rpc::ReportJobErrorRequest request,
+    rpc::ReportJobErrorReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto job_id = JobID::FromBinary(request.job_error().job_id());
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 // Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,
