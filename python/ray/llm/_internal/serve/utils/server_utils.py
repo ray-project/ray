@@ -1,4 +1,6 @@
 import asyncio
+import threading
+import time
 import traceback
 from functools import partial
 from typing import Awaitable, Callable, TypeVar
@@ -8,6 +10,7 @@ from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
+from ray.llm._internal.serve.constants import DEFAULT_FATAL_ERROR_COOLDOWN_S
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorInfo,
     ErrorResponse,
@@ -18,6 +21,85 @@ from ray.llm._internal.serve.observability.logging import get_logger
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+# Keep in sync with _VLLM_FATAL_ERRORS in batch/stages/vllm_engine_stage.py
+_FATAL_ERROR_TYPE_NAMES = frozenset(
+    {
+        "EngineDeadError",
+    }
+)
+
+
+def _is_fatal_engine_error(e: Exception) -> bool:
+    """
+    Detect fatal engine errors
+    """
+    type_name = type(e).__name__
+    return any(name in type_name for name in _FATAL_ERROR_TYPE_NAMES)
+
+
+class _FatalEngineErrorLogHandler:
+    """Rate limits logging for fatal engine errors.
+
+    - First occurrence: logs with full traceback.
+    - Subsequent occurrences within the cooldown window: suppressed.
+    - Every ``cooldown_s`` seconds: emits a summary with the count of
+      suppressed errors.
+    - Non fatal errors are never touched by this handler.
+    """
+
+    def __init__(self, cooldown_s: float = DEFAULT_FATAL_ERROR_COOLDOWN_S):
+        self._cooldown_s = cooldown_s
+        self._first_logged = False
+        self._suppressed_count = 0
+        self._last_summary_time = 0.0
+        self._lock = threading.Lock()
+
+    def log(
+        self,
+        e: Exception,
+        request_id: str,
+        status_code: int,
+    ) -> None:
+        """Log the error, rate limiting fatal engine errors."""
+        is_fatal = _is_fatal_engine_error(e)
+
+        if not is_fatal:
+            log_fn = logger.error if status_code >= 500 else logger.warning
+            log_fn(
+                f"Encountered failure while handling request {request_id}",
+                exc_info=e,
+                extra={"ray_serve_extra_fields": {"status_code": status_code}},
+            )
+            return
+
+        with self._lock:
+            if not self._first_logged:
+                self._first_logged = True
+                self._last_summary_time = time.monotonic()
+                logger.error(
+                    "Encountered failure while handling request %s",
+                    request_id,
+                    exc_info=e,
+                    extra={"ray_serve_extra_fields": {"status_code": status_code}},
+                )
+                return
+
+            self._suppressed_count += 1
+            now = time.monotonic()
+            elapsed = now - self._last_summary_time
+            if elapsed >= self._cooldown_s:
+                logger.error(
+                    "Suppressed %d fatal engine error(s) in the last %.0fs. "
+                    "Engine is dead, awaiting replica restart.",
+                    self._suppressed_count,
+                    elapsed,
+                )
+                self._suppressed_count = 0
+                self._last_summary_time = now
+
+
+_fatal_error_log_handler = _FatalEngineErrorLogHandler()
 
 
 def make_async(_func: Callable[..., T]) -> Callable[..., Awaitable[T]]:
@@ -90,12 +172,7 @@ def get_response_for_error(
             getattr(e, "status_code", status.HTTP_500_INTERNAL_SERVER_ERROR)
         )
 
-    log = logger.error if status_code >= 500 else logger.warning
-    log(
-        f"Encountered failure while handling request {request_id}",
-        exc_info=e,
-        extra={"ray_serve_extra_fields": {"status_code": status_code}},
-    )
+    _fatal_error_log_handler.log(e, request_id, status_code)
 
     if status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
         internal_message = message = "Internal Server Error"
