@@ -86,6 +86,7 @@ python/ray/data/_internal/logging.py
 python/ray/data/_internal/logical/interfaces/logical_operator.py
 python/ray/data/_internal/logical/operators/from_operators.py
 python/ray/data/_internal/logical/operators/input_data_operator.py
+python/ray/data/_internal/logical/operators/count_operator.py
 python/ray/data/_internal/logical/operators/map_operator.py
 python/ray/data/_internal/logical/operators/one_to_one_operator.py
 python/ray/data/_internal/logical/operators/read_operator.py
