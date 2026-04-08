@@ -1,0 +1,177 @@
+import pytest
+
+import ray
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.n_ary_operator import Mix
+from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stopping_condition import StoppingCondition
+from ray.data.dataset import Dataset
+
+
+def _mix_datasets(datasets, weights=None, stopping_condition=None):
+    """Helper to construct a mixed dataset from the logical plan directly.
+
+    TODO: Replace this with the public API once it is added.
+    """
+    if weights is None:
+        weights = [1.0] * len(datasets)
+
+    if stopping_condition is None:
+        stopping_condition = StoppingCondition.STOP_ON_SHORTEST
+
+    logical_plans = [ds._plan._logical_plan for ds in datasets]
+    op = Mix(
+        *[plan.dag for plan in logical_plans],
+        weights=weights,
+        stopping_condition=stopping_condition,
+    )
+    logical_plan = LogicalPlan(op, datasets[0].context)
+
+    stats = DatasetStats(
+        metadata={"Mix": []},
+        parent=[d._plan.stats() for d in datasets],
+    )
+    return Dataset(
+        ExecutionPlan(stats, datasets[0].context.copy()),
+        logical_plan,
+    )
+
+
+def _make_ds(source_id, num_rows, rows_per_block):
+    """Create a dataset where every row has {"source": source_id}."""
+    num_blocks = num_rows // rows_per_block
+    return ray.data.from_items([{"source": source_id}] * num_rows).repartition(
+        num_blocks
+    )
+
+
+@pytest.mark.parametrize("weights", [[1, 1], None])
+def test_mix_equal_weights(ray_start_10_cpus_shared, weights):
+    """Equal weights with uniform blocks should produce 50/50 every 2 blocks.
+    If weights are not provided, they should default to 1.0.
+    """
+    rows_per_block = 10
+    ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
+    ds2 = _make_ds(source_id=1, num_rows=500, rows_per_block=rows_per_block)
+    mixed = _mix_datasets(
+        [ds1, ds2],
+        weights=weights,
+        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+    )
+    # We should round robin between the two datasets.
+    # The output should alternate 10 rows for each dataset.
+    for batch in mixed.iter_batches(batch_size=2 * rows_per_block):
+        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        assert ratio == 0.5
+
+
+def test_mix_uneven_weights(ray_start_10_cpus_shared):
+    """75/25 weights with uniform blocks should produce the right ratio every 4 blocks."""
+    rows_per_block = 10
+    ds1 = _make_ds(source_id=0, num_rows=750, rows_per_block=rows_per_block)
+    ds2 = _make_ds(source_id=1, num_rows=250, rows_per_block=rows_per_block)
+    mixed = _mix_datasets(
+        [ds1, ds2],
+        weights=[0.75, 0.25],
+        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+    )
+    for batch in mixed.iter_batches(batch_size=4 * rows_per_block):
+        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        assert ratio == 0.75
+
+
+def test_mix_single_dataset(ray_start_10_cpus_shared):
+    ds1 = _make_ds(source_id=0, num_rows=100, rows_per_block=10)
+    mixed = _mix_datasets([ds1], weights=[1.0])
+    result = mixed.take_all()
+    assert len(result) == 100
+
+
+def test_mix_three_datasets(ray_start_10_cpus_shared):
+    """Three datasets with 50/30/20 weights should produce the right ratio every 10 blocks."""
+    rows_per_block = 10
+    ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
+    ds2 = _make_ds(source_id=1, num_rows=300, rows_per_block=rows_per_block)
+    ds3 = _make_ds(source_id=2, num_rows=200, rows_per_block=rows_per_block)
+    mixed = _mix_datasets(
+        [ds1, ds2, ds3],
+        weights=[0.5, 0.3, 0.2],
+        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+    )
+    for batch in mixed.iter_batches(batch_size=10 * rows_per_block):
+        ratio_ds1 = (batch["source"] == 0).sum() / len(batch["source"])
+        ratio_ds2 = (batch["source"] == 1).sum() / len(batch["source"])
+        ratio_ds3 = (batch["source"] == 2).sum() / len(batch["source"])
+        assert ratio_ds1 == 0.5
+        assert ratio_ds2 == 0.3
+        assert ratio_ds3 == 0.2
+
+
+def test_mix_stop_on_shortest(ray_start_10_cpus_shared):
+    """With STOP_ON_SHORTEST, the pipeline stops when the shorter
+    dataset is exhausted. The ratio should hold up to the stop point."""
+    ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=10)
+    ds2 = _make_ds(source_id=1, num_rows=200, rows_per_block=10)
+    mixed = _mix_datasets(
+        [ds1, ds2],
+        weights=[0.5, 0.5],
+        stopping_condition=StoppingCondition.STOP_ON_SHORTEST,
+    )
+    result = mixed.take_all()
+    # ds2 is shorter (200 rows). With equal weights, we should get
+    # roughly equal rows from each before ds2 exhausts.
+    count_0 = sum(1 for r in result if r["source"] == 0)
+    count_1 = sum(1 for r in result if r["source"] == 1)
+    # On the last round, we dispatch one more block from ds1 before the ds2 input is marked as exhausted.
+    assert count_0 == 210
+    assert count_1 == 200  # all of ds2
+
+
+def test_mix_stop_on_longest_drop(ray_start_10_cpus_shared):
+    """With STOP_ON_LONGEST_DROP, shorter datasets drop out and longer
+    datasets continue until all are exhausted."""
+    rows_per_block = 10
+    ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=rows_per_block)
+    ds2 = _make_ds(source_id=1, num_rows=200, rows_per_block=rows_per_block)
+    mixed = _mix_datasets(
+        [ds1, ds2],
+        weights=[0.5, 0.5],
+        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+    )
+    ds2_rows_seen = 0
+    for batch in mixed.iter_batches(batch_size=2 * rows_per_block):
+        # We should round robin between the two datasets, until ds2 is exhausted.
+        if ds2_rows_seen < 200:
+            ratio = (batch["source"] == 0).sum() / len(batch["source"])
+            assert ratio == 0.5
+            ds2_rows_seen += (batch["source"] == 1).sum()
+
+        # After that point, we should only see rows from ds1.
+        else:
+            ratio = (batch["source"] == 0).sum() / len(batch["source"])
+            assert ratio == 1.0
+
+
+def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
+    """Non-uniform block sizes: the deficit algorithm should still track
+    the target ratio, just with wider oscillations."""
+    ds1 = _make_ds(source_id=0, num_rows=480, rows_per_block=120)  # 120-row blocks
+    ds2 = _make_ds(source_id=1, num_rows=160, rows_per_block=10)  # 10-row blocks
+    mixed = _mix_datasets(
+        [ds1, ds2],
+        weights=[0.75, 0.25],
+        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+    )
+
+    # ds0: 120, ds1: 10, 10, 10, 10
+    # Expect every window of 160 rows to have a ratio of 0.75:0.25
+    for batch in mixed.iter_batches(batch_size=160):
+        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        assert ratio == 0.75
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

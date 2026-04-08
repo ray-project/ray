@@ -1,12 +1,14 @@
-from typing import Optional
+from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
+from ray.data._internal.stopping_condition import StoppingCondition
 
 __all__ = [
+    "Mix",
     "NAry",
     "Union",
     "Zip",
@@ -52,6 +54,47 @@ class Zip(NAry):
                 return None
             total_num_outputs = max(total_num_outputs, num_outputs)
         return total_num_outputs
+
+
+class Mix(NAry):
+    """Logical operator for weighted dataset mixing."""
+
+    def __init__(
+        self,
+        *input_ops: LogicalOperator,
+        weights: List[float],
+        stopping_condition: StoppingCondition = StoppingCondition.STOP_ON_SHORTEST,
+    ):
+        self.weights = weights
+        self.stopping_condition = stopping_condition
+        super().__init__(*input_ops)
+
+    def estimated_num_outputs(self) -> Optional[int]:
+        if self.stopping_condition == StoppingCondition.STOP_ON_SHORTEST:
+            # The output is limited by whichever input runs out first
+            # relative to its weight.
+            min_outputs = None
+            for i, input_dep in enumerate(self.input_dependencies):
+                num_outputs = input_dep.estimated_num_outputs()
+                if num_outputs is None:
+                    return None
+                # Scale by weight to estimate how many total output blocks
+                # this input can sustain.
+                weight = self.weights[i] / sum(self.weights)
+                if weight > 0:
+                    scaled = int(num_outputs / weight)
+                    if min_outputs is None or scaled < min_outputs:
+                        min_outputs = scaled
+            return min_outputs
+        else:
+            # STOP_ON_LONGEST_DROP: sum of all inputs (like Union).
+            total = 0
+            for input_dep in self.input_dependencies:
+                num_outputs = input_dep.estimated_num_outputs()
+                if num_outputs is None:
+                    return None
+                total += num_outputs
+            return total
 
 
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
