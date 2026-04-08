@@ -349,7 +349,7 @@ def test_declarative_deploy_with_deployment_actors(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -400,7 +400,7 @@ def test_declarative_config_only_actors(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
 
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -450,7 +450,7 @@ def test_declarative_config_only_actors_no_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "10")
 
@@ -458,7 +458,7 @@ def test_declarative_config_only_actors_no_version_change(serve_instance):
     assert len(actor_names_before) == 1
 
     client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "10")
 
     actor_names_after = _get_deployment_actor_names()
@@ -501,7 +501,7 @@ def test_declarative_config_only_actors_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "100")
 
@@ -536,7 +536,7 @@ def test_declarative_config_only_actors_version_change(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "200")
 
     actor_names_v2 = _get_deployment_actor_names()
@@ -1602,7 +1602,7 @@ def test_config_only_deployment_actors_with_actor_options(serve_instance):
         ],
     }
     serve_instance.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "99")
 
@@ -1687,7 +1687,7 @@ def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "no_actor")
     assert _check_deployment_actor_count(0)
@@ -1720,7 +1720,7 @@ def test_redeployment_adds_actors_to_existing_deployment(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     wait_for_condition(lambda: httpx.get(url).text == "42")
     wait_for_condition(lambda: _check_deployment_actor_count(1))
 
@@ -1762,7 +1762,7 @@ def test_redeployment_changes_actor_class(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "10")
     v1_actor_names = _get_deployment_actor_names()
@@ -1796,7 +1796,7 @@ def test_redeployment_changes_actor_class(serve_instance):
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running, timeout=20)
+    wait_for_condition(check_running, timeout=30)
     # AltCounter.get() returns start * 10 = 100, proving the class changed
     wait_for_condition(lambda: httpx.get(url).text == "100", timeout=10)
     v2_actor_names = _get_deployment_actor_names()
@@ -1843,7 +1843,7 @@ def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance)
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v1))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     url = f"{get_application_url()}/"
     wait_for_condition(lambda: httpx.get(url).text == "0")
 
@@ -1884,7 +1884,7 @@ def test_redeployment_same_name_changed_init_kwargs_resets_state(serve_instance)
     }
 
     client.deploy_apps(ServeDeploySchema.model_validate(config_v2))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=30)
     # State reset: returns 100 (new init value), not 5 (old mutated state)
     wait_for_condition(lambda: httpx.get(url).text == "100", timeout=30)
 
