@@ -13,7 +13,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 import ray
 
-from benchmark import Benchmark, OperatorStatsTracker
+from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
 
 BATCH_SIZE = 128
 
@@ -99,7 +99,9 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(OUTPUT_PREFIX, mode="overwrite")
         )
-        return OperatorStatsTracker.collect()
+        metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
