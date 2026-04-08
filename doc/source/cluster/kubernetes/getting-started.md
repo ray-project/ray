@@ -48,7 +48,7 @@ If yes, use RayJob. It allows automatic deletion of the RayCluster upon job comp
 ### Q: Do you care about the latency introduced by spinning up a RayCluster?
 
 If yes, use RayCluster.
-Unlike RayJob and RayCronJob, which creates a new RayCluster every time a job is submitted, RayCluster creates the cluster just once and can be used multiple times.
+Unlike RayJob and RayCronJob, which create a new RayCluster every time a job is submitted, RayCluster creates the cluster just once and can be used multiple times.
 
 ## Run your first Ray application on Kubernetes!
 
