@@ -9,6 +9,7 @@ getting-started/kuberay-operator-installation
 getting-started/raycluster-quick-start
 getting-started/rayjob-quick-start
 getting-started/rayservice-quick-start
+getting-started/raycronjob-quick-start
 ```
 
 
@@ -48,3 +49,4 @@ Unlike RayJob, which creates a new RayCluster every time a job is submitted, Ray
 * [RayCluster Quick Start](kuberay-raycluster-quickstart)
 * [RayJob Quick Start](kuberay-rayjob-quickstart)
 * [RayService Quick Start](kuberay-rayservice-quickstart)
+* [RayCronJob Quick Start](kuberay-raycronjob-quickstart)
