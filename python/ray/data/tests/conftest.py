@@ -331,7 +331,7 @@ def configure_shuffle_method(request):
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.GPU_SHUFFLE]:
         ctx.default_hash_shuffle_parallelism = 8
 
     yield request.param
