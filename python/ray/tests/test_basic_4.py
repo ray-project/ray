@@ -270,16 +270,18 @@ def test_ray_processes_can_match_agents_on_windows():
     See https://github.com/ray-project/ray/issues/61452
     """
     import importlib
+
     import ray.autoscaler._private.constants as constants_mod
 
     # Reload with sys.platform patched to "win32" so that the conditional
     # fallback entries are included in RAY_PROCESSES.
-    with mock.patch("sys.platform", "win32"):
+    try:
+        with mock.patch("sys.platform", "win32"):
+            importlib.reload(constants_mod)
+            win32_ray_processes = list(constants_mod.RAY_PROCESSES)
+    finally:
+        # Restore the module to its original state.
         importlib.reload(constants_mod)
-        win32_ray_processes = list(constants_mod.RAY_PROCESSES)
-
-    # Restore the module to its original state.
-    importlib.reload(constants_mod)
 
     # Invariants: raylet first, gcs_server last.
     assert win32_ray_processes[0][0] == "raylet"
@@ -289,17 +291,20 @@ def test_ray_processes_can_match_agents_on_windows():
     # NOT change the process name or cmdline visible to psutil.  The actual
     # cmdline contains the script path (e.g. ".../dashboard/agent.py").
     # Simulate the cmdlines that these agents would have on Windows.
+    #
+    # Note: Both the RAY_PROCESSES entries and the real cmdlines use paths
+    # built with os.path.join, so they always use the same separator and
+    # substring matching works. In this test we also use os.path.join for
+    # the simulated cmdlines so the test is correct on any host OS.
     simulated_agent_cmdlines = {
         "dashboard_agent": [
             "python.exe",
-            os.path.join("C:\\", "ray", "dashboard", "agent.py"),
+            os.path.join("C:", "ray", "dashboard", "agent.py"),
             "--node-ip-address=127.0.0.1",
         ],
         "runtime_env_agent": [
             "python.exe",
-            os.path.join(
-                "C:\\", "ray", "_private", "runtime_env", "agent", "main.py"
-            ),
+            os.path.join("C:", "ray", "_private", "runtime_env", "agent", "main.py"),
             "--node-ip-address=127.0.0.1",
         ],
     }
