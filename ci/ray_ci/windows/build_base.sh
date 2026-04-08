@@ -12,6 +12,10 @@ powershell ci/ray_ci/windows/install_bazelisk.ps1
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.9.22/install.ps1 | iex"
 
 conda init
+# TODO(ci): Remove once conda fixes the splitext bug in delete.py (conda/conda#14612).
+# Conda 26.3.1 crashes on Windows when it tries to clean up a locked exe during
+# a build-variant swap. Preventing self-update avoids that code path.
+conda config --set auto_update_conda false
 conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3
 # Force CA trust stack to the newest versions available at build time.
 conda update -c conda-forge -q -y ca-certificates certifi
