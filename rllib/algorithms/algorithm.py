@@ -193,6 +193,7 @@ from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.metrics import Counter, Histogram
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.timer import _Timer
 
 if TYPE_CHECKING:
@@ -1069,58 +1070,140 @@ class Algorithm(Checkpointable, Trainable):
                 spaces=self.spaces,
                 inference_only=False,
             )
-            agg_cls = ray.remote(
-                num_cpus=1,
-                max_restarts=-1,
-            )(AggregatorActor)
-            self._aggregator_actor_manager = FaultTolerantActorManager(
-                [
-                    agg_cls.remote(self.config, rl_module_spec)
-                    for _ in range(
-                        (self.config.num_learners or 1)
-                        * self.config.num_aggregator_actors_per_learner
+            _num_learners = self.config.num_learners or 1
+
+            # First, get each learner's node_id.
+            learner_node_ids = self.learner_group.foreach_learner(
+                func=lambda _learner: ray.get_runtime_context().get_node_id(),
+            )
+            learner_node_ids = [r.get() for r in learner_node_ids]
+
+            # If this Algorithm is running inside a Tune/Train placement group,
+            # place AggregatorActors onto the learner bundles of that placement
+            # group. Otherwise, fall back to node-affinity scheduling.
+            current_pg = ray.util.get_current_placement_group()
+            agg_actors = []
+            self._aggregator_actor_to_learner = {}
+            agg_idx = 0
+
+            if current_pg is not None:
+                pg_table = ray.util.placement_group_table(current_pg)
+                bundle_offset = 1 + len(_get_env_runner_bundles(self.config))
+                if self._should_create_evaluation_env_runners(self.evaluation_config):
+                    bundle_offset += len(
+                        _get_env_runner_bundles(self.evaluation_config)
                     )
-                ],
+                if self._should_create_offline_evaluation_runners(
+                    self.evaluation_config
+                ):
+                    bundle_offset += len(
+                        _get_offline_eval_runner_bundles(self.evaluation_config)
+                    )
+
+                # Remote learners reserve one bundle each at the tail of the trial
+                # placement group. Prefer those bundles for aggregators so we use the
+                # already reserved aggregator CPUs on learner nodes.
+                if self.config.num_learners > 0:
+                    learner_bundle_indices = list(
+                        range(
+                            bundle_offset,
+                            bundle_offset + len(_get_learner_bundles(self.config)),
+                        )
+                    )
+                    bundles_to_node_id = pg_table["bundles_to_node_id"]
+                    learner_bundles_by_node = defaultdict(list)
+                    for bundle_idx in learner_bundle_indices:
+                        node_id = bundles_to_node_id.get(bundle_idx)
+                        if node_id:
+                            learner_bundles_by_node[node_id].append(bundle_idx)
+                    learner_bundle_rr_offsets = defaultdict(int)
+
+                    for learner_idx in range(_num_learners):
+                        learner_node_id = learner_node_ids[learner_idx]
+                        candidate_bundle_indices = learner_bundles_by_node.get(
+                            learner_node_id, []
+                        )
+
+                        for _ in range(self.config.num_aggregator_actors_per_learner):
+                            if candidate_bundle_indices:
+                                bundle_idx = candidate_bundle_indices[
+                                    learner_bundle_rr_offsets[learner_node_id]
+                                    % len(candidate_bundle_indices)
+                                ]
+                                learner_bundle_rr_offsets[learner_node_id] += 1
+                                agg_cls = ray.remote(
+                                    num_cpus=1,
+                                    max_restarts=-1,
+                                )(AggregatorActor)
+                                agg_actor = agg_cls.options(
+                                    placement_group=current_pg,
+                                    placement_group_bundle_index=bundle_idx,
+                                ).remote(self.config, rl_module_spec)
+                            else:
+                                logger.warning(
+                                    "Could not find a learner placement-group bundle on "
+                                    f"node {learner_node_id}. Falling back to node "
+                                    f"affinity for Learner #{learner_idx}."
+                                )
+                                agg_cls = ray.remote(
+                                    num_cpus=1,
+                                    max_restarts=-1,
+                                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                                        node_id=learner_node_id,
+                                        soft=False,
+                                    ),
+                                )(AggregatorActor)
+                                agg_actor = agg_cls.remote(self.config, rl_module_spec)
+
+                            agg_actors.append(agg_actor)
+                            self._aggregator_actor_to_learner[agg_idx] = learner_idx
+                            agg_idx += 1
+
+                # Local learner case: use the dedicated aggregator bundles that were
+                # already reserved in the placement group resource request.
+                else:
+                    aggregator_bundle_indices = list(
+                        range(
+                            bundle_offset,
+                            bundle_offset + len(_get_learner_bundles(self.config)),
+                        )
+                    )
+                    for bundle_idx in aggregator_bundle_indices:
+                        agg_cls = ray.remote(
+                            num_cpus=1,
+                            max_restarts=-1,
+                        )(AggregatorActor)
+                        agg_actors.append(
+                            agg_cls.options(
+                                placement_group=current_pg,
+                                placement_group_bundle_index=bundle_idx,
+                            ).remote(self.config, rl_module_spec)
+                        )
+                        self._aggregator_actor_to_learner[agg_idx] = 0
+                        agg_idx += 1
+
+            else:
+                for learner_idx in range(_num_learners):
+                    learner_node_id = learner_node_ids[learner_idx]
+                    for _ in range(self.config.num_aggregator_actors_per_learner):
+                        agg_cls = ray.remote(
+                            num_cpus=1,
+                            max_restarts=-1,
+                            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                                node_id=learner_node_id,
+                                soft=False,
+                            ),
+                        )(AggregatorActor)
+                        agg_actors.append(agg_cls.remote(self.config, rl_module_spec))
+                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
+                        agg_idx += 1
+
+            self._aggregator_actor_manager = FaultTolerantActorManager(
+                agg_actors,
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_actor
                 ),
             )
-            # Get the devices of each learner.
-            learner_locations = list(
-                enumerate(
-                    self.learner_group.foreach_learner(
-                        func=lambda _learner: (_learner.node, _learner.device),
-                    )
-                )
-            )
-            # Get the devices of each AggregatorActor.
-            aggregator_locations = list(
-                enumerate(
-                    self._aggregator_actor_manager.foreach_actor(
-                        func=lambda actor: (actor._node, actor._device)
-                    )
-                )
-            )
-            self._aggregator_actor_to_learner = {}
-            for agg_idx, aggregator_location in aggregator_locations:
-                aggregator_location = aggregator_location.get()
-                for learner_idx, learner_location in learner_locations:
-                    # TODO (sven): Activate full comparison (including device) when Ray
-                    #  has figured out GPU pre-loading.
-                    if learner_location.get()[0] == aggregator_location[0]:
-                        # Round-robin, in case all Learners are on same device/node.
-                        learner_locations = learner_locations[1:] + [
-                            learner_locations[0]
-                        ]
-                        self._aggregator_actor_to_learner[agg_idx] = learner_idx
-                        break
-                if agg_idx not in self._aggregator_actor_to_learner:
-                    raise RuntimeError(
-                        "No Learner worker found that matches aggregation worker "
-                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
-                        f"({aggregator_location[1]})! The Learner workers' locations "
-                        f"are {learner_locations}."
-                    )
 
             # Make sure, each Learner index is mapped to from at least one
             # AggregatorActor.
