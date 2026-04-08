@@ -99,9 +99,21 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             return
         self._input_buffers[input_index].add(refs)
         self._metrics.on_input_queued(refs, input_index=input_index)
+        buf_sizes = [q.num_blocks() for q in self._input_buffers]
+        print(
+            f"[MIX] add_input(index={input_index}, rows={refs.num_rows()}) "
+            f"buf_sizes={buf_sizes} rows_seen={self._rows_seen} "
+            f"done_flags={self._input_done_flags}"
+        )
         self._try_deficit_output()
 
     def input_done(self, input_index: int) -> None:
+        buf_sizes = [q.num_blocks() for q in self._input_buffers]
+        print(
+            f"[MIX] input_done(index={input_index}) "
+            f"buf_sizes={buf_sizes} rows_seen={self._rows_seen} "
+            f"done_flags={self._input_done_flags}"
+        )
         self._input_done_flags[input_index] = True
         self._try_deficit_output()
 
@@ -165,9 +177,17 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
         while True:
             # Check stopping condition before selecting.
             if self._stopping_condition == StoppingCondition.STOP_ON_SHORTEST:
-                if any(
-                    self._is_input_exhausted(i) for i in range(len(self._input_buffers))
-                ):
+                exhausted = [
+                    i
+                    for i in range(len(self._input_buffers))
+                    if self._is_input_exhausted(i)
+                ]
+                if exhausted:
+                    print(
+                        f"[MIX] STOP_ON_SHORTEST triggered: "
+                        f"exhausted inputs={exhausted} "
+                        f"rows_seen={self._rows_seen}"
+                    )
                     self._stopped = True
                     self.mark_execution_finished()
                     return
@@ -200,6 +220,11 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
                 # more blocks rather than outputting from a lower-deficit
                 # input, to keep the output sequence deterministic
                 # and weight ratio accurate.
+                buf_sizes = [q.num_blocks() for q in self._input_buffers]
+                print(
+                    f"[MIX] waiting for input {best_index} (deficit={best_deficit:.1f}) "
+                    f"buf_sizes={buf_sizes} done_flags={self._input_done_flags}"
+                )
                 return
 
             # Move one block from the selected input to the output buffer.
@@ -209,6 +234,12 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             num_rows = bundle.num_rows()
             if num_rows is not None:
                 self._rows_seen[best_index] += num_rows
+
+            buf_sizes = [q.num_blocks() for q in self._input_buffers]
+            print(
+                f"[MIX] output from input {best_index} ({num_rows} rows) "
+                f"rows_seen={self._rows_seen} buf_sizes={buf_sizes}"
+            )
 
             self._output_buffer.add(bundle)
             self._metrics.on_output_queued(bundle)

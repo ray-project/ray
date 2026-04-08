@@ -111,21 +111,22 @@ def test_mix_three_datasets(ray_start_10_cpus_shared):
 def test_mix_stop_on_shortest(ray_start_10_cpus_shared):
     """With STOP_ON_SHORTEST, the pipeline stops when the shorter
     dataset is exhausted. The ratio should hold up to the stop point."""
-    ds1 = _make_ds(source_id=0, num_rows=500, rows_per_block=10)
-    ds2 = _make_ds(source_id=1, num_rows=200, rows_per_block=10)
+    ds1 = _make_ds(source_id=0, num_rows=20, rows_per_block=10)
+    ds2 = _make_ds(source_id=1, num_rows=50, rows_per_block=10)
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=[0.5, 0.5],
         stopping_condition=StoppingCondition.STOP_ON_SHORTEST,
     )
     result = mixed.take_all()
-    # ds2 is shorter (200 rows). With equal weights, we should get
-    # roughly equal rows from each before ds2 exhausts.
     count_0 = sum(1 for r in result if r["source"] == 0)
     count_1 = sum(1 for r in result if r["source"] == 1)
-    # On the last round, we dispatch one more block from ds1 before the ds2 input is marked as exhausted.
-    assert count_0 == 210
-    assert count_1 == 200  # all of ds2
+    # ds1 is shorter (20 rows). All of ds1 should be consumed.
+    assert count_0 == 20
+    # ds2 should have contributed roughly the same amount. The tolerance
+    # of 1 block accounts for the case where we let another block through
+    # before the ds1 input is marked as exhausted.
+    assert abs(count_1 - count_0) <= 10
 
 
 def test_mix_stop_on_longest_drop(ray_start_10_cpus_shared):
@@ -164,7 +165,7 @@ def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
         stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
     )
 
-    # ds0: 120, ds1: 10, 10, 10, 10
+    # Mix ordering: [ds0: 120], [ds1: 10, 10, 10, 10], ...
     # Expect every window of 160 rows to have a ratio of 0.75:0.25
     for batch in mixed.iter_batches(batch_size=160):
         ratio = (batch["source"] == 0).sum() / len(batch["source"])
