@@ -50,6 +50,7 @@ from ray.serve.config import (
 )
 from ray.serve.context import (
     ReplicaContext,
+    _check_cached_client_alive,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_replica_context,
@@ -116,9 +117,8 @@ def shutdown():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
-    except RayServeException:
+    client = _check_cached_client_alive()
+    if client is None:
         logger.info(
             "Nothing to shut down. There's no Serve application "
             "running on this Ray cluster."
@@ -136,9 +136,8 @@ async def shutdown_async():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
-    except RayServeException:
+    client = _check_cached_client_alive()
+    if client is None:
         logger.info(
             "Nothing to shut down. There's no Serve application "
             "running on this Ray cluster."
