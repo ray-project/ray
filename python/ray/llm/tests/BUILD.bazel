@@ -59,7 +59,7 @@ py_test_module_list(
 )
 
 # Serve test
-# Utils unit tests (no GPU, no engine backend required at runtime)
+# Utils unit tests
 py_test_module_list(
     size = "small",
     files = glob(["serve/utils/test_*.py"]),
