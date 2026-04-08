@@ -2,6 +2,7 @@ import time
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -26,6 +27,9 @@ MapTransformFnData = Union[Block, Row, DataBatch]
 IN = TypeVar("IN")
 OUT = TypeVar("OUT")
 MapTransformCallable = Callable[[Iterable[IN], TaskContext], Iterable[OUT]]
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class MapTransformFnDataType(Enum):
@@ -291,9 +295,28 @@ class RowMapTransformFn(MapTransformFn):
         )
 
         self._row_fn = row_fn
+        self._schema_hint = None
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
-        return _RowBasedIterator(blocks)
+        self._schema_hint = None
+        block_iter = iter(blocks)
+
+        try:
+            first_block = next(block_iter)
+        except StopIteration:
+            return _RowBasedIterator(iter(()))
+
+        accessor = BlockAccessor.for_block(first_block)
+        schema = accessor.schema()
+        if _is_pyarrow_schema(schema):
+            self._schema_hint = schema
+
+        def _iter_blocks():
+            yield first_block
+            for block in block_iter:
+                yield block
+
+        return _RowBasedIterator(_iter_blocks())
 
     def _apply_transform(
         self, ctx: TaskContext, inputs: Iterable[MapTransformFnData]
@@ -301,7 +324,9 @@ class RowMapTransformFn(MapTransformFn):
         return self._row_fn(inputs, ctx)
 
     def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
-        return self._shape_blocks(results)
+        return _BlockShapingIterator(
+            results, self._input_type, self._output_block_size_option, self._schema_hint
+        )
 
     def __repr__(self) -> str:
         return f"RowMapTransformFn({self._row_fn})"
@@ -423,9 +448,12 @@ class _BlockShapingIterator(Iterator[Block]):
         results: Iterable[MapTransformFnData],
         input_type: MapTransformFnDataType,
         output_block_size_option: Optional[OutputBlockSizeOption],
+        schema_hint: Optional["pyarrow.Schema"] = None,
     ):
         self._results_iter = iter(results)
-        self._buffer = BlockOutputBuffer(output_block_size_option)
+        self._buffer = BlockOutputBuffer(
+            output_block_size_option, schema_hint=schema_hint
+        )
         self._finalized = False
 
         if input_type == MapTransformFnDataType.Block:
@@ -487,3 +515,12 @@ class _RowBasedIterator(Iterator[Row]):
             self._cur_row_iter = BlockAccessor.for_block(block).iter_rows(
                 public_row_format=True
             )
+
+
+def _is_pyarrow_schema(schema: Any) -> bool:
+    try:
+        import pyarrow as pa
+
+        return isinstance(schema, pa.Schema)
+    except Exception:
+        return False

@@ -157,10 +157,11 @@ class ArrowRow(Mapping):
 
 
 class ArrowBlockBuilder(TableBlockBuilder):
-    def __init__(self):
+    def __init__(self, schema: Optional["pyarrow.Schema"] = None):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__((pyarrow.Table, bytes))
+        self._schema = schema
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
@@ -170,6 +171,33 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 for column_name, column_values in columns.items()
             }
         )
+
+    def _apply_schema_hint(self, table: "pyarrow.Table") -> "pyarrow.Table":
+        if self._schema is None:
+            return table
+
+        import pyarrow.compute as pc
+
+        schema = self._schema
+        for field in schema:
+            if field.name not in table.schema.names:
+                continue
+            column = table.column(field.name)
+            if column.type == field.type:
+                continue
+            try:
+                if pyarrow.types.is_dictionary(field.type):
+                    casted = pc.dictionary_encode(column).cast(field.type)
+                else:
+                    casted = column.cast(field.type)
+            except Exception:
+                continue
+            table = table.set_column(
+                table.schema.get_field_index(field.name),
+                field.name,
+                casted,
+            )
+        return table
 
     @staticmethod
     def _combine_tables(tables: List[Block]) -> Block:

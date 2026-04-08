@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
@@ -79,11 +79,23 @@ class BlockOutputBuffer:
         ...     yield output.next() # doctest: +SKIP
     """
 
-    def __init__(self, output_block_size_option: Optional[OutputBlockSizeOption]):
+    def __init__(
+        self,
+        output_block_size_option: Optional[OutputBlockSizeOption],
+        *,
+        schema_hint: Optional["pyarrow.Schema"] = None,
+    ):
+        """Create a block output buffer.
+
+        Args:
+            output_block_size_option: Output block size configuration.
+            schema_hint: Optional Arrow schema to preserve when rebuilding blocks.
+        """
         self._output_block_size_option = output_block_size_option
-        self._buffer = DelegatingBlockBuilder()
+        self._buffer = DelegatingBlockBuilder(schema_hint=schema_hint)
         self._finalized = False
         self._has_yielded_blocks = False
+        self._schema_hint = schema_hint
 
     def add(self, item: Any) -> None:
         """Add a single item to this output buffer."""
@@ -203,10 +215,14 @@ class BlockOutputBuffer:
                 target_num_rows, accessor.num_rows(), copy=False
             )
 
-        self._buffer = DelegatingBlockBuilder()
+        self._buffer = DelegatingBlockBuilder(schema_hint=self._schema_hint)
         if block_remainder is not None:
             self._buffer.add_block(block_remainder)
 
         self._has_yielded_blocks = True
 
         return block
+
+
+if TYPE_CHECKING:
+    import pyarrow
