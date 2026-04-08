@@ -1,11 +1,11 @@
 import json
 import logging
 import os
+import queue
 import sys
 import threading
 import time
 import warnings
-import queue
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
