@@ -54,7 +54,7 @@ kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
-Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command: 
+Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.6.0. To use this feature, the `RayCronJob` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -105,32 +105,7 @@ kubectl get rayjob -w
 Once a generated `RayJob` completes, you can inspect the logs of the job submitter pod to verify that the Python script ran successfully:
 
 ```shell
-# Step 5.1: Find the specific pod running the job (usually named after the RayJob with a suffix)
-kubectl get pods
-# [Example output]
-# NAME                                                     READY   STATUS      RESTARTS      AGE
-# kuberay-operator-7fc88c69f5-n2g5k                        1/1     Running     1 (12m ago)   45h
-# raycronjob-sample-gmsnw-d6n2r-head-hdtmt                 0/1     Pending     0             61s
-# raycronjob-sample-gmsnw-d6n2r-small-group-worker-nd56f   0/1     Init:0/1    0             61s
-# raycronjob-sample-l76h8-hjtrs-head-9b568                 1/1     Running     0             61s
-# raycronjob-sample-l76h8-hjtrs-small-group-worker-zgx89   1/1     Running     0             61s
-# raycronjob-sample-l76h8-w9flp                            0/1     Completed   0             30s
-# raycronjob-sample-pct47-bdspj-head-cdwwc                 0/1     Pending     0             1s
-# raycronjob-sample-pct47-bdspj-small-group-worker-9r7cm   0/1     Init:0/1    0             1s
-
-# (Optional) Quickly filter completed pods
-# kubectl get pods | grep Completed
-
-# Step 5.2: Identify the job pod
-# Look for the pod with STATUS=Completed that corresponds to your RayJob
-# (This is the Ray job submitter pod)
-# In this example:
-# job-pod-name = raycronjob-sample-l76h8-w9flp
-
-# Step 5.3: Fetch the logs of the job pod
-kubectl logs <job-pod-name>
-# Example:
-# kubectl logs raycronjob-sample-l76h8-w9flp
+kubectl logs $(kubectl get pods --no-headers | grep raycronjob-sample | grep Completed | awk '{print $1}' | head -n 1)
 
 # [Example output]
 # 2026-04-02 22:57:35,742 INFO cli.py:41 -- Job submission server address: http://raycronjob-sample-l76h8-hjtrs-head-svc.default.svc.cluster.local:8265
