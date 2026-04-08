@@ -139,27 +139,16 @@ command doesn't print an ID, double-check your configuration.
 
 ## Expected performance
 
-Performance gains scale with the size of the deployment.
+See [the announcement blog post for detailed performance
+numbers](https://www.anyscale.com/blog/ray-serve-inference-lower-latency-higher-throughput-haproxy).
 
-The following measurements were taken using `vllm bench` with an input sequence
-length (ISL) of 512 tokens, an output sequence length (OSL) of 128 tokens, and
-a maximum concurrency of 300:
+The optimizations work best with deployments with high load, where the serve app
+handles 50+ requests per second, concurrent connections per replica is greater
+than 250, and bursty traffic.
 
-### Total Output Throughput (Tokens Per Second) - Higher is better
-
-| Configuration | 2 Replicas | 4 Replicas |
-| --- | --- | --- |
-| Non-Optimized | 355 | 573 |
-| **Optimized** | 358 | 756 |
-| **Optimization Gain** | **+1%** | **+32%** |
-
-### Median Time to First Token (ms) - Lower is better
-
-| Configuration | 2 Replicas | 4 Replicas |
-| --- | --- | --- |
-| Non-Optimized | 2710 | 3721 |
-| **Optimized** | 1143 | 1225 |
-| **Latency Reduction** | **-58%** | **-67%** |
+Performance gains scale with the size of the deployment. The more replicas your
+RayService is using, the greater the performance improvement compared to
+versions preceding 2.55.
 
 ## Next steps
 
