@@ -138,6 +138,10 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     def get_stats(self) -> StatsDict:
         return self._stats
 
+    def throttling_disabled(self) -> bool:
+        # TODO: Disable throttling along with Union once NAry operator resource accounting is fixed.
+        return False
+
     # ------------------------------------------------------------------
     # Deficit-adjusted output selection
     # ------------------------------------------------------------------
