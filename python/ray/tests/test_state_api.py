@@ -1,11 +1,14 @@
 import json
+import logging
 import os
+import queue
 import sys
+import threading
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -433,8 +436,6 @@ def test_parse_filter():
 def clear_loggers():
     """Remove handlers from all loggers"""
     yield
-    import logging
-
     loggers = [logging.getLogger()] + list(logging.Logger.manager.loggerDict.values())
     for logger in loggers:
         handlers = getattr(logger, "handlers", [])
@@ -488,8 +489,6 @@ async def test_handle_list_api_status_codes(
     - ValueError → HTTP 400 BAD_REQUEST
     - DataSourceUnavailable → HTTP 500 INTERNAL_ERROR
     """
-    from unittest.mock import AsyncMock, MagicMock
-
     from ray.dashboard.state_api_utils import handle_list_api
     from ray.util.state.common import ListApiResponse
 
@@ -610,8 +609,6 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     @ray.remote
     def f():
-        import time
-
         time.sleep(30)
 
     @ray.remote
@@ -943,8 +940,6 @@ def test_network_failure(shutdown_only):
 
     @ray.remote
     def f():
-        import time
-
         time.sleep(30)
 
     a = [f.remote() for _ in range(4)]  # noqa
@@ -1108,8 +1103,6 @@ def test_filter(shutdown_only):
             self.obj = ray.put(123)
 
         def getpid(self):
-            import os
-
             return os.getpid()
 
     """
@@ -1367,9 +1360,6 @@ def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):
 )
 @pytest.mark.usefixtures("event_routing_config")
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
-    import queue
-    import threading
-
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
@@ -1388,8 +1378,6 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 
         @ray.remote
         def f():
-            import time
-
             time.sleep(30)
 
         @ray.remote
@@ -1488,10 +1476,6 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 def test_state_api_server_enforce_concurrent_http_requests(
     api_func, monkeypatch, shutdown_only
 ):
-    import queue
-    import threading
-    import time
-
     # Set environment
     with monkeypatch.context() as m:
         max_requests = 2
@@ -1786,8 +1770,6 @@ def test_job_info_is_running_task(shutdown_only):
     @ray.remote
     def f(signal):
         ray.get(signal.send.remote())
-        import time
-
         while True:
             time.sleep(10000)
 
