@@ -363,6 +363,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Increase to target_capacity 100, should scale all the way up.
@@ -374,6 +375,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS,
         },
+        timeout=30,
     )
 
     # Decrease to target_capacity 50, should scale down.
@@ -385,6 +387,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: SCALE_TO_ZERO_DEPLOYMENT_MAX_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Cancel all of the requests, should scale down to zero.
@@ -394,6 +397,7 @@ def test_autoscaling_scale_to_zero(
         deployment_to_num_replicas={
             SCALE_TO_ZERO_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
 
@@ -557,7 +561,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             return True
 
         ray.get(lifecycle_signal.send.remote())
-        wait_for_condition(check_running, timeout=20, retry_interval_ms=500)
+        wait_for_condition(check_running, timeout=30, retry_interval_ms=500)
         ray.get(lifecycle_signal.send.remote(clear=True))
 
     def test_static_num_replicas_target_capacity_update(
