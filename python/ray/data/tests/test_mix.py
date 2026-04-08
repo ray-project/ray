@@ -18,7 +18,7 @@ def _mix_datasets(datasets, weights=None, stopping_condition=None):
         weights = [1.0] * len(datasets)
 
     if stopping_condition is None:
-        stopping_condition = StoppingCondition.STOP_ON_SHORTEST
+        stopping_condition = StoppingCondition.STOP_ON_LONGEST_DROP
 
     logical_plans = [ds._plan._logical_plan for ds in datasets]
     op = Mix(
