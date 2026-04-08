@@ -52,14 +52,13 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 def _compute_use_gpu(
     use_cpu: Optional[bool],
     placement_group_config: Optional[Dict[str, Any]],
-    accelerator_type: Optional[str],
 ) -> bool:
     """Returns True if the configuration resolves to GPU usage.
 
     Priority order:
     1. Explicit use_cpu flag
     2. placement_group_config GPU bundles
-    3. Default to True — any accelerator_type implies GPU-capable hardware
+    3. Default to True — all supported accelerator types are GPU-capable
     """
     # Explicit use_cpu setting takes precedence over all other configurations
     if isinstance(use_cpu, bool):
@@ -404,9 +403,7 @@ class LLMConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if configured to use GPU resources."""
-        return _compute_use_gpu(
-            self.use_cpu, self.placement_group_config, self.accelerator_type
-        )
+        return _compute_use_gpu(self.use_cpu, self.placement_group_config)
 
     @field_validator("accelerator_type")
     def validate_accelerator_type(cls, value: Optional[str]):
