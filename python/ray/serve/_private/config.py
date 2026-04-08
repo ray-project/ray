@@ -317,9 +317,9 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             # Convert None to empty list for repeated proto field, or keep the list.
-            prom_metrics = data["autoscaling_config"].pop("prometheus_metrics", None)
+            prom_metrics = data["autoscaling_config"].pop("prometheus_queries", None)
             if prom_metrics:
-                data["autoscaling_config"]["prometheus_metrics"] = prom_metrics
+                data["autoscaling_config"]["prometheus_queries"] = prom_metrics
             # By setting the serialized policy def, on the protobuf level, AutoscalingConfig constructor will not
             # try to import the policy from the string import path when the protobuf is deserialized on the controller side
             data["autoscaling_config"]["policy"][
@@ -479,9 +479,9 @@ class DeploymentConfig(BaseModel):
                     "aggregation_function"
                 ] = AggregationFunction.MEAN
             # Convert empty repeated field to None for Optional[List[str]].
-            prom = data["autoscaling_config"].get("prometheus_metrics")
+            prom = data["autoscaling_config"].get("prometheus_queries")
             if not prom:
-                data["autoscaling_config"]["prometheus_metrics"] = None
+                data["autoscaling_config"]["prometheus_queries"] = None
             # Deserialize policy_kwargs bytes back to a dict
             if "policy" in data["autoscaling_config"]:
                 policy_data = data["autoscaling_config"]["policy"]

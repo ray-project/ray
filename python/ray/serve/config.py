@@ -92,7 +92,7 @@ class AutoscalingContext:
         current_time: Optional[float],
         config: Optional[Any],
         total_pending_async_requests: int,
-        prometheus_metrics: Optional[
+        prometheus_queries: Optional[
             Union[Dict[str, float], Callable[[], Dict[str, float]]]
         ] = None,
     ):
@@ -149,7 +149,7 @@ class AutoscalingContext:
         self._total_pending_async_requests = total_pending_async_requests
 
         # Prometheus metrics fetched by the controller
-        self._prometheus_metrics_value = prometheus_metrics
+        self._prometheus_queries_value = prometheus_queries
 
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
@@ -182,15 +182,15 @@ class AutoscalingContext:
         return self.total_num_requests - self.total_queued_requests
 
     @cached_property
-    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
+    def prometheus_queries(self) -> Optional[Dict[str, float]]:
         """Metrics fetched from a Prometheus server by the controller.
 
-        Returns a dict mapping metric name to its latest scalar value,
-        or None if no Prometheus metrics are configured.
+        Returns a dict mapping PromQL expression to its latest scalar value,
+        or None if no Prometheus queries are configured or the cache has expired.
         """
-        if callable(self._prometheus_metrics_value):
-            return self._prometheus_metrics_value()
-        return self._prometheus_metrics_value
+        if callable(self._prometheus_queries_value):
+            return self._prometheus_queries_value()
+        return self._prometheus_queries_value
 
     @property
     def total_pending_async_requests(self) -> int:
@@ -632,12 +632,14 @@ class AutoscalingConfig(BaseModel):
         description="Function used to aggregate metrics across a time window.",
     )
 
-    prometheus_metrics: Optional[List[str]] = Field(
+    prometheus_queries: Optional[List[str]] = Field(
         default=None,
         description=(
-            "List of Prometheus metric names to fetch from a Prometheus server "
-            "and include in the AutoscalingContext. Requires the "
-            "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS environment variable to be set."
+            "List of PromQL expressions to evaluate against a Prometheus server "
+            "and include in the AutoscalingContext. Each expression should "
+            "return a single scalar value. Requires "
+            "RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING=1 and "
+            "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS to be set."
         ),
     )
 

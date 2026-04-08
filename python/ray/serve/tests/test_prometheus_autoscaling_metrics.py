@@ -1,18 +1,25 @@
+import asyncio
 import sys
+import time
 from typing import Dict, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
+from ray.serve._private.autoscaling_state import (
+    AutoscalingStateManager,
+    DeploymentAutoscalingState,
+)
 from ray.serve._private.common import DeploymentID
 from ray.serve.config import AutoscalingConfig, AutoscalingContext
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def _make_autoscaling_context(
-    prometheus_metrics=None,
-) -> AutoscalingContext:
-    """Helper to build an AutoscalingContext with minimal required fields."""
+
+def _make_autoscaling_context(prometheus_queries=None) -> AutoscalingContext:
+    """Build a minimal AutoscalingContext."""
     return AutoscalingContext(
         deployment_id=DeploymentID(name="test", app_name="app"),
         deployment_name="test",
@@ -32,35 +39,12 @@ def _make_autoscaling_context(
         current_time=None,
         config=None,
         total_pending_async_requests=0,
-        prometheus_metrics=prometheus_metrics,
+        prometheus_queries=prometheus_queries,
     )
 
 
-def _make_mock_aiohttp_session(responses: Dict[str, dict]):
-    """Create a mock aiohttp.ClientSession that returns canned responses.
-
-    Args:
-        responses: mapping of metric query -> JSON response body.
-
-    Returns:
-        A mock session object.
-    """
-
-    async def mock_get(url, params=None, timeout=None):
-        query = params["query"]
-        body = responses.get(query, {"data": {"result": []}})
-        resp = AsyncMock()
-        resp.raise_for_status = MagicMock()
-        resp.json = AsyncMock(return_value=body)
-        return resp
-
-    session = AsyncMock()
-    session.get = MagicMock(side_effect=lambda *a, **kw: _async_cm(mock_get(*a, **kw)))
-    return session
-
-
-class _async_cm:
-    """Wrap a coroutine as an async context manager (for `async with`)."""
+class _AsyncCM:
+    """Wrap a coroutine as an async context manager."""
 
     def __init__(self, coro):
         self._coro = coro
@@ -72,8 +56,8 @@ class _async_cm:
         pass
 
 
-class _session_cm:
-    """Wrap a session mock as an async context manager."""
+class _SessionCM:
+    """Wrap a mock session as an async context manager."""
 
     def __init__(self, session):
         self._session = session
@@ -85,206 +69,263 @@ class _session_cm:
         pass
 
 
-class TestAutoscalingContextPrometheusMetrics:
-    """Test that AutoscalingContext exposes prometheus_metrics correctly."""
+def _make_mock_session(responses: Dict[str, dict]):
+    """Build a mock aiohttp session returning canned Prometheus responses.
 
+    Args:
+        responses: mapping of PromQL query string -> JSON response body.
+
+    Returns:
+        A mock session whose ``get`` method returns matching responses.
+    """
+
+    async def _mock_get(url, params=None, timeout=None):
+        query = params["query"]
+        body = responses.get(query, {"data": {"result": []}})
+        resp = AsyncMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = AsyncMock(return_value=body)
+        return resp
+
+    session = AsyncMock()
+    session.get = MagicMock(side_effect=lambda *a, **kw: _AsyncCM(_mock_get(*a, **kw)))
+    return session
+
+
+def _make_state(
+    prometheus_queries: Optional[list] = None,
+) -> DeploymentAutoscalingState:
+    """Build a DeploymentAutoscalingState with config set directly."""
+    state = DeploymentAutoscalingState(
+        DeploymentID(name="MyDeployment", app_name="app")
+    )
+    state._config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=5,
+        prometheus_queries=prometheus_queries,
+    )
+    return state
+
+
+# ---------------------------------------------------------------------------
+# AutoscalingContext tests
+# ---------------------------------------------------------------------------
+
+
+class TestAutoscalingContextPrometheusQueries:
     def test_none_when_not_configured(self):
-        ctx = _make_autoscaling_context(prometheus_metrics=None)
-        assert ctx.prometheus_metrics is None
+        ctx = _make_autoscaling_context(prometheus_queries=None)
+        assert ctx.prometheus_queries is None
 
     def test_dict_value(self):
-        ctx = _make_autoscaling_context(
-            prometheus_metrics={"my_metric": 42.0, "other": 1.5}
-        )
-        assert ctx.prometheus_metrics == {"my_metric": 42.0, "other": 1.5}
+        ctx = _make_autoscaling_context(prometheus_queries={"rate(http_rps[5m])": 42.0})
+        assert ctx.prometheus_queries == {"rate(http_rps[5m])": 42.0}
 
     def test_lazy_callable(self):
-        """prometheus_metrics supports lazy evaluation via a callable."""
         call_count = 0
 
         def fetch():
             nonlocal call_count
             call_count += 1
-            return {"lazy_metric": 99.0}
+            return {"lazy": 99.0}
 
-        ctx = _make_autoscaling_context(prometheus_metrics=fetch)
+        ctx = _make_autoscaling_context(prometheus_queries=fetch)
         assert call_count == 0
-        assert ctx.prometheus_metrics == {"lazy_metric": 99.0}
+        assert ctx.prometheus_queries == {"lazy": 99.0}
         assert call_count == 1
-        # Cached on second access
-        _ = ctx.prometheus_metrics
+        # Cached
+        _ = ctx.prometheus_queries
         assert call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# DeploymentAutoscalingState tests
+# ---------------------------------------------------------------------------
 
 
 class TestDeploymentAutoscalingStatePrometheus:
-    """Test the controller-side async Prometheus fetch + cache."""
-
-    def _make_state_with_config(
-        self, prometheus_metrics: Optional[list] = None
-    ) -> DeploymentAutoscalingState:
-        state = DeploymentAutoscalingState(
-            DeploymentID(name="MyDeployment", app_name="app")
-        )
-        config = AutoscalingConfig(
-            min_replicas=1,
-            max_replicas=5,
-            prometheus_metrics=prometheus_metrics,
-        )
-        state._config = config
-        return state
-
-    def test_cache_returns_none_when_not_configured(self):
-        state = self._make_state_with_config(prometheus_metrics=None)
+    def test_cache_returns_none_before_fetch(self):
+        state = _make_state(prometheus_queries=["up"])
         assert state._get_cached_prometheus_metrics() is None
 
-    def test_cache_returns_none_before_first_fetch(self):
-        state = self._make_state_with_config(prometheus_metrics=["m"])
-        assert state._get_cached_prometheus_metrics() is None
+    def test_has_prometheus_queries(self):
+        assert _make_state(prometheus_queries=["up"]).has_prometheus_queries()
+        assert not _make_state(prometheus_queries=None).has_prometheus_queries()
+        assert not _make_state(prometheus_queries=[]).has_prometheus_queries()
 
     @pytest.mark.asyncio
-    async def test_fetch_populates_cache(self):
-        state = self._make_state_with_config(
-            prometheus_metrics=["my_gauge", "my_counter"]
-        )
-
+    async def test_fetch_caches_results(self):
+        state = _make_state(prometheus_queries=["my_gauge", "rate(rps[5m])"])
         responses = {
             "my_gauge": {"data": {"result": [{"value": [0, "42.5"]}]}},
-            "my_counter": {"data": {"result": [{"value": [0, "100"]}]}},
+            "rate(rps[5m])": {"data": {"result": [{"value": [0, "100"]}]}},
         }
-        session = _make_mock_aiohttp_session(responses)
+        session = _make_mock_session(responses)
 
         with patch(
             "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
             "localhost:9090",
         ):
-            with patch(
-                "ray.serve._private.autoscaling_state.aiohttp.ClientSession",
-                return_value=_session_cm(session),
-            ):
-                await state.fetch_prometheus_metrics()
+            await state.fetch_prometheus_metrics(session)
 
         assert state._get_cached_prometheus_metrics() == {
             "my_gauge": 42.5,
-            "my_counter": 100.0,
+            "rate(rps[5m])": 100.0,
         }
 
     @pytest.mark.asyncio
-    async def test_fetch_with_no_server_address_caches_none(self):
-        state = self._make_state_with_config(prometheus_metrics=["m"])
+    async def test_fetch_batches_with_gather(self):
+        """All queries in a deployment should run concurrently."""
+        state = _make_state(prometheus_queries=["a", "b", "c"])
+        call_order = []
 
-        with patch(
-            "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
-            None,
-        ):
-            await state.fetch_prometheus_metrics()
-
-        assert state._get_cached_prometheus_metrics() is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_with_empty_result_caches_none(self):
-        state = self._make_state_with_config(prometheus_metrics=["missing"])
-
-        responses = {"missing": {"data": {"result": []}}}
-        session = _make_mock_aiohttp_session(responses)
-
-        with patch(
-            "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
-            "localhost:9090",
-        ):
-            with patch(
-                "ray.serve._private.autoscaling_state.aiohttp.ClientSession",
-                return_value=_session_cm(session),
-            ):
-                await state.fetch_prometheus_metrics()
-
-        assert state._get_cached_prometheus_metrics() is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_handles_connection_error(self):
-        state = self._make_state_with_config(prometheus_metrics=["m"])
-
-        async def raise_error(*a, **kw):
-            raise Exception("connection refused")
-
-        session = AsyncMock()
-        session.get = MagicMock(side_effect=lambda *a, **kw: _async_cm(raise_error()))
-
-        with patch(
-            "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
-            "localhost:9090",
-        ):
-            with patch(
-                "ray.serve._private.autoscaling_state.aiohttp.ClientSession",
-                return_value=_session_cm(session),
-            ):
-                await state.fetch_prometheus_metrics()
-
-        assert state._get_cached_prometheus_metrics() is None
-
-    @pytest.mark.asyncio
-    async def test_partial_failure_caches_successful_metrics(self):
-        state = self._make_state_with_config(
-            prometheus_metrics=["good_metric", "bad_metric"]
-        )
-
-        call_count = 0
-
-        async def mock_get(url, params=None, timeout=None):
-            nonlocal call_count
-            call_count += 1
+        async def _mock_get(url, params=None, timeout=None):
             query = params["query"]
-            if query == "bad_metric":
-                raise Exception("connection refused")
+            call_order.append(query)
             resp = AsyncMock()
             resp.raise_for_status = MagicMock()
             resp.json = AsyncMock(
-                return_value={"data": {"result": [{"value": [0, "7.0"]}]}}
+                return_value={"data": {"result": [{"value": [0, "1"]}]}}
             )
             return resp
 
         session = AsyncMock()
         session.get = MagicMock(
-            side_effect=lambda *a, **kw: _async_cm(mock_get(*a, **kw))
+            side_effect=lambda *a, **kw: _AsyncCM(_mock_get(*a, **kw))
+        )
+
+        with patch(
+            "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
+            "prom:9090",
+        ):
+            await state.fetch_prometheus_metrics(session)
+
+        # All three queries were issued
+        assert sorted(call_order) == ["a", "b", "c"]
+        assert state._get_cached_prometheus_metrics() == {
+            "a": 1.0,
+            "b": 1.0,
+            "c": 1.0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_empty_result_caches_none(self):
+        state = _make_state(prometheus_queries=["missing"])
+        session = _make_mock_session({"missing": {"data": {"result": []}}})
+
+        with patch(
+            "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
+            "localhost:9090",
+        ):
+            await state.fetch_prometheus_metrics(session)
+
+        assert state._get_cached_prometheus_metrics() is None
+
+    @pytest.mark.asyncio
+    async def test_partial_failure(self):
+        """One failing query should not prevent others from caching."""
+        state = _make_state(prometheus_queries=["good", "bad"])
+
+        async def _mock_get(url, params=None, timeout=None):
+            query = params["query"]
+            if query == "bad":
+                raise Exception("connection refused")
+            resp = AsyncMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = AsyncMock(
+                return_value={"data": {"result": [{"value": [0, "7"]}]}}
+            )
+            return resp
+
+        session = AsyncMock()
+        session.get = MagicMock(
+            side_effect=lambda *a, **kw: _AsyncCM(_mock_get(*a, **kw))
         )
 
         with patch(
             "ray.serve._private.autoscaling_state.RAY_SERVE_PROMETHEUS_SERVER_ADDRESS",
             "localhost:9090",
         ):
-            with patch(
-                "ray.serve._private.autoscaling_state.aiohttp.ClientSession",
-                return_value=_session_cm(session),
-            ):
-                await state.fetch_prometheus_metrics()
+            await state.fetch_prometheus_metrics(session)
 
-        assert state._get_cached_prometheus_metrics() == {"good_metric": 7.0}
-        assert call_count == 2
+        assert state._get_cached_prometheus_metrics() == {"good": 7.0}
+
+    def test_cache_expiry(self):
+        state = _make_state(prometheus_queries=["m"])
+        state._cached_prometheus_metrics = {"m": 1.0}
+
+        # Fresh cache
+        state._prometheus_cache_timestamp = time.time()
+        assert state._get_cached_prometheus_metrics() == {"m": 1.0}
+
+        # Expired cache
+        state._prometheus_cache_timestamp = time.time() - 9999
+        assert state._get_cached_prometheus_metrics() is None
+
+
+# ---------------------------------------------------------------------------
+# AutoscalingConfig field tests
+# ---------------------------------------------------------------------------
 
 
 class TestAutoscalingConfigPrometheusField:
-    """Test the prometheus_metrics field on AutoscalingConfig."""
-
     def test_default_is_none(self):
         config = AutoscalingConfig(min_replicas=1, max_replicas=5)
-        assert config.prometheus_metrics is None
+        assert config.prometheus_queries is None
 
-    def test_accepts_list_of_strings(self):
+    def test_accepts_promql_expressions(self):
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
-            prometheus_metrics=["metric_a", "metric_b"],
+            prometheus_queries=[
+                "rate(http_requests_total[5m])",
+                "histogram_quantile(0.99, sum(rate(latency_bucket[5m])) by (le))",
+            ],
         )
-        assert config.prometheus_metrics == ["metric_a", "metric_b"]
+        assert len(config.prometheus_queries) == 2
 
     def test_serialization_roundtrip(self):
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
-            prometheus_metrics=["m1"],
+            prometheus_queries=["rate(rps[5m])"],
         )
         data = config.model_dump()
         restored = AutoscalingConfig(**data)
-        assert restored.prometheus_metrics == ["m1"]
+        assert restored.prometheus_queries == ["rate(rps[5m])"]
+
+
+# ---------------------------------------------------------------------------
+# Feature flag / short-circuit tests
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureFlagAndShortCircuit:
+    def test_manager_short_circuits_when_disabled(self):
+        mgr = AutoscalingStateManager()
+        # Even if there are app states, the flag being off should short-circuit
+        with patch(
+            "ray.serve._private.autoscaling_state.RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING",
+            False,
+        ):
+            assert not mgr._any_prometheus_queries()
+
+    def test_manager_short_circuits_when_no_queries(self):
+        mgr = AutoscalingStateManager()
+        with patch(
+            "ray.serve._private.autoscaling_state.RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING",
+            True,
+        ):
+            assert not mgr._any_prometheus_queries()
+
+    def test_start_noop_when_no_queries(self):
+        mgr = AutoscalingStateManager()
+        loop = asyncio.new_event_loop()
+        try:
+            mgr.start_prometheus_fetch_loop(loop)
+            assert not hasattr(mgr, "_prometheus_task") or mgr._prometheus_task is None
+        finally:
+            loop.close()
 
 
 if __name__ == "__main__":
