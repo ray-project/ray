@@ -1503,11 +1503,12 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
     """Test that objref resolution latency metric is emitted when a
     DeploymentResponse is passed as an argument to another handle call.
     """
+    signal = SignalActor.remote()
 
     @serve.deployment
     class Upstream:
-        def __call__(self):
-            time.sleep(0.1)
+        async def __call__(self):
+            await signal.wait.remote()
             return "upstream_result"
 
     @serve.deployment
@@ -1533,9 +1534,18 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
     )
 
     url = get_application_url("HTTP", "app1") + "/chain"
-    resp = httpx.get(url, timeout=10)
-    assert resp.status_code == 200
-    assert resp.text == "got_upstream_result"
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, url, timeout=30)
+
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+        )
+        time.sleep(0.5)
+        ray.get(signal.send.remote())
+
+        resp = future.result()
+        assert resp.status_code == 200
+        assert resp.text == "got_upstream_result"
 
     timeseries = PrometheusTimeseries()
 
@@ -1547,7 +1557,6 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
         )
         if not metrics:
             return False
-
         for metric in metrics:
             if (
                 metric.get("deployment") == "Downstream"
@@ -1567,10 +1576,9 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
             timeseries=timeseries,
             expected_tags={"deployment": "Downstream", "application": "app1"},
         )
-        assert value >= 100, (
-            f"Resolution latency should be >= 100ms (Upstream sleeps 100ms), "
-            f"got {value}"
-        )
+        if value < 0:
+            return False
+        assert value >= 400, f"Resolution latency should be >= 400ms got {value}"
         return True
 
     wait_for_condition(check_objref_resolution_metric_value, timeout=30)
