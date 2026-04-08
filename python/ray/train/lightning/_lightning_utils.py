@@ -26,6 +26,9 @@ def import_lightning():  # noqa: F402
 
 pl = import_lightning()
 
+if is_v2_enabled():
+    from ray.train.v2.api.report_config import CheckpointUploadMode
+
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
@@ -265,10 +268,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         validation=None,
     ) -> None:
         super().__init__()
-        if is_v2_enabled():
-            self.checkpoint_upload_mode = checkpoint_upload_mode
-            self.validation = validation
-        else:
+        self.checkpoint_upload_mode = checkpoint_upload_mode
+        self.validation = validation
+
+        if not is_v2_enabled():
             if checkpoint_upload_mode is not None:
                 raise ValueError(
                     "checkpoint_upload_mode is not supported when using Ray Train V1"
@@ -328,8 +331,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
         # handle cleanup instead.
         if is_v2_enabled() and self.checkpoint_upload_mode is not None:
-            from ray.train.v2.api.report_config import CheckpointUploadMode
-
+            # Check here because CheckpointUploadMode is only imoprted when is_v2_enabled() is True
             if self.checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
                 return
 
