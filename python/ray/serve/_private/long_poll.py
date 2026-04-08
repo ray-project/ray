@@ -14,7 +14,11 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo,
     EndpointInfo as EndpointInfoProto,
@@ -73,11 +77,15 @@ KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 def _get_metric_namespace_tag(key: KeyType) -> str:
     """Extract the namespace string from a long poll key for metric tags.
 
-    For tuple keys like (LongPollNamespace.DEPLOYMENT_CONFIG, "deployment_name"),
-    returns just the namespace name (e.g., "DEPLOYMENT_CONFIG") to avoid
+    When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is enabled, returns only
+    the LongPollNamespace enum name (e.g., "DEPLOYMENT_CONFIG") for tuple keys
+    like (LongPollNamespace.DEPLOYMENT_CONFIG, "deployment_name"), avoiding
     high-cardinality metric labels that would otherwise include per-deployment
-    identifiers.
+    identifiers. When disabled (default), returns str(key) preserving
+    deployment-level metric granularity.
     """
+    if not RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS:
+        return str(key)
     if isinstance(key, tuple):
         return key[0].name if isinstance(key[0], LongPollNamespace) else str(key[0])
     elif isinstance(key, LongPollNamespace):

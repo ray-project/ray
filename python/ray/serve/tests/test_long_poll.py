@@ -295,66 +295,99 @@ def test_listen_for_change_java_timeout_returns_empty_result(serve_instance):
 
 
 def test_get_metric_namespace_tag():
-    """Test that _get_metric_namespace_tag extracts low-cardinality namespace strings.
+    """Test _get_metric_namespace_tag in both default and compact modes.
 
-    This is critical for avoiding metric cardinality explosion when there are
-    many serve apps. See https://github.com/ray-project/ray/issues/62299.
+    When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is disabled (default), metric
+    tags use str(key) which preserves deployment-level granularity.
+    When enabled, tags use only the LongPollNamespace enum name to bound
+    cardinality for workloads with many deployments.
+    See https://github.com/ray-project/ray/issues/62299.
     """
-    # String keys pass through unchanged
-    assert _get_metric_namespace_tag("test_key") == "test_key"
-    assert _get_metric_namespace_tag("key_1") == "key_1"
+    import ray.serve._private.long_poll as long_poll_module
 
-    # LongPollNamespace enum keys return just the name
-    assert (
-        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
-        == "DEPLOYMENT_CONFIG"
-    )
-    assert (
-        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
-        == "DEPLOYMENT_TARGETS"
-    )
-    assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
+    # --- Default mode (compact=False): str(key) is used ---
+    original_flag = long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS
+    try:
+        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = False
 
-    # Tuple keys extract only the namespace, discarding the per-deployment identifier
-    assert (
-        _get_metric_namespace_tag(
-            (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+        # String keys pass through unchanged
+        assert _get_metric_namespace_tag("test_key") == "test_key"
+
+        # LongPollNamespace enum keys use str() representation
+        assert _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG) == str(
+            LongPollNamespace.DEPLOYMENT_CONFIG
         )
-        == "DEPLOYMENT_CONFIG"
-    )
-    assert (
-        _get_metric_namespace_tag(
-            (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
+
+        # Tuple keys include the full string (deployment name visible)
+        tuple_key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+        assert _get_metric_namespace_tag(tuple_key) == str(tuple_key)
+
+        # --- Compact mode (compact=True): low-cardinality tags ---
+        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = True
+
+        # String keys still pass through unchanged
+        assert _get_metric_namespace_tag("test_key") == "test_key"
+        assert _get_metric_namespace_tag("key_1") == "key_1"
+
+        # LongPollNamespace enum keys return just the name
+        assert (
+            _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
+            == "DEPLOYMENT_CONFIG"
         )
-        == "DEPLOYMENT_TARGETS"
-    )
+        assert (
+            _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
+            == "DEPLOYMENT_TARGETS"
+        )
+        assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
 
-    # Tuple keys with long deployment identifiers (the real-world case)
-    long_key = (
-        LongPollNamespace.DEPLOYMENT_CONFIG,
-        "Deployment(name='model', app='workday:perf-test-model-00005:"
-        "key-value-v1:baked-in:global:global:1')",
-    )
-    assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
+        # Tuple keys extract only the namespace, discarding per-deployment identifier
+        assert (
+            _get_metric_namespace_tag(
+                (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+            )
+            == "DEPLOYMENT_CONFIG"
+        )
+        assert (
+            _get_metric_namespace_tag(
+                (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
+            )
+            == "DEPLOYMENT_TARGETS"
+        )
 
-    # All LongPollNamespace enum values should work, both bare and in tuples
-    for ns in LongPollNamespace:
-        assert _get_metric_namespace_tag(ns) == ns.name
-        assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
+        # Tuple keys with long deployment identifiers (the real-world case)
+        long_key = (
+            LongPollNamespace.DEPLOYMENT_CONFIG,
+            "Deployment(name='model', app='workday:perf-test-model-00005:"
+            "key-value-v1:baked-in:global:global:1')",
+        )
+        assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
 
-    # Defensive: tuple with non-enum first element falls back to str()
-    assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
+        # All LongPollNamespace enum values should work, both bare and in tuples
+        for ns in LongPollNamespace:
+            assert _get_metric_namespace_tag(ns) == ns.name
+            assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
+
+        # Defensive: tuple with non-enum first element falls back to str()
+        assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
+    finally:
+        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = original_flag
 
 
 @pytest.mark.asyncio
-async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
+async def test_pending_clients_gauge_aggregates_across_keys(
+    monkeypatch, serve_instance
+):
     """Test that pending_clients_by_namespace correctly aggregates across keys.
 
-    When multiple keys share a namespace tag (e.g., two DEPLOYMENT_CONFIG keys
-    for different deployments), the gauge must reflect the total pending clients
-    for the namespace, not just the last key's count.
+    When compact metric tags are enabled and multiple keys share a namespace
+    tag (e.g., two DEPLOYMENT_CONFIG keys for different deployments), the gauge
+    must reflect the total pending clients for the namespace, not just the last
+    key's count.
     See https://github.com/ray-project/ray/issues/62299.
     """
+    monkeypatch.setattr(
+        "ray.serve._private.long_poll.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", True
+    )
     host = ray.remote(LongPollHost).remote(
         listen_for_change_request_timeout_s=(0.5, 0.5)
     )
