@@ -893,7 +893,6 @@ void CoreWorker::InternalHeartbeat() {
               arg_ids,
               /*exclude_actor_id=*/failed_actor_id);
           if (new_actor_id.IsNil()) {
-            actor_pool_manager_->MarkRetryWaitingForActor(pool_id, spec.TaskId());
             RAY_LOG(INFO) << "Pool task retry waiting for actor: task_id="
                           << spec.TaskId() << " pool_id=" << pool_id
                           << " failed_actor_id=" << failed_actor_id
@@ -905,7 +904,6 @@ void CoreWorker::InternalHeartbeat() {
             to_resubmit_.push(task_to_retry);
             continue;
           }
-          actor_pool_manager_->ClearRetryWaitingForActor(pool_id, spec.TaskId());
           RAY_LOG(INFO) << "Pool task retry selected actor: task_id=" << spec.TaskId()
                         << " pool_id=" << pool_id
                         << " failed_actor_id=" << failed_actor_id

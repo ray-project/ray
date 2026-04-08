@@ -156,6 +156,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
         # Cached counts
         self._num_restarting_actors: int = 0
+        self._num_active_data_tasks: int = 0
         self._is_shutting_down: bool = False
 
         # Cache worker reference for C++ pool queries
@@ -249,7 +250,14 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         # Restarting actors are still tracked in _running_actors, but they
         # cannot accept new work. Only alive actors should contribute capacity.
         capacity = self._max_tasks_in_flight * self.num_alive_actors()
-        return max(0, capacity - occupied)
+        free_pool_slots = max(0, capacity - occupied)
+        # we report the minimum of the two to avoid overestimating free capacity.
+        # some differences between the two bookkeeping approaches:
+        # - ray data considers a streaming generator task active until it is fully drained,
+        #   whereas the core actor pool frees a slot once the task completes execution.
+        # - actor task retries are accounted for by the core actor pool, but not tracked by ray data.
+        free_data_task_budget = max(0, capacity - self._num_active_data_tasks)
+        return min(free_pool_slots, free_data_task_budget)
 
     def _get_actor_tasks_in_flight(self, actor: ActorHandle) -> int:
         return self._get_worker().core_worker.get_actor_tasks_in_flight(
@@ -479,8 +487,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 "Python num_free_task_slots() and C++ max_tasks_in_flight_per_actor."
             )
 
-        # C++ tracks in-flight counts authoritatively via ActorTaskSubmitter.
-        # No Python-side increment needed.
+        # Ray Data considers a task active until the DataOpTask is fully drained,
+        # which can outlive core execution completion for streaming generators.
+        self._num_active_data_tasks += 1
 
         if actual_num_returns == STREAMING_GENERATOR_RETURN:
             return ObjectRefGenerator(object_refs[0], worker), None
@@ -508,10 +517,11 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
     def on_task_completed(self, actor: Optional[ActorHandle] = None):
         """Called when a task completes.
 
-        Core actor-pool accounting is maintained in C++; this hook is retained
-        only to satisfy the AutoscalingActorPool interface.
+        This is called from Ray Data's DataOpTask terminal callback, which is
+        later than core task execution completion for streaming generators.
         """
-        pass
+        if self._num_active_data_tasks > 0:
+            self._num_active_data_tasks -= 1
 
     def select_actors(
         self,
@@ -540,46 +550,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 self.update_running_actor_state(actor, is_restarting=True)
             else:
                 self.update_running_actor_state(actor, is_restarting=False)
-
-        pending_refs = self.get_pending_actor_refs()
-        if pending_refs:
-            ready_refs, _ = ray.wait(
-                pending_refs,
-                num_returns=len(pending_refs),
-                timeout=0,
-                fetch_local=False,
-            )
-            if ready_refs:
-                self._log_debug(
-                    "pending_ready_refs_polled",
-                    ready_refs=[ready_ref.hex() for ready_ref in ready_refs],
-                    pending_ref_count=len(pending_refs),
-                )
-            for ready_ref in ready_refs:
-                self.pending_to_running(ready_ref)
-
-        if self._is_shutting_down or self.current_size() != 0:
-            return
-
-        pool_stats = self._pool.stats()
-        if pool_stats["waiting_for_actor_retries"] <= 0:
-            return
-
-        self._log_debug(
-            "rehydrate_empty_pool_for_retry",
-            waiting_for_actor_retries=pool_stats["waiting_for_actor_retries"],
-        )
-        self._pool.scale(1)
-        actor = self._pool.actors[-1]
-        ready_ref = actor.get_location.remote()
-        self._pending_actors[ready_ref] = actor
-        self._last_upscaled_at = time.time()
-        self._log_debug(
-            "rehydrate_empty_pool_for_retry_submitted",
-            waiting_for_actor_retries=pool_stats["waiting_for_actor_retries"],
-            actor_id=actor._actor_id.hex(),
-            ready_ref=ready_ref.hex(),
-        )
 
     def update_running_actor_state(self, actor: ActorHandle, is_restarting: bool):
         """Update actor's restarting state."""

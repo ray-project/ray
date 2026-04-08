@@ -123,10 +123,6 @@ struct ActorPoolInfo {
   /// Total number of tasks that were retried.
   int64_t total_tasks_retried = 0;
 
-  /// Pool tasks currently waiting for an actor to become available so they can
-  /// be retried/reconstructed.
-  absl::flat_hash_set<TaskID> waiting_for_actor_retry_task_ids;
-
   /// Rotating tie-breaker used to spread equal-ranked selections.
   uint64_t next_selection_index = 0;
 };
@@ -150,9 +146,6 @@ struct PoolStats {
 
   /// Total in-flight tasks across all actors.
   int32_t total_in_flight = 0;
-
-  /// Pool tasks currently waiting for an actor to become available.
-  int32_t waiting_for_actor_retries = 0;
 };
 
 /// Manages actor pools for cross-actor retry and load balancing.
@@ -278,12 +271,6 @@ class ActorPoolManager {
   /// \return Number of tasks currently in flight for the actor.
   int32_t GetActorTasksInFlight(const ActorPoolID &pool_id,
                                 const ActorID &actor_id) const;
-
-  /// Mark a pool task as waiting for an actor for retry/reconstruction.
-  void MarkRetryWaitingForActor(const ActorPoolID &pool_id, const TaskID &task_id);
-
-  /// Clear the waiting-for-actor marker for a pool task.
-  void ClearRetryWaitingForActor(const ActorPoolID &pool_id, const TaskID &task_id);
 
   /// Select an actor from the pool for task execution or reconstruction.
   /// Thread-safe wrapper around SelectActorFromPool.

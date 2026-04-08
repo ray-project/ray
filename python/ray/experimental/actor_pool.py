@@ -393,7 +393,6 @@ class ActorPool:
             - num_actors: Current number of actors
             - backlog_size: Number of queued tasks
             - total_in_flight: Total in-flight tasks
-            - waiting_for_actor_retries: Retried tasks blocked on an empty pool
         """
         # Get C++ stats but override total_tasks_submitted with the Python-side
         # counter, since tasks submitted via the adapter's direct actor calls

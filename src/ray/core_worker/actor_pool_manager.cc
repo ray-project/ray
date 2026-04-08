@@ -278,8 +278,6 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
     total_in_flight += state.num_tasks_in_flight;
   }
   stats.total_in_flight = total_in_flight;
-  stats.waiting_for_actor_retries =
-      static_cast<int32_t>(pool_info.waiting_for_actor_retry_task_ids.size());
 
   return stats;
 }
@@ -356,43 +354,6 @@ int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
   }
 
   return state_it->second.num_tasks_in_flight;
-}
-
-void ActorPoolManager::MarkRetryWaitingForActor(const ActorPoolID &pool_id,
-                                                const TaskID &task_id) {
-  absl::MutexLock lock(&mu_);
-
-  auto pool_it = pools_.find(pool_id);
-  if (pool_it == pools_.end()) {
-    return;
-  }
-
-  pool_it->second.waiting_for_actor_retry_task_ids.insert(task_id);
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(INFO) << "ActorPoolDebug retry-waiting-for-actor task_id=" << task_id << " "
-                  << PoolStateDebugString(
-                         pool_id, pool_it->second, wq_it->second->Size());
-  }
-}
-
-void ActorPoolManager::ClearRetryWaitingForActor(const ActorPoolID &pool_id,
-                                                 const TaskID &task_id) {
-  absl::MutexLock lock(&mu_);
-
-  auto pool_it = pools_.find(pool_id);
-  if (pool_it == pools_.end()) {
-    return;
-  }
-
-  pool_it->second.waiting_for_actor_retry_task_ids.erase(task_id);
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(INFO) << "ActorPoolDebug retry-no-longer-waiting-for-actor task_id="
-                  << task_id << " "
-                  << PoolStateDebugString(
-                         pool_id, pool_it->second, wq_it->second->Size());
-  }
 }
 
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,

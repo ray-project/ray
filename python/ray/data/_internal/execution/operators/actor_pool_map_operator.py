@@ -11,6 +11,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -191,6 +192,8 @@ class ActorPoolMapOperator(MapOperator):
         self._actor_pool = self._create_actor_pool(compute_strategy)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
+        # Pending actor ready-refs that already have metadata callbacks registered.
+        self._registered_pending_actor_refs: Set[str] = set()
         # Cached actor class.
         self._actor_cls = None
         self._actor_locality_enabled: Optional[bool] = None
@@ -407,6 +410,16 @@ class ActorPoolMapOperator(MapOperator):
         to running state.
         """
         pending_refs = self._actor_pool.get_pending_actor_refs()
+        pending_ref_hexes = {ref.hex() for ref in pending_refs}
+        self._registered_pending_actor_refs.intersection_update(pending_ref_hexes)
+        new_pending_refs = [
+            ref
+            for ref in pending_refs
+            if ref.hex() not in self._registered_pending_actor_refs
+        ]
+        if not new_pending_refs:
+            return
+
         logger.warning(
             "RayDataActorPoolDebug %s",
             {
@@ -414,12 +427,16 @@ class ActorPoolMapOperator(MapOperator):
                 "operator_id": self.id,
                 "operator_name": self.name,
                 "pending_ref_count": len(pending_refs),
-                "pending_refs": [ref.hex() for ref in pending_refs],
+                "new_pending_ref_count": len(new_pending_refs),
+                "pending_refs": [ref.hex() for ref in new_pending_refs],
             },
         )
-        for res_ref in pending_refs:
+        for res_ref in new_pending_refs:
+            ready_ref_hex = res_ref.hex()
+            self._registered_pending_actor_refs.add(ready_ref_hex)
 
             def _task_done_callback(ref):
+                self._registered_pending_actor_refs.discard(ref.hex())
                 logger.warning(
                     "RayDataActorPoolDebug %s",
                     {
@@ -434,7 +451,7 @@ class ActorPoolMapOperator(MapOperator):
                     logger.warning(
                         "RayDataActorPoolDebug %s",
                         {
-                            "event": "pending_actor_callback_no_actor",
+                            "event": "pending_actor_callback_already_handled",
                             "operator_id": self.id,
                             "operator_name": self.name,
                             "ready_ref": ref.hex(),
@@ -820,6 +837,8 @@ class ActorPoolMapOperator(MapOperator):
 
     def refresh_state(self):
         """Updates internal state"""
+        if self._use_core_pool:
+            self._register_pending_actor_callbacks()
 
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
