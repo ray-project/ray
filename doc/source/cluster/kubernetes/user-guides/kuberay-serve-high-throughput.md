@@ -123,20 +123,26 @@ spec:
 
 ### 7. Verify HAProxy status
 
-Identify the head and worker pod names, then verify that HAProxy is running on each:
+Use the [kubectl plugin](kubectl-plugin) or `kubectl port-forward` to establish
+a connection to the Ray head:
 
-```bash
-# Get pod names
-HEAD_POD=$(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[0].metadata.name}')
-WORKER_POD=$(kubectl get pods -l ray.io/node-type=worker -o jsonpath='{.items[0].metadata.name}')
-
-# Check for haproxy process
-kubectl exec $HEAD_POD -- pgrep haproxy
-kubectl exec $WORKER_POD -- pgrep haproxy
+```
+CLUSTER=$(kubectl get raycluster -o jsonpath='{.items[0].metadata.name}')
+kubectl ray session $CLUSTER
 ```
 
-If the commands return a process ID, HAProxy is running successfully. If the
-command doesn't print an ID, double-check your configuration.
+Now, use the Ray CLI to check for HAProxy. Alternatively, navigate to the Ray
+dashboard's Actors tab and search for class `HAProxyManager`.
+
+```
+ray list actors | grep HAProxy
+```
+
+You should see an HAProxy for the head pod and every worker. If there are fewer
+HAProxy actors than there are pods, double check your configuration.
+
+For example: ![HAProxy actors in the Ray
+dashboard](images/kuberay-rayservice-haproxy-actors.png).
 
 ## Expected performance
 
