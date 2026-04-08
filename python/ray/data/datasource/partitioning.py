@@ -140,24 +140,12 @@ class Partitioning:
         Raises:
             ValueError: If the partition style is not supported.
         """
-        import pyarrow as pa
         import pyarrow.dataset as pds
 
-        field_names: List[str] = self.field_names or []
-        field_types: Dict[str, PartitionDataType] = self.field_types or {}
-
-        type_map = {
-            int: pa.int64(),
-            float: pa.float64(),
-            bool: pa.bool_(),
-            str: pa.string(),
-        }
-        fields = []
-        for name in field_names:
-            py_type: PartitionDataType = field_types.get(name, str)
-            pa_type = type_map.get(py_type, pa.string())
-            fields.append(pa.field(name, pa_type))
-        schema = pa.schema(fields)
+        schema = _partition_field_types_to_pa_schema(
+            self.field_names or [],
+            self.field_types or {},
+        )
 
         if self.style == PartitionStyle.HIVE:
             return pds.HivePartitioning(schema)
@@ -578,6 +566,36 @@ class PathPartitionFilter:
     def parser(self) -> PathPartitionParser:
         """Returns the path partition parser for this filter."""
         return self._parser
+
+
+def _partition_field_types_to_pa_schema(
+    field_names: List[str],
+    field_types: Dict[str, PartitionDataType],
+) -> "pyarrow.Schema":
+    """Build a PyArrow schema from partition field names and Python types.
+
+    Args:
+        field_names: Ordered partition key names.
+        field_types: Mapping from field name to Python type. Fields not
+            present in the map default to ``str`` (``pa.string()``).
+
+    Returns:
+        A ``pyarrow.Schema`` with one field per partition key.
+    """
+    import pyarrow as pa
+
+    type_map = {
+        int: pa.int64(),
+        float: pa.float64(),
+        bool: pa.bool_(),
+        str: pa.string(),
+    }
+    fields = []
+    for name in field_names:
+        py_type: PartitionDataType = field_types.get(name, str)
+        pa_type = type_map.get(py_type, pa.string())
+        fields.append(pa.field(name, pa_type))
+    return pa.schema(fields)
 
 
 def _cast_value(value: str, data_type: PartitionDataType) -> Any:

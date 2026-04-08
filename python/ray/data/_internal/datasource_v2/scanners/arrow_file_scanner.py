@@ -68,8 +68,8 @@ class ArrowFileScanner(
         fields = []
         for name in self.columns:
             idx = self.schema.get_field_index(name)
-            if idx != -1:
-                fields.append(self.schema.field(idx))
+            assert idx >= 0, f"Column {name} not found in schema"
+            fields.append(self.schema.field(idx))
         return pa.schema(fields)
 
     @override
@@ -195,9 +195,7 @@ class ArrowFileScanner(
         keep_indices = []
 
         for i, path in enumerate(manifest.paths):
-            if parser.evaluate_predicate_on_partition(
-                str(path), self.partition_predicate
-            ):
+            if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
                 keep_indices.append(i)
 
         if len(keep_indices) == len(manifest):

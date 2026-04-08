@@ -41,42 +41,66 @@ def _estimate_batch_size_from_metadata(
         Estimated batch size in rows, or None if metadata is unavailable.
     """
     try:
+        # Accessing `metadata` triggers I/O via `EnsureCompleteMetadata()` to
+        # read the Parquet footer. `check_status` maps C++ Status codes to
+        # Python exceptions: IOError (OSError) for I/O failures,
+        # ArrowInvalid for corrupt footers.
+        # https://github.com/apache/arrow/blob/apache-arrow-23.0.0/python/pyarrow/error.pxi#L110-L126
         metadata: pq.FileMetaData = fragment.metadata
-    except Exception:
+    except (OSError, pa.ArrowInvalid) as e:
+        logger.debug("Failed to read Parquet metadata for batch size estimation: %s", e)
         return None
 
     if metadata is None or metadata.num_row_groups == 0:
         return None
 
-    row_group_idx = fragment.row_groups[0].id if fragment.row_groups else 0
-    row_group_meta: pq.RowGroupMetaData = metadata.row_group(row_group_idx)
-    num_rows = row_group_meta.num_rows
+    row_group_idx: int = fragment.row_groups[0].id
+    row_group_meta: pq.RowGroupMetaData = fragment.metadata.row_group(row_group_idx)
+    row_group_num_rows: int = row_group_meta.num_rows
 
-    if num_rows == 0:
+    if row_group_num_rows == 0:
         return None
 
     # Sum uncompressed sizes for projected columns
-    physical_schema = fragment.physical_schema
     if columns is not None:
-        col_indices = [
-            physical_schema.get_field_index(col)
-            for col in columns
-            if physical_schema.get_field_index(col) >= 0
-        ]
+        projected_columns = tuple(columns)
+        target_column_indices = []
+        for col_idx in range(row_group_meta.num_columns):
+            leaf_path = row_group_meta.column(col_idx).path_in_schema
+            # Account for nested columns
+            if any(
+                leaf_path == col_name or leaf_path.startswith(f"{col_name}.")
+                for col_name in projected_columns
+            ):
+                target_column_indices.append(col_idx)
+        row_group_uncompressed_size = sum(
+            row_group_meta.column(col_idx).total_uncompressed_size
+            for col_idx in target_column_indices
+        )
     else:
-        col_indices = list(range(len(physical_schema)))
+        row_group_uncompressed_size = row_group_meta.total_byte_size
 
-    uncompressed_size = sum(
-        row_group_meta.column(i).total_uncompressed_size for i in col_indices
+    # Estimate the in-memory size of the row group
+    estimated_in_mem_row_group_size = (
+        row_group_uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
     )
 
-    estimated_in_mem_size = uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-    estimated_row_size = estimated_in_mem_size / num_rows
-
-    if estimated_row_size <= 0:
+    estimated_in_mem_row_size = estimated_in_mem_row_group_size / row_group_num_rows
+    if estimated_in_mem_row_size == 0:
         return None
 
-    return max(math.ceil(target_block_size / estimated_row_size), 1)
+    # Never request more rows than the row group actually contains.
+    target_batch_size = min(
+        math.ceil(target_block_size / estimated_in_mem_row_size),
+        row_group_num_rows,
+    )
+
+    logger.debug(
+        f"Estimated target batch size to be: {target_batch_size} (with "
+        f"{target_block_size=} bytes and {estimated_in_mem_row_size=} bytes)"
+    )
+
+    return target_batch_size
 
 
 @DeveloperAPI
@@ -156,8 +180,7 @@ class ParquetFileReader(FileReader):
                 )
                 if estimated is not None:
                     logger.debug(
-                        "Estimated Parquet batch size: %d rows "
-                        "(target_block_size=%d)",
+                        "Estimated Parquet batch size: %d rows (target_block_size=%d)",
                         estimated,
                         self._target_block_size,
                     )
@@ -167,8 +190,7 @@ class ParquetFileReader(FileReader):
 
     def _on_batch_read(self, table: pa.Table) -> None:
         """Refine batch size estimate from actual in-memory data."""
-        if self._target_block_size is None or table.nbytes == 0:
+        if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
             return
-
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)

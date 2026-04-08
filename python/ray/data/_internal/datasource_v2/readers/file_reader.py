@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Generator, Iterator, List, Optional
+from typing import Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -74,7 +74,7 @@ class FileReader(Reader[FileManifest]):
         self._ignore_prefixes = ignore_prefixes
         self._include_paths = include_paths
 
-    def read(self, input_split: FileManifest) -> Generator[pa.Table, None, None]:
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
         This method is called on workers to perform the actual read operation.
@@ -86,53 +86,50 @@ class FileReader(Reader[FileManifest]):
         Yields:
             pa.Table: PyArrow Tables containing the read data.
         """
-        if len(input_split) == 0:
-            return
+        if len(input_split) > 0:
+            paths = list(input_split.paths)
+            filesystem = self._filesystem or LocalFileSystem()
 
-        paths = list(input_split.paths)
-        filesystem = self._filesystem or LocalFileSystem()
+            dataset = pds.dataset(
+                source=paths,
+                format=self._format.value,
+                filesystem=filesystem,
+                partitioning=self._partitioning,
+                ignore_prefixes=self._ignore_prefixes,
+            )
 
-        dataset = pds.dataset(
-            source=paths,
-            format=self._format.value,
-            filesystem=filesystem,
-            partitioning=self._partitioning,
-            ignore_prefixes=self._ignore_prefixes,
-        )
+            batch_size = self._resolve_batch_size(dataset)
 
-        batch_size = self._resolve_batch_size(dataset)
+            scanner = dataset.scanner(
+                columns=self._columns,
+                filter=self._predicate,
+                batch_size=batch_size,
+                batch_readahead=1,
+            )
 
-        scanner = dataset.scanner(
-            columns=self._columns,
-            filter=self._predicate,
-            batch_size=batch_size,
-            batch_readahead=1,
-        )
+            ctx = DataContext.get_current()
+            rows_read = 0
+            for table, fragment_path in iterate_with_retry(
+                lambda: self._read_batches(scanner),
+                "read batches",
+                match=ctx.retried_io_errors,
+            ):
+                if self._limit is not None:
+                    remaining = self._limit - rows_read
+                    if remaining <= 0:
+                        break
+                    if len(table) > remaining:
+                        table = table.slice(0, remaining)
 
-        ctx = DataContext.get_current()
-        rows_read = 0
-        for table, fragment_path in iterate_with_retry(
-            lambda: self._read_batches(scanner),
-            "read batches",
-            match=ctx.retried_io_errors,
-        ):
-            if self._limit is not None and rows_read >= self._limit:
-                break
+                if self._include_paths:
+                    table = table.append_column(
+                        "path",
+                        pa.array([fragment_path] * table.num_rows, type=pa.string()),
+                    )
 
-            if self._limit is not None:
-                remaining = self._limit - rows_read
-                if len(table) > remaining:
-                    table = table.slice(0, remaining)
-
-            if self._include_paths:
-                table = table.append_column(
-                    "path",
-                    pa.array([fragment_path] * table.num_rows, type=pa.string()),
-                )
-
-            self._on_batch_read(table)
-            rows_read += len(table)
-            yield table
+                self._on_batch_read(table)
+                rows_read += len(table)
+                yield table
 
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Return the batch size to use for scanning.
