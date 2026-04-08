@@ -267,10 +267,10 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
 
 @PublicAPI(stability="alpha")
 def deregister_nixl_memory(tensor: "torch.Tensor") -> None:
-    """Decrements the reference count for the tensor's NIXL memory registration added by :func:`register_nixl_memory`.
+    """Decrements the reference count for the tensor's NIXL memory registration added by :func:`ray.experimental.register_nixl_memory`.
 
     If the reference count reaches 0, the memory is deregistered from NIXL.
-    This should only be called after :func:`register_nixl_memory` has been called for this tensor.
+    This should only be called after :func:`ray.experimental.register_nixl_memory` has been called for this tensor.
     Any existing ``ray.ObjectRef`` instances that reference this tensor's memory will keep the
     NIXL memory registration alive independently until they go out of scope.
 
@@ -281,7 +281,7 @@ def deregister_nixl_memory(tensor: "torch.Tensor") -> None:
 
         .. code-block:: python
 
-            # Extending the example from :func:`register_nixl_memory`:
+            # Extending the example from register_nixl_memory:
             @ray.remote(num_gpus=1, enable_tensor_transport=True)
             class Trainer:
                 def deregister_weight(self):
