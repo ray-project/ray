@@ -268,8 +268,11 @@ class LoadMetrics:
         summarized_resource_requests = freq_of_dicts(self.get_resource_requests())
 
         def placement_group_serializer(pg):
+            pg_bundles = pg.bundles
+            if not pg_bundles and pg.scheduling_options:
+                pg_bundles = pg.scheduling_options[0].bundles
             bundles = tuple(
-                frozenset(bundle.unit_resources.items()) for bundle in pg.bundles
+                frozenset(bundle.unit_resources.items()) for bundle in pg_bundles
             )
             return (bundles, pg.strategy)
 
