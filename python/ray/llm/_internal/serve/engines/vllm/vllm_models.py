@@ -274,7 +274,9 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
-        return _compute_use_gpu(self.use_cpu, self.placement_group_config, self.accelerator_type)
+        return _compute_use_gpu(
+            self.use_cpu, self.placement_group_config, self.accelerator_type
+        )
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.

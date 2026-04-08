@@ -481,8 +481,9 @@ class TestAcceleratorTypeValidation:
                 accelerator_type="L4",
                 use_cpu=True,
             )
-        assert "accelerator_type='L4' cannot be used with CPU-only configurations" in str(
-            exc_info.value
+        assert (
+            "accelerator_type='L4' cannot be used with CPU-only configurations"
+            in str(exc_info.value)
         )
 
 
