@@ -18,7 +18,7 @@ This is particularly useful for recurring tasks such as scheduled model retraini
 
 ## RayCronJob Configuration
 
-The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly. Instead, it acts as a controller that creates a new `RayJob` on each schedule triggers.
+The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly. Instead, it acts as a controller that creates a new `RayJob` each time the schedule triggers.
 
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
 * `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.
