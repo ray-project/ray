@@ -12,9 +12,9 @@ powershell ci/ray_ci/windows/install_bazelisk.ps1
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.9.22/install.ps1 | iex"
 
 conda init
-conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3
+conda install -q -y python="${PYTHON_FULL_VERSION}" requests=2.32.3 ca-certificates certifi
 # Force CA trust stack to the newest versions available at build time.
-conda update -c conda-forge -q -y ca-certificates certifi
+# conda update -c conda-forge -q -y ca-certificates certifi
 
 # Install torch first, as some dependencies (e.g. torch-spline-conv) need torch to be
 # installed for their own install.
