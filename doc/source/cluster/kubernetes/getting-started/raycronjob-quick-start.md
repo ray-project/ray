@@ -21,11 +21,7 @@ This is particularly useful for recurring tasks such as scheduled model retraini
 The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly; instead, it acts as a factory that generates a new `RayJob` every time its schedule triggers.
 
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
-* `jobTemplate` - Defines the exact **RayJob** blueprint that the controller will use for each scheduled run. Because it inherits the entire `RayJob` schema, it supports all standard RayJob configurations directly, including:
-  * `rayClusterSpec` - Defines the RayCluster custom resource to run the Ray job on.
-  * `entrypoint` - The command to execute for the job.
-  * `shutdownAfterJobFinishes` - Determines whether to recycle the RayCluster after the scheduled Ray job finishes.
-  * *Note: See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.*
+* `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.*
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
 
 ## How to Configure a RayCronJob
@@ -58,7 +54,7 @@ kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
-You must install KubeRay operator version 1.6.0 (or newer) and enable the feature gate. We recommend using Helm for this:
+Install the KubeRay operator, following [these instructions](https://docs.ray.io/en/latest/cluster/kubernetes/getting-started/kuberay-operator-installation.html). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command: 
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -70,7 +66,6 @@ helm install kuberay-operator kuberay/kuberay-operator \
   --set "featureGates[0].name=RayCronJob" \
   --set "featureGates[0].enabled=true"
 ```
-For alternative installation methods, refer to [KubeRay Operator Installation](kuberay-operator-deploy), but ensure you append the feature gate configuration.
 
 ### Step 3: Install a RayCronJob
 
@@ -80,7 +75,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ra
 
 ### Step 4: Monitor the RayCronJob
 
-Check the status of your `RayCronJob`. You should see the schedule and the last time it successfully scheduled a job.
+Check the status of your `RayCronJob`. The `SCHEDULE` field should be visible immediately, while `LAST SCHEDULE` may be empty until the first scheduled run is triggered.
 
 ```sh
 kubectl get raycronjob raycronjob-sample
@@ -97,27 +92,11 @@ Because our schedule is `* * * * *`, a new `RayJob` will be generated at the sta
 ```shell
 kubectl get rayjob -w
 # [Example output]
-# NAME                      JOB STATUS   DEPLOYMENT STATUS   RAY CLUSTER NAME   START TIME   END TIME   AGE
-# raycronjob-sample-l76h8                                                                               0s
-# raycronjob-sample-l76h8                                                                               0s
-# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              0s
-# raycronjob-sample-gmsnw                                                                                                      0s
-# raycronjob-sample-gmsnw                                                                                                      0s
-# raycronjob-sample-gmsnw                Initializing        raycronjob-sample-gmsnw-d6n2r   2026-04-03T05:57:00Z              0s
-# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              0s
-# raycronjob-sample-gmsnw                Initializing        raycronjob-sample-gmsnw-d6n2r   2026-04-03T05:57:00Z              0s
+# NAME                      JOB STATUS   DEPLOYMENT STATUS   RAY CLUSTER NAME                 START TIME             END TIME   AGE
 # raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              2s
-# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              17s
-# raycronjob-sample-l76h8                Initializing        raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              21s
-# raycronjob-sample-l76h8                Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              31s
-# raycronjob-sample-l76h8   PENDING      Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              39s
 # raycronjob-sample-l76h8   RUNNING      Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              48s
-# raycronjob-sample-l76h8   SUCCEEDED    Running             raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z              57s
-# raycronjob-sample-pct47                                                                                                      0s
-# raycronjob-sample-pct47                                                                                                      0s
-# raycronjob-sample-pct47                Initializing        raycronjob-sample-pct47-bdspj   2026-04-03T05:58:00Z              0s
-# raycronjob-sample-pct47                Initializing        raycronjob-sample-pct47-bdspj   2026-04-03T05:58:00Z              0s
 # raycronjob-sample-l76h8   SUCCEEDED    Complete            raycronjob-sample-l76h8-hjtrs   2026-04-03T05:57:00Z   2026-04-03T05:58:02Z   62s
+# raycronjob-sample-pct47                Initializing        raycronjob-sample-pct47-bdspj   2026-04-03T05:58:00Z              0s
 # (Press Ctrl+C to stop watching once the job completes)
 ```
 
@@ -188,5 +167,12 @@ kubectl logs <job-pod-name>
 To stop the recurring jobs and delete the resource, run:
 
 ```bash
-kubectl delete -f ray-cronjob.sample.yaml
+# Step 6.1: Delete the RayCronJob
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cronjob.sample.yaml
+
+# Step 6.2: Delete the KubeRay operator
+helm uninstall kuberay-operator
+
+# Step 6.3: Delete the Kubernetes cluster
+kind delete cluster
 ```
