@@ -20,14 +20,14 @@ ray_cc_test(
     srcs = [
         "global_state_accessor_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],
@@ -51,14 +51,14 @@ ray_cc_test(
     srcs = [
         "gcs_client_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     features = select({
         "@platforms//os:windows": ["compiler_param_file"],
         "//conditions:default": [],
@@ -85,14 +85,14 @@ ray_cc_test(
     srcs = [
         "gcs_client_reconnection_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = [
         "no_windows",
         "team:core",
