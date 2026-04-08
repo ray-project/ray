@@ -318,6 +318,7 @@ def collect_scheduling_overhead() -> Dict[str, SchedulingOverheadSummary]:
             # 10_000 is chosen because it's the default max limit. Therefore, some
             # tasks may be truncated.
             limit=10_000,
+            raise_on_missing_output=False,
         )
         summaries[name] = SchedulingOverheadSummary.from_task_states(tasks)
     return summaries
